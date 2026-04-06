@@ -89,7 +89,12 @@ def generate_nomination_doc(nomination_id: str):
 
     supabase.table("nominations").update(update_data).eq("id", nomination_id).execute()
 
-    response = {"pdf_path": saved_path, "status": "generated"}
+    response = {
+        "pdf_path": saved_path,
+        "status": "generated",
+        "local_path": local_path,
+        "storage_url": storage_url,
+    }
     if conversion_error:
         response["conversion_error"] = conversion_error
         response["format"] = "docx"
