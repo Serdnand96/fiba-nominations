@@ -6,7 +6,7 @@ import {
   getDownloadUrl,
 } from '../api/client'
 
-const BCLA_ROUNDS = ['Semifinals', '3rd Place', 'Final']
+const BCLA_F4_ROUNDS = ['Semifinals', '3rd Place', 'Final']
 
 export default function Nominations() {
   const [nominations, setNominations] = useState([])
@@ -46,7 +46,7 @@ export default function Nominations() {
 
   const selectedComp = competitions.find(c => c.id === form.competition_id)
   const templateKey = selectedComp?.template_key || ''
-  const showLocationFields = ['BCLA', 'LSB'].includes(templateKey)
+  const showLocationFields = ['BCLA_F4', 'BCLA_RS', 'LSB'].includes(templateKey)
   const showDeadline = ['WCQ', 'GENERIC'].includes(templateKey)
 
   const total = useMemo(() => {
@@ -75,8 +75,8 @@ export default function Nominations() {
     const comp = competitions.find(c => c.id === competition_id)
     const tk = comp?.template_key || ''
     let gameDates = []
-    if (tk === 'BCLA') {
-      gameDates = BCLA_ROUNDS.map(label => ({ label, date: '' }))
+    if (tk === 'BCLA_F4') {
+      gameDates = BCLA_F4_ROUNDS.map(label => ({ label, date: '' }))
     }
     setForm(f => ({ ...f, competition_id, game_dates: gameDates }))
   }
@@ -610,12 +610,12 @@ export default function Nominations() {
               )}
 
               {/* Game Dates */}
-              {templateKey && (
+              {templateKey && templateKey !== 'BCLA_RS' && (
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Game Dates</label>
                   {form.game_dates.map((gd, idx) => (
                     <div key={idx} className="flex gap-2 mb-2 items-center">
-                      {templateKey === 'BCLA' ? (
+                      {templateKey === 'BCLA_F4' ? (
                         <span className="text-sm text-gray-600 w-28">{gd.label}</span>
                       ) : (
                         <input
@@ -633,12 +633,12 @@ export default function Nominations() {
                         onChange={e => updateGameDate(idx, 'date', e.target.value)}
                         className="flex-1 px-2 py-1.5 border rounded text-sm"
                       />
-                      {templateKey !== 'BCLA' && (
+                      {templateKey !== 'BCLA_F4' && (
                         <button type="button" onClick={() => removeGameDate(idx)} className="text-red-400 hover:text-red-600 text-lg">&times;</button>
                       )}
                     </div>
                   ))}
-                  {templateKey !== 'BCLA' && (
+                  {templateKey !== 'BCLA_F4' && (
                     <button
                       type="button"
                       onClick={addGameDate}

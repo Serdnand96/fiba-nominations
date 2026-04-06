@@ -30,7 +30,8 @@ CONFIRMATION_EMAIL = {
 SIGNATORIES = {
     "WCQ": ("Carlos Alves", "Executive Director", "FIBA Americas"),
     "GENERIC": ("Carlos Alves", "Executive Director", "FIBA Americas"),
-    "BCLA": ("Gino Rullo", "Head of Operations", "Basketball Champions League Americas"),
+    "BCLA_F4": ("Gino Rullo", "Head of Operations", "Basketball Champions League Americas"),
+    "BCLA_RS": ("Gino Rullo", "Head of Operations", "Basketball Champions League Americas"),
     "LSB": ("Gino Rullo", "Head of Operations", "Club Competitions – FIBA Americas"),
 }
 
@@ -45,8 +46,10 @@ def generate_nomination(nomination_data: dict) -> tuple[str, str | None, str | N
         doc = _build_wcq_letter(nomination_data)
     elif template_key == "GENERIC":
         doc = _build_generic_letter(nomination_data)
-    elif template_key == "BCLA":
-        doc = _build_bcla_letter(nomination_data)
+    elif template_key == "BCLA_F4":
+        doc = _build_bcla_letter(nomination_data, variant="F4")
+    elif template_key == "BCLA_RS":
+        doc = _build_bcla_letter(nomination_data, variant="RS")
     elif template_key == "LSB":
         doc = _build_confirmation_from_scratch(nomination_data)
     else:
@@ -378,7 +381,7 @@ def _build_generic_letter(data: dict) -> Document:
 
 # ─── BCLA LETTER (Univers font, BCLA template) ──────────────────────────────
 
-def _build_bcla_letter(data: dict) -> Document:
+def _build_bcla_letter(data: dict, variant: str = "F4") -> Document:
     template_path = TEMPLATES_DIR / "BCLA_TEMPLATE.docx"
     if not template_path.exists():
         return _build_confirmation_from_scratch(data)
@@ -393,21 +396,6 @@ def _build_bcla_letter(data: dict) -> Document:
             pass
 
     paras = doc.paragraphs
-    # Template structure:
-    # [0] logo 1 (drawing) [1] logo 2 (drawing)
-    # [2] empty right-aligned (date goes here)
-    # [3] empty
-    # [4] big placeholder text (will be cleared)
-    # [5] empty
-    # [6] "Respectfully,"
-    # [7] empty
-    # [8] signature image (Gino Rullo cursive - drawing)
-    # [9] "Gino Rullo" name
-    # [10] "Head of Operations"
-    # [11] "Basketball Champions League Americas"
-    # [12] phone
-    # [13] email
-    # [14] empty
 
     nominee = data.get("nominee_name", "")
     comp_name = data.get("competition_name", "")
@@ -437,11 +425,6 @@ def _build_bcla_letter(data: dict) -> Document:
         _set_para_text_font(paras[2], formatted_letter_date, COLOR_DARK, font_name,
                             size=Pt(10), align=WD_ALIGN_PARAGRAPH.RIGHT)
 
-    # Now we need to insert content paragraphs before "Respectfully," [6]
-    # We'll use paragraph [4] for the first line and insert new paragraphs after it
-    body = doc.element.body
-    ref_element = paras[5]._element  # Insert before the empty para [5]
-
     content_lines = []
 
     # Title
@@ -449,13 +432,13 @@ def _build_bcla_letter(data: dict) -> Document:
         "text": f"BCL Americas {comp_year} – {role_label.upper()} NOMINATION",
         "bold": True, "color": COLOR_DARK, "size": Pt(11)
     })
-    content_lines.append({"text": ""})  # empty
+    content_lines.append({"text": ""})
 
     # Dear
     content_lines.append({
         "mixed": [("Dear ", COLOR_DARK, False), (nominee, COLOR_RED, False), (",", COLOR_DARK, False)]
     })
-    content_lines.append({"text": ""})  # empty
+    content_lines.append({"text": ""})
 
     # Confirmation body
     content_lines.append({
@@ -463,7 +446,7 @@ def _build_bcla_letter(data: dict) -> Document:
                 f"{role_label} for the {comp_name} {comp_year}.",
         "color": COLOR_DARK, "align": WD_ALIGN_PARAGRAPH.JUSTIFY
     })
-    content_lines.append({"text": ""})  # empty
+    content_lines.append({"text": ""})
 
     # Game Information
     content_lines.append({"text": "Game Information", "bold": True, "color": COLOR_DARK,
@@ -474,40 +457,52 @@ def _build_bcla_letter(data: dict) -> Document:
     if venue:
         content_lines.append({"text": f"Venue: {venue}", "color": COLOR_DARK,
                               "align": WD_ALIGN_PARAGRAPH.JUSTIFY})
-    content_lines.append({"text": ""})  # empty
+    content_lines.append({"text": ""})
 
     if arrival_date:
         content_lines.append({"text": f"Arrival Date: {_fmt_deadline(arrival_date)}",
                               "color": COLOR_DARK, "align": WD_ALIGN_PARAGRAPH.JUSTIFY})
 
-    for gd in game_dates:
-        label = gd.get("label", "")
-        date_val = _fmt_deadline(gd.get("date", ""))
-        text = f"{label}: {date_val}" if label else date_val
-        content_lines.append({"text": text, "color": COLOR_DARK,
-                              "align": WD_ALIGN_PARAGRAPH.JUSTIFY})
+    # F4 has game date rows (Semifinals, 3rd Place, Final); RS does not
+    if variant == "F4":
+        for gd in game_dates:
+            label = gd.get("label", "")
+            date_val = _fmt_deadline(gd.get("date", ""))
+            text = f"{label}: {date_val}" if label else date_val
+            content_lines.append({"text": text, "color": COLOR_DARK,
+                                  "align": WD_ALIGN_PARAGRAPH.JUSTIFY})
 
     if departure_date:
         content_lines.append({"text": f"Departure Date: {_fmt_deadline(departure_date)}",
                               "color": COLOR_DARK, "align": WD_ALIGN_PARAGRAPH.JUSTIFY})
 
-    content_lines.append({"text": ""})  # empty
+    content_lines.append({"text": ""})
 
     # Financial Details
     content_lines.append({"text": "Financial Details", "bold": True, "color": COLOR_DARK,
                           "align": WD_ALIGN_PARAGRAPH.JUSTIFY})
-    content_lines.append({
-        "text": f"Below lists the details of payment you will receive as a BCL Americas "
-                f"{role_label} assigned to the games listed above:",
-        "color": COLOR_DARK, "align": WD_ALIGN_PARAGRAPH.JUSTIFY
-    })
+
+    if variant == "RS":
+        content_lines.append({
+            "text": f"Below lists the details of payment you will receive as a BCL Americas "
+                    f"{role_label} assigned to the games listed above. The distribution of this "
+                    f"payment is as follows:",
+            "color": COLOR_DARK, "align": WD_ALIGN_PARAGRAPH.JUSTIFY
+        })
+    else:
+        content_lines.append({
+            "text": f"Below lists the details of payment you will receive as a BCL Americas "
+                    f"{role_label} assigned to the games listed above:",
+            "color": COLOR_DARK, "align": WD_ALIGN_PARAGRAPH.JUSTIFY
+        })
+
     content_lines.append({"text": f"Window Fee: {_fmt_money(fee)}", "color": COLOR_DARK,
                           "align": WD_ALIGN_PARAGRAPH.JUSTIFY})
     content_lines.append({"text": f"Incidentals Fee: {_fmt_money(incidentals)}", "color": COLOR_DARK,
                           "align": WD_ALIGN_PARAGRAPH.JUSTIFY})
     content_lines.append({"text": f"Total Fees to be received: {_fmt_money(total)}", "color": COLOR_DARK,
                           "bold": True, "align": WD_ALIGN_PARAGRAPH.JUSTIFY})
-    content_lines.append({"text": ""})  # empty
+    content_lines.append({"text": ""})
 
     # Additional info
     content_lines.append({
@@ -521,17 +516,26 @@ def _build_bcla_letter(data: dict) -> Document:
         "color": COLOR_DARK, "align": WD_ALIGN_PARAGRAPH.JUSTIFY
     })
     content_lines.append({"text": ""})
-    content_lines.append({
-        "text": "If your banking information has recently changed, please be sure to send this "
-                "information to payments.americas@fiba.basketball before the start of the window.",
-        "color": COLOR_DARK, "align": WD_ALIGN_PARAGRAPH.JUSTIFY
-    })
+
+    if variant == "F4":
+        content_lines.append({
+            "text": "If your banking information has recently changed, please be sure to send this "
+                    "information to payments.americas@fiba.basketball before the start of the window.",
+            "color": COLOR_DARK, "align": WD_ALIGN_PARAGRAPH.JUSTIFY
+        })
+    else:
+        content_lines.append({
+            "text": "If your banking information has recently changed, please be sure to send this "
+                    "information to payments.americas@fiba.basketball.",
+            "color": COLOR_DARK, "align": WD_ALIGN_PARAGRAPH.JUSTIFY
+        })
+
     content_lines.append({"text": ""})
     content_lines.append({
         "text": "If you have any questions, please do not hesitate to contact.",
         "color": COLOR_DARK, "align": WD_ALIGN_PARAGRAPH.JUSTIFY
     })
-    content_lines.append({"text": ""})  # empty before Respectfully
+    content_lines.append({"text": ""})
 
     # Insert all content paragraphs into the document before ref_element
     # First, use paragraph [4] for the first content line

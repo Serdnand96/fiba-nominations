@@ -3,7 +3,8 @@ import { getCompetitions, createCompetition, updateCompetition, deleteCompetitio
 
 const TEMPLATE_BADGES = {
   WCQ: 'bg-red-100 text-red-700',
-  BCLA: 'bg-blue-100 text-blue-700',
+  BCLA_F4: 'bg-blue-100 text-blue-700',
+  BCLA_RS: 'bg-blue-100 text-blue-700',
   LSB: 'bg-amber-100 text-amber-700',
   GENERIC: 'bg-gray-100 text-gray-700',
 }
@@ -122,7 +123,8 @@ export default function Competitions() {
               <input required placeholder="Nombre" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} className="w-full px-3 py-2 border rounded-lg text-sm" />
               <select value={form.template_key} onChange={e => setForm(f => ({ ...f, template_key: e.target.value }))} className="w-full px-3 py-2 border rounded-lg text-sm">
                 <option value="WCQ">WCQ</option>
-                <option value="BCLA">BCLA</option>
+                <option value="BCLA_F4">BCLA Final 4</option>
+                <option value="BCLA_RS">BCLA Regular Season</option>
                 <option value="LSB">LSB</option>
                 <option value="GENERIC">GENERIC</option>
               </select>
