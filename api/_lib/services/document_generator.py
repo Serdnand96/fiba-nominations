@@ -106,13 +106,18 @@ def _build_wcq_letter(data: dict) -> Document:
     role_label = "Video Graphic Operator" if role == "VGO" else "Technical Delegate"
     game_dates = data.get("game_dates", [])
     deadline = _fmt_deadline(data.get("confirmation_deadline", ""))
+    letter_date = _fmt_date(data.get("letter_date", ""))
     fee = data.get("window_fee")
     incidentals = data.get("incidentals")
     total = data.get("total")
 
-    # Clear ALL empty paragraphs first (keep [0] title and [46] signature)
-    for i in range(1, len(paras) - 1):
+    # Clear paragraphs 1-44 (keep [0] title, [45] signature image, [46] signature text)
+    for i in range(1, len(paras) - 2):
         _clear_para(paras[i])
+
+    # Update the header date (it's in a text box inside the header XML)
+    if letter_date:
+        _update_header_date(doc, letter_date)
 
     # [2] — "Dear [Name],"
     _set_para_mixed(paras[2], [
@@ -130,7 +135,7 @@ def _build_wcq_letter(data: dict) -> Document:
     # [6+] — Game dates (centered, bold, red)
     for i, gd in enumerate(game_dates):
         idx = 6 + i
-        if idx < len(paras) - 1:
+        if idx < len(paras) - 3:
             label = gd.get("label", "")
             date_val = _fmt_date(gd.get("date", ""))
             text = f"{label}: {date_val}" if label else date_val
@@ -139,7 +144,7 @@ def _build_wcq_letter(data: dict) -> Document:
 
     # Confirmation paragraph — 2 lines after last game date
     confirm_idx = 6 + max(len(game_dates), 1) + 2
-    if confirm_idx < len(paras) - 1:
+    if confirm_idx < len(paras) - 3:
         _set_para_mixed(paras[confirm_idx], [
             (f"As per the FIBA Internal Regulations Book 3, please confirm to us "
              f"your availability to fulfil your assignment as {role_label} by ",
@@ -152,7 +157,7 @@ def _build_wcq_letter(data: dict) -> Document:
 
     # Travel paragraph
     travel_idx = confirm_idx + 2
-    if travel_idx < len(paras) - 1:
+    if travel_idx < len(paras) - 3:
         _set_para_text(paras[travel_idx],
             "As soon as we receive your confirmation, we will make arrangements "
             "for international flights to the host country and provide you with "
@@ -162,14 +167,14 @@ def _build_wcq_letter(data: dict) -> Document:
 
     # Payment intro
     payment_idx = travel_idx + 2
-    if payment_idx < len(paras) - 1:
+    if payment_idx < len(paras) - 3:
         _set_para_text(paras[payment_idx],
             f"Below list the details of payment you will receive as {role_label} "
             f"assigned to the competition listed above:",
             COLOR_DARK)
 
-    # Fee items
-    fee_idx = payment_idx + 4
+    # Fee items — 2 blank lines after payment intro, then the fees
+    fee_idx = payment_idx + 3
     fee_items = [
         (f"Per Game Fee: {_fmt_money(fee)}", False),
         (f"Incidentals: {_fmt_money(incidentals)}", False),
@@ -177,27 +182,43 @@ def _build_wcq_letter(data: dict) -> Document:
     ]
     for i, (text, bold) in enumerate(fee_items):
         idx = fee_idx + i
-        if idx < len(paras) - 1:
+        if idx < len(paras) - 3:
             _set_para_text(paras[idx], text, COLOR_RED, bold=bold, size=Pt(10))
             try:
                 paras[idx].style = doc.styles["List Paragraph"]
             except Exception:
                 pass
 
-    # Closing — place right after fees with a couple blank lines
-    closing_idx = fee_idx + len(fee_items) + 3
-    if closing_idx < len(paras) - 1:
+    # Closing — 2 blank lines after last fee
+    closing_idx = fee_idx + len(fee_items) + 2
+    if closing_idx < len(paras) - 3:
         _set_para_text(paras[closing_idx],
             "We wish you the best in your preparation and accomplishment of your assignment.",
             COLOR_DARK)
 
-    # Remove excess empty paragraphs between closing and signature
-    # Signature is always the last paragraph [46]
-    # We want: closing → 2 blank → signature
-    # So clear everything from closing_idx+1 to the paragraph before last
-    # (they're already cleared, just ensure signature is at the right spot)
-
     return doc
+
+
+def _update_header_date(doc, date_text: str):
+    """Update the date in the header text box (wps:txbx) via direct XML manipulation."""
+    try:
+        for section in doc.sections:
+            header = section.header
+            header_xml = header._element
+            # Find all text box content in the header
+            namespaces = {
+                'wps': 'http://schemas.microsoft.com/office/word/2010/wordprocessingShape',
+                'w': 'http://schemas.openxmlformats.org/wordprocessingml/2006/main',
+                'mc': 'http://schemas.openxmlformats.org/markup-compatibility/2006',
+            }
+            # Search for w:t elements inside wps:txbx
+            for txbx in header_xml.iter(qn('wps:txbx')):
+                for t_elem in txbx.iter(qn('w:t')):
+                    if t_elem.text and t_elem.text.strip():
+                        t_elem.text = date_text
+                        return
+    except Exception as e:
+        print(f"[HEADER DATE] Could not update: {e}")
 
 
 # ─── CONFIRMATION (BCLA / LSB) FROM SCRATCH ──────────────────────────────────

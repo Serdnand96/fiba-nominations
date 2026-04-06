@@ -148,12 +148,23 @@ export default function Nominations() {
 
       // Auto-download the generated file
       if (result.pdf_path) {
-        const link = document.createElement('a')
-        link.href = result.pdf_path.startsWith('http')
+        const fileUrl = result.pdf_path.startsWith('http')
           ? result.pdf_path
           : getDownloadUrl(id)
-        link.target = '_blank'
-        link.click()
+        try {
+          const resp = await fetch(fileUrl)
+          const blob = await resp.blob()
+          const blobUrl = URL.createObjectURL(blob)
+          const link = document.createElement('a')
+          link.href = blobUrl
+          const ext = result.format === 'pdf' ? 'pdf' : 'docx'
+          link.download = `nomination.${ext}`
+          link.click()
+          URL.revokeObjectURL(blobUrl)
+        } catch {
+          // Fallback: open in new tab
+          window.open(fileUrl, '_blank')
+        }
       }
     } catch (err) {
       alert(`Error: ${err.message}\n\nRevisa la consola para más detalles.`)
