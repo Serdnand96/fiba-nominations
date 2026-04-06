@@ -321,47 +321,131 @@ def _build_wcq_from_scratch(data: dict) -> Document:
     return doc
 
 
-# ─── PDF CONVERSION (Gotenberg) ──────────────────────────────────────────────
+# ─── PDF CONVERSION (CloudConvert) ───────────────────────────────────────────
 
 def _convert_to_pdf(docx_path: str) -> str | None:
     """
-    Convert .docx to .pdf using Gotenberg.
-    Set GOTENBERG_URL env var to your Gotenberg instance URL.
-    Example: https://gotenberg-xxxx.onrender.com
+    Convert .docx to .pdf using CloudConvert API.
+    Set CLOUDCONVERT_API_KEY env var.
+    Free tier: 25 conversions/day.
 
-    Gotenberg API: POST /forms/libreoffice/convert
-    - multipart form with field "files"
-    - returns PDF bytes directly
+    Flow:
+    1. POST /v2/jobs — create job with import/upload + convert + export/url tasks
+    2. PUT upload URL — upload the .docx file
+    3. Wait for job to finish
+    4. GET export URL — download the PDF
     """
-    gotenberg_url = os.environ.get("GOTENBERG_URL", "")
-    if not gotenberg_url:
+    api_key = os.environ.get("CLOUDCONVERT_API_KEY", "")
+    if not api_key:
         return None
 
     pdf_path = docx_path.replace(".docx", ".pdf")
-    endpoint = f"{gotenberg_url.rstrip('/')}/forms/libreoffice/convert"
+    base_url = "https://api.cloudconvert.com/v2"
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
+    }
 
     try:
+        # Step 1: Create job with import + convert + export
+        job_payload = {
+            "tasks": {
+                "import-file": {
+                    "operation": "import/upload",
+                },
+                "convert-file": {
+                    "operation": "convert",
+                    "input": ["import-file"],
+                    "output_format": "pdf",
+                    "engine": "libreoffice",
+                },
+                "export-file": {
+                    "operation": "export/url",
+                    "input": ["convert-file"],
+                },
+            }
+        }
+
+        job_resp = httpx.post(
+            f"{base_url}/jobs", json=job_payload, headers=headers, timeout=30.0
+        )
+        if job_resp.status_code not in (200, 201):
+            print(f"[CLOUDCONVERT] Job create error {job_resp.status_code}: {job_resp.text[:300]}")
+            return None
+
+        job_data = job_resp.json()["data"]
+
+        # Step 2: Find the upload task and upload the file
+        upload_task = None
+        for task in job_data["tasks"]:
+            if task["name"] == "import-file" and task.get("result", {}).get("form"):
+                upload_task = task
+                break
+
+        if not upload_task:
+            print("[CLOUDCONVERT] No upload task found")
+            return None
+
+        form_data = upload_task["result"]["form"]
+        upload_url = form_data["url"]
+        form_params = form_data["parameters"]
+
         with open(docx_path, "rb") as f:
             docx_bytes = f.read()
 
         filename = Path(docx_path).name
 
-        response = httpx.post(
-            endpoint,
-            files={"files": (filename, docx_bytes, "application/vnd.openxmlformats-officedocument.wordprocessingml.document")},
-            timeout=60.0,
+        # Build multipart upload
+        files = {"file": (filename, docx_bytes, "application/vnd.openxmlformats-officedocument.wordprocessingml.document")}
+        upload_resp = httpx.post(
+            upload_url, data=form_params, files=files, timeout=60.0
         )
+        if upload_resp.status_code not in (200, 201, 204):
+            print(f"[CLOUDCONVERT] Upload error {upload_resp.status_code}: {upload_resp.text[:200]}")
+            return None
 
-        if response.status_code == 200:
+        # Step 3: Wait for job to complete (poll)
+        job_id = job_data["id"]
+        import time
+        for _ in range(30):  # max 30 attempts, ~30 seconds
+            time.sleep(1)
+            status_resp = httpx.get(
+                f"{base_url}/jobs/{job_id}", headers=headers, timeout=15.0
+            )
+            if status_resp.status_code != 200:
+                continue
+            status_data = status_resp.json()["data"]
+            if status_data["status"] == "finished":
+                break
+            elif status_data["status"] == "error":
+                print(f"[CLOUDCONVERT] Job failed: {status_data}")
+                return None
+
+        # Step 4: Get export URL and download PDF
+        export_task = None
+        for task in status_data["tasks"]:
+            if task["name"] == "export-file" and task["status"] == "finished":
+                export_task = task
+                break
+
+        if not export_task or not export_task.get("result", {}).get("files"):
+            print("[CLOUDCONVERT] No export result found")
+            return None
+
+        download_url = export_task["result"]["files"][0]["url"]
+        pdf_resp = httpx.get(download_url, timeout=30.0)
+        if pdf_resp.status_code == 200:
             with open(pdf_path, "wb") as f:
-                f.write(response.content)
+                f.write(pdf_resp.content)
             return pdf_path
         else:
-            print(f"[GOTENBERG] Error {response.status_code}: {response.text[:200]}")
+            print(f"[CLOUDCONVERT] Download error {pdf_resp.status_code}")
             return None
 
     except Exception as e:
-        print(f"[GOTENBERG] {type(e).__name__}: {e}")
+        print(f"[CLOUDCONVERT] {type(e).__name__}: {e}")
+        import traceback
+        traceback.print_exc()
         return None
 
 
