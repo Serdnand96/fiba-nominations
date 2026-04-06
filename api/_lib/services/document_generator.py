@@ -1,13 +1,19 @@
 import os
 import re
+import copy
 import tempfile
 from pathlib import Path
 from docx import Document
-from docx.shared import Pt, Inches, RGBColor
+from docx.shared import Pt, RGBColor
 from docx.enum.text import WD_ALIGN_PARAGRAPH
-from docx.enum.table import WD_TABLE_ALIGNMENT
+from docx.oxml.ns import qn
 
 OUTPUT_DIR = Path(tempfile.gettempdir()) / "fiba_generated"
+TEMPLATES_DIR = Path(__file__).resolve().parent.parent.parent.parent / "templates"
+
+# FIBA brand colors
+COLOR_DARK = RGBColor(0x2A, 0x2A, 0x2A)
+COLOR_RED = RGBColor(0xED, 0x00, 0x00)
 
 SIGNATORIES = {
     "WCQ": ("Carlos Alves", "Executive Director", "FIBA Americas"),
@@ -18,14 +24,11 @@ SIGNATORIES = {
 
 
 def generate_nomination(nomination_data: dict) -> tuple[str, str | None]:
-    """
-    Generate a nomination/confirmation letter as .docx.
-    Returns (local_path, storage_url).
-    """
+    """Generate a nomination/confirmation .docx letter. Returns (local_path, storage_url)."""
     template_key = nomination_data["template_key"]
 
     if template_key in ("WCQ", "GENERIC"):
-        doc = _build_nomination_letter(nomination_data)
+        doc = _build_wcq_letter(nomination_data)
     elif template_key in ("BCLA", "LSB"):
         doc = _build_confirmation_letter(nomination_data)
     else:
@@ -41,281 +44,355 @@ def generate_nomination(nomination_data: dict) -> tuple[str, str | None]:
     docx_path = OUTPUT_DIR / f"{base_name}.docx"
     doc.save(str(docx_path))
 
-    # Upload to Supabase Storage if configured
     storage_url = _upload_to_storage(str(docx_path), base_name)
-
     return str(docx_path), storage_url
 
 
-# ─── NOMINATION LETTER (WCQ / GENERIC) ───────────────────────────────────────
+# ─── WCQ / GENERIC  ──────────────────────────────────────────────────────────
 
-def _build_nomination_letter(data: dict) -> Document:
-    doc = Document()
-    _set_default_font(doc)
-    _set_margins(doc)
+def _build_wcq_letter(data: dict) -> Document:
+    """
+    Uses WCQ_TEMPLATE.docx as base (has logos, margins, styles).
+    The template has 47 paragraphs: [0] = heading, [1-45] = empty Body Text, [46] = signatory.
+    We fill the empty paragraphs with the letter content matching the Felipe Saldarriaga format.
+    """
+    template_path = TEMPLATES_DIR / "WCQ_TEMPLATE.docx"
+    if not template_path.exists():
+        # Fallback: generate from scratch if template missing
+        return _build_wcq_from_scratch(data)
 
-    # Header
-    _add_header(doc, "FIBA Americas")
+    doc = Document(str(template_path))
+    paras = doc.paragraphs
 
-    # Date
-    _add_paragraph(doc, data.get("letter_date", ""), bold=False, size=11)
-    _add_empty_line(doc)
-
-    # Recipient
-    _add_paragraph(doc, f"Dear {data.get('nominee_name', '')},", bold=False, size=11)
-    _add_empty_line(doc)
-
-    # Subject
-    role_label = "Video Graphic Operator (VGO)" if data.get("role") == "VGO" else "Technical Delegate (TD)"
+    nominee = data.get("nominee_name", "")
     comp_name = data.get("competition_name", "")
-    _add_paragraph(
-        doc,
-        f"Re: Nomination as {role_label} – {comp_name}",
-        bold=True, size=11,
-    )
-    _add_empty_line(doc)
-
-    # Body
-    _add_paragraph(
-        doc,
-        f"We are pleased to inform you that you have been nominated as {role_label} "
-        f"for the {comp_name}.",
-        bold=False, size=11,
-    )
-    _add_empty_line(doc)
-
-    # Game dates
+    role = data.get("role", "VGO")
+    role_label = "Video Graphic Operator" if role == "VGO" else "Technical Delegate"
     game_dates = data.get("game_dates", [])
-    if game_dates:
-        _add_paragraph(doc, "Game Schedule:", bold=True, size=11)
-        for gd in game_dates:
-            label = gd.get("label", "")
-            date = gd.get("date", "")
-            text = f"  •  {label}: {date}" if label else f"  •  {date}"
-            _add_paragraph(doc, text, bold=False, size=10)
-        _add_empty_line(doc)
-
-    # Compensation table
-    _add_paragraph(doc, "Compensation:", bold=True, size=11)
-    _add_compensation_table(doc, data, fee_label="Per Game Fee")
-    _add_empty_line(doc)
-
-    # Confirmation deadline
     deadline = data.get("confirmation_deadline", "")
-    if deadline:
-        _add_paragraph(
-            doc,
-            f"Please confirm your acceptance by {deadline}.",
-            bold=False, size=11,
-        )
-        _add_empty_line(doc)
+    fee = data.get("window_fee")
+    incidentals = data.get("incidentals")
+    total = data.get("total")
 
-    # Closing
-    _add_paragraph(doc, "We look forward to your confirmation.", bold=False, size=11)
-    _add_empty_line(doc)
-    _add_paragraph(doc, "Kind regards,", bold=False, size=11)
-    _add_empty_line(doc)
+    # Para [0] — Title: already set in template, but update if needed
+    # Keep as-is (Nomination for the FIBA World Cup 2027 Qualifiers)
 
-    # Signatory
-    tk = data.get("template_key", "GENERIC")
-    sig_name, sig_title, sig_org = SIGNATORIES.get(tk, SIGNATORIES["GENERIC"])
-    _add_paragraph(doc, sig_name, bold=True, size=11)
-    _add_paragraph(doc, f"{sig_title}", bold=False, size=10, color=RGBColor(100, 100, 100))
-    _add_paragraph(doc, sig_org, bold=False, size=10, color=RGBColor(100, 100, 100))
+    # Para [2] — "Dear [Name],"
+    _set_para_mixed(paras[2], [
+        ("Dear ", COLOR_DARK, False),
+        (nominee, COLOR_RED, False),
+        (",", COLOR_DARK, False),
+    ])
+
+    # Para [4] — Body intro
+    _set_para_text(paras[4],
+        f"We would like to inform that you have been nominated for the "
+        f"following games of the {comp_name}.",
+        COLOR_DARK)
+
+    # Para [6+] — Game dates (centered, bold, red)
+    date_start = 6
+    for i, gd in enumerate(game_dates):
+        idx = date_start + i
+        if idx < len(paras) - 1:
+            label = gd.get("label", "")
+            date_val = gd.get("date", "")
+            text = f"{label}: {date_val}" if label else date_val
+            _set_para_text(paras[idx], text, COLOR_RED, bold=True, size=Pt(10),
+                          align=WD_ALIGN_PARAGRAPH.CENTER)
+
+    # Confirmation paragraph — after game dates
+    confirm_idx = date_start + max(len(game_dates), 1) + 2
+    if confirm_idx < len(paras) - 1:
+        _set_para_mixed(paras[confirm_idx], [
+            (f"As per the FIBA Internal Regulations Book 3, please confirm to us "
+             f"your availability to fulfil your assignment as {role_label} by ",
+             COLOR_DARK, False),
+            (deadline, COLOR_RED, False),
+            (".", COLOR_DARK, False),
+            (" Confirmation shall be sent to ", COLOR_DARK, False),
+            ("vgo.americas@fiba.basketball", COLOR_DARK, False),
+        ], align=WD_ALIGN_PARAGRAPH.JUSTIFY)
+
+    # Travel arrangements paragraph
+    travel_idx = confirm_idx + 2
+    if travel_idx < len(paras) - 1:
+        _set_para_text(paras[travel_idx],
+            "As soon as we receive your confirmation, we will make arrangements "
+            "for international flights to the host country and provide you with "
+            "relevant information in order for you to prepare the game and "
+            "establish contact with the Game Director of the Host National Federation.",
+            COLOR_DARK)
+
+    # Payment details paragraph
+    payment_idx = travel_idx + 2
+    if payment_idx < len(paras) - 1:
+        _set_para_text(paras[payment_idx],
+            f"Below list the details of payment you will receive as {role_label} "
+            f"assigned to the competition listed above:",
+            COLOR_DARK)
+
+    # Fee items (List Paragraph style, red)
+    fee_idx = payment_idx + 4
+    fee_items = [
+        ("Per Game Fee:", _fmt_money(fee), False),
+        ("Incidentals:", _fmt_money(incidentals), False),
+        ("Total:", _fmt_money(total), True),
+    ]
+    for i, (label, value, bold) in enumerate(fee_items):
+        idx = fee_idx + i
+        if idx < len(paras) - 1:
+            _set_para_text(paras[idx], f"{label} {value}", COLOR_RED,
+                          bold=bold, size=Pt(10))
+            # Try to apply List Paragraph style
+            try:
+                paras[idx].style = doc.styles["List Paragraph"]
+            except Exception:
+                pass
+
+    # Closing paragraph
+    closing_idx = fee_idx + len(fee_items) + 10
+    if closing_idx >= len(paras) - 1:
+        closing_idx = len(paras) - 5
+    if 0 < closing_idx < len(paras) - 1:
+        _set_para_text(paras[closing_idx],
+            "We wish you the best in your preparation and accomplishment of your assignment.",
+            COLOR_DARK)
+
+    # Signatory [last paragraph] — already has "Carlos Alves Executive Director FIBA Americas"
+    # Keep as-is
 
     return doc
 
 
-# ─── CONFIRMATION LETTER (BCLA / LSB) ────────────────────────────────────────
+# ─── CONFIRMATION (BCLA / LSB) ───────────────────────────────────────────────
 
 def _build_confirmation_letter(data: dict) -> Document:
+    """Build BCLA/LSB confirmation letter from scratch (no template file yet)."""
+    return _build_confirmation_from_scratch(data)
+
+
+# ─── FALLBACK: BUILD FROM SCRATCH ────────────────────────────────────────────
+
+def _build_wcq_from_scratch(data: dict) -> Document:
     doc = Document()
-    _set_default_font(doc)
-    _set_margins(doc)
+    _apply_base_style(doc)
 
-    tk = data.get("template_key", "BCLA")
-
-    # Header
-    org_name = "Basketball Champions League Americas" if tk == "BCLA" else "Liga Sudamericana de Básquetbol"
-    _add_header(doc, org_name)
-
-    # Date
-    _add_paragraph(doc, data.get("letter_date", ""), bold=False, size=11)
-    _add_empty_line(doc)
-
-    # Recipient
-    _add_paragraph(doc, f"Dear {data.get('nominee_name', '')},", bold=False, size=11)
-    _add_empty_line(doc)
-
-    # Subject
-    role_label = "Video Graphic Operator (VGO)" if data.get("role") == "VGO" else "Technical Delegate (TD)"
+    nominee = data.get("nominee_name", "")
     comp_name = data.get("competition_name", "")
-    comp_year = data.get("competition_year", "")
-
-    if tk == "BCLA":
-        subject = f"Re: Confirmation as {role_label} – {comp_name}"
-    else:
-        subject = f"Re: Confirmation as {role_label} – {comp_name} {comp_year}"
-
-    _add_paragraph(doc, subject, bold=True, size=11)
-    _add_empty_line(doc)
-
-    # Body
-    _add_paragraph(
-        doc,
-        f"This letter confirms your assignment as {role_label} for the {comp_name}.",
-        bold=False, size=11,
-    )
-    _add_empty_line(doc)
-
-    # Event details
-    _add_paragraph(doc, "Event Details:", bold=True, size=11)
-
-    details = []
-    if data.get("location"):
-        details.append(("Location", data["location"]))
-    if data.get("venue"):
-        details.append(("Venue", data["venue"]))
-    if data.get("arrival_date"):
-        details.append(("Arrival Date", data["arrival_date"]))
-    if data.get("departure_date"):
-        details.append(("Departure Date", data["departure_date"]))
-
-    for label, value in details:
-        _add_paragraph(doc, f"  •  {label}: {value}", bold=False, size=10)
-    _add_empty_line(doc)
-
-    # Game dates
+    role = data.get("role", "VGO")
+    role_label = "Video Graphic Operator" if role == "VGO" else "Technical Delegate"
     game_dates = data.get("game_dates", [])
-    if game_dates:
-        _add_paragraph(doc, "Game Schedule:", bold=True, size=11)
-        for gd in game_dates:
-            label = gd.get("label", "")
-            date = gd.get("date", "")
-            text = f"  •  {label}: {date}" if label else f"  •  {date}"
-            _add_paragraph(doc, text, bold=False, size=10)
-        _add_empty_line(doc)
+    deadline = data.get("confirmation_deadline", "")
 
-    # Compensation table
-    _add_paragraph(doc, "Compensation:", bold=True, size=11)
-    _add_compensation_table(doc, data, fee_label="Window Fee")
-    _add_empty_line(doc)
+    _add_heading(doc, f"Nomination for the {comp_name}")
+    _add_empty(doc)
+    _add_body(doc, [("Dear ", COLOR_DARK), (nominee, COLOR_RED), (",", COLOR_DARK)])
+    _add_empty(doc)
+    _add_body_text(doc, f"We would like to inform that you have been nominated for the following games of the {comp_name}.")
+    _add_empty(doc)
 
-    # Closing
-    _add_paragraph(doc, "Thank you for your commitment and professionalism.", bold=False, size=11)
-    _add_empty_line(doc)
-    _add_paragraph(doc, "Kind regards,", bold=False, size=11)
-    _add_empty_line(doc)
+    for gd in game_dates:
+        label = gd.get("label", "")
+        date_val = gd.get("date", "")
+        text = f"{label}: {date_val}" if label else date_val
+        _add_centered_red(doc, text)
 
-    # Signatory
-    sig_name, sig_title, sig_org = SIGNATORIES.get(tk, SIGNATORIES["BCLA"])
-    _add_paragraph(doc, sig_name, bold=True, size=11)
-    _add_paragraph(doc, sig_title, bold=False, size=10, color=RGBColor(100, 100, 100))
-    _add_paragraph(doc, sig_org, bold=False, size=10, color=RGBColor(100, 100, 100))
+    _add_empty(doc)
+    _add_empty(doc)
+    _add_body(doc, [
+        (f"As per the FIBA Internal Regulations Book 3, please confirm to us your availability to fulfil your assignment as {role_label} by ", COLOR_DARK),
+        (deadline, COLOR_RED),
+        (". Confirmation shall be sent to vgo.americas@fiba.basketball", COLOR_DARK),
+    ], align=WD_ALIGN_PARAGRAPH.JUSTIFY)
+    _add_empty(doc)
+    _add_body_text(doc, "As soon as we receive your confirmation, we will make arrangements for international flights to the host country and provide you with relevant information in order for you to prepare the game and establish contact with the Game Director of the Host National Federation.")
+    _add_empty(doc)
+    _add_body_text(doc, f"Below list the details of payment you will receive as {role_label} assigned to the competition listed above:")
+    _add_empty(doc)
+    _add_empty(doc)
+    _add_empty(doc)
+
+    _add_fee_line(doc, f"Per Game Fee: {_fmt_money(data.get('window_fee'))}", bold=False)
+    _add_fee_line(doc, f"Incidentals: {_fmt_money(data.get('incidentals'))}", bold=False)
+    _add_fee_line(doc, f"Total: {_fmt_money(data.get('total'))}", bold=True)
+
+    for _ in range(10):
+        _add_empty(doc)
+
+    _add_body_text(doc, "We wish you the best in your preparation and accomplishment of your assignment.")
+    _add_empty(doc)
+    _add_empty(doc)
+    _add_empty(doc)
+
+    sig_name, sig_title, sig_org = SIGNATORIES.get(data.get("template_key", "GENERIC"), SIGNATORIES["GENERIC"])
+    _add_body_text(doc, f"{sig_name} {sig_title} {sig_org}")
 
     return doc
 
 
-# ─── HELPERS ──────────────────────────────────────────────────────────────────
+def _build_confirmation_from_scratch(data: dict) -> Document:
+    doc = Document()
+    _apply_base_style(doc)
 
-def _set_default_font(doc: Document):
-    style = doc.styles["Normal"]
-    font = style.font
-    font.name = "Calibri"
-    font.size = Pt(11)
-    font.color.rgb = RGBColor(33, 33, 33)
+    nominee = data.get("nominee_name", "")
+    comp_name = data.get("competition_name", "")
+    role = data.get("role", "VGO")
+    role_label = "Video Graphic Operator" if role == "VGO" else "Technical Delegate"
+    tk = data.get("template_key", "BCLA")
+    game_dates = data.get("game_dates", [])
+
+    title = f"Confirmation – {comp_name}"
+    if tk == "LSB":
+        title += f" {data.get('competition_year', '')}"
+
+    _add_heading(doc, title)
+    _add_empty(doc)
+    _add_body(doc, [("Dear ", COLOR_DARK), (nominee, COLOR_RED), (",", COLOR_DARK)])
+    _add_empty(doc)
+    _add_body_text(doc, f"This letter confirms your assignment as {role_label} for the {comp_name}.")
+    _add_empty(doc)
+
+    # Event details
+    details = []
+    if data.get("location"):
+        details.append(f"Location: {data['location']}")
+    if data.get("venue"):
+        details.append(f"Venue: {data['venue']}")
+    if data.get("arrival_date"):
+        details.append(f"Arrival Date: {data['arrival_date']}")
+    if data.get("departure_date"):
+        details.append(f"Departure Date: {data['departure_date']}")
+    for d in details:
+        _add_body_text(doc, f"  •  {d}")
+    _add_empty(doc)
+
+    for gd in game_dates:
+        label = gd.get("label", "")
+        date_val = gd.get("date", "")
+        text = f"{label}: {date_val}" if label else date_val
+        _add_centered_red(doc, text)
+    _add_empty(doc)
+
+    _add_body_text(doc, f"Below list the details of payment you will receive as {role_label} assigned to the competition listed above:")
+    _add_empty(doc)
+    _add_fee_line(doc, f"Window Fee: {_fmt_money(data.get('window_fee'))}", bold=False)
+    _add_fee_line(doc, f"Incidentals: {_fmt_money(data.get('incidentals'))}", bold=False)
+    _add_fee_line(doc, f"Total: {_fmt_money(data.get('total'))}", bold=True)
+    _add_empty(doc)
+
+    _add_body_text(doc, "Thank you for your commitment and professionalism.")
+    _add_empty(doc)
+    _add_empty(doc)
+
+    sig_name, sig_title, sig_org = SIGNATORIES.get(tk, SIGNATORIES["BCLA"])
+    _add_body_text(doc, f"{sig_name} {sig_title} {sig_org}")
+
+    return doc
 
 
-def _set_margins(doc: Document):
-    for section in doc.sections:
-        section.top_margin = Inches(1)
-        section.bottom_margin = Inches(1)
-        section.left_margin = Inches(1.2)
-        section.right_margin = Inches(1.2)
+# ─── PARAGRAPH HELPERS ───────────────────────────────────────────────────────
 
-
-def _add_header(doc: Document, org_name: str):
-    p = doc.add_paragraph()
-    p.alignment = WD_ALIGN_PARAGRAPH.LEFT
-    run = p.add_run(org_name)
-    run.bold = True
-    run.font.size = Pt(16)
-    run.font.color.rgb = RGBColor(0, 51, 153)  # FIBA blue
-
-    # Separator line
-    p2 = doc.add_paragraph()
-    p2.paragraph_format.space_after = Pt(6)
-    run2 = p2.add_run("─" * 60)
-    run2.font.size = Pt(8)
-    run2.font.color.rgb = RGBColor(0, 51, 153)
-
-
-def _add_paragraph(
-    doc: Document,
-    text: str,
-    bold: bool = False,
-    size: int = 11,
-    color: RGBColor = None,
-    align=WD_ALIGN_PARAGRAPH.LEFT,
-):
-    p = doc.add_paragraph()
-    p.alignment = align
-    p.paragraph_format.space_after = Pt(2)
-    p.paragraph_format.space_before = Pt(0)
-    run = p.add_run(text)
+def _set_para_text(para, text, color, bold=False, size=None, align=None):
+    """Clear a paragraph and set it to a single run with the given formatting."""
+    _clear_para(para)
+    if align is not None:
+        para.alignment = align
+    run = para.add_run(text)
+    run.font.color.rgb = color
     run.bold = bold
-    run.font.size = Pt(size)
-    if color:
+    if size:
+        run.font.size = size
+
+
+def _set_para_mixed(para, parts, align=None):
+    """Clear paragraph and add multiple runs with different colors.
+    parts: list of (text, color, bold)
+    """
+    _clear_para(para)
+    if align is not None:
+        para.alignment = align
+    for text, color, bold in parts:
+        run = para.add_run(text)
         run.font.color.rgb = color
-    return p
+        run.bold = bold
 
 
-def _add_empty_line(doc: Document):
+def _clear_para(para):
+    """Remove all runs from a paragraph."""
+    for run in para.runs:
+        run._element.getparent().remove(run._element)
+    # Also remove any remaining r elements
+    for r in para._element.findall(qn('w:r')):
+        para._element.remove(r)
+
+
+def _apply_base_style(doc):
+    style = doc.styles["Normal"]
+    style.font.name = "Calibri"
+    style.font.size = Pt(10)
+    style.font.color.rgb = COLOR_DARK
+
+
+def _add_heading(doc, text):
     p = doc.add_paragraph()
-    p.paragraph_format.space_after = Pt(0)
-    p.paragraph_format.space_before = Pt(0)
+    run = p.add_run(text)
+    run.bold = True
+    run.font.size = Pt(14)
+    run.font.color.rgb = COLOR_DARK
 
 
-def _add_compensation_table(doc: Document, data: dict, fee_label: str = "Fee"):
-    table = doc.add_table(rows=3, cols=2, style="Table Grid")
-    table.alignment = WD_TABLE_ALIGNMENT.LEFT
-    table.autofit = True
-
-    rows_data = [
-        (fee_label, _fmt_currency(data.get("window_fee"))),
-        ("Incidentals", _fmt_currency(data.get("incidentals"))),
-        ("Total", _fmt_currency(data.get("total"))),
-    ]
-
-    for i, (label, value) in enumerate(rows_data):
-        cell_label = table.rows[i].cells[0]
-        cell_value = table.rows[i].cells[1]
-
-        cell_label.text = ""
-        cell_value.text = ""
-
-        run_l = cell_label.paragraphs[0].add_run(label)
-        run_l.font.size = Pt(10)
-        run_l.bold = i == 2  # Bold for Total row
-
-        run_v = cell_value.paragraphs[0].add_run(value)
-        run_v.font.size = Pt(10)
-        run_v.bold = i == 2
-
-    # Set column widths
-    for row in table.rows:
-        row.cells[0].width = Inches(2.5)
-        row.cells[1].width = Inches(2.5)
+def _add_body_text(doc, text):
+    p = doc.add_paragraph()
+    run = p.add_run(text)
+    run.font.size = Pt(10)
+    run.font.color.rgb = COLOR_DARK
 
 
-def _fmt_currency(val) -> str:
+def _add_body(doc, parts, align=None):
+    p = doc.add_paragraph()
+    if align:
+        p.alignment = align
+    for text, color in parts:
+        run = p.add_run(text)
+        run.font.size = Pt(10)
+        run.font.color.rgb = color
+
+
+def _add_centered_red(doc, text):
+    p = doc.add_paragraph()
+    p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    run = p.add_run(text)
+    run.bold = True
+    run.font.size = Pt(10)
+    run.font.color.rgb = COLOR_RED
+
+
+def _add_fee_line(doc, text, bold=False):
+    p = doc.add_paragraph()
+    run = p.add_run(text)
+    run.font.size = Pt(10)
+    run.font.color.rgb = COLOR_RED
+    run.bold = bold
+
+
+def _add_empty(doc):
+    doc.add_paragraph()
+
+
+def _fmt_money(val) -> str:
     if val is None:
         return ""
     try:
-        return f"USD {float(val):,.2f}"
+        v = float(val)
+        if v == int(v):
+            return f"${int(v)}"
+        return f"${v:,.2f}"
     except (ValueError, TypeError):
         return str(val)
 
+
+# ─── STORAGE ─────────────────────────────────────────────────────────────────
 
 def _upload_to_storage(file_path: str, base_name: str) -> str | None:
     """Upload generated file to Supabase Storage bucket 'nominations'."""
@@ -329,9 +406,7 @@ def _upload_to_storage(file_path: str, base_name: str) -> str | None:
         with open(file_path, "rb") as f:
             file_bytes = f.read()
 
-        content_type = (
-            "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-        )
+        content_type = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 
         supabase.storage.from_(bucket_name).upload(
             storage_path, file_bytes,
@@ -342,5 +417,4 @@ def _upload_to_storage(file_path: str, base_name: str) -> str | None:
         return public_url
 
     except Exception:
-        # Storage not configured or bucket doesn't exist
         return None
