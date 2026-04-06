@@ -1,0 +1,29 @@
+import axios from 'axios'
+
+const api = axios.create({
+  baseURL: import.meta.env.VITE_API_URL || '/api',
+})
+
+// Personnel
+export const getPersonnel = (params) => api.get('/personnel', { params }).then(r => r.data)
+export const createPersonnel = (data) => api.post('/personnel', data).then(r => r.data)
+export const getPersonnelById = (id) => api.get(`/personnel/${id}`).then(r => r.data)
+export const updatePersonnel = (id, data) => api.put(`/personnel/${id}`, data).then(r => r.data)
+export const importPersonnel = (file) => {
+  const form = new FormData()
+  form.append('file', file)
+  return api.post('/personnel/import', form, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  }).then(r => r.data)
+}
+
+// Competitions
+export const getCompetitions = () => api.get('/competitions').then(r => r.data)
+export const createCompetition = (data) => api.post('/competitions', data).then(r => r.data)
+
+// Nominations
+export const getNominations = () => api.get('/nominations').then(r => r.data)
+export const createNomination = (data) => api.post('/nominations', data).then(r => r.data)
+export const getNominationById = (id) => api.get(`/nominations/${id}`).then(r => r.data)
+export const generateNomination = (id) => api.post(`/nominations/${id}/generate`).then(r => r.data)
+export const getDownloadUrl = (id) => `${api.defaults.baseURL}/nominations/${id}/download`
