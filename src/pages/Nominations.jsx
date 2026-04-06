@@ -213,14 +213,23 @@ export default function Nominations() {
                 </td>
                 <td className="px-4 py-3">
                   {n.status === 'generated' ? (
-                    <a
-                      href={getDownloadUrl(n.id)}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="text-blue-600 hover:underline text-sm"
-                    >
-                      Ver PDF
-                    </a>
+                    <div className="flex gap-2">
+                      <a
+                        href={n.pdf_path?.startsWith('http') ? n.pdf_path : getDownloadUrl(n.id)}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-blue-600 hover:underline text-sm"
+                      >
+                        Descargar
+                      </a>
+                      <button
+                        onClick={() => handleGenerate(n.id)}
+                        disabled={loading}
+                        className="text-gray-400 hover:text-blue-600 hover:underline text-sm"
+                      >
+                        Regenerar
+                      </button>
+                    </div>
                   ) : (
                     <button
                       onClick={() => handleGenerate(n.id)}
