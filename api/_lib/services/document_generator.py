@@ -321,36 +321,48 @@ def _build_wcq_from_scratch(data: dict) -> Document:
     return doc
 
 
-# ─── PDF CONVERSION ──────────────────────────────────────────────────────────
+# ─── PDF CONVERSION (Gotenberg) ──────────────────────────────────────────────
 
 def _convert_to_pdf(docx_path: str) -> str | None:
-    """Convert .docx to .pdf using a free conversion API."""
-    pdf_path = docx_path.replace(".docx", ".pdf")
+    """
+    Convert .docx to .pdf using Gotenberg.
+    Set GOTENBERG_URL env var to your Gotenberg instance URL.
+    Example: https://gotenberg-xxxx.onrender.com
 
-    # Try CloudConvert-style free API or direct conversion
+    Gotenberg API: POST /forms/libreoffice/convert
+    - multipart form with field "files"
+    - returns PDF bytes directly
+    """
+    gotenberg_url = os.environ.get("GOTENBERG_URL", "")
+    if not gotenberg_url:
+        return None
+
+    pdf_path = docx_path.replace(".docx", ".pdf")
+    endpoint = f"{gotenberg_url.rstrip('/')}/forms/libreoffice/convert"
+
     try:
         with open(docx_path, "rb") as f:
             docx_bytes = f.read()
 
-        # Use gotenberg or similar service if available
-        # Fallback: use docx2pdf-compatible approach via API
-        # For now, try the free convertapi.com or similar
-        convert_url = os.environ.get("DOCX_TO_PDF_URL", "")
-        if convert_url:
-            response = httpx.post(
-                convert_url,
-                files={"file": ("document.docx", docx_bytes, "application/vnd.openxmlformats-officedocument.wordprocessingml.document")},
-                timeout=30.0,
-            )
-            if response.status_code == 200:
-                with open(pdf_path, "wb") as f:
-                    f.write(response.content)
-                return pdf_path
-    except Exception:
-        pass
+        filename = Path(docx_path).name
 
-    # If no conversion service, return None (will upload .docx)
-    return None
+        response = httpx.post(
+            endpoint,
+            files={"files": (filename, docx_bytes, "application/vnd.openxmlformats-officedocument.wordprocessingml.document")},
+            timeout=60.0,
+        )
+
+        if response.status_code == 200:
+            with open(pdf_path, "wb") as f:
+                f.write(response.content)
+            return pdf_path
+        else:
+            print(f"[GOTENBERG] Error {response.status_code}: {response.text[:200]}")
+            return None
+
+    except Exception as e:
+        print(f"[GOTENBERG] {type(e).__name__}: {e}")
+        return None
 
 
 # ─── PARAGRAPH HELPERS ───────────────────────────────────────────────────────
