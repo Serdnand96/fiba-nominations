@@ -197,9 +197,13 @@ def _build_wcq_letter(data: dict) -> Document:
             "We wish you the best in your preparation and accomplishment of your assignment.",
             COLOR_DARK)
 
-    # Remove excess empty paragraphs between closing and signature image [45]
-    # to prevent the signature from being pushed to page 2
-    _remove_excess_paragraphs(doc, closing_idx + 1, len(paras) - 2)
+    # Remove excess empty paragraphs between closing and signature,
+    # but keep enough so the signature sits at the bottom of the page.
+    # Target: ~30 total paragraphs keeps signature near the bottom of page 1.
+    keep_empty = max(0, 30 - closing_idx - 2)  # 2 = signature image + text
+    remove_from = closing_idx + 1 + keep_empty
+    if remove_from < len(paras) - 2:
+        _remove_excess_paragraphs(doc, remove_from, len(paras) - 2)
 
     return doc
 
