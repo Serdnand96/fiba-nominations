@@ -29,3 +29,8 @@ export const bulkGenerateNominations = (ids) => api.post('/nominations/bulk-gene
 export const getNominationById = (id) => api.get(`/nominations/${id}`).then(r => r.data)
 export const generateNomination = (id) => api.post(`/nominations/${id}/generate`).then(r => r.data)
 export const getDownloadUrl = (id) => `${api.defaults.baseURL}/nominations/${id}/download`
+
+// Users
+export const getUsers = () => api.get('/users').then(r => r.data)
+export const createUser = (data) => api.post('/users', data).then(r => r.data)
+export const deleteUser = (id) => api.delete(`/users/${id}`).then(r => r.data)

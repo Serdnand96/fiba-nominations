@@ -1,17 +1,35 @@
 import { Routes, Route, NavLink, Navigate } from 'react-router-dom'
+import { useAuth } from './contexts/AuthContext'
+import Login from './pages/Login'
 import Nominations from './pages/Nominations'
 import Personnel from './pages/Personnel'
 import Competitions from './pages/Competitions'
 import Templates from './pages/Templates'
+import Users from './pages/Users'
 
 const navItems = [
   { to: '/nominations', label: 'Nominaciones' },
   { to: '/personnel', label: 'Personal' },
   { to: '/competitions', label: 'Competencias' },
   { to: '/templates', label: 'Templates' },
+  { to: '/users', label: 'Usuarios' },
 ]
 
 export default function App() {
+  const { user, loading } = useAuth()
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-gray-400 text-sm">Cargando...</div>
+      </div>
+    )
+  }
+
+  if (!user) {
+    return <Login />
+  }
+
   return (
     <div className="flex h-screen bg-gray-50">
       {/* Sidebar */}
@@ -37,6 +55,9 @@ export default function App() {
             </NavLink>
           ))}
         </nav>
+        <div className="p-4 border-t border-gray-200">
+          <LogoutButton />
+        </div>
       </aside>
 
       {/* Main content */}
@@ -48,9 +69,25 @@ export default function App() {
             <Route path="/personnel" element={<Personnel />} />
             <Route path="/competitions" element={<Competitions />} />
             <Route path="/templates" element={<Templates />} />
+            <Route path="/users" element={<Users />} />
           </Routes>
         </div>
       </main>
+    </div>
+  )
+}
+
+function LogoutButton() {
+  const { signOut, user } = useAuth()
+  return (
+    <div>
+      <p className="text-xs text-gray-500 truncate mb-2">{user.email}</p>
+      <button
+        onClick={signOut}
+        className="w-full text-left text-sm text-gray-600 hover:text-red-600 transition-colors"
+      >
+        Cerrar sesión
+      </button>
     </div>
   )
 }
