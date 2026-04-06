@@ -111,13 +111,14 @@ def _build_wcq_letter(data: dict) -> Document:
     incidentals = data.get("incidentals")
     total = data.get("total")
 
-    # Clear paragraphs 1-44 (keep [0] title, [45] signature image, [46] signature text)
+    # Clear paragraphs 1-44 (keep [0] title+logo, [45] signature image, [46] signature text)
     for i in range(1, len(paras) - 2):
         _clear_para(paras[i])
 
-    # Update the header date (it's in a text box inside the header XML)
+    # [1] — Letter date (right-aligned, red)
     if letter_date:
-        _update_header_date(doc, letter_date)
+        _set_para_text(paras[1], letter_date, COLOR_RED, size=Pt(10),
+                      align=WD_ALIGN_PARAGRAPH.RIGHT)
 
     # [2] — "Dear [Name],"
     _set_para_mixed(paras[2], [
@@ -196,29 +197,33 @@ def _build_wcq_letter(data: dict) -> Document:
             "We wish you the best in your preparation and accomplishment of your assignment.",
             COLOR_DARK)
 
+    # Remove excess empty paragraphs between closing and signature image [45]
+    # to prevent the signature from being pushed to page 2
+    _remove_excess_paragraphs(doc, closing_idx + 1, len(paras) - 2)
+
     return doc
 
 
-def _update_header_date(doc, date_text: str):
-    """Update the date in the header text box (wps:txbx) via direct XML manipulation."""
-    try:
-        for section in doc.sections:
-            header = section.header
-            header_xml = header._element
-            # Find all text box content in the header
-            namespaces = {
-                'wps': 'http://schemas.microsoft.com/office/word/2010/wordprocessingShape',
-                'w': 'http://schemas.openxmlformats.org/wordprocessingml/2006/main',
-                'mc': 'http://schemas.openxmlformats.org/markup-compatibility/2006',
-            }
-            # Search for w:t elements inside wps:txbx
-            for txbx in header_xml.iter(qn('wps:txbx')):
-                for t_elem in txbx.iter(qn('w:t')):
-                    if t_elem.text and t_elem.text.strip():
-                        t_elem.text = date_text
-                        return
-    except Exception as e:
-        print(f"[HEADER DATE] Could not update: {e}")
+def _remove_excess_paragraphs(doc, start_idx, end_idx):
+    """Remove empty paragraphs from start_idx to end_idx (exclusive) to compact the document."""
+    body = doc.element.body
+    paras = doc.paragraphs
+    WP_DRAWING = '{http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing}'
+    W_DRAWING = '{http://schemas.openxmlformats.org/wordprocessingml/2006/main}drawing'
+    to_remove = []
+    for i in range(end_idx - 1, start_idx - 1, -1):
+        p = paras[i]
+        if not p.text.strip():
+            # Check for any drawing elements (images) using direct XML search
+            has_drawing = (
+                len(p._element.findall(f'.//{W_DRAWING}')) > 0 or
+                len(p._element.findall(f'.//{WP_DRAWING}anchor')) > 0 or
+                len(p._element.findall(f'.//{WP_DRAWING}inline')) > 0
+            )
+            if not has_drawing:
+                to_remove.append(p._element)
+    for elem in to_remove:
+        body.remove(elem)
 
 
 # ─── CONFIRMATION (BCLA / LSB) FROM SCRATCH ──────────────────────────────────
