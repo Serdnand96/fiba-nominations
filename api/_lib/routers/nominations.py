@@ -1,6 +1,6 @@
 import os
 from fastapi import APIRouter, HTTPException
-from fastapi.responses import FileResponse, Response
+from fastapi.responses import FileResponse, RedirectResponse
 from api._lib.database import supabase
 from api._lib.schemas import NominationCreate
 from api._lib.services.document_generator import generate_nomination
@@ -39,7 +39,7 @@ def get_nomination(nomination_id: str):
 
 
 @router.post("/{nomination_id}/generate")
-def generate_nomination_pdf(nomination_id: str):
+def generate_nomination_doc(nomination_id: str):
     result = supabase.table("nominations").select(
         "*, personnel(name, role, email), competitions(name, template_key, year)"
     ).eq("id", nomination_id).execute()
@@ -69,35 +69,39 @@ def generate_nomination_pdf(nomination_id: str):
         "confirmation_deadline": nom.get("confirmation_deadline", ""),
     }
 
-    result_path, storage_url = generate_nomination(nom_data)
+    local_path, storage_url = generate_nomination(nom_data)
 
-    # Update nomination with the storage URL or local path
-    update_data = {"status": "generated"}
-    if storage_url:
-        update_data["pdf_path"] = storage_url
-    else:
-        update_data["pdf_path"] = result_path
+    # Save the best available path
+    saved_path = storage_url if storage_url else local_path
 
-    supabase.table("nominations").update(update_data).eq("id", nomination_id).execute()
+    supabase.table("nominations").update({
+        "status": "generated",
+        "pdf_path": saved_path,
+    }).eq("id", nomination_id).execute()
 
-    return {"pdf_path": update_data["pdf_path"], "status": "generated"}
+    return {"pdf_path": saved_path, "status": "generated"}
 
 
 @router.get("/{nomination_id}/download")
 def download_nomination(nomination_id: str):
     result = supabase.table("nominations").select("pdf_path").eq("id", nomination_id).execute()
     if not result.data or not result.data[0].get("pdf_path"):
-        raise HTTPException(status_code=404, detail="PDF not found")
+        raise HTTPException(status_code=404, detail="Document not generated yet")
 
-    pdf_path = result.data[0]["pdf_path"]
+    doc_path = result.data[0]["pdf_path"]
 
-    # If it's a Supabase Storage URL, redirect to it
-    if pdf_path.startswith("http"):
-        from fastapi.responses import RedirectResponse
-        return RedirectResponse(url=pdf_path)
+    # If it's a URL (Supabase Storage), redirect
+    if doc_path.startswith("http"):
+        return RedirectResponse(url=doc_path)
 
-    # Local file (dev mode)
-    if not os.path.exists(pdf_path):
-        raise HTTPException(status_code=404, detail="PDF file not found on disk")
+    # Local file (dev mode only — /tmp is ephemeral on Vercel)
+    if not os.path.exists(doc_path):
+        raise HTTPException(status_code=404, detail="File not found. Try regenerating.")
 
-    return FileResponse(pdf_path, media_type="application/pdf", filename=os.path.basename(pdf_path))
+    # Determine content type
+    if doc_path.endswith(".pdf"):
+        media_type = "application/pdf"
+    else:
+        media_type = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+
+    return FileResponse(doc_path, media_type=media_type, filename=os.path.basename(doc_path))
