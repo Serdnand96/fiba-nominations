@@ -17,6 +17,9 @@ TEMPLATES_DIR = Path(__file__).resolve().parent.parent.parent.parent / "template
 COLOR_DARK = RGBColor(0x2A, 0x2A, 0x2A)
 COLOR_RED = RGBColor(0xED, 0x00, 0x00)
 
+# FIBA brand font
+FONT_NAME = "IBM Plex Sans"
+
 SIGNATORIES = {
     "WCQ": ("Carlos Alves", "Executive Director", "FIBA Americas"),
     "GENERIC": ("Carlos Alves", "Executive Director", "FIBA Americas"),
@@ -98,6 +101,14 @@ def _build_wcq_letter(data: dict) -> Document:
         return _build_wcq_from_scratch(data)
 
     doc = Document(str(template_path))
+
+    # Set IBM Plex Sans as the default font for the document
+    for style_name in ["Normal", "Body Text", "Heading 1"]:
+        try:
+            doc.styles[style_name].font.name = FONT_NAME
+        except Exception:
+            pass
+
     paras = doc.paragraphs
 
     nominee = data.get("nominee_name", "")
@@ -483,6 +494,7 @@ def _set_para_text(para, text, color, bold=False, size=None, align=None):
     if align is not None:
         para.alignment = align
     run = para.add_run(text)
+    run.font.name = FONT_NAME
     run.font.color.rgb = color
     run.bold = bold
     if size:
@@ -495,6 +507,7 @@ def _set_para_mixed(para, parts, align=None):
         para.alignment = align
     for text, color, bold in parts:
         run = para.add_run(text)
+        run.font.name = FONT_NAME
         run.font.color.rgb = color
         run.bold = bold
 
@@ -506,7 +519,7 @@ def _clear_para(para):
 
 def _apply_base_style(doc):
     style = doc.styles["Normal"]
-    style.font.name = "Calibri"
+    style.font.name = FONT_NAME
     style.font.size = Pt(10)
     style.font.color.rgb = COLOR_DARK
 
@@ -514,6 +527,7 @@ def _apply_base_style(doc):
 def _add_heading(doc, text):
     p = doc.add_paragraph()
     run = p.add_run(text)
+    run.font.name = FONT_NAME
     run.bold = True
     run.font.size = Pt(14)
     run.font.color.rgb = COLOR_DARK
@@ -522,6 +536,7 @@ def _add_heading(doc, text):
 def _add_body_text(doc, text):
     p = doc.add_paragraph()
     run = p.add_run(text)
+    run.font.name = FONT_NAME
     run.font.size = Pt(10)
     run.font.color.rgb = COLOR_DARK
 
@@ -532,6 +547,7 @@ def _add_body(doc, parts, align=None):
         p.alignment = align
     for text, color in parts:
         run = p.add_run(text)
+        run.font.name = FONT_NAME
         run.font.size = Pt(10)
         run.font.color.rgb = color
 
@@ -540,6 +556,7 @@ def _add_centered_red(doc, text):
     p = doc.add_paragraph()
     p.alignment = WD_ALIGN_PARAGRAPH.CENTER
     run = p.add_run(text)
+    run.font.name = FONT_NAME
     run.bold = True
     run.font.size = Pt(10)
     run.font.color.rgb = COLOR_RED
@@ -548,6 +565,7 @@ def _add_centered_red(doc, text):
 def _add_fee_line(doc, text, bold=False):
     p = doc.add_paragraph()
     run = p.add_run(text)
+    run.font.name = FONT_NAME
     run.font.size = Pt(10)
     run.font.color.rgb = COLOR_RED
     run.bold = bold
