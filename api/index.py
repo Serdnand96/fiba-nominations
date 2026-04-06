@@ -41,7 +41,7 @@ def debug_cloudconvert():
     """Test CloudConvert API key."""
     import os
     import httpx
-    api_key = os.environ.get("CLOUDCONVERT_API_KEY", "")
+    api_key = os.environ.get("CLOUDCONVERT_API_KEY", "").strip()
     if not api_key:
         return {"error": "CLOUDCONVERT_API_KEY not set", "key_preview": ""}
 

@@ -129,8 +129,20 @@ export default function Nominations() {
   async function handleGenerate(id) {
     setLoading(true)
     try {
-      await generateNomination(id)
+      const result = await generateNomination(id)
       await load()
+      // Auto-download the generated file
+      if (result.pdf_path) {
+        const link = document.createElement('a')
+        link.href = result.pdf_path.startsWith('http')
+          ? result.pdf_path
+          : getDownloadUrl(id)
+        link.target = '_blank'
+        link.click()
+      }
+      if (result.conversion_error) {
+        alert(`Nota: No se pudo convertir a PDF (se generó .docx).\nError: ${result.conversion_error}`)
+      }
     } finally {
       setLoading(false)
     }

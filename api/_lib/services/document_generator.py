@@ -25,8 +25,10 @@ SIGNATORIES = {
 }
 
 
-def generate_nomination(nomination_data: dict) -> tuple[str, str | None]:
-    """Generate a nomination/confirmation .docx letter, convert to PDF, upload."""
+def generate_nomination(nomination_data: dict) -> tuple[str, str | None, str | None]:
+    """Generate a nomination/confirmation .docx letter, convert to PDF, upload.
+    Returns (local_path, storage_url, conversion_error).
+    """
     template_key = nomination_data["template_key"]
 
     if template_key in ("WCQ", "GENERIC"):
@@ -47,13 +49,12 @@ def generate_nomination(nomination_data: dict) -> tuple[str, str | None]:
     doc.save(str(docx_path))
 
     # Convert to PDF
-    pdf_path = _convert_to_pdf(str(docx_path))
+    pdf_path, conversion_error = _convert_to_pdf(str(docx_path))
     final_path = pdf_path if pdf_path else str(docx_path)
-    final_base = base_name if not pdf_path else base_name
 
     # Upload to Supabase Storage
     storage_url = _upload_to_storage(final_path, base_name)
-    return final_path, storage_url
+    return final_path, storage_url, conversion_error
 
 
 # ─── DATE FORMATTING ─────────────────────────────────────────────────────────
@@ -323,21 +324,14 @@ def _build_wcq_from_scratch(data: dict) -> Document:
 
 # ─── PDF CONVERSION (CloudConvert) ───────────────────────────────────────────
 
-def _convert_to_pdf(docx_path: str) -> str | None:
+def _convert_to_pdf(docx_path: str) -> tuple[str | None, str | None]:
     """
     Convert .docx to .pdf using CloudConvert API.
-    Set CLOUDCONVERT_API_KEY env var.
-    Free tier: 25 conversions/day.
-
-    Flow:
-    1. POST /v2/jobs — create job with import/upload + convert + export/url tasks
-    2. PUT upload URL — upload the .docx file
-    3. Wait for job to finish
-    4. GET export URL — download the PDF
+    Returns (pdf_path, error_message). If conversion succeeds, error is None.
     """
-    api_key = os.environ.get("CLOUDCONVERT_API_KEY", "")
+    api_key = os.environ.get("CLOUDCONVERT_API_KEY", "").strip()
     if not api_key:
-        return None
+        return None, "CLOUDCONVERT_API_KEY not set"
 
     pdf_path = docx_path.replace(".docx", ".pdf")
     base_url = "https://api.cloudconvert.com/v2"
@@ -370,8 +364,9 @@ def _convert_to_pdf(docx_path: str) -> str | None:
             f"{base_url}/jobs", json=job_payload, headers=headers, timeout=30.0
         )
         if job_resp.status_code not in (200, 201):
-            print(f"[CLOUDCONVERT] Job create error {job_resp.status_code}: {job_resp.text[:300]}")
-            return None
+            err = f"Job create error {job_resp.status_code}: {job_resp.text[:300]}"
+            print(f"[CLOUDCONVERT] {err}")
+            return None, err
 
         job_data = job_resp.json()["data"]
 
@@ -383,8 +378,7 @@ def _convert_to_pdf(docx_path: str) -> str | None:
                 break
 
         if not upload_task:
-            print("[CLOUDCONVERT] No upload task found")
-            return None
+            return None, "No upload task found in job response"
 
         form_data = upload_task["result"]["form"]
         upload_url = form_data["url"]
@@ -401,13 +395,15 @@ def _convert_to_pdf(docx_path: str) -> str | None:
             upload_url, data=form_params, files=files, timeout=60.0
         )
         if upload_resp.status_code not in (200, 201, 204):
-            print(f"[CLOUDCONVERT] Upload error {upload_resp.status_code}: {upload_resp.text[:200]}")
-            return None
+            err = f"Upload error {upload_resp.status_code}: {upload_resp.text[:200]}"
+            print(f"[CLOUDCONVERT] {err}")
+            return None, err
 
         # Step 3: Wait for job to complete (poll)
         job_id = job_data["id"]
         import time
-        for _ in range(30):  # max 30 attempts, ~30 seconds
+        status_data = None
+        for _ in range(30):
             time.sleep(1)
             status_resp = httpx.get(
                 f"{base_url}/jobs/{job_id}", headers=headers, timeout=15.0
@@ -418,8 +414,12 @@ def _convert_to_pdf(docx_path: str) -> str | None:
             if status_data["status"] == "finished":
                 break
             elif status_data["status"] == "error":
-                print(f"[CLOUDCONVERT] Job failed: {status_data}")
-                return None
+                err = f"Job failed: {status_data}"
+                print(f"[CLOUDCONVERT] {err}")
+                return None, err
+
+        if not status_data or status_data["status"] != "finished":
+            return None, f"Job timed out. Last status: {status_data.get('status') if status_data else 'unknown'}"
 
         # Step 4: Get export URL and download PDF
         export_task = None
@@ -429,24 +429,21 @@ def _convert_to_pdf(docx_path: str) -> str | None:
                 break
 
         if not export_task or not export_task.get("result", {}).get("files"):
-            print("[CLOUDCONVERT] No export result found")
-            return None
+            return None, "No export result found"
 
         download_url = export_task["result"]["files"][0]["url"]
         pdf_resp = httpx.get(download_url, timeout=30.0)
         if pdf_resp.status_code == 200:
             with open(pdf_path, "wb") as f:
                 f.write(pdf_resp.content)
-            return pdf_path
+            return pdf_path, None
         else:
-            print(f"[CLOUDCONVERT] Download error {pdf_resp.status_code}")
-            return None
+            return None, f"Download error {pdf_resp.status_code}"
 
     except Exception as e:
-        print(f"[CLOUDCONVERT] {type(e).__name__}: {e}")
         import traceback
         traceback.print_exc()
-        return None
+        return None, f"{type(e).__name__}: {e}"
 
 
 # ─── PARAGRAPH HELPERS ───────────────────────────────────────────────────────

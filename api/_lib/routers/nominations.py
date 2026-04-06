@@ -69,17 +69,26 @@ def generate_nomination_doc(nomination_id: str):
         "confirmation_deadline": nom.get("confirmation_deadline", ""),
     }
 
-    local_path, storage_url = generate_nomination(nom_data)
+    local_path, storage_url, conversion_error = generate_nomination(nom_data)
 
     # Save the best available path
     saved_path = storage_url if storage_url else local_path
 
-    supabase.table("nominations").update({
+    update_data = {
         "status": "generated",
         "pdf_path": saved_path,
-    }).eq("id", nomination_id).execute()
+    }
 
-    return {"pdf_path": saved_path, "status": "generated"}
+    supabase.table("nominations").update(update_data).eq("id", nomination_id).execute()
+
+    response = {"pdf_path": saved_path, "status": "generated"}
+    if conversion_error:
+        response["conversion_error"] = conversion_error
+        response["format"] = "docx"
+    else:
+        response["format"] = "pdf"
+
+    return response
 
 
 @router.get("/{nomination_id}/download")
