@@ -45,7 +45,9 @@ def generate_nomination(nomination_data: dict) -> tuple[str, str | None, str | N
         doc = _build_wcq_letter(nomination_data)
     elif template_key == "GENERIC":
         doc = _build_generic_letter(nomination_data)
-    elif template_key in ("BCLA", "LSB"):
+    elif template_key == "BCLA":
+        doc = _build_bcla_letter(nomination_data)
+    elif template_key == "LSB":
         doc = _build_confirmation_from_scratch(nomination_data)
     else:
         raise ValueError(f"Unknown template_key: {template_key}")
@@ -370,6 +372,209 @@ def _build_generic_letter(data: dict) -> Document:
     remove_from = closing_idx + 1 + keep_empty
     if remove_from < len(paras) - 4:
         _remove_excess_paragraphs(doc, remove_from, len(paras) - 4)
+
+    return doc
+
+
+# ─── BCLA LETTER (Univers font, BCLA template) ──────────────────────────────
+
+def _build_bcla_letter(data: dict) -> Document:
+    template_path = TEMPLATES_DIR / "BCLA_TEMPLATE.docx"
+    if not template_path.exists():
+        return _build_confirmation_from_scratch(data)
+
+    doc = Document(str(template_path))
+    font_name = "Univers"
+
+    for style_name in ["Normal", "Body Text"]:
+        try:
+            doc.styles[style_name].font.name = font_name
+        except Exception:
+            pass
+
+    paras = doc.paragraphs
+    # Template structure:
+    # [0] logo 1 (drawing) [1] logo 2 (drawing)
+    # [2] empty right-aligned (date goes here)
+    # [3] empty
+    # [4] big placeholder text (will be cleared)
+    # [5] empty
+    # [6] "Respectfully,"
+    # [7] empty
+    # [8] signature image (Gino Rullo cursive - drawing)
+    # [9] "Gino Rullo" name
+    # [10] "Head of Operations"
+    # [11] "Basketball Champions League Americas"
+    # [12] phone
+    # [13] email
+    # [14] empty
+
+    nominee = data.get("nominee_name", "")
+    comp_name = data.get("competition_name", "")
+    comp_year = data.get("competition_year", "")
+    role = data.get("role", "VGO")
+    role_label = "Video Graphic Operator" if role == "VGO" else "Technical Delegate"
+    game_dates = data.get("game_dates") or []
+    location = data.get("location", "")
+    venue = data.get("venue", "")
+    arrival_date = data.get("arrival_date", "")
+    departure_date = data.get("departure_date", "")
+    letter_date = data.get("letter_date", "")
+    fee = data.get("window_fee")
+    incidentals = data.get("incidentals")
+    total = data.get("total")
+
+    # Format letter date like "Miami, March 27th, 2024"
+    formatted_letter_date = ""
+    if letter_date:
+        formatted_letter_date = f"Miami, {_fmt_deadline(letter_date)}"
+
+    # Clear the placeholder paragraph [4]
+    _clear_para(paras[4])
+
+    # Set date in paragraph [2] (right-aligned)
+    if formatted_letter_date:
+        _set_para_text_font(paras[2], formatted_letter_date, COLOR_DARK, font_name,
+                            size=Pt(10), align=WD_ALIGN_PARAGRAPH.RIGHT)
+
+    # Now we need to insert content paragraphs before "Respectfully," [6]
+    # We'll use paragraph [4] for the first line and insert new paragraphs after it
+    body = doc.element.body
+    ref_element = paras[5]._element  # Insert before the empty para [5]
+
+    content_lines = []
+
+    # Title
+    content_lines.append({
+        "text": f"BCL Americas {comp_year} – {role_label.upper()} NOMINATION",
+        "bold": True, "color": COLOR_DARK, "size": Pt(11)
+    })
+    content_lines.append({"text": ""})  # empty
+
+    # Dear
+    content_lines.append({
+        "mixed": [("Dear ", COLOR_DARK, False), (nominee, COLOR_RED, False), (",", COLOR_DARK, False)]
+    })
+    content_lines.append({"text": ""})  # empty
+
+    # Confirmation body
+    content_lines.append({
+        "text": f"By way of this letter, we confirm your acceptance for your assignment as "
+                f"{role_label} for the {comp_name} {comp_year}.",
+        "color": COLOR_DARK, "align": WD_ALIGN_PARAGRAPH.JUSTIFY
+    })
+    content_lines.append({"text": ""})  # empty
+
+    # Game Information
+    content_lines.append({"text": "Game Information", "bold": True, "color": COLOR_DARK,
+                          "align": WD_ALIGN_PARAGRAPH.JUSTIFY})
+    if location:
+        content_lines.append({"text": f"Location: {location}.", "color": COLOR_DARK,
+                              "align": WD_ALIGN_PARAGRAPH.JUSTIFY})
+    if venue:
+        content_lines.append({"text": f"Venue: {venue}", "color": COLOR_DARK,
+                              "align": WD_ALIGN_PARAGRAPH.JUSTIFY})
+    content_lines.append({"text": ""})  # empty
+
+    if arrival_date:
+        content_lines.append({"text": f"Arrival Date: {_fmt_deadline(arrival_date)}",
+                              "color": COLOR_DARK, "align": WD_ALIGN_PARAGRAPH.JUSTIFY})
+
+    for gd in game_dates:
+        label = gd.get("label", "")
+        date_val = _fmt_deadline(gd.get("date", ""))
+        text = f"{label}: {date_val}" if label else date_val
+        content_lines.append({"text": text, "color": COLOR_DARK,
+                              "align": WD_ALIGN_PARAGRAPH.JUSTIFY})
+
+    if departure_date:
+        content_lines.append({"text": f"Departure Date: {_fmt_deadline(departure_date)}",
+                              "color": COLOR_DARK, "align": WD_ALIGN_PARAGRAPH.JUSTIFY})
+
+    content_lines.append({"text": ""})  # empty
+
+    # Financial Details
+    content_lines.append({"text": "Financial Details", "bold": True, "color": COLOR_DARK,
+                          "align": WD_ALIGN_PARAGRAPH.JUSTIFY})
+    content_lines.append({
+        "text": f"Below lists the details of payment you will receive as a BCL Americas "
+                f"{role_label} assigned to the games listed above:",
+        "color": COLOR_DARK, "align": WD_ALIGN_PARAGRAPH.JUSTIFY
+    })
+    content_lines.append({"text": f"Window Fee: {_fmt_money(fee)}", "color": COLOR_DARK,
+                          "align": WD_ALIGN_PARAGRAPH.JUSTIFY})
+    content_lines.append({"text": f"Incidentals Fee: {_fmt_money(incidentals)}", "color": COLOR_DARK,
+                          "align": WD_ALIGN_PARAGRAPH.JUSTIFY})
+    content_lines.append({"text": f"Total Fees to be received: {_fmt_money(total)}", "color": COLOR_DARK,
+                          "bold": True, "align": WD_ALIGN_PARAGRAPH.JUSTIFY})
+    content_lines.append({"text": ""})  # empty
+
+    # Additional info
+    content_lines.append({
+        "text": "Additionally, breakfast, lunch and dinner will be provided by the club at your hotel "
+                "as per the dates of your assigned games.",
+        "color": COLOR_DARK, "align": WD_ALIGN_PARAGRAPH.JUSTIFY
+    })
+    content_lines.append({"text": ""})
+    content_lines.append({
+        "text": "Payment for this assignment will be made within 21-days of the window conclusion. ",
+        "color": COLOR_DARK, "align": WD_ALIGN_PARAGRAPH.JUSTIFY
+    })
+    content_lines.append({"text": ""})
+    content_lines.append({
+        "text": "If your banking information has recently changed, please be sure to send this "
+                "information to payments.americas@fiba.basketball before the start of the window.",
+        "color": COLOR_DARK, "align": WD_ALIGN_PARAGRAPH.JUSTIFY
+    })
+    content_lines.append({"text": ""})
+    content_lines.append({
+        "text": "If you have any questions, please do not hesitate to contact.",
+        "color": COLOR_DARK, "align": WD_ALIGN_PARAGRAPH.JUSTIFY
+    })
+    content_lines.append({"text": ""})  # empty before Respectfully
+
+    # Insert all content paragraphs into the document before ref_element
+    # First, use paragraph [4] for the first content line
+    first = content_lines[0]
+    if "mixed" in first:
+        _set_para_mixed_font(paras[4], first["mixed"], font_name)
+    else:
+        _set_para_text_font(paras[4], first.get("text", ""), first.get("color", COLOR_DARK),
+                            font_name, bold=first.get("bold", False),
+                            size=first.get("size"), align=first.get("align"))
+
+    # Insert remaining content paragraphs after [4]
+    from docx.oxml.ns import qn as _qn
+    from copy import deepcopy
+
+    insert_after = paras[4]._element
+    for line in content_lines[1:]:
+        new_p = doc.element.makeelement(_qn('w:p'), {})
+        insert_after.addnext(new_p)
+        insert_after = new_p
+
+        # Create a temporary paragraph wrapper
+        from docx.text.paragraph import Paragraph
+        para = Paragraph(new_p, doc)
+
+        if line.get("align") is not None:
+            para.alignment = line["align"]
+
+        text = line.get("text", "")
+        if "mixed" in line:
+            for t, color, bold in line["mixed"]:
+                run = para.add_run(t)
+                run.font.name = font_name
+                run.font.color.rgb = color
+                run.bold = bold
+                run.font.size = Pt(10)
+        elif text:
+            run = para.add_run(text)
+            run.font.name = font_name
+            run.font.color.rgb = line.get("color", COLOR_DARK)
+            run.bold = line.get("bold", False)
+            run.font.size = line.get("size", Pt(10))
+        # else: empty paragraph, leave as-is
 
     return doc
 
