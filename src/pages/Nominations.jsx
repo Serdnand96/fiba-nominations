@@ -130,7 +130,22 @@ export default function Nominations() {
     setLoading(true)
     try {
       const result = await generateNomination(id)
+      console.log('Generate result:', JSON.stringify(result))
+
+      if (result.error || result.status === 'error') {
+        alert(`Error generando documento:\n${result.error}\n\n${result.traceback || ''}`)
+        return
+      }
+
       await load()
+
+      // Show conversion info
+      if (result.conversion_error) {
+        alert(`Nota: No se pudo convertir a PDF (se generó .docx).\nError: ${result.conversion_error}`)
+      } else if (result.format === 'pdf') {
+        alert('PDF generado exitosamente!')
+      }
+
       // Auto-download the generated file
       if (result.pdf_path) {
         const link = document.createElement('a')
@@ -140,9 +155,9 @@ export default function Nominations() {
         link.target = '_blank'
         link.click()
       }
-      if (result.conversion_error) {
-        alert(`Nota: No se pudo convertir a PDF (se generó .docx).\nError: ${result.conversion_error}`)
-      }
+    } catch (err) {
+      alert(`Error: ${err.message}\n\nRevisa la consola para más detalles.`)
+      console.error('Generate error:', err)
     } finally {
       setLoading(false)
     }

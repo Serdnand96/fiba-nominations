@@ -69,7 +69,15 @@ def generate_nomination_doc(nomination_id: str):
         "confirmation_deadline": nom.get("confirmation_deadline", ""),
     }
 
-    local_path, storage_url, conversion_error = generate_nomination(nom_data)
+    try:
+        local_path, storage_url, conversion_error = generate_nomination(nom_data)
+    except Exception as e:
+        import traceback
+        return {
+            "status": "error",
+            "error": f"{type(e).__name__}: {e}",
+            "traceback": traceback.format_exc(),
+        }
 
     # Save the best available path
     saved_path = storage_url if storage_url else local_path
