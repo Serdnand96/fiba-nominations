@@ -396,9 +396,11 @@ def _fmt_money(val) -> str:
 
 def _upload_to_storage(file_path: str, base_name: str) -> str | None:
     """Upload generated file to Supabase Storage bucket 'nominations'."""
+    import traceback
     try:
-        from api._lib.database import supabase
+        from api._lib.database import get_supabase
 
+        client = get_supabase()
         bucket_name = "nominations"
         ext = Path(file_path).suffix
         storage_path = f"{base_name}{ext}"
@@ -408,13 +410,30 @@ def _upload_to_storage(file_path: str, base_name: str) -> str | None:
 
         content_type = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 
-        supabase.storage.from_(bucket_name).upload(
-            storage_path, file_bytes,
-            file_options={"content-type": content_type, "upsert": "true"},
-        )
+        # Try upload with upsert
+        try:
+            client.storage.from_(bucket_name).upload(
+                path=storage_path,
+                file=file_bytes,
+                file_options={"content-type": content_type, "upsert": "true"},
+            )
+        except Exception:
+            # If upload fails (file exists), try remove then upload
+            try:
+                client.storage.from_(bucket_name).remove([storage_path])
+            except Exception:
+                pass
+            client.storage.from_(bucket_name).upload(
+                path=storage_path,
+                file=file_bytes,
+                file_options={"content-type": content_type},
+            )
 
-        public_url = supabase.storage.from_(bucket_name).get_public_url(storage_path)
+        public_url = client.storage.from_(bucket_name).get_public_url(storage_path)
         return public_url
 
-    except Exception:
+    except Exception as e:
+        # Log error for debugging
+        print(f"[STORAGE ERROR] {type(e).__name__}: {e}")
+        traceback.print_exc()
         return None

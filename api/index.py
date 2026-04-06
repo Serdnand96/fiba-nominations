@@ -22,3 +22,16 @@ app.include_router(nominations.router, prefix="/api")
 @app.get("/api/")
 def root():
     return {"message": "FIBA Americas Nominations API"}
+
+
+@app.get("/api/debug/storage")
+def debug_storage():
+    """Temporary debug endpoint to test Supabase Storage."""
+    try:
+        from api._lib.database import get_supabase
+        client = get_supabase()
+        buckets = client.storage.list_buckets()
+        bucket_names = [b.name for b in buckets]
+        return {"buckets": bucket_names, "status": "ok"}
+    except Exception as e:
+        return {"error": str(e), "type": type(e).__name__}
