@@ -1,7 +1,8 @@
 import { useState, useEffect, useMemo } from 'react'
 import {
   getNominations, getPersonnel, getCompetitions,
-  createNomination, generateNomination, getDownloadUrl,
+  createNomination, createBulkNominations, generateNomination,
+  bulkGenerateNominations, getDownloadUrl,
 } from '../api/client'
 
 const BCLA_ROUNDS = ['Semifinals', '3rd Place', 'Final']
@@ -13,10 +14,11 @@ export default function Nominations() {
   const [search, setSearch] = useState('')
   const [showForm, setShowForm] = useState(false)
   const [loading, setLoading] = useState(false)
+  const [bulkProgress, setBulkProgress] = useState(null)
 
   // Form state
   const [form, setForm] = useState({
-    personnel_id: '',
+    personnel_ids: [],
     competition_id: '',
     letter_date: '',
     location: '',
@@ -28,6 +30,9 @@ export default function Nominations() {
     incidentals: '',
     confirmation_deadline: '',
   })
+
+  // Table selection for bulk generate
+  const [selectedIds, setSelectedIds] = useState(new Set())
 
   useEffect(() => { load() }, [])
 
@@ -95,6 +100,23 @@ export default function Nominations() {
     })
   }
 
+  function togglePerson(id) {
+    setForm(f => {
+      const ids = new Set(f.personnel_ids)
+      if (ids.has(id)) ids.delete(id)
+      else ids.add(id)
+      return { ...f, personnel_ids: [...ids] }
+    })
+  }
+
+  function selectAllFiltered() {
+    setForm(f => ({ ...f, personnel_ids: filteredPersonnel.map(p => p.id) }))
+  }
+
+  function clearSelection() {
+    setForm(f => ({ ...f, personnel_ids: [] }))
+  }
+
   async function handleSubmit(e) {
     e.preventDefault()
     setLoading(true)
@@ -113,10 +135,24 @@ export default function Nominations() {
       if (!showDeadline) {
         delete payload.confirmation_deadline
       }
-      await createNomination(payload)
+
+      if (form.personnel_ids.length > 1) {
+        // Bulk create
+        const result = await createBulkNominations(payload)
+        if (result.errors?.length) {
+          alert(`Creadas: ${result.created}. Errores: ${result.errors.length}`)
+        }
+      } else if (form.personnel_ids.length === 1) {
+        // Single create
+        await createNomination({
+          ...payload,
+          personnel_id: form.personnel_ids[0],
+        })
+      }
+
       setShowForm(false)
       setForm({
-        personnel_id: '', competition_id: '', letter_date: '', location: '',
+        personnel_ids: [], competition_id: '', letter_date: '', location: '',
         venue: '', arrival_date: '', departure_date: '', game_dates: [],
         window_fee: '', incidentals: '', confirmation_deadline: '',
       })
@@ -133,44 +169,91 @@ export default function Nominations() {
       console.log('Generate result:', JSON.stringify(result))
 
       if (result.error || result.status === 'error') {
-        alert(`Error generando documento:\n${result.error}\n\n${result.traceback || ''}`)
+        alert(`Error generando documento:\n${result.error}`)
         return
       }
 
       await load()
 
-      // Show conversion info
       if (result.conversion_error) {
-        alert(`Nota: No se pudo convertir a PDF (se generó .docx).\nError: ${result.conversion_error}`)
-      } else if (result.format === 'pdf') {
-        alert('PDF generado exitosamente!')
+        alert(`Nota: No se pudo convertir a PDF (se gener\u00f3 .docx).\nError: ${result.conversion_error}`)
       }
 
-      // Auto-download the generated file
+      // Auto-download
       if (result.pdf_path) {
-        const fileUrl = result.pdf_path.startsWith('http')
-          ? result.pdf_path
-          : getDownloadUrl(id)
-        try {
-          const resp = await fetch(fileUrl)
-          const blob = await resp.blob()
-          const blobUrl = URL.createObjectURL(blob)
-          const link = document.createElement('a')
-          link.href = blobUrl
-          const ext = result.format === 'pdf' ? 'pdf' : 'docx'
-          link.download = `nomination.${ext}`
-          link.click()
-          URL.revokeObjectURL(blobUrl)
-        } catch {
-          // Fallback: open in new tab
-          window.open(fileUrl, '_blank')
-        }
+        downloadFile(result.pdf_path, result.format, id)
       }
     } catch (err) {
-      alert(`Error: ${err.message}\n\nRevisa la consola para más detalles.`)
+      alert(`Error: ${err.message}`)
       console.error('Generate error:', err)
     } finally {
       setLoading(false)
+    }
+  }
+
+  async function handleBulkGenerate() {
+    const ids = [...selectedIds]
+    if (ids.length === 0) return
+
+    setLoading(true)
+    setBulkProgress({ total: ids.length, done: 0, current: '' })
+
+    try {
+      const result = await bulkGenerateNominations(ids)
+      setBulkProgress(null)
+      await load()
+      setSelectedIds(new Set())
+
+      const successCount = result.success
+      const errorCount = result.total - result.success
+      let msg = `${successCount} de ${result.total} nominaciones generadas exitosamente.`
+      if (errorCount > 0) {
+        const errorNames = result.results
+          .filter(r => r.status === 'error')
+          .map(r => r.name || r.id)
+          .join(', ')
+        msg += `\n${errorCount} errores: ${errorNames}`
+      }
+      alert(msg)
+    } catch (err) {
+      setBulkProgress(null)
+      alert(`Error: ${err.message}`)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  async function downloadFile(url, format, id) {
+    const fileUrl = url.startsWith('http') ? url : getDownloadUrl(id)
+    try {
+      const resp = await fetch(fileUrl)
+      const blob = await resp.blob()
+      const blobUrl = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = blobUrl
+      const ext = format === 'pdf' ? 'pdf' : 'docx'
+      link.download = `nomination.${ext}`
+      link.click()
+      URL.revokeObjectURL(blobUrl)
+    } catch {
+      window.open(fileUrl, '_blank')
+    }
+  }
+
+  function toggleTableSelect(id) {
+    setSelectedIds(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  function toggleSelectAll() {
+    if (selectedIds.size === filtered.length) {
+      setSelectedIds(new Set())
+    } else {
+      setSelectedIds(new Set(filtered.map(n => n.id)))
     }
   }
 
@@ -184,12 +267,25 @@ export default function Nominations() {
     <div>
       <div className="flex items-center justify-between mb-6">
         <h2 className="text-2xl font-bold text-gray-900">Nominaciones</h2>
-        <button
-          onClick={() => setShowForm(true)}
-          className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700"
-        >
-          + Nueva nominaci&oacute;n
-        </button>
+        <div className="flex gap-2">
+          {selectedIds.size > 0 && (
+            <button
+              onClick={handleBulkGenerate}
+              disabled={loading}
+              className="bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-green-700 disabled:opacity-50"
+            >
+              {loading && bulkProgress
+                ? `Generando...`
+                : `Generar ${selectedIds.size} seleccionadas`}
+            </button>
+          )}
+          <button
+            onClick={() => setShowForm(true)}
+            className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700"
+          >
+            + Nueva nominaci&oacute;n
+          </button>
+        </div>
       </div>
 
       {/* Stats */}
@@ -221,6 +317,14 @@ export default function Nominations() {
         <table className="w-full text-sm">
           <thead className="bg-gray-50 border-b">
             <tr>
+              <th className="px-4 py-3 w-10">
+                <input
+                  type="checkbox"
+                  checked={filtered.length > 0 && selectedIds.size === filtered.length}
+                  onChange={toggleSelectAll}
+                  className="rounded"
+                />
+              </th>
               <th className="text-left px-4 py-3 font-medium text-gray-500">Nombre</th>
               <th className="text-left px-4 py-3 font-medium text-gray-500">Cargo</th>
               <th className="text-left px-4 py-3 font-medium text-gray-500">Competencia</th>
@@ -231,7 +335,15 @@ export default function Nominations() {
           </thead>
           <tbody className="divide-y">
             {filtered.map(n => (
-              <tr key={n.id} className="hover:bg-gray-50">
+              <tr key={n.id} className={`hover:bg-gray-50 ${selectedIds.has(n.id) ? 'bg-blue-50' : ''}`}>
+                <td className="px-4 py-3">
+                  <input
+                    type="checkbox"
+                    checked={selectedIds.has(n.id)}
+                    onChange={() => toggleTableSelect(n.id)}
+                    className="rounded"
+                  />
+                </td>
                 <td className="px-4 py-3">{n.personnel?.name}</td>
                 <td className="px-4 py-3">
                   <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${
@@ -241,7 +353,7 @@ export default function Nominations() {
                   </span>
                 </td>
                 <td className="px-4 py-3">{n.competitions?.name}</td>
-                <td className="px-4 py-3">{n.letter_date || '—'}</td>
+                <td className="px-4 py-3">{n.letter_date || '\u2014'}</td>
                 <td className="px-4 py-3">
                   <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${
                     n.status === 'generated' ? 'bg-blue-100 text-blue-700' : 'bg-yellow-100 text-yellow-700'
@@ -281,7 +393,7 @@ export default function Nominations() {
               </tr>
             ))}
             {filtered.length === 0 && (
-              <tr><td colSpan={6} className="px-4 py-8 text-center text-gray-400">No hay nominaciones</td></tr>
+              <tr><td colSpan={7} className="px-4 py-8 text-center text-gray-400">No hay nominaciones</td></tr>
             )}
           </tbody>
         </table>
@@ -296,9 +408,11 @@ export default function Nominations() {
               <button onClick={() => setShowForm(false)} className="text-gray-400 hover:text-gray-600 text-xl">&times;</button>
             </div>
             <form onSubmit={handleSubmit} className="space-y-4">
-              {/* Person select */}
+              {/* Multi-person select */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Persona</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Personas ({form.personnel_ids.length} seleccionadas)
+                </label>
                 <input
                   type="text"
                   placeholder="Buscar persona..."
@@ -306,17 +420,40 @@ export default function Nominations() {
                   onChange={e => setPersonSearch(e.target.value)}
                   className="w-full px-3 py-2 border rounded-lg text-sm mb-1"
                 />
-                <select
-                  required
-                  value={form.personnel_id}
-                  onChange={e => setForm(f => ({ ...f, personnel_id: e.target.value }))}
-                  className="w-full px-3 py-2 border rounded-lg text-sm"
-                >
-                  <option value="">Seleccionar...</option>
+                <div className="flex gap-2 mb-2">
+                  <button type="button" onClick={selectAllFiltered} className="text-blue-600 hover:underline text-xs">
+                    Seleccionar todos
+                  </button>
+                  <button type="button" onClick={clearSelection} className="text-gray-500 hover:underline text-xs">
+                    Limpiar
+                  </button>
+                </div>
+                <div className="border rounded-lg max-h-48 overflow-y-auto">
                   {filteredPersonnel.map(p => (
-                    <option key={p.id} value={p.id}>{p.name} ({p.role})</option>
+                    <label
+                      key={p.id}
+                      className={`flex items-center gap-2 px-3 py-2 hover:bg-gray-50 cursor-pointer text-sm ${
+                        form.personnel_ids.includes(p.id) ? 'bg-blue-50' : ''
+                      }`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={form.personnel_ids.includes(p.id)}
+                        onChange={() => togglePerson(p.id)}
+                        className="rounded"
+                      />
+                      <span>{p.name}</span>
+                      <span className={`ml-auto text-xs px-1.5 py-0.5 rounded ${
+                        p.role === 'VGO' ? 'bg-purple-100 text-purple-700' : 'bg-green-100 text-green-700'
+                      }`}>
+                        {p.role}
+                      </span>
+                    </label>
                   ))}
-                </select>
+                  {filteredPersonnel.length === 0 && (
+                    <p className="px-3 py-4 text-center text-gray-400 text-sm">No se encontraron personas</p>
+                  )}
+                </div>
               </div>
 
               {/* Competition select */}
@@ -485,8 +622,14 @@ export default function Nominations() {
                 <button type="button" onClick={() => setShowForm(false)} className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800">
                   Cancelar
                 </button>
-                <button type="submit" disabled={loading} className="bg-blue-600 text-white px-6 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50">
-                  {loading ? 'Guardando...' : 'Crear Nominaci\u00f3n'}
+                <button
+                  type="submit"
+                  disabled={loading || form.personnel_ids.length === 0}
+                  className="bg-blue-600 text-white px-6 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50"
+                >
+                  {loading ? 'Guardando...' : form.personnel_ids.length > 1
+                    ? `Crear ${form.personnel_ids.length} Nominaciones`
+                    : 'Crear Nominaci\u00f3n'}
                 </button>
               </div>
             </form>

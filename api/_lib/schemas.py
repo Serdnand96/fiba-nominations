@@ -45,6 +45,20 @@ class NominationCreate(BaseModel):
     confirmation_deadline: Optional[str] = None
 
 
+class BulkNominationCreate(BaseModel):
+    personnel_ids: list[str]
+    competition_id: str
+    letter_date: Optional[str] = None
+    location: Optional[str] = None
+    venue: Optional[str] = None
+    arrival_date: Optional[str] = None
+    departure_date: Optional[str] = None
+    game_dates: Optional[list[GameDate]] = None
+    window_fee: Optional[float] = None
+    incidentals: Optional[float] = None
+    confirmation_deadline: Optional[str] = None
+
+
 class BulkImportResult(BaseModel):
     total: int
     imported: int

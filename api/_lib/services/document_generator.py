@@ -41,11 +41,10 @@ def generate_nomination(nomination_data: dict) -> tuple[str, str | None, str | N
     else:
         raise ValueError(f"Unknown template_key: {template_key}")
 
-    # Build output filename
-    name_clean = re.sub(r"[^\w\s-]", "", nomination_data["nominee_name"]).replace(" ", "_")
-    comp_clean = re.sub(r"[^\w\s-]", "", nomination_data["competition_name"]).replace(" ", "_")
-    role = nomination_data.get("role", "VGO")
-    base_name = f"Nomination_{role}_{name_clean}_{comp_clean}"
+    # Build output filename: "Nombre Apellido Competencia Nomination"
+    name_clean = re.sub(r"[^\w\s-]", "", nomination_data["nominee_name"]).strip()
+    comp_clean = re.sub(r"[^\w\s-]", "", nomination_data["competition_name"]).strip()
+    base_name = f"{name_clean} {comp_clean} Nomination"
 
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     docx_path = OUTPUT_DIR / f"{base_name}.docx"

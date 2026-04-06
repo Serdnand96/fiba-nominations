@@ -24,6 +24,8 @@ export const createCompetition = (data) => api.post('/competitions', data).then(
 // Nominations
 export const getNominations = () => api.get('/nominations').then(r => r.data)
 export const createNomination = (data) => api.post('/nominations', data).then(r => r.data)
+export const createBulkNominations = (data) => api.post('/nominations/bulk', data).then(r => r.data)
+export const bulkGenerateNominations = (ids) => api.post('/nominations/bulk-generate', ids, { timeout: 300000 }).then(r => r.data)
 export const getNominationById = (id) => api.get(`/nominations/${id}`).then(r => r.data)
 export const generateNomination = (id) => api.post(`/nominations/${id}/generate`).then(r => r.data)
 export const getDownloadUrl = (id) => `${api.defaults.baseURL}/nominations/${id}/download`

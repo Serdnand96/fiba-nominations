@@ -2,7 +2,7 @@ import os
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse, RedirectResponse
 from api._lib.database import supabase
-from api._lib.schemas import NominationCreate
+from api._lib.schemas import NominationCreate, BulkNominationCreate
 from api._lib.services.document_generator import generate_nomination
 
 router = APIRouter(prefix="/nominations", tags=["nominations"])
@@ -26,6 +26,94 @@ def create_nomination(data: NominationCreate):
         ]
     result = supabase.table("nominations").insert(record).execute()
     return result.data[0]
+
+
+@router.post("/bulk")
+def create_bulk_nominations(data: BulkNominationCreate):
+    """Create nominations for multiple people with the same competition/settings."""
+    created = []
+    errors = []
+
+    for pid in data.personnel_ids:
+        try:
+            record = {
+                "personnel_id": pid,
+                "competition_id": data.competition_id,
+                "letter_date": data.letter_date,
+                "location": data.location,
+                "venue": data.venue,
+                "arrival_date": data.arrival_date,
+                "departure_date": data.departure_date,
+                "game_dates": [gd.model_dump() for gd in data.game_dates] if data.game_dates else None,
+                "window_fee": data.window_fee,
+                "incidentals": data.incidentals,
+                "confirmation_deadline": data.confirmation_deadline,
+            }
+            result = supabase.table("nominations").insert(record).execute()
+            created.append(result.data[0])
+        except Exception as e:
+            errors.append({"personnel_id": pid, "error": str(e)})
+
+    return {"created": len(created), "errors": errors, "nominations": created}
+
+
+@router.post("/bulk-generate")
+def bulk_generate_nominations(nomination_ids: list[str]):
+    """Generate PDF documents for multiple nominations."""
+    results = []
+
+    for nid in nomination_ids:
+        try:
+            result = supabase.table("nominations").select(
+                "*, personnel(name, role, email), competitions(name, template_key, year)"
+            ).eq("id", nid).execute()
+
+            if not result.data:
+                results.append({"id": nid, "status": "error", "error": "Not found"})
+                continue
+
+            nom = result.data[0]
+            personnel = nom["personnel"]
+            competition = nom["competitions"]
+
+            nom_data = {
+                "template_key": competition["template_key"],
+                "nominee_name": personnel["name"],
+                "role": personnel["role"],
+                "letter_date": nom.get("letter_date", ""),
+                "competition_name": competition["name"],
+                "competition_year": competition.get("year", ""),
+                "location": nom.get("location", ""),
+                "venue": nom.get("venue", ""),
+                "arrival_date": nom.get("arrival_date", ""),
+                "departure_date": nom.get("departure_date", ""),
+                "game_dates": nom.get("game_dates", []),
+                "window_fee": nom.get("window_fee"),
+                "incidentals": nom.get("incidentals"),
+                "total": nom.get("total"),
+                "confirmation_deadline": nom.get("confirmation_deadline", ""),
+            }
+
+            local_path, storage_url, conversion_error = generate_nomination(nom_data)
+            saved_path = storage_url if storage_url else local_path
+
+            supabase.table("nominations").update({
+                "status": "generated",
+                "pdf_path": saved_path,
+            }).eq("id", nid).execute()
+
+            results.append({
+                "id": nid,
+                "name": personnel["name"],
+                "status": "generated",
+                "pdf_path": saved_path,
+                "format": "docx" if conversion_error else "pdf",
+                "conversion_error": conversion_error,
+            })
+        except Exception as e:
+            results.append({"id": nid, "status": "error", "error": str(e)})
+
+    return {"results": results, "total": len(results), "success": sum(1 for r in results if r["status"] == "generated")}
 
 
 @router.get("/{nomination_id}")
