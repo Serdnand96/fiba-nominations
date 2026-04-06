@@ -53,7 +53,15 @@ export default function Personnel() {
       await deletePersonnel(person.id)
       await load()
     } catch (err) {
-      alert(err.response?.data?.detail || 'Error eliminando persona')
+      if (err.response?.status === 409) {
+        // Has nominations — ask if they want to force delete
+        if (confirm(`${err.response.data.detail}\n¿Desea eliminar la persona y todas sus nominaciones?`)) {
+          await deletePersonnel(person.id, true)
+          await load()
+        }
+      } else {
+        alert(err.response?.data?.detail || 'Error eliminando persona')
+      }
     }
   }
 

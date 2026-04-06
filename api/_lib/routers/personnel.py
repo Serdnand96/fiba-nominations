@@ -45,18 +45,22 @@ def update_personnel(person_id: str, data: PersonnelUpdate):
 
 
 @router.delete("/{person_id}")
-def delete_personnel(person_id: str):
+def delete_personnel(person_id: str, force: bool = False):
     # Check if person has nominations
     noms = supabase.table("nominations").select("id").eq("personnel_id", person_id).execute()
     if noms.data:
-        raise HTTPException(
-            status_code=409,
-            detail=f"No se puede eliminar: tiene {len(noms.data)} nominación(es) asociada(s). Elimínelas primero."
-        )
+        if not force:
+            raise HTTPException(
+                status_code=409,
+                detail=f"Tiene {len(noms.data)} nominación(es) asociada(s)."
+            )
+        # Delete associated nominations first
+        for n in noms.data:
+            supabase.table("nominations").delete().eq("id", n["id"]).execute()
     result = supabase.table("personnel").delete().eq("id", person_id).execute()
     if not result.data:
         raise HTTPException(status_code=404, detail="Person not found")
-    return {"ok": True}
+    return {"ok": True, "nominations_deleted": len(noms.data) if noms.data else 0}
 
 
 @router.post("/import")
