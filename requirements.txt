@@ -4,7 +4,6 @@ supabase
 python-docx
 python-dotenv
 httpx
-pandas
 openpyxl
 python-multipart
 mangum

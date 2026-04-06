@@ -1,6 +1,7 @@
 import io
+import csv
 import re
-import pandas as pd
+from openpyxl import load_workbook
 from api._lib.database import supabase
 
 COLUMN_MAP = {
@@ -22,32 +23,77 @@ COLUMN_MAP = {
 EMAIL_REGEX = re.compile(r"^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$")
 
 
+def _read_csv(file_bytes: bytes) -> list[dict]:
+    """Parse CSV bytes into a list of row dicts with normalized column names."""
+    text = file_bytes.decode("utf-8-sig")
+    reader = csv.DictReader(io.StringIO(text))
+    headers = {_norm(h): COLUMN_MAP.get(_norm(h), _norm(h)) for h in (reader.fieldnames or [])}
+    rows = []
+    for row in reader:
+        mapped = {}
+        for orig_key, val in row.items():
+            mapped_key = headers.get(_norm(orig_key), _norm(orig_key))
+            mapped[mapped_key] = val
+        rows.append(mapped)
+    return rows
+
+
+def _read_xlsx(file_bytes: bytes) -> list[dict]:
+    """Parse XLSX bytes into a list of row dicts with normalized column names."""
+    wb = load_workbook(filename=io.BytesIO(file_bytes), read_only=True)
+    ws = wb.active
+    rows_iter = ws.iter_rows(values_only=True)
+    raw_headers = next(rows_iter, None)
+    if not raw_headers:
+        return []
+    headers = [COLUMN_MAP.get(_norm(str(h or "")), _norm(str(h or ""))) for h in raw_headers]
+    rows = []
+    for row_vals in rows_iter:
+        row = {}
+        for i, val in enumerate(row_vals):
+            if i < len(headers):
+                row[headers[i]] = str(val) if val is not None else ""
+        rows.append(row)
+    return rows
+
+
+def _norm(s: str) -> str:
+    return s.strip().lower()
+
+
+def _clean(val: str | None) -> str | None:
+    if val is None:
+        return None
+    s = val.strip()
+    return s if s and s.lower() not in ("none", "nan", "") else None
+
+
 def process_bulk_import(file_bytes: bytes, filename: str) -> dict:
     ext = filename.rsplit(".", 1)[-1].lower()
+
     if ext == "csv":
-        df = pd.read_csv(io.BytesIO(file_bytes))
+        rows = _read_csv(file_bytes)
     elif ext in ("xlsx", "xls"):
-        df = pd.read_excel(io.BytesIO(file_bytes))
+        rows = _read_xlsx(file_bytes)
     else:
         return {
             "total": 0, "imported": 0, "skipped": 0,
             "errors": [{"row": 0, "email": "", "reason": f"Unsupported file type: .{ext}"}],
         }
 
-    df.columns = [str(c).strip().lower() for c in df.columns]
-    rename = {}
-    for col in df.columns:
-        if col in COLUMN_MAP:
-            rename[col] = COLUMN_MAP[col]
-    df = df.rename(columns=rename)
+    if not rows:
+        return {"total": 0, "imported": 0, "skipped": 0, "errors": []}
 
+    # Check required columns exist
+    sample_keys = set(rows[0].keys())
     for req in ["name", "email", "role"]:
-        if req not in df.columns:
+        if req not in sample_keys:
             return {
-                "total": len(df), "imported": 0, "skipped": 0,
+                "total": len(rows), "imported": 0, "skipped": 0,
                 "errors": [{"row": 0, "email": "", "reason": f"Missing required column: {req}"}],
             }
 
+    # Get existing emails from DB
     existing = supabase.table("personnel").select("email").execute()
     existing_emails = {r["email"].lower() for r in existing.data}
 
@@ -55,16 +101,16 @@ def process_bulk_import(file_bytes: bytes, filename: str) -> dict:
     valid_rows = []
     skipped = 0
 
-    for idx, row in df.iterrows():
-        row_num = idx + 2
-        name = str(row.get("name", "")).strip()
-        email = str(row.get("email", "")).strip()
-        role = str(row.get("role", "")).strip().upper()
+    for idx, row in enumerate(rows):
+        row_num = idx + 2  # 1-indexed + header row
+        name = (row.get("name") or "").strip()
+        email = (row.get("email") or "").strip()
+        role = (row.get("role") or "").strip().upper()
 
-        if not name or name == "nan":
+        if not name or name.lower() == "nan":
             errors.append({"row": row_num, "email": email, "reason": "Name is required"})
             continue
-        if not email or email == "nan":
+        if not email or email.lower() == "nan":
             errors.append({"row": row_num, "email": email, "reason": "Email is required"})
             continue
         if not EMAIL_REGEX.match(email):
@@ -94,15 +140,8 @@ def process_bulk_import(file_bytes: bytes, filename: str) -> dict:
         imported = len(result.data)
 
     return {
-        "total": len(df),
+        "total": len(rows),
         "imported": imported,
         "skipped": skipped,
         "errors": errors,
     }
-
-
-def _clean(val) -> str | None:
-    if val is None or (isinstance(val, float) and pd.isna(val)):
-        return None
-    s = str(val).strip()
-    return s if s and s != "nan" else None
