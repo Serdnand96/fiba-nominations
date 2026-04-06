@@ -161,34 +161,30 @@ export default function Nominations() {
         window_fee: '', incidentals: '', confirmation_deadline: '',
       })
 
-      // Auto-generate all created nominations
+      // Auto-generate one by one (avoids Vercel 60s timeout)
       if (createdIds.length > 0) {
+        let successCount = 0
+        let errorCount = 0
         setBulkProgress({ total: createdIds.length, done: 0 })
-        try {
-          const genResult = await bulkGenerateNominations(createdIds)
-          setBulkProgress(null)
 
-          const successCount = genResult.success
-          const errorCount = genResult.total - genResult.success
-
-          // Auto-download all generated files
-          for (const r of genResult.results) {
-            if (r.status === 'generated' && r.pdf_path) {
-              await downloadFile(r.pdf_path, r.format, r.id, r.filename)
-              // Small delay between downloads so browser doesn't block them
+        for (let i = 0; i < createdIds.length; i++) {
+          setBulkProgress({ total: createdIds.length, done: i, current: `${i + 1} de ${createdIds.length}` })
+          try {
+            const result = await generateNomination(createdIds[i])
+            if (result.status === 'generated') {
+              successCount++
+              await downloadFile(result.pdf_path, result.format, createdIds[i], result.filename)
               await new Promise(resolve => setTimeout(resolve, 500))
+            } else {
+              errorCount++
             }
+          } catch {
+            errorCount++
           }
-
-          let msg = `${successCount} de ${genResult.total} nominaciones generadas.`
-          if (errorCount > 0) {
-            msg += `\n${errorCount} errores.`
-          }
-          alert(msg)
-        } catch (err) {
-          setBulkProgress(null)
-          alert(`Error generando: ${err.message}`)
         }
+
+        setBulkProgress(null)
+        alert(`${successCount} de ${createdIds.length} nominaciones generadas.${errorCount > 0 ? `\n${errorCount} errores.` : ''}`)
       }
 
       await load()
@@ -231,40 +227,30 @@ export default function Nominations() {
     if (ids.length === 0) return
 
     setLoading(true)
-    setBulkProgress({ total: ids.length, done: 0, current: '' })
+    let successCount = 0
+    let errorCount = 0
 
-    try {
-      const result = await bulkGenerateNominations(ids)
-      setBulkProgress(null)
-      await load()
-      setSelectedIds(new Set())
-
-      const successCount = result.success
-      const errorCount = result.total - result.success
-
-      // Auto-download all generated files
-      for (const r of result.results) {
-        if (r.status === 'generated' && r.pdf_path) {
-          await downloadFile(r.pdf_path, r.format, r.id, r.filename)
+    for (let i = 0; i < ids.length; i++) {
+      setBulkProgress({ total: ids.length, done: i, current: `${i + 1} de ${ids.length}` })
+      try {
+        const result = await generateNomination(ids[i])
+        if (result.status === 'generated') {
+          successCount++
+          await downloadFile(result.pdf_path, result.format, ids[i], result.filename)
           await new Promise(resolve => setTimeout(resolve, 500))
+        } else {
+          errorCount++
         }
+      } catch {
+        errorCount++
       }
-
-      let msg = `${successCount} de ${result.total} nominaciones generadas.`
-      if (errorCount > 0) {
-        const errorNames = result.results
-          .filter(r => r.status === 'error')
-          .map(r => r.name || r.id)
-          .join(', ')
-        msg += `\n${errorCount} errores: ${errorNames}`
-      }
-      alert(msg)
-    } catch (err) {
-      setBulkProgress(null)
-      alert(`Error: ${err.message}`)
-    } finally {
-      setLoading(false)
     }
+
+    setBulkProgress(null)
+    await load()
+    setSelectedIds(new Set())
+    alert(`${successCount} de ${ids.length} nominaciones generadas.${errorCount > 0 ? `\n${errorCount} errores.` : ''}`)
+    setLoading(false)
   }
 
   async function downloadFile(url, format, id, filename) {
@@ -315,7 +301,7 @@ export default function Nominations() {
               className="bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-green-700 disabled:opacity-50"
             >
               {loading && bulkProgress
-                ? `Generando...`
+                ? `Generando ${bulkProgress.current}...`
                 : `Generar ${selectedIds.size} seleccionadas`}
             </button>
           )}
