@@ -167,24 +167,37 @@ export default function Nominations() {
         let errorCount = 0
         setBulkProgress({ total: createdIds.length, done: 0 })
 
+        const conversionErrors = []
         for (let i = 0; i < createdIds.length; i++) {
           setBulkProgress({ total: createdIds.length, done: i, current: `${i + 1} de ${createdIds.length}` })
           try {
             const result = await generateNomination(createdIds[i])
+            console.log(`Generate [${i+1}]:`, JSON.stringify(result))
             if (result.status === 'generated') {
               successCount++
+              if (result.conversion_error) {
+                conversionErrors.push(result.conversion_error)
+              }
               await downloadFile(result.pdf_path, result.format, createdIds[i], result.filename)
               await new Promise(resolve => setTimeout(resolve, 500))
             } else {
               errorCount++
             }
-          } catch {
+          } catch (e) {
             errorCount++
+            console.error(`Generate [${i+1}] error:`, e)
           }
         }
 
         setBulkProgress(null)
-        alert(`${successCount} de ${createdIds.length} nominaciones generadas.${errorCount > 0 ? `\n${errorCount} errores.` : ''}`)
+        let msg = `${successCount} de ${createdIds.length} nominaciones generadas.`
+        if (conversionErrors.length > 0) {
+          msg += `\n\nPDF conversion failed: ${conversionErrors[0]}`
+        }
+        if (errorCount > 0) {
+          msg += `\n${errorCount} errores.`
+        }
+        alert(msg)
       }
 
       await load()
