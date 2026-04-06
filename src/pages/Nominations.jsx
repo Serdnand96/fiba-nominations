@@ -136,18 +136,22 @@ export default function Nominations() {
         delete payload.confirmation_deadline
       }
 
+      let createdIds = []
+
       if (form.personnel_ids.length > 1) {
         // Bulk create
         const result = await createBulkNominations(payload)
+        createdIds = result.nominations.map(n => n.id)
         if (result.errors?.length) {
           alert(`Creadas: ${result.created}. Errores: ${result.errors.length}`)
         }
       } else if (form.personnel_ids.length === 1) {
         // Single create
-        await createNomination({
+        const result = await createNomination({
           ...payload,
           personnel_id: form.personnel_ids[0],
         })
+        createdIds = [result.id]
       }
 
       setShowForm(false)
@@ -156,6 +160,37 @@ export default function Nominations() {
         venue: '', arrival_date: '', departure_date: '', game_dates: [],
         window_fee: '', incidentals: '', confirmation_deadline: '',
       })
+
+      // Auto-generate all created nominations
+      if (createdIds.length > 0) {
+        setBulkProgress({ total: createdIds.length, done: 0 })
+        try {
+          const genResult = await bulkGenerateNominations(createdIds)
+          setBulkProgress(null)
+
+          const successCount = genResult.success
+          const errorCount = genResult.total - genResult.success
+
+          // Auto-download all generated files
+          for (const r of genResult.results) {
+            if (r.status === 'generated' && r.pdf_path) {
+              await downloadFile(r.pdf_path, r.format, r.id, r.filename)
+              // Small delay between downloads so browser doesn't block them
+              await new Promise(resolve => setTimeout(resolve, 500))
+            }
+          }
+
+          let msg = `${successCount} de ${genResult.total} nominaciones generadas.`
+          if (errorCount > 0) {
+            msg += `\n${errorCount} errores.`
+          }
+          alert(msg)
+        } catch (err) {
+          setBulkProgress(null)
+          alert(`Error generando: ${err.message}`)
+        }
+      }
+
       await load()
     } finally {
       setLoading(false)
@@ -181,7 +216,7 @@ export default function Nominations() {
 
       // Auto-download
       if (result.pdf_path) {
-        downloadFile(result.pdf_path, result.format, id)
+        downloadFile(result.pdf_path, result.format, id, result.filename)
       }
     } catch (err) {
       alert(`Error: ${err.message}`)
@@ -206,7 +241,16 @@ export default function Nominations() {
 
       const successCount = result.success
       const errorCount = result.total - result.success
-      let msg = `${successCount} de ${result.total} nominaciones generadas exitosamente.`
+
+      // Auto-download all generated files
+      for (const r of result.results) {
+        if (r.status === 'generated' && r.pdf_path) {
+          await downloadFile(r.pdf_path, r.format, r.id, r.filename)
+          await new Promise(resolve => setTimeout(resolve, 500))
+        }
+      }
+
+      let msg = `${successCount} de ${result.total} nominaciones generadas.`
       if (errorCount > 0) {
         const errorNames = result.results
           .filter(r => r.status === 'error')
@@ -223,16 +267,16 @@ export default function Nominations() {
     }
   }
 
-  async function downloadFile(url, format, id) {
+  async function downloadFile(url, format, id, filename) {
     const fileUrl = url.startsWith('http') ? url : getDownloadUrl(id)
+    const defaultName = filename || `nomination.${format === 'pdf' ? 'pdf' : 'docx'}`
     try {
       const resp = await fetch(fileUrl)
       const blob = await resp.blob()
       const blobUrl = URL.createObjectURL(blob)
       const link = document.createElement('a')
       link.href = blobUrl
-      const ext = format === 'pdf' ? 'pdf' : 'docx'
-      link.download = `nomination.${ext}`
+      link.download = defaultName
       link.click()
       URL.revokeObjectURL(blobUrl)
     } catch {

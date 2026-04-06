@@ -102,12 +102,15 @@ def bulk_generate_nominations(nomination_ids: list[str]):
                 "pdf_path": saved_path,
             }).eq("id", nid).execute()
 
+            ext = "docx" if conversion_error else "pdf"
+            filename = f"{personnel['name']} {competition['name']} Nomination.{ext}"
             results.append({
                 "id": nid,
                 "name": personnel["name"],
                 "status": "generated",
                 "pdf_path": saved_path,
-                "format": "docx" if conversion_error else "pdf",
+                "filename": filename,
+                "format": ext,
                 "conversion_error": conversion_error,
             })
         except Exception as e:
@@ -177,17 +180,17 @@ def generate_nomination_doc(nomination_id: str):
 
     supabase.table("nominations").update(update_data).eq("id", nomination_id).execute()
 
+    ext = "docx" if conversion_error else "pdf"
+    filename = f"{personnel['name']} {competition['name']} Nomination.{ext}"
+
     response = {
         "pdf_path": saved_path,
         "status": "generated",
-        "local_path": local_path,
-        "storage_url": storage_url,
+        "filename": filename,
+        "format": ext,
     }
     if conversion_error:
         response["conversion_error"] = conversion_error
-        response["format"] = "docx"
-    else:
-        response["format"] = "pdf"
 
     return response
 
