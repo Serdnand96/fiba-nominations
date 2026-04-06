@@ -196,25 +196,52 @@ def generate_nomination_doc(nomination_id: str):
 
 
 @router.get("/{nomination_id}/download")
-def download_nomination(nomination_id: str):
-    result = supabase.table("nominations").select("pdf_path").eq("id", nomination_id).execute()
+def download_nomination(nomination_id: str, filename: str = None):
+    import httpx
+
+    result = supabase.table("nominations").select(
+        "pdf_path, personnel(name), competitions(name)"
+    ).eq("id", nomination_id).execute()
+
     if not result.data or not result.data[0].get("pdf_path"):
         raise HTTPException(status_code=404, detail="Document not generated yet")
 
-    doc_path = result.data[0]["pdf_path"]
+    nom = result.data[0]
+    doc_path = nom["pdf_path"]
 
-    # If it's a URL (Supabase Storage), redirect
+    # Build filename if not provided
+    if not filename:
+        p_name = nom.get("personnel", {}).get("name", "Nomination")
+        c_name = nom.get("competitions", {}).get("name", "")
+        ext = "pdf" if doc_path.endswith(".pdf") or "pdf" in doc_path.lower() else "docx"
+        filename = f"{p_name} {c_name} Nomination.{ext}"
+
+    # If it's a URL (Supabase Storage), fetch and serve with proper filename
     if doc_path.startswith("http"):
-        return RedirectResponse(url=doc_path)
+        try:
+            resp = httpx.get(doc_path, timeout=30.0, follow_redirects=True)
+            if resp.status_code != 200:
+                return RedirectResponse(url=doc_path)
 
-    # Local file (dev mode only — /tmp is ephemeral on Vercel)
+            content_type = resp.headers.get("content-type", "application/octet-stream")
+            from fastapi.responses import Response
+            return Response(
+                content=resp.content,
+                media_type=content_type,
+                headers={
+                    "Content-Disposition": f'attachment; filename="{filename}"',
+                },
+            )
+        except Exception:
+            return RedirectResponse(url=doc_path)
+
+    # Local file (dev mode only)
     if not os.path.exists(doc_path):
         raise HTTPException(status_code=404, detail="File not found. Try regenerating.")
 
-    # Determine content type
     if doc_path.endswith(".pdf"):
         media_type = "application/pdf"
     else:
         media_type = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 
-    return FileResponse(doc_path, media_type=media_type, filename=os.path.basename(doc_path))
+    return FileResponse(doc_path, media_type=media_type, filename=filename)

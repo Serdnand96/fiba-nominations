@@ -270,18 +270,14 @@ export default function Nominations() {
   async function downloadFile(url, format, id, filename) {
     const fileUrl = url.startsWith('http') ? url : getDownloadUrl(id)
     const defaultName = filename || `nomination.${format === 'pdf' ? 'pdf' : 'docx'}`
-    try {
-      const resp = await fetch(fileUrl)
-      const blob = await resp.blob()
-      const blobUrl = URL.createObjectURL(blob)
-      const link = document.createElement('a')
-      link.href = blobUrl
-      link.download = defaultName
-      link.click()
-      URL.revokeObjectURL(blobUrl)
-    } catch {
-      window.open(fileUrl, '_blank')
-    }
+    // Use our own proxy endpoint to avoid CORS and enable proper download filename
+    const proxyUrl = `/api/nominations/${id}/download?filename=${encodeURIComponent(defaultName)}`
+    const link = document.createElement('a')
+    link.href = proxyUrl
+    link.download = defaultName
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
   }
 
   function toggleTableSelect(id) {
