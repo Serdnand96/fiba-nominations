@@ -123,7 +123,7 @@ def _build_wcq_letter(data: dict) -> Document:
     comp_name = data.get("competition_name", "")
     role = data.get("role", "VGO")
     role_label = "Video Graphic Operator" if role == "VGO" else "Technical Delegate"
-    game_dates = data.get("game_dates", [])
+    game_dates = data.get("game_dates") or []
     deadline = _fmt_deadline(data.get("confirmation_deadline", ""))
     letter_date = _fmt_date(data.get("letter_date", ""))
     fee = data.get("window_fee")
@@ -273,7 +273,7 @@ def _build_generic_letter(data: dict) -> Document:
     comp_name = data.get("competition_name", "")
     role = data.get("role", "VGO")
     role_label = "Video Graphic Operator" if role == "VGO" else "Technical Delegate"
-    game_dates = data.get("game_dates", [])
+    game_dates = data.get("game_dates") or []
     deadline = _fmt_deadline(data.get("confirmation_deadline", ""))
     letter_date = _fmt_date(data.get("letter_date", ""))
     fee = data.get("window_fee")
@@ -385,7 +385,7 @@ def _build_confirmation_from_scratch(data: dict) -> Document:
     role = data.get("role", "VGO")
     role_label = "Video Graphic Operator" if role == "VGO" else "Technical Delegate"
     tk = data.get("template_key", "BCLA")
-    game_dates = data.get("game_dates", [])
+    game_dates = data.get("game_dates") or []
 
     title = f"Confirmation – {comp_name}"
     if tk == "LSB":
@@ -445,7 +445,7 @@ def _build_wcq_from_scratch(data: dict) -> Document:
     comp_name = data.get("competition_name", "")
     role = data.get("role", "VGO")
     role_label = "Video Graphic Operator" if role == "VGO" else "Technical Delegate"
-    game_dates = data.get("game_dates", [])
+    game_dates = data.get("game_dates") or []
     deadline = _fmt_deadline(data.get("confirmation_deadline", ""))
 
     _add_heading(doc, f"Nomination for the {comp_name}")
