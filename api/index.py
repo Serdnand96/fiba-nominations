@@ -1,9 +1,8 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from mangum import Mangum
 from api._lib.routers import personnel, competitions, nominations
 
-app = FastAPI(title="FIBA Americas Nominations API", root_path="/api")
+app = FastAPI(title="FIBA Americas Nominations API")
 
 app.add_middleware(
     CORSMiddleware,
@@ -21,7 +20,3 @@ app.include_router(nominations.router)
 @app.get("/")
 def root():
     return {"message": "FIBA Americas Nominations API"}
-
-
-# Vercel serverless handler
-handler = Mangum(app, lifespan="off")
