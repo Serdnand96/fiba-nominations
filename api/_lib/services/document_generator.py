@@ -22,6 +22,11 @@ FONT_WCQ = "IBM Plex Sans"
 FONT_GENERIC = "Univers"
 FONT_NAME = FONT_WCQ  # default
 
+CONFIRMATION_EMAIL = {
+    "VGO": "vgo.americas@fiba.basketball",
+    "TD": "competitions-americas@fiba.basketball",
+}
+
 SIGNATORIES = {
     "WCQ": ("Carlos Alves", "Executive Director", "FIBA Americas"),
     "GENERIC": ("Carlos Alves", "Executive Director", "FIBA Americas"),
@@ -158,6 +163,7 @@ def _build_wcq_letter(data: dict) -> Document:
                           align=WD_ALIGN_PARAGRAPH.CENTER)
 
     # Confirmation paragraph — 2 lines after last game date
+    confirm_email = CONFIRMATION_EMAIL.get(role, CONFIRMATION_EMAIL["VGO"])
     confirm_idx = 6 + max(len(game_dates), 1) + 2
     if confirm_idx < len(paras) - 3:
         _set_para_mixed(paras[confirm_idx], [
@@ -167,7 +173,7 @@ def _build_wcq_letter(data: dict) -> Document:
             (f"{deadline}", COLOR_RED, False),
             (".", COLOR_DARK, False),
             (" Confirmation shall be sent to ", COLOR_DARK, False),
-            ("vgo.americas@fiba.basketball", COLOR_DARK, False),
+            (confirm_email, COLOR_DARK, False),
         ], align=WD_ALIGN_PARAGRAPH.JUSTIFY)
 
     # Travel paragraph
@@ -309,6 +315,7 @@ def _build_generic_letter(data: dict) -> Document:
                                 align=WD_ALIGN_PARAGRAPH.CENTER)
 
     # Confirmation paragraph
+    confirm_email = CONFIRMATION_EMAIL.get(role, CONFIRMATION_EMAIL["VGO"])
     confirm_idx = 6 + max(len(game_dates), 1) + 2
     if confirm_idx < sig_start - 8:
         _set_para_mixed_font(paras[confirm_idx], [
@@ -318,7 +325,7 @@ def _build_generic_letter(data: dict) -> Document:
             (f"{deadline}", COLOR_RED, False),
             (".", COLOR_DARK, False),
             (" Confirmation shall be sent to ", COLOR_DARK, False),
-            ("vgo.americas@fiba.basketball", COLOR_DARK, False),
+            (confirm_email, COLOR_DARK, False),
         ], font_name, align=WD_ALIGN_PARAGRAPH.JUSTIFY)
 
     # Travel paragraph
@@ -457,10 +464,11 @@ def _build_wcq_from_scratch(data: dict) -> Document:
     _add_empty(doc)
     _add_empty(doc)
 
+    confirm_email = CONFIRMATION_EMAIL.get(role, CONFIRMATION_EMAIL["VGO"])
     parts = [
         (f"As per the FIBA Internal Regulations Book 3, please confirm to us your availability to fulfil your assignment as {role_label} by ", COLOR_DARK),
         (deadline, COLOR_RED),
-        (". Confirmation shall be sent to vgo.americas@fiba.basketball", COLOR_DARK),
+        (f". Confirmation shall be sent to {confirm_email}", COLOR_DARK),
     ]
     _add_body(doc, parts, align=WD_ALIGN_PARAGRAPH.JUSTIFY)
     _add_empty(doc)
