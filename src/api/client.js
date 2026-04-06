@@ -9,6 +9,7 @@ export const getPersonnel = (params) => api.get('/personnel', { params }).then(r
 export const createPersonnel = (data) => api.post('/personnel', data).then(r => r.data)
 export const getPersonnelById = (id) => api.get(`/personnel/${id}`).then(r => r.data)
 export const updatePersonnel = (id, data) => api.put(`/personnel/${id}`, data).then(r => r.data)
+export const deletePersonnel = (id) => api.delete(`/personnel/${id}`).then(r => r.data)
 export const importPersonnel = (file) => {
   const form = new FormData()
   form.append('file', file)
@@ -27,6 +28,8 @@ export const createNomination = (data) => api.post('/nominations', data).then(r 
 export const createBulkNominations = (data) => api.post('/nominations/bulk', data).then(r => r.data)
 export const bulkGenerateNominations = (ids) => api.post('/nominations/bulk-generate', ids, { timeout: 300000 }).then(r => r.data)
 export const getNominationById = (id) => api.get(`/nominations/${id}`).then(r => r.data)
+export const deleteNomination = (id) => api.delete(`/nominations/${id}`).then(r => r.data)
+export const bulkDeleteNominations = (ids) => api.delete('/nominations/bulk/delete', { data: ids }).then(r => r.data)
 export const generateNomination = (id) => api.post(`/nominations/${id}/generate`).then(r => r.data)
 export const getDownloadUrl = (id) => `${api.defaults.baseURL}/nominations/${id}/download`
 

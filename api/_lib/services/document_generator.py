@@ -17,8 +17,10 @@ TEMPLATES_DIR = Path(__file__).resolve().parent.parent.parent.parent / "template
 COLOR_DARK = RGBColor(0x2A, 0x2A, 0x2A)
 COLOR_RED = RGBColor(0xED, 0x00, 0x00)
 
-# FIBA brand font
-FONT_NAME = "IBM Plex Sans"
+# FIBA brand fonts per template
+FONT_WCQ = "IBM Plex Sans"
+FONT_GENERIC = "Univers"
+FONT_NAME = FONT_WCQ  # default
 
 SIGNATORIES = {
     "WCQ": ("Carlos Alves", "Executive Director", "FIBA Americas"),
@@ -34,8 +36,10 @@ def generate_nomination(nomination_data: dict) -> tuple[str, str | None, str | N
     """
     template_key = nomination_data["template_key"]
 
-    if template_key in ("WCQ", "GENERIC"):
+    if template_key == "WCQ":
         doc = _build_wcq_letter(nomination_data)
+    elif template_key == "GENERIC":
+        doc = _build_generic_letter(nomination_data)
     elif template_key in ("BCLA", "LSB"):
         doc = _build_confirmation_from_scratch(nomination_data)
     else:
@@ -238,6 +242,129 @@ def _remove_excess_paragraphs(doc, start_idx, end_idx):
                 to_remove.append(p._element)
     for elem in to_remove:
         body.remove(elem)
+
+
+# ─── GENERIC LETTER (Univers Condensed font, separate template) ──────────────
+
+def _build_generic_letter(data: dict) -> Document:
+    template_path = TEMPLATES_DIR / "GENERIC_TEMPLATE.docx"
+    if not template_path.exists():
+        return _build_wcq_from_scratch(data)
+
+    doc = Document(str(template_path))
+    font_name = FONT_GENERIC
+
+    # Set default font for the document
+    for style_name in ["Normal", "Body Text", "Heading 1"]:
+        try:
+            doc.styles[style_name].font.name = font_name
+        except Exception:
+            pass
+
+    paras = doc.paragraphs
+
+    nominee = data.get("nominee_name", "")
+    comp_name = data.get("competition_name", "")
+    role = data.get("role", "VGO")
+    role_label = "Video Graphic Operator" if role == "VGO" else "Technical Delegate"
+    game_dates = data.get("game_dates", [])
+    deadline = _fmt_deadline(data.get("confirmation_deadline", ""))
+    letter_date = _fmt_date(data.get("letter_date", ""))
+    fee = data.get("window_fee")
+    incidentals = data.get("incidentals")
+    total = data.get("total")
+
+    # Generic template structure: [0-38] content area, [39] signature image, [40-42] sig text
+    # Clear content paragraphs (preserve signature at end)
+    sig_start = len(paras) - 4  # last 4 paragraphs are signature area
+    for i in range(0, sig_start):
+        _clear_para_generic(paras[i])
+
+    # [0] — Letter date (right-aligned)
+    if letter_date:
+        _set_para_text_font(paras[0], letter_date, COLOR_DARK, font_name, size=Pt(10),
+                            align=WD_ALIGN_PARAGRAPH.RIGHT)
+
+    # [2] — "Dear [Name],"
+    _set_para_mixed_font(paras[2], [
+        ("Dear ", COLOR_DARK, False),
+        (nominee, COLOR_RED, False),
+        (",", COLOR_DARK, False),
+    ], font_name)
+
+    # [4] — Body intro
+    _set_para_text_font(paras[4],
+        f"We would like to inform that you have been nominated for the "
+        f"following games of the {comp_name}.",
+        COLOR_DARK, font_name)
+
+    # [6+] — Game dates (centered, bold, red)
+    for i, gd in enumerate(game_dates):
+        idx = 6 + i
+        if idx < sig_start - 10:
+            label = gd.get("label", "")
+            date_val = _fmt_date(gd.get("date", ""))
+            text = f"{label}: {date_val}" if label else date_val
+            _set_para_text_font(paras[idx], text, COLOR_RED, font_name, bold=True, size=Pt(10),
+                                align=WD_ALIGN_PARAGRAPH.CENTER)
+
+    # Confirmation paragraph
+    confirm_idx = 6 + max(len(game_dates), 1) + 2
+    if confirm_idx < sig_start - 8:
+        _set_para_mixed_font(paras[confirm_idx], [
+            (f"As per the FIBA Internal Regulations Book 3, please confirm to us "
+             f"your availability to fulfil your assignment as {role_label} by ",
+             COLOR_DARK, False),
+            (f"{deadline}", COLOR_RED, False),
+            (".", COLOR_DARK, False),
+            (" Confirmation shall be sent to ", COLOR_DARK, False),
+            ("vgo.americas@fiba.basketball", COLOR_DARK, False),
+        ], font_name, align=WD_ALIGN_PARAGRAPH.JUSTIFY)
+
+    # Travel paragraph
+    travel_idx = confirm_idx + 2
+    if travel_idx < sig_start - 6:
+        _set_para_text_font(paras[travel_idx],
+            "As soon as we receive your confirmation, we will make arrangements "
+            "for international flights to the host country and provide you with "
+            "relevant information in order for you to prepare the game and "
+            "establish contact with the Game Director of the Host National Federation.",
+            COLOR_DARK, font_name)
+
+    # Payment intro
+    payment_idx = travel_idx + 2
+    if payment_idx < sig_start - 5:
+        _set_para_text_font(paras[payment_idx],
+            f"Below list the details of payment you will receive as {role_label} "
+            f"assigned to the competition listed above:",
+            COLOR_DARK, font_name)
+
+    # Fee items
+    fee_idx = payment_idx + 3
+    fee_items = [
+        (f"Per Game Fee: {_fmt_money(fee)}", False),
+        (f"Incidentals: {_fmt_money(incidentals)}", False),
+        (f"Total: {_fmt_money(total)}", True),
+    ]
+    for i, (text, bold) in enumerate(fee_items):
+        idx = fee_idx + i
+        if idx < sig_start - 2:
+            _set_para_text_font(paras[idx], text, COLOR_RED, font_name, bold=bold, size=Pt(10))
+
+    # Closing
+    closing_idx = fee_idx + len(fee_items) + 2
+    if closing_idx < sig_start - 1:
+        _set_para_text_font(paras[closing_idx],
+            "We wish you the best in your preparation and accomplishment of your assignment.",
+            COLOR_DARK, font_name)
+
+    # Remove excess empty paragraphs between closing and signature
+    keep_empty = max(0, 30 - closing_idx - 2)
+    remove_from = closing_idx + 1 + keep_empty
+    if remove_from < len(paras) - 4:
+        _remove_excess_paragraphs(doc, remove_from, len(paras) - 4)
+
+    return doc
 
 
 # ─── CONFIRMATION (BCLA / LSB) FROM SCRATCH ──────────────────────────────────
@@ -572,6 +699,38 @@ def _add_fee_line(doc, text, bold=False):
 
 def _add_empty(doc):
     doc.add_paragraph()
+
+
+def _clear_para_generic(para):
+    """Clear paragraph runs (same as _clear_para but also checks for drawings to preserve)."""
+    for r in para._element.findall(qn('w:r')):
+        # Skip runs that contain drawing elements
+        if r.findall(qn('w:drawing')):
+            continue
+        para._element.remove(r)
+
+
+def _set_para_text_font(para, text, color, font_name, bold=False, size=None, align=None):
+    _clear_para_generic(para)
+    if align is not None:
+        para.alignment = align
+    run = para.add_run(text)
+    run.font.name = font_name
+    run.font.color.rgb = color
+    run.bold = bold
+    if size:
+        run.font.size = size
+
+
+def _set_para_mixed_font(para, parts, font_name, align=None):
+    _clear_para_generic(para)
+    if align is not None:
+        para.alignment = align
+    for text, color, bold in parts:
+        run = para.add_run(text)
+        run.font.name = font_name
+        run.font.color.rgb = color
+        run.bold = bold
 
 
 def _fmt_money(val) -> str:

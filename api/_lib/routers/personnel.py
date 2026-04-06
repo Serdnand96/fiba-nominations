@@ -44,6 +44,21 @@ def update_personnel(person_id: str, data: PersonnelUpdate):
     return result.data[0]
 
 
+@router.delete("/{person_id}")
+def delete_personnel(person_id: str):
+    # Check if person has nominations
+    noms = supabase.table("nominations").select("id").eq("personnel_id", person_id).execute()
+    if noms.data:
+        raise HTTPException(
+            status_code=409,
+            detail=f"No se puede eliminar: tiene {len(noms.data)} nominación(es) asociada(s). Elimínelas primero."
+        )
+    result = supabase.table("personnel").delete().eq("id", person_id).execute()
+    if not result.data:
+        raise HTTPException(status_code=404, detail="Person not found")
+    return {"ok": True}
+
+
 @router.post("/import")
 async def import_personnel(file: UploadFile = File(...)):
     contents = await file.read()

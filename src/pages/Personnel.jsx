@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
-import { getPersonnel, createPersonnel, updatePersonnel, importPersonnel } from '../api/client'
+import { getPersonnel, createPersonnel, updatePersonnel, deletePersonnel, importPersonnel } from '../api/client'
 
 export default function Personnel() {
   const [people, setPeople] = useState([])
@@ -45,6 +45,16 @@ export default function Personnel() {
     setEditing(null)
     setForm({ name: '', email: '', country: '', phone: '', passport: '', role: 'VGO' })
     setShowModal(true)
+  }
+
+  async function handleDelete(person) {
+    if (!confirm(`¿Eliminar a ${person.name}?`)) return
+    try {
+      await deletePersonnel(person.id)
+      await load()
+    } catch (err) {
+      alert(err.response?.data?.detail || 'Error eliminando persona')
+    }
   }
 
   async function handleSubmit(e) {
@@ -135,7 +145,10 @@ export default function Personnel() {
                 <td className="px-4 py-3">{p.email}</td>
                 <td className="px-4 py-3">{p.passport || '—'}</td>
                 <td className="px-4 py-3">
-                  <button onClick={() => openEdit(p)} className="text-blue-600 hover:underline text-sm">Editar</button>
+                  <div className="flex gap-3">
+                    <button onClick={() => openEdit(p)} className="text-blue-600 hover:underline text-sm">Editar</button>
+                    <button onClick={() => handleDelete(p)} className="text-red-600 hover:underline text-sm">Eliminar</button>
+                  </div>
                 </td>
               </tr>
             ))}

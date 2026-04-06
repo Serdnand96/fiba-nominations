@@ -119,6 +119,27 @@ def bulk_generate_nominations(nomination_ids: list[str]):
     return {"results": results, "total": len(results), "success": sum(1 for r in results if r["status"] == "generated")}
 
 
+@router.delete("/{nomination_id}")
+def delete_nomination(nomination_id: str):
+    result = supabase.table("nominations").delete().eq("id", nomination_id).execute()
+    if not result.data:
+        raise HTTPException(status_code=404, detail="Nomination not found")
+    return {"ok": True}
+
+
+@router.delete("/bulk/delete")
+def bulk_delete_nominations(nomination_ids: list[str]):
+    deleted = 0
+    errors = []
+    for nid in nomination_ids:
+        try:
+            supabase.table("nominations").delete().eq("id", nid).execute()
+            deleted += 1
+        except Exception as e:
+            errors.append({"id": nid, "error": str(e)})
+    return {"deleted": deleted, "errors": errors}
+
+
 @router.get("/{nomination_id}")
 def get_nomination(nomination_id: str):
     result = supabase.table("nominations").select(

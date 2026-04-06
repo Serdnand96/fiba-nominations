@@ -2,7 +2,8 @@ import { useState, useEffect, useMemo } from 'react'
 import {
   getNominations, getPersonnel, getCompetitions,
   createNomination, createBulkNominations, generateNomination,
-  bulkGenerateNominations, getDownloadUrl,
+  bulkGenerateNominations, deleteNomination, bulkDeleteNominations,
+  getDownloadUrl,
 } from '../api/client'
 
 const BCLA_ROUNDS = ['Semifinals', '3rd Place', 'Final']
@@ -266,6 +267,29 @@ export default function Nominations() {
     setLoading(false)
   }
 
+  async function handleDeleteNomination(nom) {
+    if (!confirm(`¿Eliminar la nominación de ${nom.personnel?.name}?`)) return
+    try {
+      await deleteNomination(nom.id)
+      await load()
+    } catch (err) {
+      alert('Error eliminando nominación: ' + (err.response?.data?.detail || err.message))
+    }
+  }
+
+  async function handleBulkDelete() {
+    const ids = [...selectedIds]
+    if (ids.length === 0) return
+    if (!confirm(`¿Eliminar ${ids.length} nominación(es)?`)) return
+    try {
+      await bulkDeleteNominations(ids)
+      setSelectedIds(new Set())
+      await load()
+    } catch (err) {
+      alert('Error eliminando nominaciones: ' + (err.response?.data?.detail || err.message))
+    }
+  }
+
   async function downloadFile(url, format, id, filename) {
     const fileUrl = url.startsWith('http') ? url : getDownloadUrl(id)
     const defaultName = filename || `nomination.${format === 'pdf' ? 'pdf' : 'docx'}`
@@ -308,15 +332,24 @@ export default function Nominations() {
         <h2 className="text-2xl font-bold text-gray-900">Nominaciones</h2>
         <div className="flex gap-2">
           {selectedIds.size > 0 && (
-            <button
-              onClick={handleBulkGenerate}
-              disabled={loading}
-              className="bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-green-700 disabled:opacity-50"
-            >
-              {loading && bulkProgress
-                ? `Generando ${bulkProgress.current}...`
-                : `Generar ${selectedIds.size} seleccionadas`}
-            </button>
+            <>
+              <button
+                onClick={handleBulkDelete}
+                disabled={loading}
+                className="bg-red-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-red-700 disabled:opacity-50"
+              >
+                Eliminar {selectedIds.size}
+              </button>
+              <button
+                onClick={handleBulkGenerate}
+                disabled={loading}
+                className="bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-green-700 disabled:opacity-50"
+              >
+                {loading && bulkProgress
+                  ? `Generando ${bulkProgress.current}...`
+                  : `Generar ${selectedIds.size} seleccionadas`}
+              </button>
+            </>
           )}
           <button
             onClick={() => setShowForm(true)}
@@ -401,8 +434,9 @@ export default function Nominations() {
                   </span>
                 </td>
                 <td className="px-4 py-3">
+                  <div className="flex gap-2">
                   {n.status === 'generated' ? (
-                    <div className="flex gap-2">
+                    <>
                       <a
                         href={n.pdf_path?.startsWith('http') ? n.pdf_path : getDownloadUrl(n.id)}
                         target="_blank"
@@ -418,7 +452,7 @@ export default function Nominations() {
                       >
                         Regenerar
                       </button>
-                    </div>
+                    </>
                   ) : (
                     <button
                       onClick={() => handleGenerate(n.id)}
@@ -428,6 +462,13 @@ export default function Nominations() {
                       Generar
                     </button>
                   )}
+                  <button
+                    onClick={() => handleDeleteNomination(n)}
+                    className="text-red-600 hover:underline text-sm"
+                  >
+                    Eliminar
+                  </button>
+                </div>
                 </td>
               </tr>
             ))}
