@@ -7,7 +7,7 @@ router = APIRouter(prefix="/users", tags=["users"])
 
 def _get_admin_client():
     """Get a Supabase client with service_role key for admin operations."""
-    from supabase import create_client
+    from api._lib.database import create_client
     url = os.environ.get("SUPABASE_URL", "")
     service_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY", "")
     if not url or not service_key:
