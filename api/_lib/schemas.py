@@ -26,6 +26,12 @@ class CompetitionCreate(BaseModel):
     year: Optional[int] = None
 
 
+class CompetitionUpdate(BaseModel):
+    name: Optional[str] = None
+    template_key: Optional[str] = None
+    year: Optional[int] = None
+
+
 class GameDate(BaseModel):
     label: str
     date: str

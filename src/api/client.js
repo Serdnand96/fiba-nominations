@@ -21,6 +21,8 @@ export const importPersonnel = (file) => {
 // Competitions
 export const getCompetitions = () => api.get('/competitions').then(r => r.data)
 export const createCompetition = (data) => api.post('/competitions', data).then(r => r.data)
+export const updateCompetition = (id, data) => api.put(`/competitions/${id}`, data).then(r => r.data)
+export const deleteCompetition = (id, force = false) => api.delete(`/competitions/${id}`, { params: { force } }).then(r => r.data)
 
 // Nominations
 export const getNominations = () => api.get('/nominations').then(r => r.data)
