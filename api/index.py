@@ -12,11 +12,13 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(personnel.router)
-app.include_router(competitions.router)
-app.include_router(nominations.router)
+# Mount all routers under /api prefix to match Vercel's routing
+app.include_router(personnel.router, prefix="/api")
+app.include_router(competitions.router, prefix="/api")
+app.include_router(nominations.router, prefix="/api")
 
 
-@app.get("/")
+@app.get("/api")
+@app.get("/api/")
 def root():
     return {"message": "FIBA Americas Nominations API"}
