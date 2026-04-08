@@ -1,26 +1,28 @@
+import { useLanguage } from '../i18n/LanguageContext'
+
 const TEMPLATES = [
   {
     key: 'WCQ',
     file: 'WCQ_TEMPLATE_fixed.docx',
-    type: 'Nominaci\u00f3n',
+    typeKey: 'nomination',
     signatory: 'Carlos Alves, Executive Director FIBA Americas',
   },
   {
     key: 'BCLA',
     file: 'BCL_Americas_VGO_Final4.docx',
-    type: 'Confirmaci\u00f3n',
+    typeKey: 'confirmation',
     signatory: 'Gino Rullo, Head of Operations, Basketball Champions League Americas',
   },
   {
     key: 'LSB',
     file: 'LSB_2024_VGO_Nomination.docx',
-    type: 'Confirmaci\u00f3n',
-    signatory: 'Gino Rullo, Head of Operations, Club Competitions \u2013 FIBA Americas',
+    typeKey: 'confirmation',
+    signatory: 'Gino Rullo, Head of Operations, Club Competitions – FIBA Americas',
   },
   {
     key: 'GENERIC',
     file: 'GENERIC_TEMPLATE.docx',
-    type: 'Nominaci\u00f3n',
+    typeKey: 'nomination',
     signatory: 'Carlos Alves, Executive Director FIBA Americas',
   },
 ]
@@ -33,30 +35,32 @@ const BADGE_COLORS = {
 }
 
 export default function Templates() {
+  const { t } = useLanguage()
+
   return (
     <div>
-      <h2 className="text-2xl font-bold text-gray-900 mb-6">Templates</h2>
+      <h2 className="text-2xl font-bold text-gray-900 mb-6">{t('templates.title')}</h2>
       <div className="bg-white rounded-lg border overflow-hidden">
         <table className="w-full text-sm">
           <thead className="bg-gray-50 border-b">
             <tr>
-              <th className="text-left px-4 py-3 font-medium text-gray-500">Template</th>
-              <th className="text-left px-4 py-3 font-medium text-gray-500">Archivo</th>
-              <th className="text-left px-4 py-3 font-medium text-gray-500">Tipo</th>
-              <th className="text-left px-4 py-3 font-medium text-gray-500">Firmante</th>
+              <th className="text-left px-4 py-3 font-medium text-gray-500">{t('templates.template')}</th>
+              <th className="text-left px-4 py-3 font-medium text-gray-500">{t('templates.file')}</th>
+              <th className="text-left px-4 py-3 font-medium text-gray-500">{t('templates.type')}</th>
+              <th className="text-left px-4 py-3 font-medium text-gray-500">{t('templates.signatory')}</th>
             </tr>
           </thead>
           <tbody className="divide-y">
-            {TEMPLATES.map(t => (
-              <tr key={t.key} className="hover:bg-gray-50">
+            {TEMPLATES.map(tmpl => (
+              <tr key={tmpl.key} className="hover:bg-gray-50">
                 <td className="px-4 py-3">
-                  <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${BADGE_COLORS[t.key]}`}>
-                    {t.key}
+                  <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${BADGE_COLORS[tmpl.key]}`}>
+                    {tmpl.key}
                   </span>
                 </td>
-                <td className="px-4 py-3 font-mono text-xs">{t.file}</td>
-                <td className="px-4 py-3">{t.type}</td>
-                <td className="px-4 py-3 text-xs">{t.signatory}</td>
+                <td className="px-4 py-3 font-mono text-xs">{tmpl.file}</td>
+                <td className="px-4 py-3">{t(`templates.${tmpl.typeKey}`)}</td>
+                <td className="px-4 py-3 text-xs">{tmpl.signatory}</td>
               </tr>
             ))}
           </tbody>

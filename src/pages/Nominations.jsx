@@ -5,10 +5,12 @@ import {
   bulkGenerateNominations, deleteNomination, bulkDeleteNominations,
   getDownloadUrl,
 } from '../api/client'
+import { useLanguage } from '../i18n/LanguageContext'
 
 const BCLA_F4_ROUNDS = ['Semifinals', '3rd Place', 'Final']
 
 export default function Nominations() {
+  const { t } = useLanguage()
   const [nominations, setNominations] = useState([])
   const [personnel, setPersonnel] = useState([])
   const [competitions, setCompetitions] = useState([])
@@ -17,22 +19,12 @@ export default function Nominations() {
   const [loading, setLoading] = useState(false)
   const [bulkProgress, setBulkProgress] = useState(null)
 
-  // Form state
   const [form, setForm] = useState({
-    personnel_ids: [],
-    competition_id: '',
-    letter_date: '',
-    location: '',
-    venue: '',
-    arrival_date: '',
-    departure_date: '',
-    game_dates: [],
-    window_fee: '',
-    incidentals: '',
-    confirmation_deadline: '',
+    personnel_ids: [], competition_id: '', letter_date: '', location: '',
+    venue: '', arrival_date: '', departure_date: '', game_dates: [],
+    window_fee: '', incidentals: '', confirmation_deadline: '',
   })
 
-  // Table selection for bulk generate
   const [selectedIds, setSelectedIds] = useState(new Set())
 
   useEffect(() => { load() }, [])
@@ -140,14 +132,12 @@ export default function Nominations() {
       let createdIds = []
 
       if (form.personnel_ids.length > 1) {
-        // Bulk create
         const result = await createBulkNominations(payload)
         createdIds = result.nominations.map(n => n.id)
         if (result.errors?.length) {
-          alert(`Creadas: ${result.created}. Errores: ${result.errors.length}`)
+          alert(`${t('nominations.generated')}: ${result.created}. ${t('personnel.errors')}: ${result.errors.length}`)
         }
       } else if (form.personnel_ids.length === 1) {
-        // Single create
         const result = await createNomination({
           ...payload,
           personnel_id: form.personnel_ids[0],
@@ -162,7 +152,6 @@ export default function Nominations() {
         window_fee: '', incidentals: '', confirmation_deadline: '',
       })
 
-      // Auto-generate one by one (avoids Vercel 60s timeout)
       if (createdIds.length > 0) {
         let successCount = 0
         let errorCount = 0
@@ -170,7 +159,7 @@ export default function Nominations() {
 
         const conversionErrors = []
         for (let i = 0; i < createdIds.length; i++) {
-          setBulkProgress({ total: createdIds.length, done: i, current: `${i + 1} de ${createdIds.length}` })
+          setBulkProgress({ total: createdIds.length, done: i, current: `${i + 1} / ${createdIds.length}` })
           try {
             const result = await generateNomination(createdIds[i])
             console.log(`Generate [${i+1}]:`, JSON.stringify(result))
@@ -191,12 +180,12 @@ export default function Nominations() {
         }
 
         setBulkProgress(null)
-        let msg = `${successCount} de ${createdIds.length} nominaciones generadas.`
+        let msg = t('nominations.generatedCount', { success: successCount, total: createdIds.length })
         if (conversionErrors.length > 0) {
           msg += `\n\nPDF conversion failed: ${conversionErrors[0]}`
         }
         if (errorCount > 0) {
-          msg += `\n${errorCount} errores.`
+          msg += `\n${t('nominations.errorsCount', { count: errorCount })}`
         }
         alert(msg)
       }
@@ -214,17 +203,16 @@ export default function Nominations() {
       console.log('Generate result:', JSON.stringify(result))
 
       if (result.error || result.status === 'error') {
-        alert(`Error generando documento:\n${result.error}`)
+        alert(`${t('nominations.errorGenerating')}:\n${result.error}`)
         return
       }
 
       await load()
 
       if (result.conversion_error) {
-        alert(`Nota: No se pudo convertir a PDF (se gener\u00f3 .docx).\nError: ${result.conversion_error}`)
+        alert(`${t('nominations.conversionNote')}\nError: ${result.conversion_error}`)
       }
 
-      // Auto-download
       if (result.pdf_path) {
         downloadFile(result.pdf_path, result.format, id, result.filename)
       }
@@ -245,7 +233,7 @@ export default function Nominations() {
     let errorCount = 0
 
     for (let i = 0; i < ids.length; i++) {
-      setBulkProgress({ total: ids.length, done: i, current: `${i + 1} de ${ids.length}` })
+      setBulkProgress({ total: ids.length, done: i, current: `${i + 1} / ${ids.length}` })
       try {
         const result = await generateNomination(ids[i])
         if (result.status === 'generated') {
@@ -263,37 +251,35 @@ export default function Nominations() {
     setBulkProgress(null)
     await load()
     setSelectedIds(new Set())
-    alert(`${successCount} de ${ids.length} nominaciones generadas.${errorCount > 0 ? `\n${errorCount} errores.` : ''}`)
+    alert(t('nominations.generatedCount', { success: successCount, total: ids.length }) + (errorCount > 0 ? `\n${t('nominations.errorsCount', { count: errorCount })}` : ''))
     setLoading(false)
   }
 
   async function handleDeleteNomination(nom) {
-    if (!confirm(`¿Eliminar la nominación de ${nom.personnel?.name}?`)) return
+    if (!confirm(t('nominations.confirmDelete', { name: nom.personnel?.name }))) return
     try {
       await deleteNomination(nom.id)
       await load()
     } catch (err) {
-      alert('Error eliminando nominación: ' + (err.response?.data?.detail || err.message))
+      alert(t('nominations.errorDeleting') + ': ' + (err.response?.data?.detail || err.message))
     }
   }
 
   async function handleBulkDelete() {
     const ids = [...selectedIds]
     if (ids.length === 0) return
-    if (!confirm(`¿Eliminar ${ids.length} nominación(es)?`)) return
+    if (!confirm(t('nominations.confirmBulkDelete', { count: ids.length }))) return
     try {
       await bulkDeleteNominations(ids)
       setSelectedIds(new Set())
       await load()
     } catch (err) {
-      alert('Error eliminando nominaciones: ' + (err.response?.data?.detail || err.message))
+      alert(t('nominations.errorDeletingBulk') + ': ' + (err.response?.data?.detail || err.message))
     }
   }
 
   async function downloadFile(url, format, id, filename) {
-    const fileUrl = url.startsWith('http') ? url : getDownloadUrl(id)
     const defaultName = filename || `nomination.${format === 'pdf' ? 'pdf' : 'docx'}`
-    // Use our own proxy endpoint to avoid CORS and enable proper download filename
     const proxyUrl = `/api/nominations/${id}/download?filename=${encodeURIComponent(defaultName)}`
     const link = document.createElement('a')
     link.href = proxyUrl
@@ -320,7 +306,6 @@ export default function Nominations() {
     }
   }
 
-  // Searchable personnel dropdown filter
   const [personSearch, setPersonSearch] = useState('')
   const filteredPersonnel = personnel.filter(p =>
     p.name.toLowerCase().includes(personSearch.toLowerCase())
@@ -329,33 +314,25 @@ export default function Nominations() {
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
-        <h2 className="text-2xl font-bold text-gray-900">Nominaciones</h2>
+        <h2 className="text-2xl font-bold text-gray-900">{t('nominations.title')}</h2>
         <div className="flex gap-2">
           {selectedIds.size > 0 && (
             <>
-              <button
-                onClick={handleBulkDelete}
-                disabled={loading}
-                className="bg-red-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-red-700 disabled:opacity-50"
-              >
-                Eliminar {selectedIds.size}
+              <button onClick={handleBulkDelete} disabled={loading}
+                className="bg-red-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-red-700 disabled:opacity-50">
+                {t('nominations.deleteCount', { count: selectedIds.size })}
               </button>
-              <button
-                onClick={handleBulkGenerate}
-                disabled={loading}
-                className="bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-green-700 disabled:opacity-50"
-              >
+              <button onClick={handleBulkGenerate} disabled={loading}
+                className="bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-green-700 disabled:opacity-50">
                 {loading && bulkProgress
-                  ? `Generando ${bulkProgress.current}...`
-                  : `Generar ${selectedIds.size} seleccionadas`}
+                  ? t('nominations.generatingProgress', { current: bulkProgress.current })
+                  : t('nominations.generateCount', { count: selectedIds.size })}
               </button>
             </>
           )}
-          <button
-            onClick={() => setShowForm(true)}
-            className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700"
-          >
-            + Nueva nominaci&oacute;n
+          <button onClick={() => setShowForm(true)}
+            className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700">
+            {t('nominations.newNomination')}
           </button>
         </div>
       </div>
@@ -363,10 +340,10 @@ export default function Nominations() {
       {/* Stats */}
       <div className="grid grid-cols-4 gap-4 mb-6">
         {[
-          { label: 'Total', value: stats.total },
-          { label: 'Generadas', value: stats.generated },
-          { label: 'Borrador', value: stats.draft },
-          { label: 'Competencias', value: stats.comps },
+          { label: t('nominations.total'), value: stats.total },
+          { label: t('nominations.generated'), value: stats.generated },
+          { label: t('nominations.draft'), value: stats.draft },
+          { label: t('nominations.competitions'), value: stats.comps },
         ].map(s => (
           <div key={s.label} className="bg-white rounded-lg border p-4">
             <p className="text-sm text-gray-500">{s.label}</p>
@@ -376,13 +353,8 @@ export default function Nominations() {
       </div>
 
       {/* Search */}
-      <input
-        type="text"
-        placeholder="Buscar nominaciones..."
-        value={search}
-        onChange={e => setSearch(e.target.value)}
-        className="w-full md:w-80 mb-4 px-4 py-2 border rounded-lg text-sm"
-      />
+      <input type="text" placeholder={t('nominations.searchNominations')} value={search}
+        onChange={e => setSearch(e.target.value)} className="w-full md:w-80 mb-4 px-4 py-2 border rounded-lg text-sm" />
 
       {/* Table */}
       <div className="bg-white rounded-lg border overflow-hidden">
@@ -390,90 +362,64 @@ export default function Nominations() {
           <thead className="bg-gray-50 border-b">
             <tr>
               <th className="px-4 py-3 w-10">
-                <input
-                  type="checkbox"
-                  checked={filtered.length > 0 && selectedIds.size === filtered.length}
-                  onChange={toggleSelectAll}
-                  className="rounded"
-                />
+                <input type="checkbox" checked={filtered.length > 0 && selectedIds.size === filtered.length}
+                  onChange={toggleSelectAll} className="rounded" />
               </th>
-              <th className="text-left px-4 py-3 font-medium text-gray-500">Nombre</th>
-              <th className="text-left px-4 py-3 font-medium text-gray-500">Cargo</th>
-              <th className="text-left px-4 py-3 font-medium text-gray-500">Competencia</th>
-              <th className="text-left px-4 py-3 font-medium text-gray-500">Fecha carta</th>
-              <th className="text-left px-4 py-3 font-medium text-gray-500">Estado</th>
-              <th className="text-left px-4 py-3 font-medium text-gray-500">Acci&oacute;n</th>
+              <th className="text-left px-4 py-3 font-medium text-gray-500">{t('nominations.name')}</th>
+              <th className="text-left px-4 py-3 font-medium text-gray-500">{t('nominations.role')}</th>
+              <th className="text-left px-4 py-3 font-medium text-gray-500">{t('nominations.competition')}</th>
+              <th className="text-left px-4 py-3 font-medium text-gray-500">{t('nominations.letterDate')}</th>
+              <th className="text-left px-4 py-3 font-medium text-gray-500">{t('nominations.status')}</th>
+              <th className="text-left px-4 py-3 font-medium text-gray-500">{t('nominations.action')}</th>
             </tr>
           </thead>
           <tbody className="divide-y">
             {filtered.map(n => (
               <tr key={n.id} className={`hover:bg-gray-50 ${selectedIds.has(n.id) ? 'bg-blue-50' : ''}`}>
                 <td className="px-4 py-3">
-                  <input
-                    type="checkbox"
-                    checked={selectedIds.has(n.id)}
-                    onChange={() => toggleTableSelect(n.id)}
-                    className="rounded"
-                  />
+                  <input type="checkbox" checked={selectedIds.has(n.id)} onChange={() => toggleTableSelect(n.id)} className="rounded" />
                 </td>
                 <td className="px-4 py-3">{n.personnel?.name}</td>
                 <td className="px-4 py-3">
-                  <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${
-                    n.personnel?.role === 'VGO' ? 'bg-purple-100 text-purple-700' : 'bg-green-100 text-green-700'
-                  }`}>
+                  <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${n.personnel?.role === 'VGO' ? 'bg-purple-100 text-purple-700' : 'bg-green-100 text-green-700'}`}>
                     {n.personnel?.role}
                   </span>
                 </td>
                 <td className="px-4 py-3">{n.competitions?.name}</td>
-                <td className="px-4 py-3">{n.letter_date || '\u2014'}</td>
+                <td className="px-4 py-3">{n.letter_date || '—'}</td>
                 <td className="px-4 py-3">
-                  <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${
-                    n.status === 'generated' ? 'bg-blue-100 text-blue-700' : 'bg-yellow-100 text-yellow-700'
-                  }`}>
+                  <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${n.status === 'generated' ? 'bg-blue-100 text-blue-700' : 'bg-yellow-100 text-yellow-700'}`}>
                     {n.status}
                   </span>
                 </td>
                 <td className="px-4 py-3">
                   <div className="flex gap-2">
-                  {n.status === 'generated' ? (
-                    <>
-                      <a
-                        href={n.pdf_path?.startsWith('http') ? n.pdf_path : getDownloadUrl(n.id)}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="text-blue-600 hover:underline text-sm"
-                      >
-                        Descargar
-                      </a>
-                      <button
-                        onClick={() => handleGenerate(n.id)}
-                        disabled={loading}
-                        className="text-gray-400 hover:text-blue-600 hover:underline text-sm"
-                      >
-                        Regenerar
+                    {n.status === 'generated' ? (
+                      <>
+                        <a href={n.pdf_path?.startsWith('http') ? n.pdf_path : getDownloadUrl(n.id)}
+                          target="_blank" rel="noreferrer" className="text-blue-600 hover:underline text-sm">
+                          {t('nominations.download')}
+                        </a>
+                        <button onClick={() => handleGenerate(n.id)} disabled={loading}
+                          className="text-gray-400 hover:text-blue-600 hover:underline text-sm">
+                          {t('nominations.regenerate')}
+                        </button>
+                      </>
+                    ) : (
+                      <button onClick={() => handleGenerate(n.id)} disabled={loading}
+                        className="text-blue-600 hover:underline text-sm">
+                        {t('nominations.generate')}
                       </button>
-                    </>
-                  ) : (
-                    <button
-                      onClick={() => handleGenerate(n.id)}
-                      disabled={loading}
-                      className="text-blue-600 hover:underline text-sm"
-                    >
-                      Generar
+                    )}
+                    <button onClick={() => handleDeleteNomination(n)} className="text-red-600 hover:underline text-sm">
+                      {t('nominations.delete')}
                     </button>
-                  )}
-                  <button
-                    onClick={() => handleDeleteNomination(n)}
-                    className="text-red-600 hover:underline text-sm"
-                  >
-                    Eliminar
-                  </button>
-                </div>
+                  </div>
                 </td>
               </tr>
             ))}
             {filtered.length === 0 && (
-              <tr><td colSpan={7} className="px-4 py-8 text-center text-gray-400">No hay nominaciones</td></tr>
+              <tr><td colSpan={7} className="px-4 py-8 text-center text-gray-400">{t('nominations.noNominations')}</td></tr>
             )}
           </tbody>
         </table>
@@ -484,68 +430,46 @@ export default function Nominations() {
         <div className="fixed inset-0 bg-black/40 flex items-start justify-center pt-16 z-50">
           <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl max-h-[80vh] overflow-y-auto p-6">
             <div className="flex justify-between items-center mb-4">
-              <h3 className="text-lg font-bold">Nueva Nominaci&oacute;n</h3>
+              <h3 className="text-lg font-bold">{t('nominations.newNominationTitle')}</h3>
               <button onClick={() => setShowForm(false)} className="text-gray-400 hover:text-gray-600 text-xl">&times;</button>
             </div>
             <form onSubmit={handleSubmit} className="space-y-4">
               {/* Multi-person select */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Personas ({form.personnel_ids.length} seleccionadas)
+                  {t('nominations.persons')} ({form.personnel_ids.length} {t('nominations.selected')})
                 </label>
-                <input
-                  type="text"
-                  placeholder="Buscar persona..."
-                  value={personSearch}
-                  onChange={e => setPersonSearch(e.target.value)}
-                  className="w-full px-3 py-2 border rounded-lg text-sm mb-1"
-                />
+                <input type="text" placeholder={t('nominations.searchPerson')} value={personSearch}
+                  onChange={e => setPersonSearch(e.target.value)} className="w-full px-3 py-2 border rounded-lg text-sm mb-1" />
                 <div className="flex gap-2 mb-2">
                   <button type="button" onClick={selectAllFiltered} className="text-blue-600 hover:underline text-xs">
-                    Seleccionar todos
+                    {t('nominations.selectAll')}
                   </button>
                   <button type="button" onClick={clearSelection} className="text-gray-500 hover:underline text-xs">
-                    Limpiar
+                    {t('nominations.clear')}
                   </button>
                 </div>
                 <div className="border rounded-lg max-h-48 overflow-y-auto">
                   {filteredPersonnel.map(p => (
-                    <label
-                      key={p.id}
-                      className={`flex items-center gap-2 px-3 py-2 hover:bg-gray-50 cursor-pointer text-sm ${
-                        form.personnel_ids.includes(p.id) ? 'bg-blue-50' : ''
-                      }`}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={form.personnel_ids.includes(p.id)}
-                        onChange={() => togglePerson(p.id)}
-                        className="rounded"
-                      />
+                    <label key={p.id}
+                      className={`flex items-center gap-2 px-3 py-2 hover:bg-gray-50 cursor-pointer text-sm ${form.personnel_ids.includes(p.id) ? 'bg-blue-50' : ''}`}>
+                      <input type="checkbox" checked={form.personnel_ids.includes(p.id)} onChange={() => togglePerson(p.id)} className="rounded" />
                       <span>{p.name}</span>
-                      <span className={`ml-auto text-xs px-1.5 py-0.5 rounded ${
-                        p.role === 'VGO' ? 'bg-purple-100 text-purple-700' : 'bg-green-100 text-green-700'
-                      }`}>
-                        {p.role}
-                      </span>
+                      <span className={`ml-auto text-xs px-1.5 py-0.5 rounded ${p.role === 'VGO' ? 'bg-purple-100 text-purple-700' : 'bg-green-100 text-green-700'}`}>{p.role}</span>
                     </label>
                   ))}
                   {filteredPersonnel.length === 0 && (
-                    <p className="px-3 py-4 text-center text-gray-400 text-sm">No se encontraron personas</p>
+                    <p className="px-3 py-4 text-center text-gray-400 text-sm">{t('nominations.noPersonsFound')}</p>
                   )}
                 </div>
               </div>
 
               {/* Competition select */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Competencia</label>
-                <select
-                  required
-                  value={form.competition_id}
-                  onChange={e => handleCompChange(e.target.value)}
-                  className="w-full px-3 py-2 border rounded-lg text-sm"
-                >
-                  <option value="">Seleccionar...</option>
+                <label className="block text-sm font-medium text-gray-700 mb-1">{t('nominations.competition')}</label>
+                <select required value={form.competition_id} onChange={e => handleCompChange(e.target.value)}
+                  className="w-full px-3 py-2 border rounded-lg text-sm">
+                  <option value="">{t('nominations.selectCompetition')}</option>
                   {competitions.map(c => (
                     <option key={c.id} value={c.id}>{c.name} ({c.template_key})</option>
                   ))}
@@ -554,56 +478,36 @@ export default function Nominations() {
 
               {/* Letter date */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Fecha de carta</label>
-                <input
-                  type="date"
-                  value={form.letter_date}
-                  onChange={e => setForm(f => ({ ...f, letter_date: e.target.value }))}
-                  className="w-full px-3 py-2 border rounded-lg text-sm"
-                />
+                <label className="block text-sm font-medium text-gray-700 mb-1">{t('nominations.letterDate')}</label>
+                <input type="date" value={form.letter_date} onChange={e => setForm(f => ({ ...f, letter_date: e.target.value }))}
+                  className="w-full px-3 py-2 border rounded-lg text-sm" />
               </div>
 
-              {/* Location & Venue (BCLA/LSB only) */}
+              {/* Location & Venue */}
               {showLocationFields && (
                 <>
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">Location</label>
-                      <input
-                        type="text"
-                        value={form.location}
-                        onChange={e => setForm(f => ({ ...f, location: e.target.value }))}
-                        className="w-full px-3 py-2 border rounded-lg text-sm"
-                      />
+                      <input type="text" value={form.location} onChange={e => setForm(f => ({ ...f, location: e.target.value }))}
+                        className="w-full px-3 py-2 border rounded-lg text-sm" />
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Venue</label>
-                      <input
-                        type="text"
-                        value={form.venue}
-                        onChange={e => setForm(f => ({ ...f, venue: e.target.value }))}
-                        className="w-full px-3 py-2 border rounded-lg text-sm"
-                      />
+                      <label className="block text-sm font-medium text-gray-700 mb-1">{t('nominations.venue')}</label>
+                      <input type="text" value={form.venue} onChange={e => setForm(f => ({ ...f, venue: e.target.value }))}
+                        className="w-full px-3 py-2 border rounded-lg text-sm" />
                     </div>
                   </div>
                   <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Arrival Date</label>
-                      <input
-                        type="date"
-                        value={form.arrival_date}
-                        onChange={e => setForm(f => ({ ...f, arrival_date: e.target.value }))}
-                        className="w-full px-3 py-2 border rounded-lg text-sm"
-                      />
+                      <label className="block text-sm font-medium text-gray-700 mb-1">{t('nominations.arrivalDate')}</label>
+                      <input type="date" value={form.arrival_date} onChange={e => setForm(f => ({ ...f, arrival_date: e.target.value }))}
+                        className="w-full px-3 py-2 border rounded-lg text-sm" />
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Departure Date</label>
-                      <input
-                        type="date"
-                        value={form.departure_date}
-                        onChange={e => setForm(f => ({ ...f, departure_date: e.target.value }))}
-                        className="w-full px-3 py-2 border rounded-lg text-sm"
-                      />
+                      <label className="block text-sm font-medium text-gray-700 mb-1">{t('nominations.departureDate')}</label>
+                      <input type="date" value={form.departure_date} onChange={e => setForm(f => ({ ...f, departure_date: e.target.value }))}
+                        className="w-full px-3 py-2 border rounded-lg text-sm" />
                     </div>
                   </div>
                 </>
@@ -612,54 +516,37 @@ export default function Nominations() {
               {/* Game Dates */}
               {templateKey && templateKey !== 'BCLA_RS' && (
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Game Dates</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">{t('nominations.gameDates')}</label>
                   {form.game_dates.map((gd, idx) => (
                     <div key={idx} className="flex gap-2 mb-2 items-center">
                       {templateKey === 'BCLA_F4' ? (
                         <span className="text-sm text-gray-600 w-28">{gd.label}</span>
                       ) : (
-                        <input
-                          type="text"
-                          value={gd.label}
-                          onChange={e => updateGameDate(idx, 'label', e.target.value)}
-                          placeholder="Label"
-                          className="w-32 px-2 py-1.5 border rounded text-sm"
-                          readOnly={templateKey === 'LSB'}
-                        />
+                        <input type="text" value={gd.label} onChange={e => updateGameDate(idx, 'label', e.target.value)}
+                          placeholder="Label" className="w-32 px-2 py-1.5 border rounded text-sm" readOnly={templateKey === 'LSB'} />
                       )}
-                      <input
-                        type="date"
-                        value={gd.date}
-                        onChange={e => updateGameDate(idx, 'date', e.target.value)}
-                        className="flex-1 px-2 py-1.5 border rounded text-sm"
-                      />
+                      <input type="date" value={gd.date} onChange={e => updateGameDate(idx, 'date', e.target.value)}
+                        className="flex-1 px-2 py-1.5 border rounded text-sm" />
                       {templateKey !== 'BCLA_F4' && (
                         <button type="button" onClick={() => removeGameDate(idx)} className="text-red-400 hover:text-red-600 text-lg">&times;</button>
                       )}
                     </div>
                   ))}
                   {templateKey !== 'BCLA_F4' && (
-                    <button
-                      type="button"
-                      onClick={addGameDate}
-                      className="text-blue-600 hover:underline text-sm"
-                    >
-                      + Agregar fecha
+                    <button type="button" onClick={addGameDate} className="text-blue-600 hover:underline text-sm">
+                      {t('nominations.addDate')}
                     </button>
                   )}
                 </div>
               )}
 
-              {/* Confirmation Deadline (WCQ/GENERIC only) */}
+              {/* Confirmation Deadline */}
               {showDeadline && (
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Confirmation Deadline</label>
-                  <input
-                    type="date"
-                    value={form.confirmation_deadline}
+                  <label className="block text-sm font-medium text-gray-700 mb-1">{t('nominations.confirmationDeadline')}</label>
+                  <input type="date" value={form.confirmation_deadline}
                     onChange={e => setForm(f => ({ ...f, confirmation_deadline: e.target.value }))}
-                    className="w-full px-3 py-2 border rounded-lg text-sm"
-                  />
+                    className="w-full px-3 py-2 border rounded-lg text-sm" />
                 </div>
               )}
 
@@ -667,49 +554,33 @@ export default function Nominations() {
               <div className="grid grid-cols-3 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
-                    {showDeadline ? 'Per Game Fee' : 'Window Fee'}
+                    {showDeadline ? t('nominations.perGameFee') : t('nominations.windowFee')}
                   </label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={form.window_fee}
+                  <input type="number" step="0.01" value={form.window_fee}
                     onChange={e => setForm(f => ({ ...f, window_fee: e.target.value }))}
-                    className="w-full px-3 py-2 border rounded-lg text-sm"
-                  />
+                    className="w-full px-3 py-2 border rounded-lg text-sm" />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Incidentals</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={form.incidentals}
+                  <label className="block text-sm font-medium text-gray-700 mb-1">{t('nominations.incidentals')}</label>
+                  <input type="number" step="0.01" value={form.incidentals}
                     onChange={e => setForm(f => ({ ...f, incidentals: e.target.value }))}
-                    className="w-full px-3 py-2 border rounded-lg text-sm"
-                  />
+                    className="w-full px-3 py-2 border rounded-lg text-sm" />
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Total</label>
-                  <input
-                    type="text"
-                    value={total}
-                    readOnly
-                    className="w-full px-3 py-2 border rounded-lg text-sm bg-gray-50"
-                  />
+                  <input type="text" value={total} readOnly className="w-full px-3 py-2 border rounded-lg text-sm bg-gray-50" />
                 </div>
               </div>
 
               <div className="flex justify-end gap-3 pt-4">
                 <button type="button" onClick={() => setShowForm(false)} className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800">
-                  Cancelar
+                  {t('nominations.cancel')}
                 </button>
-                <button
-                  type="submit"
-                  disabled={loading || form.personnel_ids.length === 0}
-                  className="bg-blue-600 text-white px-6 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50"
-                >
-                  {loading ? 'Guardando...' : form.personnel_ids.length > 1
-                    ? `Crear ${form.personnel_ids.length} Nominaciones`
-                    : 'Crear Nominaci\u00f3n'}
+                <button type="submit" disabled={loading || form.personnel_ids.length === 0}
+                  className="bg-blue-600 text-white px-6 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50">
+                  {loading ? t('nominations.saving') : form.personnel_ids.length > 1
+                    ? t('nominations.createCount', { count: form.personnel_ids.length })
+                    : t('nominations.createOne')}
                 </button>
               </div>
             </form>

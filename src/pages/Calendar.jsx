@@ -4,12 +4,7 @@ import {
   createCalendarEvent, updateCalendarEvent, deleteCalendarEvent,
   assignStaff, removeAssignment, getPersonnel,
 } from '../api/client'
-
-const MONTHS = [
-  'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
-  'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre',
-]
-const DAYS = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb']
+import { useLanguage } from '../i18n/LanguageContext'
 
 const COMP_TYPES = [
   { key: 'All', label: 'All' },
@@ -31,20 +26,6 @@ const TEMPLATE_MAP = {
   '3x3': 'GENERIC', 'Other': 'GENERIC',
 }
 
-function formatDateRange(ev) {
-  if (ev.is_tbd || !ev.start_date) return null
-  const s = new Date(ev.start_date + 'T00:00:00'), e = new Date(ev.end_date + 'T00:00:00')
-  const sm = MONTHS[s.getMonth()]?.slice(0, 3), em = MONTHS[e.getMonth()]?.slice(0, 3)
-  if (s.getMonth() === e.getMonth()) return `${sm} ${s.getDate()}–${e.getDate()}`
-  return `${sm} ${s.getDate()} – ${em} ${e.getDate()}`
-}
-
-function formatFullDate(ev) {
-  if (ev.is_tbd || !ev.start_date) return 'Fechas por confirmar'
-  const opts = { day: 'numeric', month: 'long', year: 'numeric' }
-  return `${new Date(ev.start_date + 'T00:00:00').toLocaleDateString('es', opts)} – ${new Date(ev.end_date + 'T00:00:00').toLocaleDateString('es', opts)}`
-}
-
 function groupByMonth(events) {
   const months = Array.from({ length: 12 }, () => [])
   events.forEach(ev => {
@@ -54,7 +35,6 @@ function groupByMonth(events) {
   return months
 }
 
-// Calendar grid helpers
 function getDaysInMonth(year, month) { return new Date(year, month + 1, 0).getDate() }
 function getFirstDayOfMonth(year, month) { return new Date(year, month, 1).getDay() }
 
@@ -67,13 +47,17 @@ function getEventsForDay(events, year, month, day) {
 }
 
 export default function Calendar() {
+  const { t, lang } = useLanguage()
+  const MONTHS = t('months.names')
+  const MONTHS_SHORT = t('months.short')
+  const DAYS = t('months.days')
+
   const [competitions, setCompetitions] = useState([])
   const [filter, setFilter] = useState('All')
-  const [view, setView] = useState('year') // 'year' or 'month'
+  const [view, setView] = useState('year')
   const [calMonth, setCalMonth] = useState(new Date().getMonth())
   const [calYear, setCalYear] = useState(2026)
 
-  // Panel state
   const [selectedEvent, setSelectedEvent] = useState(null)
   const [panelData, setPanelData] = useState(null)
   const [panelLoading, setPanelLoading] = useState(false)
@@ -85,13 +69,27 @@ export default function Calendar() {
   const [showDropdown, setShowDropdown] = useState(false)
   const dropdownRef = useRef(null)
 
-  // Event form modal
   const [showEventModal, setShowEventModal] = useState(false)
   const [editingEvent, setEditingEvent] = useState(null)
   const [eventForm, setEventForm] = useState({
     name: '', short_name: '', competition_type: 'BCLA', template_key: 'BCLA_RS',
     year: 2026, month: 1, start_date: '', end_date: '', location: '', is_tbd: false,
   })
+
+  function formatDateRange(ev) {
+    if (ev.is_tbd || !ev.start_date) return null
+    const s = new Date(ev.start_date + 'T00:00:00'), e = new Date(ev.end_date + 'T00:00:00')
+    const sm = MONTHS_SHORT[s.getMonth()], em = MONTHS_SHORT[e.getMonth()]
+    if (s.getMonth() === e.getMonth()) return `${sm} ${s.getDate()}–${e.getDate()}`
+    return `${sm} ${s.getDate()} – ${em} ${e.getDate()}`
+  }
+
+  function formatFullDate(ev) {
+    if (ev.is_tbd || !ev.start_date) return t('calendar.tbd')
+    const locale = lang === 'es' ? 'es' : 'en-US'
+    const opts = { day: 'numeric', month: 'long', year: 'numeric' }
+    return `${new Date(ev.start_date + 'T00:00:00').toLocaleDateString(locale, opts)} – ${new Date(ev.end_date + 'T00:00:00').toLocaleDateString(locale, opts)}`
+  }
 
   useEffect(() => { load() }, [filter])
 
@@ -110,7 +108,6 @@ export default function Calendar() {
     } catch { setCompetitions([]) }
   }
 
-  // Panel
   async function openPanel(event) {
     setSelectedEvent(event)
     setPanelLoading(true)
@@ -135,20 +132,19 @@ export default function Calendar() {
       setPanelData(await getCalendarCompetition(panelData.id))
       setSelectedPerson(null); setStaffSearch('')
       await load()
-    } catch (err) { alert(err.response?.data?.detail || 'Error asignando staff') }
+    } catch (err) { alert(err.response?.data?.detail || t('calendar.errorAssigning')) }
     setAssigning(false)
   }
 
   async function handleRemoveAssignment(assignmentId) {
-    if (!confirm('¿Remover esta asignación?')) return
+    if (!confirm(t('calendar.confirmRemoveAssignment'))) return
     try {
       await removeAssignment(assignmentId)
       setPanelData(await getCalendarCompetition(panelData.id))
       await load()
-    } catch (err) { alert(err.response?.data?.detail || 'Error') }
+    } catch (err) { alert(err.response?.data?.detail || t('common.error')) }
   }
 
-  // Event CRUD
   function openCreateEvent() {
     setEditingEvent(null)
     setEventForm({
@@ -183,16 +179,16 @@ export default function Calendar() {
       }
       setShowEventModal(false)
       await load()
-    } catch (err) { alert(err.response?.data?.detail || 'Error guardando evento') }
+    } catch (err) { alert(err.response?.data?.detail || t('calendar.errorSaving')) }
   }
 
   async function handleDeleteEvent(ev) {
-    if (!confirm(`¿Eliminar "${ev.name}"?`)) return
+    if (!confirm(`${t('calendar.confirmDelete')} "${ev.name}"?`)) return
     try {
       await deleteCalendarEvent(ev.id)
       closePanel()
       await load()
-    } catch (err) { alert(err.response?.data?.detail || 'Error eliminando') }
+    } catch (err) { alert(err.response?.data?.detail || t('calendar.errorDeleting')) }
   }
 
   function handleTypeChange(type) {
@@ -205,7 +201,6 @@ export default function Calendar() {
     (p.name || '').toLowerCase().includes(staffSearch.toLowerCase())
   )
 
-  // Month view helpers
   const daysInMonth = getDaysInMonth(calYear, calMonth)
   const firstDay = getFirstDayOfMonth(calYear, calMonth)
   const calendarDays = []
@@ -224,10 +219,10 @@ export default function Calendar() {
   return (
     <div className="relative">
       <div className="flex items-center justify-between mb-4">
-        <h2 className="text-2xl font-bold text-gray-900">Calendario</h2>
+        <h2 className="text-2xl font-bold text-gray-900">{t('calendar.title')}</h2>
         <div className="flex gap-2">
           <button onClick={openCreateEvent} className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700">
-            + Nuevo evento
+            {t('calendar.newEvent')}
           </button>
         </div>
       </div>
@@ -237,11 +232,11 @@ export default function Calendar() {
         <div className="flex bg-gray-100 rounded-lg p-0.5">
           <button onClick={() => setView('year')}
             className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${view === 'year' ? 'bg-white shadow text-gray-900' : 'text-gray-500'}`}>
-            Año
+            {t('calendar.year')}
           </button>
           <button onClick={() => setView('month')}
             className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${view === 'month' ? 'bg-white shadow text-gray-900' : 'text-gray-500'}`}>
-            Mes
+            {t('calendar.month')}
           </button>
         </div>
 
@@ -260,13 +255,13 @@ export default function Calendar() {
 
       {/* Filter bar */}
       <div className="flex flex-wrap gap-2 mb-6">
-        {COMP_TYPES.map(t => (
-          <button key={t.key} onClick={() => setFilter(t.key)}
-            className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors border ${filter === t.key ? 'text-white border-transparent' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}
-            style={filter === t.key ? { backgroundColor: t.color || '#374151', borderColor: t.color || '#374151' } : {}}>
+        {COMP_TYPES.map(ct => (
+          <button key={ct.key} onClick={() => setFilter(ct.key)}
+            className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors border ${filter === ct.key ? 'text-white border-transparent' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}
+            style={filter === ct.key ? { backgroundColor: ct.color || '#374151', borderColor: ct.color || '#374151' } : {}}>
             <span className="inline-block w-1.5 h-1.5 rounded-full mr-1.5 align-middle"
-              style={{ backgroundColor: filter === t.key ? '#fff' : (t.color || '#9CA3AF') }} />
-            {t.label}
+              style={{ backgroundColor: filter === ct.key ? '#fff' : (ct.color || '#9CA3AF') }} />
+            {ct.label}
           </button>
         ))}
       </div>
@@ -280,10 +275,10 @@ export default function Calendar() {
               <div key={idx} className="bg-white rounded-lg border border-gray-200 overflow-hidden">
                 <div className="px-4 py-2.5 bg-gray-50 border-b border-gray-200 flex justify-between items-center">
                   <h3 className="text-sm font-semibold text-gray-700">{monthName}</h3>
-                  <span className="text-xs text-gray-400">{events.length} evento{events.length !== 1 ? 's' : ''}</span>
+                  <span className="text-xs text-gray-400">{events.length} {events.length !== 1 ? t('calendar.events') : t('calendar.event')}</span>
                 </div>
                 <div className="divide-y divide-gray-100">
-                  {events.length === 0 && <div className="px-4 py-6 text-center text-xs text-gray-300">Sin eventos</div>}
+                  {events.length === 0 && <div className="px-4 py-6 text-center text-xs text-gray-300">{t('calendar.noEvents')}</div>}
                   {events.map(ev => (
                     <button key={ev.id} onClick={() => openPanel(ev)}
                       className="w-full text-left px-4 py-2.5 hover:bg-gray-50 transition-colors flex items-center gap-3 group">
@@ -297,7 +292,7 @@ export default function Calendar() {
                             <span className="text-xs bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded font-medium">TBD</span>
                           )}
                           {ev.assignment_count > 0 && (
-                            <span className="text-xs text-blue-500">{ev.assignment_count} asignado{ev.assignment_count > 1 ? 's' : ''}</span>
+                            <span className="text-xs text-blue-500">{ev.assignment_count} {ev.assignment_count > 1 ? t('calendar.assignedPlural') : t('calendar.assigned')}</span>
                           )}
                         </div>
                       </div>
@@ -316,13 +311,11 @@ export default function Calendar() {
       {/* ===== MONTH VIEW (Calendar Grid) ===== */}
       {view === 'month' && (
         <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-          {/* Day headers */}
           <div className="grid grid-cols-7 border-b border-gray-200">
             {DAYS.map(d => (
               <div key={d} className="px-2 py-2 text-center text-xs font-medium text-gray-500 bg-gray-50">{d}</div>
             ))}
           </div>
-          {/* Day cells */}
           <div className="grid grid-cols-7">
             {calendarDays.map((day, i) => {
               if (day === null) return <div key={`empty-${i}`} className="min-h-[100px] border-b border-r border-gray-100 bg-gray-50/50" />
@@ -344,20 +337,19 @@ export default function Calendar() {
                       </button>
                     ))}
                     {dayEvents.length > 3 && (
-                      <div className="text-[10px] text-gray-400 px-1">+{dayEvents.length - 3} más</div>
+                      <div className="text-[10px] text-gray-400 px-1">+{dayEvents.length - 3} {t('calendar.more')}</div>
                     )}
                   </div>
                 </div>
               )
             })}
           </div>
-          {/* TBD events for this month */}
           {(() => {
             const tbdEvents = (monthGroups[calMonth] || []).filter(ev => ev.is_tbd)
             if (tbdEvents.length === 0) return null
             return (
               <div className="border-t border-gray-200 px-4 py-3">
-                <h4 className="text-xs font-semibold text-gray-500 mb-2">Fechas por confirmar</h4>
+                <h4 className="text-xs font-semibold text-gray-500 mb-2">{t('calendar.tbd')}</h4>
                 <div className="flex flex-wrap gap-2">
                   {tbdEvents.map(ev => (
                     <button key={ev.id} onClick={() => openPanel(ev)}
@@ -394,11 +386,11 @@ export default function Calendar() {
               </div>
               <div className="flex gap-1 ml-4">
                 <button onClick={() => { closePanel(); openEditEvent(panelData || selectedEvent) }}
-                  className="p-1.5 rounded hover:bg-gray-100 text-gray-400 hover:text-blue-600" title="Editar">
+                  className="p-1.5 rounded hover:bg-gray-100 text-gray-400 hover:text-blue-600" title={t('calendar.edit')}>
                   <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>
                 </button>
                 <button onClick={() => handleDeleteEvent(panelData || selectedEvent)}
-                  className="p-1.5 rounded hover:bg-red-50 text-gray-400 hover:text-red-600" title="Eliminar">
+                  className="p-1.5 rounded hover:bg-red-50 text-gray-400 hover:text-red-600" title={t('calendar.delete')}>
                   <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
                 </button>
                 <button onClick={closePanel}
@@ -409,14 +401,13 @@ export default function Calendar() {
             </div>
 
             {panelLoading ? (
-              <div className="flex-1 flex items-center justify-center"><span className="text-sm text-gray-400">Cargando...</span></div>
+              <div className="flex-1 flex items-center justify-center"><span className="text-sm text-gray-400">{t('common.loading')}</span></div>
             ) : (
               <div className="flex-1 overflow-auto p-6 space-y-6">
-                {/* Staff Asignado */}
                 <div>
-                  <h4 className="text-sm font-semibold text-gray-700 mb-3">Staff Asignado</h4>
+                  <h4 className="text-sm font-semibold text-gray-700 mb-3">{t('calendar.assignedStaff')}</h4>
                   {(!panelData?.assignments || panelData.assignments.length === 0) ? (
-                    <p className="text-sm text-gray-400">Sin asignaciones</p>
+                    <p className="text-sm text-gray-400">{t('calendar.noAssignments')}</p>
                   ) : (
                     <div className="space-y-2">
                       {panelData.assignments.map(a => (
@@ -426,7 +417,7 @@ export default function Calendar() {
                             <span className={`inline-block px-1.5 py-0.5 rounded text-xs font-medium ${a.role === 'VGO' ? 'bg-purple-100 text-purple-700' : 'bg-green-100 text-green-700'}`}>{a.role}</span>
                           </div>
                           <button onClick={() => handleRemoveAssignment(a.id)}
-                            className="p-1 rounded hover:bg-red-100 text-gray-400 hover:text-red-600" title="Remover">
+                            className="p-1 rounded hover:bg-red-100 text-gray-400 hover:text-red-600" title={t('common.remove')}>
                             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
                           </button>
                         </div>
@@ -435,12 +426,11 @@ export default function Calendar() {
                   )}
                 </div>
 
-                {/* Agregar Staff */}
                 <div>
-                  <h4 className="text-sm font-semibold text-gray-700 mb-3">Agregar Staff</h4>
+                  <h4 className="text-sm font-semibold text-gray-700 mb-3">{t('calendar.addStaff')}</h4>
                   <div className="space-y-3">
                     <div className="relative" ref={dropdownRef}>
-                      <input type="text" placeholder="Buscar personal..."
+                      <input type="text" placeholder={t('calendar.searchPersonnel')}
                         value={selectedPerson ? selectedPerson.name : staffSearch}
                         onChange={e => { setStaffSearch(e.target.value); setSelectedPerson(null); setShowDropdown(true) }}
                         onFocus={() => setShowDropdown(true)}
@@ -448,7 +438,7 @@ export default function Calendar() {
                       {showDropdown && staffSearch && !selectedPerson && (
                         <div className="absolute z-10 mt-1 w-full bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-auto">
                           {filteredPersonnel.length === 0 ? (
-                            <div className="px-3 py-2 text-sm text-gray-400">Sin resultados</div>
+                            <div className="px-3 py-2 text-sm text-gray-400">{t('calendar.noResults')}</div>
                           ) : filteredPersonnel.slice(0, 20).map(p => (
                             <button key={p.id} onClick={() => { setSelectedPerson(p); setStaffSearch(''); setShowDropdown(false) }}
                               className="w-full text-left px-3 py-2 text-sm hover:bg-blue-50 flex justify-between">
@@ -467,7 +457,7 @@ export default function Calendar() {
                       </select>
                       <button onClick={handleAssign} disabled={!selectedPerson || assigning}
                         className="flex-1 bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50">
-                        {assigning ? 'Agregando...' : 'Agregar'}
+                        {assigning ? t('calendar.adding') : t('calendar.add')}
                       </button>
                     </div>
                   </div>
@@ -478,7 +468,7 @@ export default function Calendar() {
             <div className="p-6 border-t border-gray-200">
               <button onClick={() => window.location.href = `/nominations?competition=${panelData?.id || selectedEvent.id}`}
                 className="w-full bg-gray-900 text-white px-4 py-2.5 rounded-lg text-sm font-medium hover:bg-gray-800">
-                Generar Nominaciones
+                {t('calendar.generateNominations')}
               </button>
             </div>
           </div>
@@ -489,28 +479,28 @@ export default function Calendar() {
       {showEventModal && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
           <div className="bg-white rounded-xl shadow-xl w-full max-w-lg p-6 max-h-[85vh] overflow-y-auto">
-            <h3 className="text-lg font-bold mb-4">{editingEvent ? 'Editar Evento' : 'Nuevo Evento'}</h3>
+            <h3 className="text-lg font-bold mb-4">{editingEvent ? t('calendar.editEvent') : t('calendar.newEventTitle')}</h3>
             <form onSubmit={handleEventSubmit} className="space-y-3">
-              <input required placeholder="Nombre del evento" value={eventForm.name}
+              <input required placeholder={t('calendar.eventName')} value={eventForm.name}
                 onChange={e => setEventForm(f => ({ ...f, name: e.target.value }))}
                 className="w-full px-3 py-2 border rounded-lg text-sm" />
-              <input placeholder="Nombre corto (opcional)" value={eventForm.short_name}
+              <input placeholder={t('calendar.shortName')} value={eventForm.short_name}
                 onChange={e => setEventForm(f => ({ ...f, short_name: e.target.value }))}
                 className="w-full px-3 py-2 border rounded-lg text-sm" />
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-medium text-gray-500 mb-1">Tipo de competencia</label>
+                  <label className="block text-xs font-medium text-gray-500 mb-1">{t('calendar.competitionType')}</label>
                   <select value={eventForm.competition_type} onChange={e => handleTypeChange(e.target.value)}
                     className="w-full px-3 py-2 border rounded-lg text-sm">
-                    {COMP_TYPES.filter(t => t.key !== 'All').map(t => (
-                      <option key={t.key} value={t.key}>{t.label}</option>
+                    {COMP_TYPES.filter(ct => ct.key !== 'All').map(ct => (
+                      <option key={ct.key} value={ct.key}>{ct.label}</option>
                     ))}
                     <option value="Other">Other</option>
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-gray-500 mb-1">Template</label>
+                  <label className="block text-xs font-medium text-gray-500 mb-1">{t('calendar.template')}</label>
                   <select value={eventForm.template_key} onChange={e => setEventForm(f => ({ ...f, template_key: e.target.value }))}
                     className="w-full px-3 py-2 border rounded-lg text-sm">
                     <option value="WCQ">WCQ</option>
@@ -524,20 +514,20 @@ export default function Calendar() {
 
               <div className="grid grid-cols-3 gap-3">
                 <div>
-                  <label className="block text-xs font-medium text-gray-500 mb-1">Mes</label>
+                  <label className="block text-xs font-medium text-gray-500 mb-1">{t('calendar.month')}</label>
                   <select value={eventForm.month} onChange={e => setEventForm(f => ({ ...f, month: parseInt(e.target.value) }))}
                     className="w-full px-3 py-2 border rounded-lg text-sm">
                     {MONTHS.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-gray-500 mb-1">Año</label>
+                  <label className="block text-xs font-medium text-gray-500 mb-1">{t('calendar.year')}</label>
                   <input type="number" value={eventForm.year} onChange={e => setEventForm(f => ({ ...f, year: e.target.value }))}
                     className="w-full px-3 py-2 border rounded-lg text-sm" />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-gray-500 mb-1">Ubicación</label>
-                  <input placeholder="Ciudad" value={eventForm.location}
+                  <label className="block text-xs font-medium text-gray-500 mb-1">{t('calendar.location')}</label>
+                  <input placeholder={t('calendar.city')} value={eventForm.location}
                     onChange={e => setEventForm(f => ({ ...f, location: e.target.value }))}
                     className="w-full px-3 py-2 border rounded-lg text-sm" />
                 </div>
@@ -547,19 +537,19 @@ export default function Calendar() {
                 <input type="checkbox" checked={eventForm.is_tbd}
                   onChange={e => setEventForm(f => ({ ...f, is_tbd: e.target.checked }))}
                   className="rounded" />
-                Fechas por confirmar (TBD)
+                {t('calendar.tbdCheckbox')}
               </label>
 
               {!eventForm.is_tbd && (
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-xs font-medium text-gray-500 mb-1">Fecha inicio</label>
+                    <label className="block text-xs font-medium text-gray-500 mb-1">{t('calendar.startDate')}</label>
                     <input type="date" value={eventForm.start_date}
                       onChange={e => setEventForm(f => ({ ...f, start_date: e.target.value }))}
                       className="w-full px-3 py-2 border rounded-lg text-sm" />
                   </div>
                   <div>
-                    <label className="block text-xs font-medium text-gray-500 mb-1">Fecha fin</label>
+                    <label className="block text-xs font-medium text-gray-500 mb-1">{t('calendar.endDate')}</label>
                     <input type="date" value={eventForm.end_date}
                       onChange={e => setEventForm(f => ({ ...f, end_date: e.target.value }))}
                       className="w-full px-3 py-2 border rounded-lg text-sm" />
@@ -568,9 +558,9 @@ export default function Calendar() {
               )}
 
               <div className="flex justify-end gap-3 pt-2">
-                <button type="button" onClick={() => setShowEventModal(false)} className="px-4 py-2 text-sm text-gray-600">Cancelar</button>
+                <button type="button" onClick={() => setShowEventModal(false)} className="px-4 py-2 text-sm text-gray-600">{t('calendar.cancel')}</button>
                 <button type="submit" className="bg-blue-600 text-white px-6 py-2 rounded-lg text-sm font-medium hover:bg-blue-700">
-                  {editingEvent ? 'Guardar' : 'Crear'}
+                  {editingEvent ? t('calendar.save') : t('calendar.create')}
                 </button>
               </div>
             </form>
