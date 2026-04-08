@@ -35,6 +35,12 @@ export const bulkDeleteNominations = (ids) => api.delete('/nominations/bulk/dele
 export const generateNomination = (id) => api.post(`/nominations/${id}/generate`).then(r => r.data)
 export const getDownloadUrl = (id) => `${api.defaults.baseURL}/nominations/${id}/download`
 
+// Calendar
+export const getCalendarCompetitions = (params) => api.get('/calendar/competitions', { params }).then(r => r.data)
+export const getCalendarCompetition = (id) => api.get(`/calendar/competitions/${id}`).then(r => r.data)
+export const assignStaff = (compId, data) => api.post(`/calendar/competitions/${compId}/assign`, data).then(r => r.data)
+export const removeAssignment = (assignmentId) => api.delete(`/calendar/assignments/${assignmentId}`).then(r => r.data)
+
 // Users
 export const getUsers = () => api.get('/users').then(r => r.data)
 export const createUser = (data) => api.post('/users', data).then(r => r.data)

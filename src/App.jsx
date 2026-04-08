@@ -6,8 +6,10 @@ import Personnel from './pages/Personnel'
 import Competitions from './pages/Competitions'
 import Templates from './pages/Templates'
 import Users from './pages/Users'
+import Calendar from './pages/Calendar'
 
 const navItems = [
+  { to: '/calendar', label: 'Calendario' },
   { to: '/nominations', label: 'Nominaciones' },
   { to: '/personnel', label: 'Personal' },
   { to: '/competitions', label: 'Competencias' },
@@ -64,7 +66,8 @@ export default function App() {
       <main className="flex-1 overflow-auto">
         <div className="p-8">
           <Routes>
-            <Route path="/" element={<Navigate to="/nominations" replace />} />
+            <Route path="/" element={<Navigate to="/calendar" replace />} />
+            <Route path="/calendar" element={<Calendar />} />
             <Route path="/nominations" element={<Nominations />} />
             <Route path="/personnel" element={<Personnel />} />
             <Route path="/competitions" element={<Competitions />} />
