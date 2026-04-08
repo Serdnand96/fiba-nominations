@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
+import { useNavigate } from 'react-router-dom'
 import {
   getCalendarCompetitions, getCalendarCompetition,
   createCalendarEvent, updateCalendarEvent, deleteCalendarEvent,
@@ -47,6 +48,7 @@ function getEventsForDay(events, year, month, day) {
 }
 
 export default function Calendar() {
+  const navigate = useNavigate()
   const { t, lang } = useLanguage()
   const MONTHS = t('months.names')
   const MONTHS_SHORT = t('months.short')
@@ -469,7 +471,7 @@ export default function Calendar() {
             )}
 
             <div className="p-6 border-t border-gray-200">
-              <button onClick={() => window.location.href = `/nominations?competition=${panelData?.id || selectedEvent.id}`}
+              <button onClick={() => navigate(`/nominations?competition=${panelData?.id || selectedEvent.id}`)}
                 className="w-full bg-gray-900 text-white px-4 py-2.5 rounded-lg text-sm font-medium hover:bg-gray-800">
                 {t('calendar.generateNominations')}
               </button>

@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import {
   getNominations, getPersonnel, getCompetitions,
   createNomination, createBulkNominations, generateNomination,
@@ -11,6 +12,7 @@ const BCLA_F4_ROUNDS = ['Semifinals', '3rd Place', 'Final']
 
 export default function Nominations() {
   const { t } = useLanguage()
+  const [searchParams, setSearchParams] = useSearchParams()
   const [nominations, setNominations] = useState([])
   const [personnel, setPersonnel] = useState([])
   const [competitions, setCompetitions] = useState([])
@@ -27,7 +29,23 @@ export default function Nominations() {
 
   const [selectedIds, setSelectedIds] = useState(new Set())
 
-  useEffect(() => { load() }, [])
+  // Auto-open form when arriving from calendar with ?competition=ID
+  const preselectedCompId = searchParams.get('competition')
+  useEffect(() => {
+    load().then(() => {
+      if (preselectedCompId) {
+        // Clear the query param so it doesn't re-trigger
+        setSearchParams({}, { replace: true })
+      }
+    })
+  }, [])
+
+  useEffect(() => {
+    if (preselectedCompId && competitions.length > 0 && !showForm) {
+      handleCompChange(preselectedCompId)
+      setShowForm(true)
+    }
+  }, [competitions, preselectedCompId])
 
   async function load() {
     const [n, p, c] = await Promise.all([getNominations(), getPersonnel(), getCompetitions()])
