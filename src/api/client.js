@@ -38,6 +38,9 @@ export const getDownloadUrl = (id) => `${api.defaults.baseURL}/nominations/${id}
 // Calendar
 export const getCalendarCompetitions = (params) => api.get('/calendar/competitions', { params }).then(r => r.data)
 export const getCalendarCompetition = (id) => api.get(`/calendar/competitions/${id}`).then(r => r.data)
+export const createCalendarEvent = (data) => api.post('/calendar/competitions', data).then(r => r.data)
+export const updateCalendarEvent = (id, data) => api.put(`/calendar/competitions/${id}`, data).then(r => r.data)
+export const deleteCalendarEvent = (id) => api.delete(`/calendar/competitions/${id}`).then(r => r.data)
 export const assignStaff = (compId, data) => api.post(`/calendar/competitions/${compId}/assign`, data).then(r => r.data)
 export const removeAssignment = (assignmentId) => api.delete(`/calendar/assignments/${assignmentId}`).then(r => r.data)
 

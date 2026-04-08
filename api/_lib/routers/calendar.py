@@ -13,6 +13,32 @@ class AssignmentCreate(BaseModel):
     role: str
 
 
+class CalendarEventCreate(BaseModel):
+    name: str
+    short_name: Optional[str] = None
+    competition_type: str
+    template_key: Optional[str] = None
+    year: int = 2026
+    month: int
+    start_date: Optional[str] = None
+    end_date: Optional[str] = None
+    location: Optional[str] = None
+    is_tbd: bool = False
+
+
+class CalendarEventUpdate(BaseModel):
+    name: Optional[str] = None
+    short_name: Optional[str] = None
+    competition_type: Optional[str] = None
+    template_key: Optional[str] = None
+    year: Optional[int] = None
+    month: Optional[int] = None
+    start_date: Optional[str] = None
+    end_date: Optional[str] = None
+    location: Optional[str] = None
+    is_tbd: Optional[bool] = None
+
+
 # ---------------------------------------------------------------------------
 # GET /calendar/competitions — list all competitions with assignment counts
 # ---------------------------------------------------------------------------
@@ -88,6 +114,42 @@ def get_competition_detail(competition_id: str):
     result = comp.data[0]
     result["assignments"] = staff
     return result
+
+
+# ---------------------------------------------------------------------------
+# POST /calendar/competitions — create new event
+# ---------------------------------------------------------------------------
+@router.post("/competitions")
+def create_event(data: CalendarEventCreate):
+    record = data.model_dump()
+    result = supabase.table("competitions").insert(record).execute()
+    return result.data[0]
+
+
+# ---------------------------------------------------------------------------
+# PUT /calendar/competitions/{id} — update event
+# ---------------------------------------------------------------------------
+@router.put("/competitions/{competition_id}")
+def update_event(competition_id: str, data: CalendarEventUpdate):
+    updates = {k: v for k, v in data.model_dump().items() if v is not None}
+    if not updates:
+        raise HTTPException(status_code=400, detail="No fields to update")
+    result = supabase.table("competitions").update(updates).eq("id", competition_id).execute()
+    if not result.data:
+        raise HTTPException(status_code=404, detail="Competition not found")
+    return result.data[0]
+
+
+# ---------------------------------------------------------------------------
+# DELETE /calendar/competitions/{id} — delete event
+# ---------------------------------------------------------------------------
+@router.delete("/competitions/{competition_id}")
+def delete_event(competition_id: str):
+    # Assignments cascade delete via FK
+    result = supabase.table("competitions").delete().eq("id", competition_id).execute()
+    if not result.data:
+        raise HTTPException(status_code=404, detail="Competition not found")
+    return {"ok": True}
 
 
 # ---------------------------------------------------------------------------
