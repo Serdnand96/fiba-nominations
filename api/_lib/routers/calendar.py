@@ -23,9 +23,9 @@ def list_competitions(
     type: Optional[str] = Query(None),
 ):
     # Fetch competitions
-    q = supabase.table("competitions").select("*").order("start_date", desc=True)
+    q = supabase.table("competitions").select("*").order("month")
     if type:
-        q = q.eq("type", type)
+        q = q.eq("competition_type", type)
     if month:
         q = q.eq("month", month)
     if year:
@@ -36,7 +36,7 @@ def list_competitions(
         return []
 
     # Fetch all assignments and count per competition_id
-    assignments = supabase.table("assignments").select("competition_id").execute().data
+    assignments = supabase.table("competition_assignments").select("competition_id").execute().data
     counts: Counter = Counter(a["competition_id"] for a in assignments)
 
     # Merge counts into each competition
@@ -62,7 +62,7 @@ def get_competition_detail(competition_id: str):
 
     # Fetch assignments for this competition
     assignments = (
-        supabase.table("assignments")
+        supabase.table("competition_assignments")
         .select("*")
         .eq("competition_id", competition_id)
         .execute()
@@ -107,7 +107,7 @@ def assign_staff(competition_id: str, data: AssignmentCreate):
 
     # Check for duplicate assignment
     existing = (
-        supabase.table("assignments")
+        supabase.table("competition_assignments")
         .select("id")
         .eq("competition_id", competition_id)
         .eq("personnel_id", data.personnel_id)
@@ -125,7 +125,7 @@ def assign_staff(competition_id: str, data: AssignmentCreate):
         "personnel_id": data.personnel_id,
         "role": data.role,
     }
-    result = supabase.table("assignments").insert(record).execute()
+    result = supabase.table("competition_assignments").insert(record).execute()
     return result.data[0]
 
 
@@ -135,7 +135,7 @@ def assign_staff(competition_id: str, data: AssignmentCreate):
 @router.delete("/assignments/{assignment_id}")
 def remove_assignment(assignment_id: str):
     result = (
-        supabase.table("assignments")
+        supabase.table("competition_assignments")
         .delete()
         .eq("id", assignment_id)
         .execute()
@@ -151,10 +151,10 @@ def remove_assignment(assignment_id: str):
 @router.get("/assignments")
 def list_assignments(competition_id: str = Query(...)):
     result = (
-        supabase.table("assignments")
+        supabase.table("competition_assignments")
         .select("*")
         .eq("competition_id", competition_id)
-        .order("created_at", desc=True)
+        .order("assigned_at", desc=True)
         .execute()
     )
     return result.data

@@ -51,26 +51,17 @@ function formatFullDate(event) {
 function groupByMonth(events) {
   const months = Array.from({ length: 12 }, () => [])
   events.forEach(ev => {
-    if (ev.is_tbd) {
-      // Put TBD events in month 0 (Enero) as fallback — or skip
-      // We'll show them in a special way
-      months[0].push(ev)
-      return
-    }
-    const m = new Date(ev.start_date).getMonth()
+    // Use the month field from DB (1-indexed), fallback to start_date
+    const m = ev.month ? ev.month - 1 : (ev.start_date ? new Date(ev.start_date).getMonth() : 0)
     months[m].push(ev)
   })
   return months
 }
 
 function assignmentChips(event) {
-  if (!event.assignments || event.assignments.length === 0) return null
-  const counts = {}
-  event.assignments.forEach(a => {
-    const role = a.role || 'Staff'
-    counts[role] = (counts[role] || 0) + 1
-  })
-  return Object.entries(counts).map(([role, count]) => `${count} ${role}`).join(' \u00B7 ')
+  const count = event.assignment_count || 0
+  if (count === 0) return null
+  return `${count} asignado${count > 1 ? 's' : ''}`
 }
 
 export default function Calendar() {
