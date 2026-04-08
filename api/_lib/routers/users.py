@@ -30,8 +30,8 @@ def list_users():
             {
                 "id": u.id,
                 "email": u.email,
-                "created_at": u.created_at.isoformat() if u.created_at else None,
-                "last_sign_in_at": u.last_sign_in_at.isoformat() if u.last_sign_in_at else None,
+                "created_at": u.created_at if u.created_at else None,
+                "last_sign_in_at": u.last_sign_in_at if u.last_sign_in_at else None,
             }
             for u in res
         ]
@@ -53,7 +53,7 @@ def create_user(payload: UserCreate):
         return {
             "id": res.user.id,
             "email": res.user.email,
-            "created_at": res.user.created_at.isoformat() if res.user.created_at else None,
+            "created_at": res.user.created_at if res.user.created_at else None,
         }
     except Exception as e:
         msg = str(e)
