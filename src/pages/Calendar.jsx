@@ -377,6 +377,9 @@ export default function Calendar() {
                     style={{ backgroundColor: getTypeColor(panelData?.competition_type || selectedEvent.competition_type) }}>
                     {panelData?.competition_type || selectedEvent.competition_type}
                   </span>
+                  <span className="inline-block px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-600">
+                    {panelData?.template_key || selectedEvent.template_key || 'GENERIC'}
+                  </span>
                 </div>
                 <h3 className="text-lg font-bold text-gray-900">{panelData?.name || selectedEvent.name}</h3>
                 <p className="text-sm text-gray-500 mt-1">{formatFullDate(panelData || selectedEvent)}</p>
