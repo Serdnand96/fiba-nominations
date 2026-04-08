@@ -28,24 +28,29 @@ export default function Nominations() {
   })
 
   const [selectedIds, setSelectedIds] = useState(new Set())
+  const [preselectedHandled, setPreselectedHandled] = useState(false)
+
+  useEffect(() => { load() }, [])
 
   // Auto-open form when arriving from calendar with ?competition=ID
-  const preselectedCompId = searchParams.get('competition')
   useEffect(() => {
-    load().then(() => {
-      if (preselectedCompId) {
-        // Clear the query param so it doesn't re-trigger
-        setSearchParams({}, { replace: true })
+    const compId = searchParams.get('competition')
+    if (compId && competitions.length > 0 && !preselectedHandled) {
+      // Pre-select the competition and open form
+      const comp = competitions.find(c => c.id === compId)
+      if (comp) {
+        const tk = comp.template_key || ''
+        let gameDates = []
+        if (tk === 'BCLA_F4') {
+          gameDates = BCLA_F4_ROUNDS.map(label => ({ label, date: '' }))
+        }
+        setForm(f => ({ ...f, competition_id: compId, game_dates: gameDates }))
+        setShowForm(true)
       }
-    })
-  }, [])
-
-  useEffect(() => {
-    if (preselectedCompId && competitions.length > 0 && !showForm) {
-      handleCompChange(preselectedCompId)
-      setShowForm(true)
+      setPreselectedHandled(true)
+      setSearchParams({}, { replace: true })
     }
-  }, [competitions, preselectedCompId])
+  }, [competitions, searchParams])
 
   async function load() {
     const [n, p, c] = await Promise.all([getNominations(), getPersonnel(), getCompetitions()])
