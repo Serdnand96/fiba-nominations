@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from api._lib.routers import personnel, competitions, nominations, users, calendar
+from api._lib.routers import personnel, competitions, nominations, users, calendar, transport
 
 app = FastAPI(title="FIBA Americas Nominations API")
 
@@ -18,6 +18,7 @@ app.include_router(competitions.router, prefix="/api")
 app.include_router(nominations.router, prefix="/api")
 app.include_router(users.router, prefix="/api")
 app.include_router(calendar.router, prefix="/api")
+app.include_router(transport.router, prefix="/api")
 
 
 @app.get("/api")

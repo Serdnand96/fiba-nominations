@@ -14,6 +14,7 @@ const translations = {
     competitions: { en: 'Competitions', es: 'Competencias' },
     templates: { en: 'Templates', es: 'Templates' },
     users: { en: 'Users', es: 'Usuarios' },
+    transport: { en: 'Transport', es: 'Transporte' },
   },
 
   // ===== Login =====

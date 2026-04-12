@@ -8,6 +8,7 @@ import Competitions from './pages/Competitions'
 import Templates from './pages/Templates'
 import Users from './pages/Users'
 import Calendar from './pages/Calendar'
+import Transport from './pages/Transport'
 
 export default function App() {
   const { user, loading } = useAuth()
@@ -32,6 +33,7 @@ export default function App() {
     { to: '/competitions', label: t('nav.competitions') },
     { to: '/templates', label: t('nav.templates') },
     { to: '/users', label: t('nav.users') },
+    { to: '/transport', label: t('nav.transport') },
   ]
 
   return (
@@ -76,6 +78,7 @@ export default function App() {
             <Route path="/competitions" element={<Competitions />} />
             <Route path="/templates" element={<Templates />} />
             <Route path="/users" element={<Users />} />
+            <Route path="/transport" element={<Transport />} />
           </Routes>
         </div>
       </main>
