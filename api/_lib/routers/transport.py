@@ -246,33 +246,63 @@ def check_conflicts(event_id: str = Query(...), date: str = Query(...)):
     for t in trips:
         vehicle_trips.setdefault(t["vehicle_id"], []).append(t)
 
-    # Check conflicts: drivers assigned to multiple vehicles with overlapping trips
+    # Check conflicts
     conflicts = []
+
+    # 1) Within-vehicle conflicts: overlapping trips on the same vehicle
+    for vid, vtrips in vehicle_trips.items():
+        if len(vtrips) < 2:
+            continue
+        trip_items = []
+        for t in vtrips:
+            trip_items.append({
+                "trip_id": t["id"],
+                "vehicle_id": vid,
+                "departure": t["departure_time"],
+                "arrival": t.get("arrival_time"),
+            })
+        for i in range(len(trip_items)):
+            for j in range(i + 1, len(trip_items)):
+                if _trips_overlap(trip_items[i], trip_items[j]):
+                    # Find which driver is assigned to this vehicle
+                    driver_id = None
+                    for a in vd:
+                        if a["vehicle_id"] == vid:
+                            driver_id = a["driver_id"]
+                            break
+                    conflicts.append({
+                        "driver_id": driver_id,
+                        "vehicle_id": vid,
+                        "trip_a": trip_items[i]["trip_id"],
+                        "trip_b": trip_items[j]["trip_id"],
+                        "type": "vehicle_overlap",
+                    })
+
+    # 2) Cross-vehicle conflicts: driver assigned to multiple vehicles with overlapping trips
     for driver_id, assigned_vids in driver_vehicles.items():
         if len(assigned_vids) < 2:
             continue
-        # Get all trips across all vehicles this driver is assigned to
         driver_trips = []
         for vid in assigned_vids:
             for t in vehicle_trips.get(vid, []):
-                dep = t["departure_time"]
-                arr = t.get("arrival_time")
                 driver_trips.append({
                     "trip_id": t["id"],
                     "vehicle_id": vid,
-                    "departure": dep,
-                    "arrival": arr,
+                    "departure": t["departure_time"],
+                    "arrival": t.get("arrival_time"),
                 })
-        # Check pairwise overlaps
         for i in range(len(driver_trips)):
             for j in range(i + 1, len(driver_trips)):
                 a = driver_trips[i]
                 b = driver_trips[j]
+                if a["vehicle_id"] == b["vehicle_id"]:
+                    continue  # Already caught above
                 if _trips_overlap(a, b):
                     conflicts.append({
                         "driver_id": driver_id,
                         "trip_a": a["trip_id"],
                         "trip_b": b["trip_id"],
+                        "type": "driver_overlap",
                     })
 
     return conflicts

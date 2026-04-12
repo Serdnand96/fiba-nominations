@@ -451,6 +451,45 @@ export default function Transport() {
             )}
           </div>
 
+          {/* Conflict alert panel */}
+          {conflicts.length > 0 && (
+            <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-2">
+              <div className="flex items-center gap-2 mb-2">
+                <svg className="w-5 h-5 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.072 16.5c-.77.833.192 2.5 1.732 2.5z" />
+                </svg>
+                <span className="font-bold text-red-800 text-sm">
+                  {lang === 'es' ? `${conflicts.length} conflicto(s) de desplazamiento detectado(s)` : `${conflicts.length} schedule conflict(s) detected`}
+                </span>
+              </div>
+              <ul className="space-y-1 text-xs text-red-700">
+                {conflicts.map((c, idx) => {
+                  const tripA = tripData.trips.find(t => t.id === c.trip_a)
+                  const tripB = tripData.trips.find(t => t.id === c.trip_b)
+                  const vehicleA = tripData.vehicles.find(v => v.id === tripA?.vehicle_id)
+                  const vehicleB = tripData.vehicles.find(v => v.id === tripB?.vehicle_id)
+                  const driverObj = drivers.find(d => d.id === c.driver_id)
+                  return (
+                    <li key={idx} className="flex items-start gap-1.5">
+                      <span className="inline-block w-1.5 h-1.5 rounded-full bg-red-500 mt-1.5 shrink-0" />
+                      <span>
+                        {c.type === 'vehicle_overlap' ? (
+                          lang === 'es'
+                            ? <><strong>{vehicleA?.name}</strong>: Viaje {tripA?.trip_number} ({formatTime(tripA?.departure_time)} — {tripA?.origin}→{tripA?.destination}) se solapa con Viaje {tripB?.trip_number} ({formatTime(tripB?.departure_time)} — {tripB?.origin}→{tripB?.destination}){driverObj ? `. Chofer: ${driverObj.name}` : ''}</>
+                            : <><strong>{vehicleA?.name}</strong>: Trip {tripA?.trip_number} ({formatTime(tripA?.departure_time)} — {tripA?.origin}→{tripA?.destination}) overlaps with Trip {tripB?.trip_number} ({formatTime(tripB?.departure_time)} — {tripB?.origin}→{tripB?.destination}){driverObj ? `. Driver: ${driverObj.name}` : ''}</>
+                        ) : (
+                          lang === 'es'
+                            ? <>Chofer <strong>{driverObj?.name || '?'}</strong>: Viaje en {vehicleA?.name} ({formatTime(tripA?.departure_time)}) se solapa con viaje en {vehicleB?.name} ({formatTime(tripB?.departure_time)})</>
+                            : <>Driver <strong>{driverObj?.name || '?'}</strong>: Trip on {vehicleA?.name} ({formatTime(tripA?.departure_time)}) overlaps with trip on {vehicleB?.name} ({formatTime(tripB?.departure_time)})</>
+                        )}
+                      </span>
+                    </li>
+                  )
+                })}
+              </ul>
+            </div>
+          )}
+
           {/* Vehicle blocks */}
           <div className="space-y-4">
             {Object.entries(tripsByVehicle).map(([vid, group]) => {
