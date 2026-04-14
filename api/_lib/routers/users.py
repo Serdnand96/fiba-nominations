@@ -6,7 +6,7 @@ from api._lib.database import supabase
 
 router = APIRouter(prefix="/users", tags=["users"])
 
-MODULES = ["calendar", "nominations", "personnel", "competitions", "templates", "users", "transport", "availability"]
+MODULES = ["calendar", "nominations", "personnel", "competitions", "templates", "users", "transport", "availability", "training"]
 
 
 def _get_admin_client():

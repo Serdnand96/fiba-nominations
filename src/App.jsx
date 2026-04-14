@@ -10,6 +10,7 @@ import Users from './pages/Users'
 import Calendar from './pages/Calendar'
 import Transport from './pages/Transport'
 import Availability from './pages/Availability'
+import Training from './pages/Training'
 
 function PermissionGuard({ module, children }) {
   const { hasView } = useAuth()
@@ -54,6 +55,7 @@ export default function App() {
     { to: '/users', label: t('nav.users'), module: 'users' },
     { to: '/availability', label: t('nav.availability'), module: 'availability' },
     { to: '/transport', label: t('nav.transport'), module: 'transport' },
+    { to: '/training', label: t('nav.training'), module: 'training' },
   ]
 
   // Filter nav items by permission
@@ -106,6 +108,7 @@ export default function App() {
             <Route path="/users" element={<PermissionGuard module="users"><Users /></PermissionGuard>} />
             <Route path="/availability" element={<PermissionGuard module="availability"><Availability /></PermissionGuard>} />
             <Route path="/transport" element={<PermissionGuard module="transport"><Transport /></PermissionGuard>} />
+            <Route path="/training" element={<PermissionGuard module="training"><Training /></PermissionGuard>} />
           </Routes>
         </div>
       </main>

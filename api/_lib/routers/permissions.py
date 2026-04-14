@@ -6,7 +6,7 @@ from api._lib.database import supabase
 
 router = APIRouter(prefix="/permissions", tags=["permissions"])
 
-MODULES = ["calendar", "nominations", "personnel", "competitions", "templates", "users", "transport", "availability"]
+MODULES = ["calendar", "nominations", "personnel", "competitions", "templates", "users", "transport", "availability", "training"]
 
 
 def is_superadmin(user_id: str) -> bool:

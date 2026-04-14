@@ -80,6 +80,45 @@ export const deleteTransportPassenger = (id) => api.delete(`/transport/passenger
 export const getUserPermissions = (userId) => api.get(`/permissions/${userId}`).then(r => r.data)
 export const updateUserPermissions = (userId, permissions) => api.put(`/permissions/${userId}`, { permissions }).then(r => r.data)
 
+// Training
+export const getTrainingSlots = (competitionId) => api.get('/training/slots', { params: { competition_id: competitionId } }).then(r => r.data)
+export const getTrainingSlotsByTeam = (competitionId, teamLabel) => api.get('/training/slots/by-team', { params: { competition_id: competitionId, team_label: teamLabel } }).then(r => r.data)
+export const getTrainingSlotsByDate = (competitionId, date) => api.get('/training/slots/by-date', { params: { competition_id: competitionId, date } }).then(r => r.data)
+export const getTrainingSlotsByPersonnel = (personnelId, competitionId) => api.get('/training/slots/by-personnel', { params: { personnel_id: personnelId, competition_id: competitionId } }).then(r => r.data)
+export const createTrainingSlot = (data) => api.post('/training/slots', data).then(r => r.data)
+export const updateTrainingSlot = (id, data) => api.put(`/training/slots/${id}`, data).then(r => r.data)
+export const deleteTrainingSlot = (id) => api.delete(`/training/slots/${id}`).then(r => r.data)
+export const bulkCreateTrainingSlots = (data) => api.post('/training/slots/bulk', data).then(r => r.data)
+export const createTrainingAssignment = (data) => api.post('/training/assignments', data).then(r => r.data)
+export const deleteTrainingAssignment = (id) => api.delete(`/training/assignments/${id}`).then(r => r.data)
+export const checkTrainingConflicts = (personnelId, slotId) => api.get('/training/conflicts', { params: { personnel_id: personnelId, slot_id: slotId } }).then(r => r.data)
+export const importTrainingExcel = (file, competitionId, sport = 'Basketball') => {
+  const form = new FormData()
+  form.append('file', file)
+  form.append('competition_id', competitionId)
+  form.append('sport', sport)
+  return api.post('/training/import/excel', form, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+    timeout: 120000,
+  }).then(r => r.data)
+}
+export const previewTrainingExcel = (file, competitionId, sport = 'Basketball') => {
+  const form = new FormData()
+  form.append('file', file)
+  form.append('competition_id', competitionId)
+  form.append('sport', sport)
+  return api.post('/training/import/preview', form, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  }).then(r => r.data)
+}
+export const getTrainingPdfUrl = (type, params) => {
+  const base = api.defaults.baseURL
+  if (type === 'competition') return `${base}/training/export/pdf/competition/${params.competition_id}`
+  if (type === 'daily') return `${base}/training/export/pdf/daily?competition_id=${params.competition_id}&date=${params.date}`
+  if (type === 'team') return `${base}/training/export/pdf/team?competition_id=${params.competition_id}&team_label=${encodeURIComponent(params.team_label)}`
+  return ''
+}
+
 // Availability
 export const getPersonnelAvailability = (personnelId) => api.get(`/availability/personnel/${personnelId}`).then(r => r.data)
 export const getCompetitionAvailability = (competitionId) => api.get(`/availability/competition/${competitionId}`).then(r => r.data)
