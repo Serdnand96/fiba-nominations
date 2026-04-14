@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import {
   getCalendarCompetitions, getCalendarCompetition,
   createCalendarEvent, updateCalendarEvent, deleteCalendarEvent,
-  assignStaff, removeAssignment, getPersonnel,
+  assignStaff, removeAssignment, getPersonnel, getCompetitionAvailability,
 } from '../api/client'
 import { useLanguage } from '../i18n/LanguageContext'
 
@@ -71,6 +71,8 @@ export default function Calendar() {
   const [showDropdown, setShowDropdown] = useState(false)
   const dropdownRef = useRef(null)
 
+  const [availabilityMap, setAvailabilityMap] = useState({}) // personnel_id -> { status, notes }
+
   const [showEventModal, setShowEventModal] = useState(false)
   const [editingEvent, setEditingEvent] = useState(null)
   const [eventForm, setEventForm] = useState({
@@ -115,12 +117,16 @@ export default function Calendar() {
     setPanelLoading(true)
     setStaffSearch(''); setSelectedPerson(null); setSelectedRole('VGO')
     try {
-      const [detail, pers] = await Promise.all([
+      const [detail, pers, avail] = await Promise.all([
         getCalendarCompetition(event.id),
         personnel.length ? Promise.resolve(personnel) : getPersonnel(),
+        getCompetitionAvailability(event.id).catch(() => []),
       ])
       setPanelData(detail)
       if (!personnel.length) setPersonnel(pers)
+      const aMap = {}
+      for (const a of avail) { aMap[a.personnel_id] = { status: a.status, notes: a.notes } }
+      setAvailabilityMap(aMap)
     } catch { setPanelData(event) }
     setPanelLoading(false)
   }
@@ -196,6 +202,17 @@ export default function Calendar() {
   function handleTypeChange(type) {
     const tmpl = TEMPLATE_MAP[type] || 'GENERIC'
     setEventForm(f => ({ ...f, competition_type: type, template_key: tmpl }))
+  }
+
+  function AvailDot({ personnelId }) {
+    const avail = availabilityMap[personnelId]
+    const status = avail?.status || 'no_data'
+    const colors = { available: 'bg-green-500', unavailable: 'bg-red-500', restricted: 'bg-yellow-500', no_data: 'bg-gray-300' }
+    const labels = { available: t('availability.available'), unavailable: t('availability.unavailable'), restricted: t('availability.restricted'), no_data: t('availability.noData') }
+    return (
+      <span className={`inline-block w-2.5 h-2.5 rounded-full ${colors[status]} shrink-0`}
+        title={avail?.notes ? `${labels[status]}: ${avail.notes}` : labels[status]} />
+    )
   }
 
   const monthGroups = groupByMonth(competitions)
@@ -418,6 +435,7 @@ export default function Calendar() {
                       {panelData.assignments.map(a => (
                         <div key={a.id} className="flex items-center justify-between bg-gray-50 rounded-lg px-3 py-2">
                           <div className="flex items-center gap-2">
+                            {a.personnel?.id && a.role === 'TD' && <AvailDot personnelId={a.personnel.id} />}
                             <span className="text-sm font-medium text-gray-800">{a.personnel?.name || 'Staff'}</span>
                             <span className={`inline-block px-1.5 py-0.5 rounded text-xs font-medium ${a.role === 'VGO' ? 'bg-purple-100 text-purple-700' : 'bg-green-100 text-green-700'}`}>{a.role}</span>
                           </div>
@@ -446,8 +464,11 @@ export default function Calendar() {
                             <div className="px-3 py-2 text-sm text-gray-400">{t('calendar.noResults')}</div>
                           ) : filteredPersonnel.slice(0, 20).map(p => (
                             <button key={p.id} onClick={() => { setSelectedPerson(p); setStaffSearch(''); setShowDropdown(false) }}
-                              className="w-full text-left px-3 py-2 text-sm hover:bg-blue-50 flex justify-between">
-                              <span>{p.name}</span>
+                              className="w-full text-left px-3 py-2 text-sm hover:bg-blue-50 flex items-center justify-between">
+                              <div className="flex items-center gap-2">
+                                {p.role === 'TD' && <AvailDot personnelId={p.id} />}
+                                <span>{p.name}</span>
+                              </div>
                               <span className={`text-xs px-1.5 py-0.5 rounded ${p.role === 'VGO' ? 'bg-purple-100 text-purple-700' : 'bg-green-100 text-green-700'}`}>{p.role}</span>
                             </button>
                           ))}

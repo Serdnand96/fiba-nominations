@@ -1,6 +1,13 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
-import { getPersonnel, createPersonnel, updatePersonnel, deletePersonnel, importPersonnel } from '../api/client'
+import { getPersonnel, createPersonnel, updatePersonnel, deletePersonnel, importPersonnel,
+  getPersonnelAvailability, getCompetitions, createAvailability, updateAvailability, deleteAvailability } from '../api/client'
 import { useLanguage } from '../i18n/LanguageContext'
+
+const STATUS_STYLES = {
+  available: 'bg-green-100 text-green-700',
+  unavailable: 'bg-red-100 text-red-700',
+  restricted: 'bg-yellow-100 text-yellow-700',
+}
 
 export default function Personnel() {
   const { t } = useLanguage()
@@ -11,6 +18,18 @@ export default function Personnel() {
   const [editing, setEditing] = useState(null)
   const [showImport, setShowImport] = useState(false)
   const [form, setForm] = useState({ name: '', email: '', country: '', phone: '', passport: '', role: 'VGO' })
+
+  // Availability panel
+  const [availPerson, setAvailPerson] = useState(null)
+  const [availRecords, setAvailRecords] = useState([])
+  const [availLoading, setAvailLoading] = useState(false)
+  const [competitions, setCompetitions] = useState([])
+  const [showAvailModal, setShowAvailModal] = useState(false)
+  const [editingAvail, setEditingAvail] = useState(null)
+  const [availForm, setAvailForm] = useState({
+    type: 'event_specific', competition_id: '', start_date: '', end_date: '',
+    status: 'available', notes: '',
+  })
 
   useEffect(() => { load() }, [])
 
@@ -53,11 +72,13 @@ export default function Personnel() {
     if (!confirm(t('personnel.confirmDelete', { name: person.name }))) return
     try {
       await deletePersonnel(person.id)
+      if (availPerson?.id === person.id) setAvailPerson(null)
       await load()
     } catch (err) {
       if (err.response?.status === 409) {
         if (confirm(t('personnel.confirmForceDelete', { detail: err.response.data.detail }))) {
           await deletePersonnel(person.id, true)
+          if (availPerson?.id === person.id) setAvailPerson(null)
           await load()
         }
       } else {
@@ -75,6 +96,73 @@ export default function Personnel() {
     }
     setShowModal(false)
     await load()
+  }
+
+  // --- Availability panel ---
+  async function openAvailPanel(person) {
+    setAvailPerson(person)
+    setAvailLoading(true)
+    try {
+      const [records, comps] = await Promise.all([
+        getPersonnelAvailability(person.id),
+        competitions.length ? Promise.resolve(competitions) : getCompetitions(),
+      ])
+      setAvailRecords(records)
+      if (!competitions.length) setCompetitions(comps)
+    } catch { setAvailRecords([]) }
+    setAvailLoading(false)
+  }
+
+  function openCreateAvail() {
+    setEditingAvail(null)
+    setAvailForm({ type: 'event_specific', competition_id: '', start_date: '', end_date: '', status: 'available', notes: '' })
+    setShowAvailModal(true)
+  }
+
+  function openEditAvail(rec) {
+    setEditingAvail(rec)
+    setAvailForm({
+      type: rec.type,
+      competition_id: rec.competition_id || '',
+      start_date: rec.start_date || '',
+      end_date: rec.end_date || '',
+      status: rec.status,
+      notes: rec.notes || '',
+    })
+    setShowAvailModal(true)
+  }
+
+  async function handleAvailSubmit(e) {
+    e.preventDefault()
+    const payload = { ...availForm, personnel_id: availPerson.id }
+    if (payload.type === 'event_specific') {
+      payload.start_date = null; payload.end_date = null
+    } else {
+      payload.competition_id = null
+    }
+    try {
+      if (editingAvail) {
+        await updateAvailability(editingAvail.id, availForm)
+      } else {
+        await createAvailability(payload)
+      }
+      setShowAvailModal(false)
+      const records = await getPersonnelAvailability(availPerson.id)
+      setAvailRecords(records)
+    } catch (err) {
+      alert(err.response?.data?.detail || t('availability.errorSaving'))
+    }
+  }
+
+  async function handleDeleteAvail(rec) {
+    if (!confirm(t('availability.confirmDelete'))) return
+    try {
+      await deleteAvailability(rec.id)
+      const records = await getPersonnelAvailability(availPerson.id)
+      setAvailRecords(records)
+    } catch (err) {
+      alert(err.response?.data?.detail || t('availability.errorDeleting'))
+    }
   }
 
   return (
@@ -132,7 +220,7 @@ export default function Personnel() {
           </thead>
           <tbody className="divide-y">
             {filtered.map(p => (
-              <tr key={p.id} className="hover:bg-gray-50">
+              <tr key={p.id} className={`hover:bg-gray-50 ${availPerson?.id === p.id ? 'bg-blue-50' : ''}`}>
                 <td className="px-4 py-3 font-medium">{p.name}</td>
                 <td className="px-4 py-3">
                   <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${p.role === 'VGO' ? 'bg-purple-100 text-purple-700' : 'bg-green-100 text-green-700'}`}>{p.role}</span>
@@ -142,6 +230,9 @@ export default function Personnel() {
                 <td className="px-4 py-3">{p.passport || '—'}</td>
                 <td className="px-4 py-3">
                   <div className="flex gap-3">
+                    {p.role === 'TD' && (
+                      <button onClick={() => openAvailPanel(p)} className="text-green-600 hover:underline text-sm">{t('availability.tab')}</button>
+                    )}
                     <button onClick={() => openEdit(p)} className="text-blue-600 hover:underline text-sm">{t('personnel.edit')}</button>
                     <button onClick={() => handleDelete(p)} className="text-red-600 hover:underline text-sm">{t('personnel.delete')}</button>
                   </div>
@@ -181,8 +272,152 @@ export default function Personnel() {
         </div>
       )}
 
+      {/* Availability Side Panel */}
+      {availPerson && (
+        <>
+          <div className="fixed inset-0 bg-black/40 z-40" onClick={() => setAvailPerson(null)} />
+          <div className="fixed top-0 right-0 h-full w-full max-w-lg bg-white shadow-2xl z-50 flex flex-col animate-slide-in">
+            <div className="flex items-start justify-between p-6 border-b border-gray-200">
+              <div>
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="inline-block px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-700">TD</span>
+                  {availPerson.country && <span className="text-xs text-gray-400">{availPerson.country}</span>}
+                </div>
+                <h3 className="text-lg font-bold text-gray-900">{availPerson.name}</h3>
+                <p className="text-sm text-gray-500">{availPerson.email}</p>
+              </div>
+              <button onClick={() => setAvailPerson(null)} className="p-1.5 rounded hover:bg-gray-100 text-gray-400 hover:text-gray-600">
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+              </button>
+            </div>
+
+            <div className="flex items-center justify-between px-6 py-3 border-b bg-gray-50">
+              <h4 className="text-sm font-semibold text-gray-700">{t('availability.tab')}</h4>
+              <button onClick={openCreateAvail} className="bg-blue-600 text-white px-3 py-1.5 rounded-lg text-xs font-medium hover:bg-blue-700">
+                {t('availability.addAvailability')}
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-auto p-6">
+              {availLoading ? (
+                <div className="text-center py-8 text-gray-400 text-sm">{t('common.loading')}</div>
+              ) : availRecords.length === 0 ? (
+                <div className="text-center py-8 text-gray-400 text-sm">{t('availability.noRecords')}</div>
+              ) : (
+                <div className="space-y-3">
+                  {availRecords.map(rec => (
+                    <div key={rec.id} className="border rounded-lg p-3">
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center gap-2">
+                          <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${rec.type === 'event_specific' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-700'}`}>
+                            {rec.type === 'event_specific' ? t('availability.eventSpecific') : t('availability.dateRange')}
+                          </span>
+                          <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${STATUS_STYLES[rec.status]}`}>
+                            {t(`availability.${rec.status}`)}
+                          </span>
+                        </div>
+                        <div className="flex gap-2">
+                          <button onClick={() => openEditAvail(rec)} className="text-blue-600 hover:underline text-xs">{t('availability.edit')}</button>
+                          <button onClick={() => handleDeleteAvail(rec)} className="text-red-600 hover:underline text-xs">{t('availability.delete')}</button>
+                        </div>
+                      </div>
+                      <div className="text-sm text-gray-700">
+                        {rec.type === 'event_specific' ? (
+                          <span>{rec.competition?.name || rec.competition_id}</span>
+                        ) : (
+                          <span>{rec.start_date} — {rec.end_date}</span>
+                        )}
+                      </div>
+                      {rec.notes && <p className="text-xs text-gray-500 mt-1">{rec.notes}</p>}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* Availability Modal */}
+      {showAvailModal && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[60]">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6">
+            <h3 className="text-lg font-bold mb-4">
+              {editingAvail ? t('availability.editAvailability') : t('availability.newAvailability')}
+            </h3>
+            <form onSubmit={handleAvailSubmit} className="space-y-3">
+              {/* Type toggle */}
+              <div className="flex bg-gray-100 rounded-lg p-0.5">
+                <button type="button" onClick={() => setAvailForm(f => ({ ...f, type: 'event_specific' }))}
+                  className={`flex-1 px-3 py-2 rounded-md text-xs font-medium transition-colors ${availForm.type === 'event_specific' ? 'bg-white shadow text-gray-900' : 'text-gray-500'}`}>
+                  {t('availability.eventSpecific')}
+                </button>
+                <button type="button" onClick={() => setAvailForm(f => ({ ...f, type: 'date_range' }))}
+                  className={`flex-1 px-3 py-2 rounded-md text-xs font-medium transition-colors ${availForm.type === 'date_range' ? 'bg-white shadow text-gray-900' : 'text-gray-500'}`}>
+                  {t('availability.dateRange')}
+                </button>
+              </div>
+
+              {/* Conditional fields */}
+              {availForm.type === 'event_specific' ? (
+                <select required value={availForm.competition_id} onChange={e => setAvailForm(f => ({ ...f, competition_id: e.target.value }))}
+                  className="w-full px-3 py-2 border rounded-lg text-sm">
+                  <option value="">{t('availability.selectCompetition')}</option>
+                  {competitions
+                    .sort((a, b) => (a.start_date || '').localeCompare(b.start_date || ''))
+                    .map(c => <option key={c.id} value={c.id}>{c.name} {c.year ? `(${c.year})` : ''}</option>)}
+                </select>
+              ) : (
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-500 mb-1">{t('availability.startDate')}</label>
+                    <input required type="date" value={availForm.start_date}
+                      onChange={e => setAvailForm(f => ({ ...f, start_date: e.target.value }))}
+                      className="w-full px-3 py-2 border rounded-lg text-sm" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-500 mb-1">{t('availability.endDate')}</label>
+                    <input required type="date" value={availForm.end_date}
+                      onChange={e => setAvailForm(f => ({ ...f, end_date: e.target.value }))}
+                      className="w-full px-3 py-2 border rounded-lg text-sm" />
+                  </div>
+                </div>
+              )}
+
+              {/* Status */}
+              <div>
+                <label className="block text-xs font-medium text-gray-500 mb-1">{t('availability.status')}</label>
+                <select value={availForm.status} onChange={e => setAvailForm(f => ({ ...f, status: e.target.value }))}
+                  className="w-full px-3 py-2 border rounded-lg text-sm">
+                  <option value="available">{t('availability.available')}</option>
+                  <option value="unavailable">{t('availability.unavailable')}</option>
+                  <option value="restricted">{t('availability.restricted')}</option>
+                </select>
+              </div>
+
+              {/* Notes */}
+              <textarea placeholder={t('availability.notesPlaceholder')} value={availForm.notes}
+                onChange={e => setAvailForm(f => ({ ...f, notes: e.target.value }))}
+                className="w-full px-3 py-2 border rounded-lg text-sm" rows={2} />
+
+              <div className="flex justify-end gap-3 pt-2">
+                <button type="button" onClick={() => setShowAvailModal(false)} className="px-4 py-2 text-sm text-gray-600">{t('availability.cancel')}</button>
+                <button type="submit" className="bg-blue-600 text-white px-6 py-2 rounded-lg text-sm font-medium hover:bg-blue-700">
+                  {t('availability.save')}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       {/* Import View */}
       {showImport && <ImportView onClose={() => { setShowImport(false); load() }} />}
+
+      <style>{`
+        @keyframes slideIn { from { transform: translateX(100%); } to { transform: translateX(0); } }
+        .animate-slide-in { animation: slideIn 0.25s ease-out; }
+      `}</style>
     </div>
   )
 }

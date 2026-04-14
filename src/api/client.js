@@ -75,3 +75,10 @@ export const getTransportPassengers = (eventId) => api.get('/transport/passenger
 export const createTransportPassenger = (data) => api.post('/transport/passengers', data).then(r => r.data)
 export const bulkCreateTransportPassengers = (passengers) => api.post('/transport/passengers/bulk', passengers).then(r => r.data)
 export const deleteTransportPassenger = (id) => api.delete(`/transport/passengers/${id}`).then(r => r.data)
+
+// Availability
+export const getPersonnelAvailability = (personnelId) => api.get(`/availability/personnel/${personnelId}`).then(r => r.data)
+export const getCompetitionAvailability = (competitionId) => api.get(`/availability/competition/${competitionId}`).then(r => r.data)
+export const createAvailability = (data) => api.post('/availability', data).then(r => r.data)
+export const updateAvailability = (id, data) => api.put(`/availability/${id}`, data).then(r => r.data)
+export const deleteAvailability = (id) => api.delete(`/availability/${id}`).then(r => r.data)
