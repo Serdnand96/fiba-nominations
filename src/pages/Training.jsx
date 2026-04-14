@@ -366,20 +366,20 @@ export default function Training() {
         <div className="text-center py-12 text-gray-400 text-sm">{t('training.selectCompetition')}</div>
       ) : (
         <>
-          {tab === 'byDay' && <ByDayView />}
-          {tab === 'byTeam' && <ByTeamView />}
-          {tab === 'byTd' && <ByTdView />}
+          {tab === 'byDay' && ByDayView()}
+          {tab === 'byTeam' && ByTeamView()}
+          {tab === 'byTd' && ByTdView()}
         </>
       )}
 
       {/* Slot Create/Edit Modal */}
-      {showSlotModal && <SlotModal />}
+      {showSlotModal && SlotModal()}
 
       {/* Assignment Modal */}
-      {assignSlot && <AssignmentModal />}
+      {assignSlot && AssignmentModal()}
 
       {/* Import Modal */}
-      {showImport && <ImportModal />}
+      {showImport && ImportModal()}
 
       {/* Toast */}
       {toast && (
