@@ -7,11 +7,14 @@ import {
   getDownloadUrl,
 } from '../api/client'
 import { useLanguage } from '../i18n/LanguageContext'
+import { useAuth } from '../contexts/AuthContext'
 
 const BCLA_F4_ROUNDS = ['Semifinals', '3rd Place', 'Final']
 
 export default function Nominations() {
   const { t } = useLanguage()
+  const { hasEdit } = useAuth()
+  const canEdit = hasEdit('nominations')
   const [searchParams, setSearchParams] = useSearchParams()
   const [nominations, setNominations] = useState([])
   const [personnel, setPersonnel] = useState([])
@@ -338,26 +341,28 @@ export default function Nominations() {
     <div>
       <div className="flex items-center justify-between mb-6">
         <h2 className="text-2xl font-bold text-gray-900">{t('nominations.title')}</h2>
-        <div className="flex gap-2">
-          {selectedIds.size > 0 && (
-            <>
-              <button onClick={handleBulkDelete} disabled={loading}
-                className="bg-red-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-red-700 disabled:opacity-50">
-                {t('nominations.deleteCount', { count: selectedIds.size })}
-              </button>
-              <button onClick={handleBulkGenerate} disabled={loading}
-                className="bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-green-700 disabled:opacity-50">
-                {loading && bulkProgress
-                  ? t('nominations.generatingProgress', { current: bulkProgress.current })
-                  : t('nominations.generateCount', { count: selectedIds.size })}
-              </button>
-            </>
-          )}
-          <button onClick={() => setShowForm(true)}
-            className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700">
-            {t('nominations.newNomination')}
-          </button>
-        </div>
+        {canEdit && (
+          <div className="flex gap-2">
+            {selectedIds.size > 0 && (
+              <>
+                <button onClick={handleBulkDelete} disabled={loading}
+                  className="bg-red-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-red-700 disabled:opacity-50">
+                  {t('nominations.deleteCount', { count: selectedIds.size })}
+                </button>
+                <button onClick={handleBulkGenerate} disabled={loading}
+                  className="bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-green-700 disabled:opacity-50">
+                  {loading && bulkProgress
+                    ? t('nominations.generatingProgress', { current: bulkProgress.current })
+                    : t('nominations.generateCount', { count: selectedIds.size })}
+                </button>
+              </>
+            )}
+            <button onClick={() => setShowForm(true)}
+              className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700">
+              {t('nominations.newNomination')}
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Stats */}
@@ -417,26 +422,30 @@ export default function Nominations() {
                 </td>
                 <td className="px-4 py-3">
                   <div className="flex gap-2">
-                    {n.status === 'generated' ? (
+                    {n.status === 'generated' && (
+                      <a href={n.pdf_path?.startsWith('http') ? n.pdf_path : getDownloadUrl(n.id)}
+                        target="_blank" rel="noreferrer" className="text-blue-600 hover:underline text-sm">
+                        {t('nominations.download')}
+                      </a>
+                    )}
+                    {canEdit && (
                       <>
-                        <a href={n.pdf_path?.startsWith('http') ? n.pdf_path : getDownloadUrl(n.id)}
-                          target="_blank" rel="noreferrer" className="text-blue-600 hover:underline text-sm">
-                          {t('nominations.download')}
-                        </a>
-                        <button onClick={() => handleGenerate(n.id)} disabled={loading}
-                          className="text-gray-400 hover:text-blue-600 hover:underline text-sm">
-                          {t('nominations.regenerate')}
+                        {n.status === 'generated' ? (
+                          <button onClick={() => handleGenerate(n.id)} disabled={loading}
+                            className="text-gray-400 hover:text-blue-600 hover:underline text-sm">
+                            {t('nominations.regenerate')}
+                          </button>
+                        ) : (
+                          <button onClick={() => handleGenerate(n.id)} disabled={loading}
+                            className="text-blue-600 hover:underline text-sm">
+                            {t('nominations.generate')}
+                          </button>
+                        )}
+                        <button onClick={() => handleDeleteNomination(n)} className="text-red-600 hover:underline text-sm">
+                          {t('nominations.delete')}
                         </button>
                       </>
-                    ) : (
-                      <button onClick={() => handleGenerate(n.id)} disabled={loading}
-                        className="text-blue-600 hover:underline text-sm">
-                        {t('nominations.generate')}
-                      </button>
                     )}
-                    <button onClick={() => handleDeleteNomination(n)} className="text-red-600 hover:underline text-sm">
-                      {t('nominations.delete')}
-                    </button>
                   </div>
                 </td>
               </tr>

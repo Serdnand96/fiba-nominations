@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { getCompetitions, createCompetition, updateCompetition, deleteCompetition, getNominations } from '../api/client'
 import { useLanguage } from '../i18n/LanguageContext'
+import { useAuth } from '../contexts/AuthContext'
 
 const TEMPLATE_BADGES = {
   WCQ: 'bg-red-100 text-red-700',
@@ -12,6 +13,8 @@ const TEMPLATE_BADGES = {
 
 export default function Competitions() {
   const { t } = useLanguage()
+  const { hasEdit } = useAuth()
+  const canEdit = hasEdit('competitions')
   const [competitions, setCompetitions] = useState([])
   const [nominations, setNominations] = useState([])
   const [showModal, setShowModal] = useState(false)
@@ -74,9 +77,11 @@ export default function Competitions() {
     <div>
       <div className="flex items-center justify-between mb-6">
         <h2 className="text-2xl font-bold text-gray-900">{t('competitions.title')}</h2>
-        <button onClick={openCreate} className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700">
-          {t('competitions.newCompetition')}
-        </button>
+        {canEdit && (
+          <button onClick={openCreate} className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700">
+            {t('competitions.newCompetition')}
+          </button>
+        )}
       </div>
 
       <div className="bg-white rounded-lg border overflow-hidden">
@@ -102,10 +107,12 @@ export default function Competitions() {
                 <td className="px-4 py-3">{c.year || '—'}</td>
                 <td className="px-4 py-3">{nomCount(c.id)}</td>
                 <td className="px-4 py-3">
-                  <div className="flex gap-3">
-                    <button onClick={() => openEdit(c)} className="text-blue-600 hover:underline text-sm">{t('competitions.edit')}</button>
-                    <button onClick={() => handleDelete(c)} className="text-red-600 hover:underline text-sm">{t('competitions.delete')}</button>
-                  </div>
+                  {canEdit && (
+                    <div className="flex gap-3">
+                      <button onClick={() => openEdit(c)} className="text-blue-600 hover:underline text-sm">{t('competitions.edit')}</button>
+                      <button onClick={() => handleDelete(c)} className="text-red-600 hover:underline text-sm">{t('competitions.delete')}</button>
+                    </div>
+                  )}
                 </td>
               </tr>
             ))}

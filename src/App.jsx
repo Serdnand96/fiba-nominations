@@ -11,8 +11,26 @@ import Calendar from './pages/Calendar'
 import Transport from './pages/Transport'
 import Availability from './pages/Availability'
 
+function PermissionGuard({ module, children }) {
+  const { hasView } = useAuth()
+  const { t } = useLanguage()
+
+  if (!hasView(module)) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <div className="text-center">
+          <div className="text-4xl text-gray-300 mb-4">403</div>
+          <p className="text-gray-500 text-sm">{t('permissions.accessDenied')}</p>
+        </div>
+      </div>
+    )
+  }
+
+  return children
+}
+
 export default function App() {
-  const { user, loading } = useAuth()
+  const { user, loading, hasView, isSuperadmin } = useAuth()
   const { t } = useLanguage()
 
   if (loading) {
@@ -27,16 +45,22 @@ export default function App() {
     return <Login />
   }
 
-  const navItems = [
-    { to: '/calendar', label: t('nav.calendar') },
-    { to: '/nominations', label: t('nav.nominations') },
-    { to: '/personnel', label: t('nav.personnel') },
-    { to: '/competitions', label: t('nav.competitions') },
-    { to: '/templates', label: t('nav.templates') },
-    { to: '/users', label: t('nav.users') },
-    { to: '/availability', label: t('nav.availability') },
-    { to: '/transport', label: t('nav.transport') },
+  const allNavItems = [
+    { to: '/calendar', label: t('nav.calendar'), module: 'calendar' },
+    { to: '/nominations', label: t('nav.nominations'), module: 'nominations' },
+    { to: '/personnel', label: t('nav.personnel'), module: 'personnel' },
+    { to: '/competitions', label: t('nav.competitions'), module: 'competitions' },
+    { to: '/templates', label: t('nav.templates'), module: 'templates' },
+    { to: '/users', label: t('nav.users'), module: 'users' },
+    { to: '/availability', label: t('nav.availability'), module: 'availability' },
+    { to: '/transport', label: t('nav.transport'), module: 'transport' },
   ]
+
+  // Filter nav items by permission
+  const navItems = allNavItems.filter(item => hasView(item.module))
+
+  // Find first accessible route for default redirect
+  const defaultRoute = navItems.length > 0 ? navItems[0].to : '/calendar'
 
   return (
     <div className="flex h-screen bg-gray-50">
@@ -73,15 +97,15 @@ export default function App() {
       <main className="flex-1 overflow-auto">
         <div className="p-8">
           <Routes>
-            <Route path="/" element={<Navigate to="/calendar" replace />} />
-            <Route path="/calendar" element={<Calendar />} />
-            <Route path="/nominations" element={<Nominations />} />
-            <Route path="/personnel" element={<Personnel />} />
-            <Route path="/competitions" element={<Competitions />} />
-            <Route path="/templates" element={<Templates />} />
-            <Route path="/users" element={<Users />} />
-            <Route path="/availability" element={<Availability />} />
-            <Route path="/transport" element={<Transport />} />
+            <Route path="/" element={<Navigate to={defaultRoute} replace />} />
+            <Route path="/calendar" element={<PermissionGuard module="calendar"><Calendar /></PermissionGuard>} />
+            <Route path="/nominations" element={<PermissionGuard module="nominations"><Nominations /></PermissionGuard>} />
+            <Route path="/personnel" element={<PermissionGuard module="personnel"><Personnel /></PermissionGuard>} />
+            <Route path="/competitions" element={<PermissionGuard module="competitions"><Competitions /></PermissionGuard>} />
+            <Route path="/templates" element={<PermissionGuard module="templates"><Templates /></PermissionGuard>} />
+            <Route path="/users" element={<PermissionGuard module="users"><Users /></PermissionGuard>} />
+            <Route path="/availability" element={<PermissionGuard module="availability"><Availability /></PermissionGuard>} />
+            <Route path="/transport" element={<PermissionGuard module="transport"><Transport /></PermissionGuard>} />
           </Routes>
         </div>
       </main>
@@ -114,11 +138,16 @@ function LanguageSwitcher() {
 }
 
 function LogoutButton() {
-  const { signOut, user } = useAuth()
+  const { signOut, user, isSuperadmin } = useAuth()
   const { t } = useLanguage()
   return (
     <div>
-      <p className="text-xs text-gray-500 truncate mb-2">{user.email}</p>
+      <div className="flex items-center gap-2 mb-2">
+        <p className="text-xs text-gray-500 truncate">{user.email}</p>
+        {isSuperadmin && (
+          <span className="inline-block px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-700 shrink-0">SA</span>
+        )}
+      </div>
       <button
         onClick={signOut}
         className="w-full text-left text-sm text-gray-600 hover:text-red-600 transition-colors"

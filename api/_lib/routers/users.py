@@ -2,7 +2,11 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 import os
 
+from api._lib.database import supabase
+
 router = APIRouter(prefix="/users", tags=["users"])
+
+MODULES = ["calendar", "nominations", "personnel", "competitions", "templates", "users", "transport", "availability"]
 
 
 def _get_admin_client():
@@ -22,16 +26,22 @@ class UserCreate(BaseModel):
 
 @router.get("/")
 def list_users():
-    """List all auth users."""
+    """List all auth users with superadmin flag."""
     try:
         client = _get_admin_client()
         res = client.auth.admin.list_users()
+
+        # Fetch all superadmin flags
+        profiles = supabase.table("user_profiles").select("user_id,is_superadmin").execute().data
+        sa_set = {p["user_id"] for p in profiles if p.get("is_superadmin")}
+
         users = [
             {
                 "id": u.id,
                 "email": u.email,
                 "created_at": u.created_at if u.created_at else None,
                 "last_sign_in_at": u.last_sign_in_at if u.last_sign_in_at else None,
+                "is_superadmin": u.id in sa_set,
             }
             for u in res
         ]
@@ -50,8 +60,22 @@ def create_user(payload: UserCreate):
             "password": payload.password,
             "email_confirm": True,
         })
+        new_user_id = res.user.id
+
+        # Create default permissions (all false) for the new user
+        for m in MODULES:
+            try:
+                supabase.table("user_permissions").insert({
+                    "user_id": new_user_id,
+                    "module": m,
+                    "can_view": False,
+                    "can_edit": False,
+                }).execute()
+            except Exception:
+                pass  # Ignore if already exists
+
         return {
-            "id": res.user.id,
+            "id": new_user_id,
             "email": res.user.email,
             "created_at": res.user.created_at if res.user.created_at else None,
         }

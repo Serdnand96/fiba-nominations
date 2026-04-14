@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
 import { useLanguage } from '../i18n/LanguageContext'
+import { useAuth } from '../contexts/AuthContext'
 import {
   getTransportEvents, getTransportVehicles, getTransportDrivers,
   getTransportTrips, createTransportTrip, updateTransportTrip, deleteTransportTrip,
@@ -25,6 +26,8 @@ function todayStr() {
 
 export default function Transport() {
   const { t, lang } = useLanguage()
+  const { hasEdit } = useAuth()
+  const canEdit = hasEdit('transport')
   const [tab, setTab] = useState('schedule') // schedule | config | passengers
   const [eventId] = useState(DEFAULT_EVENT_ID)
   const [date, setDate] = useState(todayStr())
@@ -504,25 +507,27 @@ export default function Transport() {
                         <span className="text-blue-200 text-xs">
                           {lang === 'es' ? 'Chofer' : 'Driver'}: {driver.name} {driver.phone ? `(${driver.phone})` : ''}
                         </span>
-                      ) : (
+                      ) : canEdit ? (
                         <button onClick={() => setAssigningVehicle(assigningVehicle === vid ? null : vid)}
                           className="text-blue-200 hover:text-white text-xs underline">
                           {lang === 'es' ? 'Asignar chofer' : 'Assign driver'}
                         </button>
-                      )}
+                      ) : null}
                     </div>
-                    <div className="flex gap-2">
-                      {driver && (
-                        <button onClick={() => setAssigningVehicle(assigningVehicle === vid ? null : vid)}
-                          className="text-blue-200 hover:text-white text-xs">
-                          {lang === 'es' ? 'Cambiar' : 'Change'}
+                    {canEdit && (
+                      <div className="flex gap-2">
+                        {driver && (
+                          <button onClick={() => setAssigningVehicle(assigningVehicle === vid ? null : vid)}
+                            className="text-blue-200 hover:text-white text-xs">
+                            {lang === 'es' ? 'Cambiar' : 'Change'}
+                          </button>
+                        )}
+                        <button onClick={() => openCreateTrip(vid)}
+                          className="bg-blue-700 hover:bg-blue-600 text-white px-3 py-1 rounded text-xs font-medium">
+                          + {lang === 'es' ? 'Viaje' : 'Trip'}
                         </button>
-                      )}
-                      <button onClick={() => openCreateTrip(vid)}
-                        className="bg-blue-700 hover:bg-blue-600 text-white px-3 py-1 rounded text-xs font-medium">
-                        + {lang === 'es' ? 'Viaje' : 'Trip'}
-                      </button>
-                    </div>
+                      </div>
+                    )}
                   </div>
 
                   {/* Driver assignment dropdown */}
@@ -578,14 +583,16 @@ export default function Transport() {
                           </td>
                           <td className="px-4 py-2 text-xs text-gray-500">{trip.contact}</td>
                           <td className="px-4 py-2">
-                            <div className="flex gap-2">
-                              <button onClick={() => openEditTrip(trip)} className="text-blue-600 hover:underline text-xs">
-                                {lang === 'es' ? 'Editar' : 'Edit'}
-                              </button>
-                              <button onClick={() => handleDeleteTrip(trip)} className="text-red-600 hover:underline text-xs">
-                                {lang === 'es' ? 'Eliminar' : 'Delete'}
-                              </button>
-                            </div>
+                            {canEdit && (
+                              <div className="flex gap-2">
+                                <button onClick={() => openEditTrip(trip)} className="text-blue-600 hover:underline text-xs">
+                                  {lang === 'es' ? 'Editar' : 'Edit'}
+                                </button>
+                                <button onClick={() => handleDeleteTrip(trip)} className="text-red-600 hover:underline text-xs">
+                                  {lang === 'es' ? 'Eliminar' : 'Delete'}
+                                </button>
+                              </div>
+                            )}
                           </td>
                         </tr>
                       ))}

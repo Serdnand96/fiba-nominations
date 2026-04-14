@@ -298,6 +298,23 @@ const translations = {
     errorLoading: { en: 'Error loading availability', es: 'Error cargando disponibilidad' },
   },
 
+  // ===== Permissions =====
+  permissions: {
+    title: { en: 'Permissions', es: 'Permisos' },
+    canView: { en: 'Can View', es: 'Puede ver' },
+    canEdit: { en: 'Can Edit', es: 'Puede editar' },
+    savePermissions: { en: 'Save Permissions', es: 'Guardar permisos' },
+    saving: { en: 'Saving...', es: 'Guardando...' },
+    permissionsUpdated: { en: 'Permissions updated', es: 'Permisos actualizados' },
+    cannotEditSuperadmin: { en: 'Cannot edit superadmin permissions', es: 'No se pueden editar permisos de superadmin' },
+    accessDenied: { en: 'Access denied', es: 'Acceso denegado' },
+    superadmin: { en: 'Superadmin', es: 'Superadmin' },
+    module: { en: 'Module', es: 'Módulo' },
+    editPermissions: { en: 'Permissions', es: 'Permisos' },
+    cancel: { en: 'Cancel', es: 'Cancelar' },
+    errorSaving: { en: 'Error saving permissions', es: 'Error guardando permisos' },
+  },
+
   // ===== Common =====
   common: {
     error: { en: 'Error', es: 'Error' },

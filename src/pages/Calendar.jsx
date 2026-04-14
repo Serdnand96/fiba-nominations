@@ -6,6 +6,7 @@ import {
   assignStaff, removeAssignment, getPersonnel, getCompetitionAvailability,
 } from '../api/client'
 import { useLanguage } from '../i18n/LanguageContext'
+import { useAuth } from '../contexts/AuthContext'
 
 const COMP_TYPES = [
   { key: 'All', label: 'All' },
@@ -50,6 +51,8 @@ function getEventsForDay(events, year, month, day) {
 export default function Calendar() {
   const navigate = useNavigate()
   const { t, lang } = useLanguage()
+  const { hasEdit } = useAuth()
+  const canEdit = hasEdit('calendar')
   const MONTHS = t('months.names')
   const MONTHS_SHORT = t('months.short')
   const DAYS = t('months.days')
@@ -239,11 +242,13 @@ export default function Calendar() {
     <div className="relative">
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-2xl font-bold text-gray-900">{t('calendar.title')}</h2>
-        <div className="flex gap-2">
-          <button onClick={openCreateEvent} className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700">
-            {t('calendar.newEvent')}
-          </button>
-        </div>
+        {canEdit && (
+          <div className="flex gap-2">
+            <button onClick={openCreateEvent} className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700">
+              {t('calendar.newEvent')}
+            </button>
+          </div>
+        )}
       </div>
 
       {/* View toggle + filters */}
@@ -407,14 +412,18 @@ export default function Calendar() {
                 )}
               </div>
               <div className="flex gap-1 ml-4">
-                <button onClick={() => { closePanel(); openEditEvent(panelData || selectedEvent) }}
-                  className="p-1.5 rounded hover:bg-gray-100 text-gray-400 hover:text-blue-600" title={t('calendar.edit')}>
-                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>
-                </button>
-                <button onClick={() => handleDeleteEvent(panelData || selectedEvent)}
-                  className="p-1.5 rounded hover:bg-red-50 text-gray-400 hover:text-red-600" title={t('calendar.delete')}>
-                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
-                </button>
+                {canEdit && (
+                  <>
+                    <button onClick={() => { closePanel(); openEditEvent(panelData || selectedEvent) }}
+                      className="p-1.5 rounded hover:bg-gray-100 text-gray-400 hover:text-blue-600" title={t('calendar.edit')}>
+                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>
+                    </button>
+                    <button onClick={() => handleDeleteEvent(panelData || selectedEvent)}
+                      className="p-1.5 rounded hover:bg-red-50 text-gray-400 hover:text-red-600" title={t('calendar.delete')}>
+                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                    </button>
+                  </>
+                )}
                 <button onClick={closePanel}
                   className="p-1.5 rounded hover:bg-gray-100 text-gray-400 hover:text-gray-600">
                   <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
@@ -439,17 +448,19 @@ export default function Calendar() {
                             <span className="text-sm font-medium text-gray-800">{a.personnel?.name || 'Staff'}</span>
                             <span className={`inline-block px-1.5 py-0.5 rounded text-xs font-medium ${a.role === 'VGO' ? 'bg-purple-100 text-purple-700' : 'bg-green-100 text-green-700'}`}>{a.role}</span>
                           </div>
-                          <button onClick={() => handleRemoveAssignment(a.id)}
-                            className="p-1 rounded hover:bg-red-100 text-gray-400 hover:text-red-600" title={t('common.remove')}>
-                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
-                          </button>
+                          {canEdit && (
+                            <button onClick={() => handleRemoveAssignment(a.id)}
+                              className="p-1 rounded hover:bg-red-100 text-gray-400 hover:text-red-600" title={t('common.remove')}>
+                              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                            </button>
+                          )}
                         </div>
                       ))}
                     </div>
                   )}
                 </div>
 
-                <div>
+                {canEdit && <div>
                   <h4 className="text-sm font-semibold text-gray-700 mb-3">{t('calendar.addStaff')}</h4>
                   <div className="space-y-3">
                     <div className="relative" ref={dropdownRef}>
@@ -487,7 +498,7 @@ export default function Calendar() {
                       </button>
                     </div>
                   </div>
-                </div>
+                </div>}
               </div>
             )}
 

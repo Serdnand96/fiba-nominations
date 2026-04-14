@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo, useRef } from 'react'
 import { getPersonnel, createPersonnel, updatePersonnel, deletePersonnel, importPersonnel,
   getPersonnelAvailability, getCompetitions, createAvailability, updateAvailability, deleteAvailability } from '../api/client'
 import { useLanguage } from '../i18n/LanguageContext'
+import { useAuth } from '../contexts/AuthContext'
 
 const STATUS_STYLES = {
   available: 'bg-green-100 text-green-700',
@@ -11,6 +12,9 @@ const STATUS_STYLES = {
 
 export default function Personnel() {
   const { t } = useLanguage()
+  const { hasEdit } = useAuth()
+  const canEdit = hasEdit('personnel')
+  const canEditAvail = hasEdit('availability')
   const [people, setPeople] = useState([])
   const [search, setSearch] = useState('')
   const [roleFilter, setRoleFilter] = useState('')
@@ -169,14 +173,16 @@ export default function Personnel() {
     <div>
       <div className="flex items-center justify-between mb-6">
         <h2 className="text-2xl font-bold text-gray-900">{t('personnel.title')}</h2>
-        <div className="flex gap-2">
-          <button onClick={() => setShowImport(true)} className="border border-gray-300 text-gray-700 px-4 py-2 rounded-lg text-sm font-medium hover:bg-gray-50">
-            {t('personnel.importCsv')}
-          </button>
-          <button onClick={openCreate} className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700">
-            {t('personnel.addPerson')}
-          </button>
-        </div>
+        {canEdit && (
+          <div className="flex gap-2">
+            <button onClick={() => setShowImport(true)} className="border border-gray-300 text-gray-700 px-4 py-2 rounded-lg text-sm font-medium hover:bg-gray-50">
+              {t('personnel.importCsv')}
+            </button>
+            <button onClick={openCreate} className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700">
+              {t('personnel.addPerson')}
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Stats */}
@@ -233,8 +239,12 @@ export default function Personnel() {
                     {p.role === 'TD' && (
                       <button onClick={() => openAvailPanel(p)} className="text-green-600 hover:underline text-sm">{t('availability.tab')}</button>
                     )}
-                    <button onClick={() => openEdit(p)} className="text-blue-600 hover:underline text-sm">{t('personnel.edit')}</button>
-                    <button onClick={() => handleDelete(p)} className="text-red-600 hover:underline text-sm">{t('personnel.delete')}</button>
+                    {canEdit && (
+                      <>
+                        <button onClick={() => openEdit(p)} className="text-blue-600 hover:underline text-sm">{t('personnel.edit')}</button>
+                        <button onClick={() => handleDelete(p)} className="text-red-600 hover:underline text-sm">{t('personnel.delete')}</button>
+                      </>
+                    )}
                   </div>
                 </td>
               </tr>
@@ -293,9 +303,11 @@ export default function Personnel() {
 
             <div className="flex items-center justify-between px-6 py-3 border-b bg-gray-50">
               <h4 className="text-sm font-semibold text-gray-700">{t('availability.tab')}</h4>
-              <button onClick={openCreateAvail} className="bg-blue-600 text-white px-3 py-1.5 rounded-lg text-xs font-medium hover:bg-blue-700">
-                {t('availability.addAvailability')}
-              </button>
+              {canEditAvail && (
+                <button onClick={openCreateAvail} className="bg-blue-600 text-white px-3 py-1.5 rounded-lg text-xs font-medium hover:bg-blue-700">
+                  {t('availability.addAvailability')}
+                </button>
+              )}
             </div>
 
             <div className="flex-1 overflow-auto p-6">
@@ -316,10 +328,12 @@ export default function Personnel() {
                             {t(`availability.${rec.status}`)}
                           </span>
                         </div>
-                        <div className="flex gap-2">
-                          <button onClick={() => openEditAvail(rec)} className="text-blue-600 hover:underline text-xs">{t('availability.edit')}</button>
-                          <button onClick={() => handleDeleteAvail(rec)} className="text-red-600 hover:underline text-xs">{t('availability.delete')}</button>
-                        </div>
+                        {canEditAvail && (
+                          <div className="flex gap-2">
+                            <button onClick={() => openEditAvail(rec)} className="text-blue-600 hover:underline text-xs">{t('availability.edit')}</button>
+                            <button onClick={() => handleDeleteAvail(rec)} className="text-red-600 hover:underline text-xs">{t('availability.delete')}</button>
+                          </div>
+                        )}
                       </div>
                       <div className="text-sm text-gray-700">
                         {rec.type === 'event_specific' ? (

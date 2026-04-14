@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from 'react'
 import { getCalendarCompetitions, getPersonnel, getCompetitionAvailability,
   createAvailability, updateAvailability } from '../api/client'
 import { useLanguage } from '../i18n/LanguageContext'
+import { useAuth } from '../contexts/AuthContext'
 
 const STATUS_STYLES = {
   available: { bg: 'bg-green-500', cell: 'bg-green-100 hover:bg-green-200', text: 'text-green-700' },
@@ -14,6 +15,8 @@ const COMP_TYPES = ['BCLA', 'WCQ', 'LSB', 'LSBF', 'WBLA', 'AmeriCup', 'U-Series'
 
 export default function Availability() {
   const { t, lang } = useLanguage()
+  const { hasEdit } = useAuth()
+  const canEdit = hasEdit('availability')
   const [competitions, setCompetitions] = useState([])
   const [tds, setTds] = useState([])
   const [availData, setAvailData] = useState({}) // comp_id -> [{ personnel_id, status, notes, availability_id }]
@@ -213,11 +216,18 @@ export default function Availability() {
                       const style = STATUS_STYLES[entry.status]
                       return (
                         <td key={comp.id} className="px-1 py-1 text-center">
-                          <button onClick={() => openModal(td, comp)}
-                            className={`w-full py-1.5 rounded ${style.cell} transition-colors`}
-                            title={entry.notes || t(`availability.${entry.status === 'no_data' ? 'noData' : entry.status}`)}>
-                            <span className={`inline-block w-2.5 h-2.5 rounded-full ${style.bg}`} />
-                          </button>
+                          {canEdit ? (
+                            <button onClick={() => openModal(td, comp)}
+                              className={`w-full py-1.5 rounded ${style.cell} transition-colors`}
+                              title={entry.notes || t(`availability.${entry.status === 'no_data' ? 'noData' : entry.status}`)}>
+                              <span className={`inline-block w-2.5 h-2.5 rounded-full ${style.bg}`} />
+                            </button>
+                          ) : (
+                            <div className={`w-full py-1.5 rounded ${style.cell}`}
+                              title={entry.notes || t(`availability.${entry.status === 'no_data' ? 'noData' : entry.status}`)}>
+                              <span className={`inline-block w-2.5 h-2.5 rounded-full ${style.bg}`} />
+                            </div>
+                          )}
                         </td>
                       )
                     })}
