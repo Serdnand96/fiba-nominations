@@ -321,6 +321,7 @@ const translations = {
     tdRemoved: { en: 'TD removed', es: 'TD removido' },
     assignedWithConflict: { en: 'TD assigned with schedule conflict', es: 'TD asignado con conflicto de horario' },
     scheduleConflict: { en: 'Schedule conflict', es: 'Conflicto de horario' },
+    timeOverlap: { en: 'Time overlap', es: 'Cruce de horario' },
     assignedTds: { en: 'Assigned TDs', es: 'TDs asignados' },
     date: { en: 'Date', es: 'Fecha' },
     start: { en: 'Start', es: 'Inicio' },

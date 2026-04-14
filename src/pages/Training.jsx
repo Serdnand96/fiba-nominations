@@ -131,23 +131,40 @@ export default function Training() {
     })
   }, [tds, availData])
 
-  // Compute per-slot conflict map: which TDs in each slot have overlapping assignments
-  const slotConflictMap = useMemo(() => {
-    const map = {} // slot_id -> Set of personnel_ids with conflicts
-    function toMin(t) { const p = t.split(':'); return parseInt(p[0]) * 60 + parseInt(p[1]) }
-    function overlaps(s1, e1, s2, e2) { return toMin(s1) < toMin(e2) && toMin(s2) < toMin(e1) }
+  // Helper for time overlap
+  function toMin(t) { if (!t) return 0; const p = t.split(':'); return parseInt(p[0]) * 60 + parseInt(p[1]) }
+  function timeOverlaps(s1, e1, s2, e2) { return toMin(s1) < toMin(e2) && toMin(s2) < toMin(e1) }
 
+  // Compute conflicts: slots that overlap in time at the same venue on the same date
+  const overlappingSlotIds = useMemo(() => {
+    const ids = new Set()
+    for (let i = 0; i < allSlots.length; i++) {
+      for (let j = i + 1; j < allSlots.length; j++) {
+        const a = allSlots[i], b = allSlots[j]
+        if (a.date !== b.date) continue
+        if (a.venue !== b.venue) continue
+        if (timeOverlaps(a.start_time, a.end_time, b.start_time, b.end_time)) {
+          ids.add(a.id)
+          ids.add(b.id)
+        }
+      }
+    }
+    return ids
+  }, [allSlots])
+
+  // Compute per-slot TD conflict map: which TDs have overlapping assignments across slots
+  const slotTdConflictMap = useMemo(() => {
+    const map = {} // slot_id -> Set of personnel_ids with conflicts
     for (const slot of allSlots) {
       if (!slot.assignments?.length) continue
       const conflictIds = new Set()
       for (const asn of slot.assignments) {
         const pid = asn.personnel_id
-        // Check if this TD has other overlapping slots on same date
         for (const other of allSlots) {
           if (other.id === slot.id) continue
           if (other.date !== slot.date) continue
           if (!other.assignments?.some(a => a.personnel_id === pid)) continue
-          if (overlaps(slot.start_time, slot.end_time, other.start_time, other.end_time)) {
+          if (timeOverlaps(slot.start_time, slot.end_time, other.start_time, other.end_time)) {
             conflictIds.add(pid)
             break
           }
@@ -366,7 +383,7 @@ export default function Training() {
                     <div className="space-y-2">
                       {daySlots.estadio.map(slot => (
                         <SlotCard key={slot.id} slot={slot} canEdit={canEdit} t={t}
-                          conflictTds={slotConflictMap[slot.id]}
+                          conflictTds={slotTdConflictMap[slot.id]} isOverlapping={overlappingSlotIds.has(slot.id)}
                           onAssign={() => { setAssignSlot(slot); setAssignTdId('') }}
                           onEdit={() => openEditSlot(slot)} onDelete={() => handleDeleteSlot(slot)} />
                       ))}
@@ -379,7 +396,7 @@ export default function Training() {
                     <div className="space-y-2">
                       {daySlots.cancha.map(slot => (
                         <SlotCard key={slot.id} slot={slot} canEdit={canEdit} t={t}
-                          conflictTds={slotConflictMap[slot.id]}
+                          conflictTds={slotTdConflictMap[slot.id]} isOverlapping={overlappingSlotIds.has(slot.id)}
                           onAssign={() => { setAssignSlot(slot); setAssignTdId('') }}
                           onEdit={() => openEditSlot(slot)} onDelete={() => handleDeleteSlot(slot)} />
                       ))}
@@ -427,8 +444,11 @@ export default function Training() {
                       </thead>
                       <tbody className="divide-y">
                         {teamSlots.map(slot => (
-                          <tr key={slot.id} className="hover:bg-gray-50">
-                            <td className="px-4 py-2 text-gray-800">{formatDateLabel(slot.date)}</td>
+                          <tr key={slot.id} className={overlappingSlotIds.has(slot.id) ? 'bg-yellow-50 hover:bg-yellow-100' : 'hover:bg-gray-50'}>
+                            <td className="px-4 py-2 text-gray-800">
+                              {formatDateLabel(slot.date)}
+                              {overlappingSlotIds.has(slot.id) && <span className="ml-1 text-yellow-600 text-xs">&#9888;</span>}
+                            </td>
                             <td className="px-4 py-2 text-gray-600">{formatTime(slot.start_time)}</td>
                             <td className="px-4 py-2 text-gray-600">{formatTime(slot.end_time)}</td>
                             <td className="px-4 py-2 text-gray-600">{slot.venue}</td>
@@ -437,7 +457,7 @@ export default function Training() {
                                 {(slot.assignments || []).length === 0
                                   ? <span className="text-gray-400 text-xs italic">{t('training.unassigned')}</span>
                                   : slot.assignments.map(a => {
-                                    const inConflict = slotConflictMap[slot.id]?.has(a.personnel_id)
+                                    const inConflict = slotTdConflictMap[slot.id]?.has(a.personnel_id)
                                     return (
                                       <span key={a.id} className={`inline-block px-2 py-0.5 rounded text-[11px] font-medium ${
                                         inConflict ? 'bg-yellow-100 text-yellow-800' : 'bg-blue-50 text-blue-700'
@@ -748,19 +768,25 @@ export default function Training() {
 }
 
 // ── SlotCard — defined OUTSIDE Training to avoid re-mount on parent re-render ──
-function SlotCard({ slot, canEdit, t, conflictTds, onAssign, onEdit, onDelete }) {
+function SlotCard({ slot, canEdit, t, conflictTds, isOverlapping, onAssign, onEdit, onDelete }) {
   const assigned = slot.assignments || []
-  const hasConflicts = conflictTds && conflictTds.size > 0
+  const hasTdConflicts = conflictTds && conflictTds.size > 0
+  const hasAnyConflict = hasTdConflicts || isOverlapping
   return (
-    <div className={`bg-white border rounded-lg p-3 hover:shadow-sm transition-shadow cursor-pointer ${hasConflicts ? 'border-yellow-400' : ''}`}
+    <div className={`bg-white border-2 rounded-lg p-3 hover:shadow-sm transition-shadow cursor-pointer ${
+      hasTdConflicts ? 'border-red-400 bg-red-50/30' : isOverlapping ? 'border-yellow-400 bg-yellow-50/30' : 'border-gray-200'
+    }`}
       onClick={() => canEdit ? onAssign() : null}>
       <div className="flex items-center justify-between mb-1">
         <div className="flex items-center gap-1.5">
           <span className="text-xs font-medium text-blue-600">
             {formatTime(slot.start_time)} – {formatTime(slot.end_time)}
           </span>
-          {hasConflicts && (
-            <span className="text-yellow-600 text-xs" title={t('training.scheduleConflict')}>&#9888;</span>
+          {isOverlapping && !hasTdConflicts && (
+            <span className="text-yellow-600 text-xs font-bold" title={t('training.timeOverlap')}>&#9888; {t('training.timeOverlap')}</span>
+          )}
+          {hasTdConflicts && (
+            <span className="text-red-600 text-xs font-bold" title={t('training.scheduleConflict')}>&#9888; {t('training.scheduleConflict')}</span>
           )}
         </div>
         {canEdit && (
