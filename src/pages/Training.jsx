@@ -6,6 +6,7 @@ import {
   getTrainingSlots, createTrainingSlot, updateTrainingSlot,
   deleteTrainingSlot, createTrainingAssignment, deleteTrainingAssignment,
   importTrainingExcel, previewTrainingExcel, getTrainingPdfUrl,
+  checkTrainingConflicts,
 } from '../api/client'
 
 function formatTime(t) {
@@ -48,6 +49,7 @@ export default function Training() {
   const [assignSlot, setAssignSlot] = useState(null)
   const [assignTdId, setAssignTdId] = useState('')
   const [assignSaving, setAssignSaving] = useState(false)
+  const [tdConflicts, setTdConflicts] = useState({}) // { personnel_id: conflict_detail | null }
 
   // Import modal
   const [showImport, setShowImport] = useState(false)
@@ -129,6 +131,33 @@ export default function Training() {
     })
   }, [tds, availData])
 
+  // Compute per-slot conflict map: which TDs in each slot have overlapping assignments
+  const slotConflictMap = useMemo(() => {
+    const map = {} // slot_id -> Set of personnel_ids with conflicts
+    function toMin(t) { const p = t.split(':'); return parseInt(p[0]) * 60 + parseInt(p[1]) }
+    function overlaps(s1, e1, s2, e2) { return toMin(s1) < toMin(e2) && toMin(s2) < toMin(e1) }
+
+    for (const slot of allSlots) {
+      if (!slot.assignments?.length) continue
+      const conflictIds = new Set()
+      for (const asn of slot.assignments) {
+        const pid = asn.personnel_id
+        // Check if this TD has other overlapping slots on same date
+        for (const other of allSlots) {
+          if (other.id === slot.id) continue
+          if (other.date !== slot.date) continue
+          if (!other.assignments?.some(a => a.personnel_id === pid)) continue
+          if (overlaps(slot.start_time, slot.end_time, other.start_time, other.end_time)) {
+            conflictIds.add(pid)
+            break
+          }
+        }
+      }
+      if (conflictIds.size > 0) map[slot.id] = conflictIds
+    }
+    return map
+  }, [allSlots])
+
   // ── Handlers ──────────────────────────────────────────────────────────────
 
   function openCreateSlot() {
@@ -174,6 +203,38 @@ export default function Training() {
       return updated
     })
   }
+
+  // Compute conflicts for all available TDs against the assignSlot
+  const tdConflictsMap = useMemo(() => {
+    if (!assignSlot) return {}
+    const map = {}
+    const targetDate = assignSlot.date
+    const targetStart = assignSlot.start_time
+    const targetEnd = assignSlot.end_time
+
+    function toMin(t) {
+      if (!t) return 0
+      const p = t.split(':')
+      return parseInt(p[0]) * 60 + parseInt(p[1])
+    }
+    function overlaps(s1, e1, s2, e2) {
+      return toMin(s1) < toMin(e2) && toMin(s2) < toMin(e1)
+    }
+
+    for (const td of availableTds) {
+      const conflicts = []
+      for (const slot of allSlots) {
+        if (slot.id === assignSlot.id) continue
+        if (slot.date !== targetDate) continue
+        if (!slot.assignments?.some(a => a.personnel_id === td.id)) continue
+        if (overlaps(slot.start_time, slot.end_time, targetStart, targetEnd)) {
+          conflicts.push(`${slot.team_label} (${formatTime(slot.start_time)}-${formatTime(slot.end_time)}) @ ${slot.venue}`)
+        }
+      }
+      if (conflicts.length > 0) map[td.id] = conflicts.join('; ')
+    }
+    return map
+  }, [assignSlot, allSlots, availableTds])
 
   async function handleAssign() {
     if (!assignTdId) return
@@ -305,6 +366,7 @@ export default function Training() {
                     <div className="space-y-2">
                       {daySlots.estadio.map(slot => (
                         <SlotCard key={slot.id} slot={slot} canEdit={canEdit} t={t}
+                          conflictTds={slotConflictMap[slot.id]}
                           onAssign={() => { setAssignSlot(slot); setAssignTdId('') }}
                           onEdit={() => openEditSlot(slot)} onDelete={() => handleDeleteSlot(slot)} />
                       ))}
@@ -317,6 +379,7 @@ export default function Training() {
                     <div className="space-y-2">
                       {daySlots.cancha.map(slot => (
                         <SlotCard key={slot.id} slot={slot} canEdit={canEdit} t={t}
+                          conflictTds={slotConflictMap[slot.id]}
                           onAssign={() => { setAssignSlot(slot); setAssignTdId('') }}
                           onEdit={() => openEditSlot(slot)} onDelete={() => handleDeleteSlot(slot)} />
                       ))}
@@ -373,11 +436,16 @@ export default function Training() {
                               <div className="flex flex-wrap gap-1">
                                 {(slot.assignments || []).length === 0
                                   ? <span className="text-gray-400 text-xs italic">{t('training.unassigned')}</span>
-                                  : slot.assignments.map(a => (
-                                    <span key={a.id} className="inline-block px-2 py-0.5 bg-blue-50 text-blue-700 rounded text-[11px] font-medium">
-                                      {a.personnel?.name || 'TD'}
-                                    </span>
-                                  ))}
+                                  : slot.assignments.map(a => {
+                                    const inConflict = slotConflictMap[slot.id]?.has(a.personnel_id)
+                                    return (
+                                      <span key={a.id} className={`inline-block px-2 py-0.5 rounded text-[11px] font-medium ${
+                                        inConflict ? 'bg-yellow-100 text-yellow-800' : 'bg-blue-50 text-blue-700'
+                                      }`} title={inConflict ? t('training.scheduleConflict') : ''}>
+                                        {inConflict ? '\u26A0 ' : ''}{a.personnel?.name || 'TD'}
+                                      </span>
+                                    )
+                                  })}
                               </div>
                             </td>
                             {canEdit && (
@@ -476,13 +544,13 @@ export default function Training() {
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-medium text-gray-500 mb-1">{t('training.start')}</label>
-                  <input type="time" required value={slotForm.start_time}
+                  <input type="time" required step="1800" value={slotForm.start_time}
                     onChange={e => handleStartTimeChange(e.target.value)}
                     className="w-full px-3 py-2 border rounded-lg text-sm" />
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-gray-500 mb-1">{t('training.end')}</label>
-                  <input type="time" required value={slotForm.end_time}
+                  <input type="time" required step="1800" value={slotForm.end_time}
                     onChange={e => setSlotForm(f => ({ ...f, end_time: e.target.value }))}
                     className="w-full px-3 py-2 border rounded-lg text-sm" />
                 </div>
@@ -556,11 +624,13 @@ export default function Training() {
             {canEdit && (
               <div>
                 <p className="text-xs font-medium text-gray-500 mb-1">{t('training.addTd')}</p>
-                <div className="flex gap-2">
+                <div className="flex gap-2 mb-2">
                   <select value={assignTdId} onChange={e => setAssignTdId(e.target.value)} className="flex-1 px-3 py-2 border rounded-lg text-sm">
                     <option value="">{t('training.selectTd')}</option>
                     {availableTds.filter(td => !assignedInModal.some(a => a.personnel_id === td.id)).map(td => (
-                      <option key={td.id} value={td.id}>{td.name}{td.country ? ` (${td.country})` : ''}</option>
+                      <option key={td.id} value={td.id}>
+                        {tdConflictsMap[td.id] ? '\u26A0\uFE0F ' : ''}{td.name}{td.country ? ` (${td.country})` : ''}
+                      </option>
                     ))}
                   </select>
                   <button onClick={handleAssign} disabled={!assignTdId || assignSaving}
@@ -568,6 +638,12 @@ export default function Training() {
                     {assignSaving ? '...' : t('training.assign')}
                   </button>
                 </div>
+                {assignTdId && tdConflictsMap[assignTdId] && (
+                  <div className="bg-yellow-50 border border-yellow-200 rounded-lg px-3 py-2">
+                    <p className="text-xs font-medium text-yellow-800">{t('training.scheduleConflict')}</p>
+                    <p className="text-xs text-yellow-700 mt-0.5">{tdConflictsMap[assignTdId]}</p>
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -672,15 +748,21 @@ export default function Training() {
 }
 
 // ── SlotCard — defined OUTSIDE Training to avoid re-mount on parent re-render ──
-function SlotCard({ slot, canEdit, t, onAssign, onEdit, onDelete }) {
+function SlotCard({ slot, canEdit, t, conflictTds, onAssign, onEdit, onDelete }) {
   const assigned = slot.assignments || []
+  const hasConflicts = conflictTds && conflictTds.size > 0
   return (
-    <div className="bg-white border rounded-lg p-3 hover:shadow-sm transition-shadow cursor-pointer"
+    <div className={`bg-white border rounded-lg p-3 hover:shadow-sm transition-shadow cursor-pointer ${hasConflicts ? 'border-yellow-400' : ''}`}
       onClick={() => canEdit ? onAssign() : null}>
       <div className="flex items-center justify-between mb-1">
-        <span className="text-xs font-medium text-blue-600">
-          {formatTime(slot.start_time)} – {formatTime(slot.end_time)}
-        </span>
+        <div className="flex items-center gap-1.5">
+          <span className="text-xs font-medium text-blue-600">
+            {formatTime(slot.start_time)} – {formatTime(slot.end_time)}
+          </span>
+          {hasConflicts && (
+            <span className="text-yellow-600 text-xs" title={t('training.scheduleConflict')}>&#9888;</span>
+          )}
+        </div>
         {canEdit && (
           <div className="flex gap-1">
             <button onClick={e => { e.stopPropagation(); onEdit() }} className="text-gray-400 hover:text-blue-600 text-xs px-1">{t('common.edit')}</button>
@@ -692,11 +774,16 @@ function SlotCard({ slot, canEdit, t, onAssign, onEdit, onDelete }) {
       <div className="flex flex-wrap gap-1">
         {assigned.length === 0
           ? <span className="text-[11px] text-gray-400 italic">{t('training.unassigned')}</span>
-          : assigned.map(a => (
-            <span key={a.id} className="inline-block px-2 py-0.5 bg-blue-50 text-blue-700 rounded text-[11px] font-medium">
-              {a.personnel?.name || 'TD'}
-            </span>
-          ))}
+          : assigned.map(a => {
+            const inConflict = conflictTds?.has(a.personnel_id)
+            return (
+              <span key={a.id} className={`inline-block px-2 py-0.5 rounded text-[11px] font-medium ${
+                inConflict ? 'bg-yellow-100 text-yellow-800' : 'bg-blue-50 text-blue-700'
+              }`} title={inConflict ? t('training.scheduleConflict') : ''}>
+                {inConflict ? '\u26A0 ' : ''}{a.personnel?.name || 'TD'}
+              </span>
+            )
+          })}
       </div>
       {slot.notes && <p className="text-[11px] text-gray-400 mt-1">{slot.notes}</p>}
     </div>
