@@ -130,6 +130,27 @@ export const getTrainingPdfUrl = (type, params) => {
   return ''
 }
 
+// Games
+export const getGames = (competitionId) => api.get('/games', { params: { competition_id: competitionId } }).then(r => r.data)
+export const getGamesByDate = (competitionId, date) => api.get('/games/by-date', { params: { competition_id: competitionId, date } }).then(r => r.data)
+export const getGameTeams = (competitionId) => api.get('/games/teams', { params: { competition_id: competitionId } }).then(r => r.data)
+export const getGameDates = (competitionId) => api.get('/games/dates', { params: { competition_id: competitionId } }).then(r => r.data)
+export const getGame = (id) => api.get(`/games/${id}`).then(r => r.data)
+export const createGame = (data) => api.post('/games', data).then(r => r.data)
+export const bulkCreateGames = (data) => api.post('/games/bulk', data).then(r => r.data)
+export const updateGame = (id, data) => api.put(`/games/${id}`, data).then(r => r.data)
+export const deleteGame = (id) => api.delete(`/games/${id}`).then(r => r.data)
+export const syncGameResults = (competitionId) => api.post('/games/sync-results', null, { params: { competition_id: competitionId }, timeout: 60000 }).then(r => r.data)
+export const importGamesExcel = (file, competitionId) => {
+  const form = new FormData()
+  form.append('file', file)
+  form.append('competition_id', competitionId)
+  return api.post('/games/import/excel', form, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+    timeout: 120000,
+  }).then(r => r.data)
+}
+
 // Availability
 export const getPersonnelAvailability = (personnelId) => api.get(`/availability/personnel/${personnelId}`).then(r => r.data)
 export const getCompetitionAvailability = (competitionId) => api.get(`/availability/competition/${competitionId}`).then(r => r.data)

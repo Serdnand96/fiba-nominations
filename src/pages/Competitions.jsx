@@ -19,7 +19,7 @@ export default function Competitions() {
   const [nominations, setNominations] = useState([])
   const [showModal, setShowModal] = useState(false)
   const [editing, setEditing] = useState(null)
-  const [form, setForm] = useState({ name: '', template_key: 'WCQ', year: new Date().getFullYear() })
+  const [form, setForm] = useState({ name: '', template_key: 'WCQ', year: new Date().getFullYear(), fiba_games_url: '' })
 
   useEffect(() => { load() }, [])
 
@@ -35,13 +35,13 @@ export default function Competitions() {
 
   function openCreate() {
     setEditing(null)
-    setForm({ name: '', template_key: 'WCQ', year: new Date().getFullYear() })
+    setForm({ name: '', template_key: 'WCQ', year: new Date().getFullYear(), fiba_games_url: '' })
     setShowModal(true)
   }
 
   function openEdit(comp) {
     setEditing(comp)
-    setForm({ name: comp.name, template_key: comp.template_key, year: comp.year || new Date().getFullYear() })
+    setForm({ name: comp.name, template_key: comp.template_key, year: comp.year || new Date().getFullYear(), fiba_games_url: comp.fiba_games_url || '' })
     setShowModal(true)
   }
 
@@ -137,6 +137,10 @@ export default function Competitions() {
                 <option value="GENERIC">GENERIC</option>
               </select>
               <input type="number" placeholder={t('competitions.year')} value={form.year} onChange={e => setForm(f => ({ ...f, year: e.target.value }))} className="w-full px-3 py-2 border rounded-lg text-sm" />
+              <div>
+                <input placeholder={t('games.fibaUrl')} value={form.fiba_games_url} onChange={e => setForm(f => ({ ...f, fiba_games_url: e.target.value }))} className="w-full px-3 py-2 border rounded-lg text-sm" />
+                <p className="text-xs text-gray-400 mt-1">{t('games.fibaUrlHint')}</p>
+              </div>
               <div className="flex justify-end gap-3 pt-2">
                 <button type="button" onClick={() => setShowModal(false)} className="px-4 py-2 text-sm text-gray-600">{t('competitions.cancel')}</button>
                 <button type="submit" className="bg-blue-600 text-white px-6 py-2 rounded-lg text-sm font-medium hover:bg-blue-700">

@@ -3,7 +3,7 @@ import re
 from fastapi import FastAPI, Request, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from api._lib.routers import personnel, competitions, nominations, users, calendar, transport, availability, permissions, training
+from api._lib.routers import personnel, competitions, nominations, users, calendar, transport, availability, permissions, training, games
 
 app = FastAPI(title="FIBA Americas Nominations API", docs_url=None, redoc_url=None)
 
@@ -102,6 +102,7 @@ app.include_router(transport.router, prefix="/api")
 app.include_router(availability.router, prefix="/api")
 app.include_router(permissions.router, prefix="/api")
 app.include_router(training.router, prefix="/api")
+app.include_router(games.router, prefix="/api")
 
 
 @app.get("/api")
