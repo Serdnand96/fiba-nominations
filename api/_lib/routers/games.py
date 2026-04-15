@@ -359,7 +359,7 @@ def _extract_fiba_competition_id(fiba_url: str) -> str | None:
 
 def _fiba_json_to_game(g: dict) -> dict:
     """Convert a FIBA API game object to our schema."""
-    game_dt = g.get("gameDateTime", "")
+    game_dt = g.get("gameDateTime", "") or ""
     date_str = game_dt[:10] if game_dt else ""
     time_str = game_dt[11:16] if len(game_dt) >= 16 else ""
 
@@ -367,8 +367,8 @@ def _fiba_json_to_game(g: dict) -> dict:
     score_b = g.get("teamBScore")
     status = "completed" if score_a is not None and score_b is not None else "scheduled"
 
-    team_a = g.get("teamA", {})
-    team_b = g.get("teamB", {})
+    team_a = g.get("teamA") or {}
+    team_b = g.get("teamB") or {}
 
     return {
         "fiba_game_id": g.get("gameId"),
