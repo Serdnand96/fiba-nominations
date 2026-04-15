@@ -1,3 +1,4 @@
+import re
 from fastapi import APIRouter, HTTPException, UploadFile, File
 from api._lib.database import supabase
 from api._lib.schemas import PersonnelCreate, PersonnelUpdate
@@ -5,14 +6,24 @@ from api._lib.services.bulk_import import process_bulk_import
 
 router = APIRouter(prefix="/personnel", tags=["personnel"])
 
+# Max upload size: 5 MB
+_MAX_UPLOAD_BYTES = 5 * 1024 * 1024
+_SAFE_SEARCH_RE = re.compile(r"^[\w\s\-\.@áéíóúñüÁÉÍÓÚÑÜ]+$")
+
 
 @router.get("")
 def list_personnel(role: str = None, search: str = None):
     query = supabase.table("personnel").select("*")
     if role:
+        if role.upper() not in ("VGO", "TD"):
+            raise HTTPException(status_code=400, detail="Role must be VGO or TD")
         query = query.eq("role", role.upper())
     if search:
-        query = query.or_(f"name.ilike.%{search}%,email.ilike.%{search}%")
+        # Sanitize search to prevent PostgREST filter injection
+        sanitized = search.strip()[:100]
+        if not _SAFE_SEARCH_RE.match(sanitized):
+            raise HTTPException(status_code=400, detail="Invalid search characters")
+        query = query.or_(f"name.ilike.%{sanitized}%,email.ilike.%{sanitized}%")
     result = query.order("name").execute()
     return result.data
 
@@ -65,6 +76,13 @@ def delete_personnel(person_id: str, force: bool = False):
 
 @router.post("/import")
 async def import_personnel(file: UploadFile = File(...)):
+    # Validate file type
+    fname = (file.filename or "").lower()
+    if not fname.endswith((".csv", ".xlsx", ".xls")):
+        raise HTTPException(status_code=400, detail="Only CSV and Excel files are accepted")
+    # Validate file size
     contents = await file.read()
+    if len(contents) > _MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=413, detail="File too large (max 5 MB)")
     result = process_bulk_import(contents, file.filename)
     return result

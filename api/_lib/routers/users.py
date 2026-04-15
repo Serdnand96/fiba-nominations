@@ -46,13 +46,16 @@ def list_users():
             for u in res
         ]
         return users
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    except Exception:
+        raise HTTPException(status_code=500, detail="Failed to load users")
 
 
 @router.post("/")
 def create_user(payload: UserCreate):
     """Create a new auth user."""
+    # Basic password validation
+    if len(payload.password) < 8:
+        raise HTTPException(status_code=400, detail="Password must be at least 8 characters")
     try:
         client = _get_admin_client()
         res = client.auth.admin.create_user({
@@ -83,7 +86,7 @@ def create_user(payload: UserCreate):
         msg = str(e)
         if "already been registered" in msg.lower() or "already exists" in msg.lower():
             raise HTTPException(status_code=409, detail="Este email ya está registrado")
-        raise HTTPException(status_code=500, detail=msg)
+        raise HTTPException(status_code=500, detail="Failed to create user")
 
 
 @router.delete("/{user_id}")
@@ -93,5 +96,5 @@ def delete_user(user_id: str):
         client = _get_admin_client()
         client.auth.admin.delete_user(user_id)
         return {"ok": True}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    except Exception:
+        raise HTTPException(status_code=500, detail="Failed to delete user")

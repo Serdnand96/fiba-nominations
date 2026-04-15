@@ -95,14 +95,12 @@ def get_competition_detail(competition_id: str):
         .data
     )
 
-    # Enrich assignments with personnel info
+    # Enrich assignments with personnel info (batch fetch)
     personnel_ids = list({a["personnel_id"] for a in assignments})
     personnel_map = {}
     if personnel_ids:
-        for pid in personnel_ids:
-            p = supabase.table("personnel").select("*").eq("id", pid).execute().data
-            if p:
-                personnel_map[pid] = p[0]
+        all_p = supabase.table("personnel").select("*").execute().data
+        personnel_map = {p["id"]: p for p in all_p if p["id"] in set(personnel_ids)}
 
     staff = []
     for a in assignments:

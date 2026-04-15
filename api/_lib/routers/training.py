@@ -10,6 +10,8 @@ from api._lib.database import supabase
 
 router = APIRouter(prefix="/training", tags=["training"])
 
+_MAX_UPLOAD_BYTES = 5 * 1024 * 1024  # 5 MB
+
 
 # ── Schemas ──────────────────────────────────────────────────────────────────
 
@@ -51,30 +53,24 @@ def _enrich_slots(slots: list) -> list:
     if not slots:
         return slots
 
-    slot_ids = [s["id"] for s in slots]
+    # Batch fetch all assignments at once instead of N+1 queries
+    all_assignments = supabase.table("training_slot_assignments").select("*").execute().data
+    slot_id_set = {s["id"] for s in slots}
+    relevant_assignments = [a for a in all_assignments if a["training_slot_id"] in slot_id_set]
 
-    # Fetch all assignments for these slots
-    all_assignments = []
-    for sid in slot_ids:
-        asn = supabase.table("training_slot_assignments").select("*").eq("training_slot_id", sid).execute().data
-        all_assignments.extend(asn)
-
-    if not all_assignments:
+    if not relevant_assignments:
         for s in slots:
             s["assignments"] = []
         return slots
 
-    # Fetch personnel info
-    personnel_ids = list({a["personnel_id"] for a in all_assignments})
-    personnel_map = {}
-    for pid in personnel_ids:
-        p = supabase.table("personnel").select("id,name,country,role").eq("id", pid).execute().data
-        if p:
-            personnel_map[pid] = p[0]
+    # Batch fetch all referenced personnel at once
+    personnel_ids = list({a["personnel_id"] for a in relevant_assignments})
+    all_personnel = supabase.table("personnel").select("id,name,country,role").execute().data
+    personnel_map = {p["id"]: p for p in all_personnel if p["id"] in set(personnel_ids)}
 
     # Group assignments by slot
     slot_assignments = {}
-    for a in all_assignments:
+    for a in relevant_assignments:
         sid = a["training_slot_id"]
         if sid not in slot_assignments:
             slot_assignments[sid] = []
@@ -89,34 +85,29 @@ def _enrich_slots(slots: list) -> list:
 
 def _check_td_conflicts(personnel_id: str, target_date: str, target_start: str, target_end: str, exclude_slot_id: str = None):
     """Check if a TD has overlapping training slots on the same date."""
-    # Get all slots assigned to this TD on the same date
     all_assignments = supabase.table("training_slot_assignments").select("training_slot_id").eq("personnel_id", personnel_id).execute().data
 
     if not all_assignments:
         return {"has_conflict": False, "conflict_detail": None}
 
-    slot_ids = [a["training_slot_id"] for a in all_assignments]
+    slot_ids = [a["training_slot_id"] for a in all_assignments if a["training_slot_id"] != exclude_slot_id]
+    if not slot_ids:
+        return {"has_conflict": False, "conflict_detail": None}
+
+    # Batch fetch all assigned slots and filter by date in Python
+    all_slots = supabase.table("training_slots").select("*").eq("date", target_date).execute().data
+    slot_map = {s["id"]: s for s in all_slots}
 
     conflicts = []
     for sid in slot_ids:
-        if sid == exclude_slot_id:
-            continue
-        slot = supabase.table("training_slots").select("*").eq("id", sid).execute().data
+        slot = slot_map.get(sid)
         if not slot:
             continue
-        slot = slot[0]
-        if slot["date"] != target_date:
-            continue
-
-        # Check time overlap
         if _times_overlap(slot["start_time"], slot["end_time"], target_start, target_end):
             conflicts.append(f"{slot['team_label']} ({slot['start_time'][:5]}-{slot['end_time'][:5]}) @ {slot['venue']}")
 
     if conflicts:
-        return {
-            "has_conflict": True,
-            "conflict_detail": "; ".join(conflicts),
-        }
+        return {"has_conflict": True, "conflict_detail": "; ".join(conflicts)}
 
     return {"has_conflict": False, "conflict_detail": None}
 
@@ -329,7 +320,7 @@ def create_assignment(data: AssignmentCreate):
     except Exception as e:
         if "unique" in str(e).lower() or "duplicate" in str(e).lower():
             raise HTTPException(409, "TD already assigned to this slot")
-        raise HTTPException(500, str(e))
+        raise HTTPException(500, "Failed to create assignment")
 
     # Enrich with personnel info
     person = supabase.table("personnel").select("id,name,country,role").eq("id", data.personnel_id).execute().data
@@ -370,18 +361,24 @@ async def import_excel(
     sport: str = Form("Basketball"),
 ):
     """Import training slots from FIBA multi-sport schedule Excel."""
+    # Validate file type
+    fname = (file.filename or "").lower()
+    if not fname.endswith((".xlsx", ".xls")):
+        raise HTTPException(400, "Only Excel files (.xlsx, .xls) are accepted")
+
+    content = await file.read()
+    if len(content) > _MAX_UPLOAD_BYTES:
+        raise HTTPException(413, "File too large (max 5 MB)")
+
     try:
         import openpyxl
     except ImportError:
-        # Fallback: try pandas
-        pass
-
-    content = await file.read()
+        raise HTTPException(500, "Excel support not available")
 
     try:
         slots = _parse_fiba_schedule(content, competition_id, sport)
-    except Exception as e:
-        raise HTTPException(400, f"Error parsing Excel file: {str(e)}")
+    except Exception:
+        raise HTTPException(400, "Unable to parse Excel file. Please check format and try again.")
 
     if not slots:
         return {"imported": 0, "skipped": 0, "errors": [], "preview": []}
@@ -534,11 +531,16 @@ async def preview_excel(
     sport: str = Form("Basketball"),
 ):
     """Preview parsed slots from Excel without importing."""
+    fname = (file.filename or "").lower()
+    if not fname.endswith((".xlsx", ".xls")):
+        raise HTTPException(400, "Only Excel files (.xlsx, .xls) are accepted")
     content = await file.read()
+    if len(content) > _MAX_UPLOAD_BYTES:
+        raise HTTPException(413, "File too large (max 5 MB)")
     try:
         slots = _parse_fiba_schedule(content, competition_id, sport)
-    except Exception as e:
-        raise HTTPException(400, f"Error parsing Excel file: {str(e)}")
+    except Exception:
+        raise HTTPException(400, "Unable to parse Excel file. Please check format and try again.")
 
     return {"total": len(slots), "preview": slots[:10]}
 

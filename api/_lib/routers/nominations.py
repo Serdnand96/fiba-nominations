@@ -1,4 +1,5 @@
 import os
+import re
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse, RedirectResponse
 from api._lib.database import supabase
@@ -6,6 +7,9 @@ from api._lib.schemas import NominationCreate, BulkNominationCreate
 from api._lib.services.document_generator import generate_nomination
 
 router = APIRouter(prefix="/nominations", tags=["nominations"])
+
+_MAX_BULK = 100
+_SAFE_FILENAME_RE = re.compile(r'[^\w\s\-\.\(\)]')
 
 
 @router.get("")
@@ -31,6 +35,8 @@ def create_nomination(data: NominationCreate):
 @router.post("/bulk")
 def create_bulk_nominations(data: BulkNominationCreate):
     """Create nominations for multiple people with the same competition/settings."""
+    if len(data.personnel_ids) > _MAX_BULK:
+        raise HTTPException(status_code=400, detail=f"Maximum {_MAX_BULK} items per request")
     created = []
     errors = []
 
@@ -60,6 +66,8 @@ def create_bulk_nominations(data: BulkNominationCreate):
 @router.post("/bulk-generate")
 def bulk_generate_nominations(nomination_ids: list[str]):
     """Generate PDF documents for multiple nominations."""
+    if len(nomination_ids) > _MAX_BULK:
+        raise HTTPException(status_code=400, detail=f"Maximum {_MAX_BULK} items per request")
     results = []
 
     for nid in nomination_ids:
@@ -129,6 +137,8 @@ def delete_nomination(nomination_id: str):
 
 @router.delete("/bulk/delete")
 def bulk_delete_nominations(nomination_ids: list[str]):
+    if len(nomination_ids) > _MAX_BULK:
+        raise HTTPException(status_code=400, detail=f"Maximum {_MAX_BULK} items per request")
     deleted = 0
     errors = []
     for nid in nomination_ids:
@@ -183,13 +193,8 @@ def generate_nomination_doc(nomination_id: str):
 
     try:
         local_path, storage_url, conversion_error = generate_nomination(nom_data)
-    except Exception as e:
-        import traceback
-        return {
-            "status": "error",
-            "error": f"{type(e).__name__}: {e}",
-            "traceback": traceback.format_exc(),
-        }
+    except Exception:
+        raise HTTPException(status_code=500, detail="Document generation failed. Please try again.")
 
     # Save the best available path
     saved_path = storage_url if storage_url else local_path
@@ -237,6 +242,11 @@ def download_nomination(nomination_id: str, filename: str = None):
         ext = "pdf" if doc_path.endswith(".pdf") or "pdf" in doc_path.lower() else "docx"
         filename = f"{p_name} {c_name} Nomination.{ext}"
 
+    # Sanitize filename to prevent header injection
+    filename = _SAFE_FILENAME_RE.sub('', filename).strip()
+    if not filename:
+        filename = "Nomination.pdf"
+
     # If it's a URL (Supabase Storage), fetch and serve with proper filename
     if doc_path.startswith("http"):
         try:
@@ -258,7 +268,7 @@ def download_nomination(nomination_id: str, filename: str = None):
 
     # Local file (dev mode only)
     if not os.path.exists(doc_path):
-        raise HTTPException(status_code=404, detail="File not found. Try regenerating.")
+        raise HTTPException(status_code=404, detail="Document not available. Try regenerating.")
 
     if doc_path.endswith(".pdf"):
         media_type = "application/pdf"

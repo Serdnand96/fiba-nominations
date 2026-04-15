@@ -12,6 +12,7 @@ router = APIRouter(prefix="/transport", tags=["transport"])
 
 class EventCreate(BaseModel):
     name: str
+    competition_id: Optional[str] = None
     start_date: Optional[str] = None
     end_date: Optional[str] = None
 
@@ -74,6 +75,14 @@ def list_events():
 def create_event(data: EventCreate):
     result = supabase.table("transport_events").insert(data.model_dump()).execute()
     return result.data[0]
+
+@router.get("/events/by-competition/{competition_id}")
+def get_event_by_competition(competition_id: str):
+    """Find existing transport event for a competition, or return null."""
+    r = supabase.table("transport_events").select("*").eq("competition_id", competition_id).execute()
+    if r.data:
+        return r.data[0]
+    return None
 
 @router.get("/events/{event_id}")
 def get_event(event_id: str):

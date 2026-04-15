@@ -1,16 +1,96 @@
-from fastapi import FastAPI
+import os
+import re
+from fastapi import FastAPI, Request, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from api._lib.routers import personnel, competitions, nominations, users, calendar, transport, availability, permissions, training
 
-app = FastAPI(title="FIBA Americas Nominations API")
+app = FastAPI(title="FIBA Americas Nominations API", docs_url=None, redoc_url=None)
+
+# ── CORS — restrict to known origins ────────────────────────────────────────
+_allowed_origins = [
+    o.strip()
+    for o in os.environ.get("CORS_ORIGINS", "").split(",")
+    if o.strip()
+] or ["http://localhost:5173", "http://localhost:3000"]
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=_allowed_origins,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type"],
 )
+
+
+# ── Security headers middleware ─────────────────────────────────────────────
+@app.middleware("http")
+async def add_security_headers(request: Request, call_next):
+    response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
+    return response
+
+
+# ── JWT auth dependency ─────────────────────────────────────────────────────
+import httpx as _httpx
+
+_SUPABASE_URL = os.environ.get("SUPABASE_URL", "")
+_SUPABASE_KEY = os.environ.get("SUPABASE_SERVICE_ROLE_KEY", "") or os.environ.get("SUPABASE_KEY", "")
+
+
+async def require_auth(request: Request) -> dict:
+    """Validate Supabase JWT and return the authenticated user dict."""
+    auth_header = request.headers.get("Authorization", "")
+    if not auth_header.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Missing authorization token")
+
+    token = auth_header[7:]
+    try:
+        resp = _httpx.get(
+            f"{_SUPABASE_URL}/auth/v1/user",
+            headers={"Authorization": f"Bearer {token}", "apikey": _SUPABASE_KEY},
+            timeout=10.0,
+        )
+        if resp.status_code != 200:
+            raise HTTPException(status_code=401, detail="Invalid or expired token")
+        return resp.json()
+    except HTTPException:
+        raise
+    except Exception:
+        raise HTTPException(status_code=401, detail="Authentication failed")
+
+
+# Store auth user on request state so routers can access it
+@app.middleware("http")
+async def auth_middleware(request: Request, call_next):
+    # Skip auth for OPTIONS (CORS preflight) and the health-check root
+    path = request.url.path.rstrip("/")
+    if request.method == "OPTIONS" or path in ("/api", ""):
+        return await call_next(request)
+
+    auth_header = request.headers.get("Authorization", "")
+    if auth_header.startswith("Bearer "):
+        token = auth_header[7:]
+        try:
+            resp = _httpx.get(
+                f"{_SUPABASE_URL}/auth/v1/user",
+                headers={"Authorization": f"Bearer {token}", "apikey": _SUPABASE_KEY},
+                timeout=10.0,
+            )
+            if resp.status_code == 200:
+                request.state.user = resp.json()
+            else:
+                return JSONResponse(status_code=401, content={"detail": "Invalid or expired token"})
+        except Exception:
+            return JSONResponse(status_code=401, content={"detail": "Authentication failed"})
+    else:
+        return JSONResponse(status_code=401, content={"detail": "Missing authorization token"})
+
+    return await call_next(request)
+
 
 # Mount all routers under /api prefix to match Vercel's routing
 app.include_router(personnel.router, prefix="/api")
@@ -28,116 +108,3 @@ app.include_router(training.router, prefix="/api")
 @app.get("/api/")
 def root():
     return {"message": "FIBA Americas Nominations API"}
-
-
-@app.get("/api/debug/storage")
-def debug_storage():
-    try:
-        from api._lib.database import get_supabase
-        client = get_supabase()
-        buckets = client.storage.list_buckets()
-        bucket_names = [b.name for b in buckets]
-        return {"buckets": bucket_names, "status": "ok"}
-    except Exception as e:
-        return {"error": str(e), "type": type(e).__name__}
-
-
-@app.get("/api/debug/cloudconvert")
-def debug_cloudconvert():
-    """Test CloudConvert API key."""
-    import os
-    import httpx
-    api_key = os.environ.get("CLOUDCONVERT_API_KEY", "").strip()
-    if not api_key:
-        return {"error": "CLOUDCONVERT_API_KEY not set", "key_preview": ""}
-
-    try:
-        resp = httpx.get(
-            "https://api.cloudconvert.com/v2/users/me",
-            headers={"Authorization": f"Bearer {api_key}"},
-            timeout=10.0,
-        )
-        return {
-            "status_code": resp.status_code,
-            "response": resp.json() if resp.status_code == 200 else resp.text[:300],
-            "key_preview": api_key[:20] + "...",
-        }
-    except Exception as e:
-        return {"error": str(e), "type": type(e).__name__}
-
-
-@app.get("/api/debug/test-conversion")
-def debug_test_conversion():
-    """Create a tiny .docx and try converting to PDF via CloudConvert."""
-    import os
-    import tempfile
-    import httpx
-    import time
-    from docx import Document as DocxDoc
-
-    api_key = os.environ.get("CLOUDCONVERT_API_KEY", "").strip()
-    if not api_key:
-        return {"error": "CLOUDCONVERT_API_KEY not set"}
-
-    steps = []
-    try:
-        doc = DocxDoc()
-        doc.add_paragraph("Test PDF conversion")
-        tmp_path = os.path.join(tempfile.gettempdir(), "test_convert.docx")
-        doc.save(tmp_path)
-        steps.append("1. Created test .docx")
-
-        base_url = "https://api.cloudconvert.com/v2"
-        hdrs = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
-
-        job_payload = {"tasks": {
-            "import-file": {"operation": "import/upload"},
-            "convert-file": {"operation": "convert", "input": ["import-file"], "output_format": "pdf", "engine": "libreoffice"},
-            "export-file": {"operation": "export/url", "input": ["convert-file"]},
-        }}
-        job_resp = httpx.post(f"{base_url}/jobs", json=job_payload, headers=hdrs, timeout=30.0)
-        steps.append(f"2. Job create: {job_resp.status_code}")
-        if job_resp.status_code not in (200, 201):
-            return {"steps": steps, "error": job_resp.text[:500]}
-
-        job_data = job_resp.json()["data"]
-        upload_task = next((t for t in job_data["tasks"] if t["name"] == "import-file" and t.get("result", {}).get("form")), None)
-        if not upload_task:
-            return {"steps": steps, "error": "No upload task", "tasks": [f'{t["name"]}:{t["status"]}' for t in job_data["tasks"]]}
-        steps.append("3. Found upload task")
-
-        form_d = upload_task["result"]["form"]
-        with open(tmp_path, "rb") as f:
-            docx_bytes = f.read()
-        upload_resp = httpx.post(form_d["url"], data=form_d["parameters"],
-            files={"file": ("test.docx", docx_bytes, "application/vnd.openxmlformats-officedocument.wordprocessingml.document")}, timeout=60.0)
-        steps.append(f"4. Upload: {upload_resp.status_code}")
-        if upload_resp.status_code not in (200, 201, 204):
-            return {"steps": steps, "error": upload_resp.text[:300]}
-
-        job_id = job_data["id"]
-        status_data = None
-        for _ in range(30):
-            time.sleep(1)
-            sr = httpx.get(f"{base_url}/jobs/{job_id}", headers=hdrs, timeout=15.0)
-            if sr.status_code == 200:
-                status_data = sr.json()["data"]
-                if status_data["status"] in ("finished", "error"):
-                    break
-        steps.append(f"5. Final status: {status_data['status'] if status_data else 'timeout'}")
-
-        if not status_data or status_data["status"] != "finished":
-            td = [{"name": t["name"], "status": t["status"], "msg": t.get("message", "")} for t in (status_data or {}).get("tasks", [])]
-            return {"steps": steps, "error": "Not finished", "tasks": td}
-
-        export_task = next((t for t in status_data["tasks"] if t["name"] == "export-file" and t["status"] == "finished"), None)
-        if not export_task or not export_task.get("result", {}).get("files"):
-            return {"steps": steps, "error": "No export result"}
-
-        dl_url = export_task["result"]["files"][0]["url"]
-        pdf_resp = httpx.get(dl_url, timeout=30.0)
-        steps.append(f"6. PDF: {pdf_resp.status_code}, {len(pdf_resp.content)} bytes")
-        return {"steps": steps, "success": True, "pdf_size": len(pdf_resp.content)}
-    except Exception as exc:
-        import traceback
-        return {"steps": steps, "error": f"{type(exc).__name__}: {exc}", "trace": traceback.format_exc()}

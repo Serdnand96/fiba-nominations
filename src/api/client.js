@@ -1,7 +1,17 @@
 import axios from 'axios'
+import { supabase } from '../lib/supabase'
 
 const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL || '/api',
+})
+
+// Attach Supabase JWT to every request
+api.interceptors.request.use(async (config) => {
+  const { data: { session } } = await supabase.auth.getSession()
+  if (session?.access_token) {
+    config.headers.Authorization = `Bearer ${session.access_token}`
+  }
+  return config
 })
 
 // Personnel
@@ -53,6 +63,7 @@ export const deleteUser = (id) => api.delete(`/users/${id}`).then(r => r.data)
 export const getTransportEvents = () => api.get('/transport/events').then(r => r.data)
 export const createTransportEvent = (data) => api.post('/transport/events', data).then(r => r.data)
 export const getTransportEvent = (id) => api.get(`/transport/events/${id}`).then(r => r.data)
+export const getTransportEventByCompetition = (competitionId) => api.get(`/transport/events/by-competition/${competitionId}`).then(r => r.data)
 export const getTransportVehicles = (eventId) => api.get('/transport/vehicles', { params: { event_id: eventId } }).then(r => r.data)
 export const createTransportVehicle = (data) => api.post('/transport/vehicles', data).then(r => r.data)
 export const updateTransportVehicle = (id, data) => api.put(`/transport/vehicles/${id}`, data).then(r => r.data)

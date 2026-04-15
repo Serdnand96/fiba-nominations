@@ -188,7 +188,6 @@ export default function Nominations() {
           setBulkProgress({ total: createdIds.length, done: i, current: `${i + 1} / ${createdIds.length}` })
           try {
             const result = await generateNomination(createdIds[i])
-            console.log(`Generate [${i+1}]:`, JSON.stringify(result))
             if (result.status === 'generated') {
               successCount++
               if (result.conversion_error) {
@@ -226,7 +225,6 @@ export default function Nominations() {
     setLoading(true)
     try {
       const result = await generateNomination(id)
-      console.log('Generate result:', JSON.stringify(result))
 
       if (result.error || result.status === 'error') {
         alert(`${t('nominations.errorGenerating')}:\n${result.error}`)
