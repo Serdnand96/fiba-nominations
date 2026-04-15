@@ -220,8 +220,8 @@ def sync_results(competition_id: str = Query(...)):
 
     try:
         games_data = _scrape_fiba_games(fiba_url)
-    except Exception:
-        raise HTTPException(500, "Failed to fetch games from FIBA website")
+    except Exception as e:
+        raise HTTPException(500, f"Failed to fetch games from FIBA: {str(e)}")
 
     if not games_data:
         return {"synced": 0, "message": "No games found on FIBA page"}
@@ -287,83 +287,70 @@ def _scrape_fiba_games(fiba_url: str) -> list:
     - A direct GDAP competition ID (numeric string)
     """
     import httpx
-    import json
 
     competition_id = _extract_fiba_competition_id(fiba_url)
     if not competition_id:
-        raise Exception("Could not determine FIBA competition ID from the provided URL")
+        raise Exception(f"Could not extract FIBA competition ID from: {fiba_url[:100]}")
 
     # Call the FIBA GDAP API directly
     api_url = f"{_FIBA_API_BASE}/getgdapgamesbycompetitionid"
-    resp = httpx.get(
-        api_url,
-        params={"gdapCompetitionId": competition_id},
-        headers={
-            "Ocp-Apim-Subscription-Key": _FIBA_API_KEY,
-            "Accept": "application/json",
-        },
-        timeout=30.0,
-    )
+    with httpx.Client(timeout=30.0) as client:
+        resp = client.get(
+            api_url,
+            params={"gdapCompetitionId": competition_id},
+            headers={
+                "Ocp-Apim-Subscription-Key": _FIBA_API_KEY,
+                "Accept": "application/json",
+                "Accept-Encoding": "gzip, deflate",
+            },
+        )
     if resp.status_code != 200:
-        raise Exception(f"FIBA API returned HTTP {resp.status_code}")
+        raise Exception(f"FIBA API HTTP {resp.status_code}: {resp.text[:200]}")
 
     data = resp.json()
 
     # The API returns an array of game objects
     games_list = data if isinstance(data, list) else data.get("games", data.get("data", []))
     if not isinstance(games_list, list):
-        raise Exception("Unexpected FIBA API response format")
+        raise Exception(f"Unexpected FIBA API format: {type(data).__name__}")
 
     return [_fiba_json_to_game(g) for g in games_list if g.get("gameId")]
 
 
 def _extract_fiba_competition_id(fiba_url: str) -> str | None:
-    """Extract the GDAP competitionId from a FIBA URL or RSC payload.
-    Accepts:
-    - Direct numeric ID: "208182"
-    - FIBA page URL: fetches the page, extracts competitionId from RSC data
-    """
+    """Extract the GDAP competitionId from a FIBA URL or RSC payload."""
     import httpx
-    import json
 
     # If it's already a numeric ID, return it
-    if fiba_url.strip().isdigit():
-        return fiba_url.strip()
+    stripped = fiba_url.strip()
+    if stripped.isdigit():
+        return stripped
 
     # Fetch the page and look for competitionId in the RSC payload
     try:
-        resp = httpx.get(fiba_url, timeout=20.0, follow_redirects=True, headers={
-            "User-Agent": "Mozilla/5.0 (compatible; FIBAAmericas/1.0)",
-        })
+        with httpx.Client(timeout=20.0, follow_redirects=True) as client:
+            resp = client.get(stripped, headers={
+                "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
+                "Accept-Encoding": "gzip, deflate",
+            })
         if resp.status_code != 200:
             return None
 
         html = resp.text
 
-        # Strategy 1: Look for gdapCompetitionId or competitionId in RSC data
-        # These appear as "gdapCompetitionId":208182 or "competitionId":"208182"
-        patterns = [
-            re.compile(r'"gdapCompetitionId"\s*:\s*"?(\d+)"?'),
-            re.compile(r'"competitionId"\s*:\s*"?(\d+)"?'),
-            re.compile(r'gdapCompetitionId[=:](\d+)'),
-            re.compile(r'competitionId["\s:]+(\d+)'),
-        ]
-        for pattern in patterns:
-            m = pattern.search(html)
-            if m:
-                return m.group(1)
-
-        # Strategy 2: Look in script tags for __next_f.push data
-        # The RSC payload contains escaped JSON with competition details
-        escaped_patterns = [
+        # The RSC payload contains escaped JSON like:
+        # \"competitionId\":209032  or  "competitionId":209032
+        all_patterns = [
             re.compile(r'\\?"gdapCompetitionId\\?"\s*:\s*\\?"?(\d+)\\?"?'),
             re.compile(r'\\?"competitionId\\?"\s*:\s*\\?"?(\d+)\\?"?'),
+            re.compile(r'"gdapCompetitionId"\s*:\s*"?(\d+)"?'),
+            re.compile(r'"competitionId"\s*:\s*"?(\d+)"?'),
+            re.compile(r'competitionId[=:](\d+)'),
         ]
-        for pattern in escaped_patterns:
+        for pattern in all_patterns:
             m = pattern.search(html)
             if m:
                 return m.group(1)
-
     except Exception:
         pass
 

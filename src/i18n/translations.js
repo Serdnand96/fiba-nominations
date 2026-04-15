@@ -397,8 +397,8 @@ const translations = {
     importing: { en: 'Importing...', es: 'Importando...' },
     imported: { en: '{count} games imported', es: '{count} juegos importados' },
     errorImporting: { en: 'Error importing games', es: 'Error importando juegos' },
-    fibaUrl: { en: 'FIBA Games URL', es: 'URL de Juegos FIBA' },
-    fibaUrlHint: { en: 'Paste the FIBA event games page URL to enable results sync', es: 'Pega la URL de la pagina de juegos FIBA para habilitar sincronizacion de resultados' },
+    fibaUrl: { en: 'FIBA Games URL or Competition ID', es: 'URL de Juegos FIBA o ID de Competencia' },
+    fibaUrlHint: { en: 'Paste the FIBA games page URL or the numeric competition ID (e.g. 209032)', es: 'Pega la URL de la pagina de juegos FIBA o el ID numerico de competencia (ej. 209032)' },
   },
 
   // ===== Permissions =====
