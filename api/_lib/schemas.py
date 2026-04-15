@@ -24,12 +24,14 @@ class CompetitionCreate(BaseModel):
     name: str
     template_key: str
     year: Optional[int] = None
+    fiba_games_url: Optional[str] = None
 
 
 class CompetitionUpdate(BaseModel):
     name: Optional[str] = None
     template_key: Optional[str] = None
     year: Optional[int] = None
+    fiba_games_url: Optional[str] = None
 
 
 class GameDate(BaseModel):

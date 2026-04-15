@@ -20,7 +20,11 @@ def create_competition(data: CompetitionCreate):
 
 @router.put("/{competition_id}")
 def update_competition(competition_id: str, data: CompetitionUpdate):
-    updates = {k: v for k, v in data.model_dump().items() if v is not None}
+    # Allow empty strings (e.g. clearing fiba_games_url) but skip None
+    updates = {k: v for k, v in data.model_dump().items() if v is not None or k == "fiba_games_url"}
+    # Convert empty fiba_games_url to None for clean DB storage
+    if "fiba_games_url" in updates and updates["fiba_games_url"] == "":
+        updates["fiba_games_url"] = None
     result = supabase.table("competitions").update(updates).eq("id", competition_id).execute()
     if not result.data:
         raise HTTPException(status_code=404, detail="Competition not found")
