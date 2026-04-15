@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
 import { useLanguage } from '../i18n/LanguageContext'
 import { useAuth } from '../contexts/AuthContext'
+import CompetitionSearch from '../components/CompetitionSearch'
 import {
   getCalendarCompetitions, getPersonnel, getCompetitionAvailability,
   getTrainingSlots, createTrainingSlot, updateTrainingSlot,
@@ -338,11 +339,13 @@ export default function Training() {
 
       {/* Competition selector */}
       <div className="mb-4">
-        <select value={competitionId} onChange={e => { setCompetitionId(e.target.value); setSelectedDate(''); setSelectedTeam(''); setSelectedTd('') }}
-          className="px-3 py-2 border rounded-lg text-sm w-full max-w-md">
-          <option value="">{t('training.selectCompetition')}</option>
-          {competitions.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-        </select>
+        <CompetitionSearch
+          competitions={competitions}
+          value={competitionId}
+          onChange={id => { setCompetitionId(id); setSelectedDate(''); setSelectedTeam(''); setSelectedTd('') }}
+          placeholder={t('training.selectCompetition')}
+          className="max-w-md"
+        />
       </div>
 
       {/* Tabs */}

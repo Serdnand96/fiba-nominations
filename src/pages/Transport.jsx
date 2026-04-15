@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import { useLanguage } from '../i18n/LanguageContext'
 import { useAuth } from '../contexts/AuthContext'
+import CompetitionSearch from '../components/CompetitionSearch'
 import {
   getTransportEvents, getTransportVehicles, getTransportDrivers,
   getTransportTrips, createTransportTrip, updateTransportTrip, deleteTransportTrip,
@@ -477,17 +478,12 @@ export default function Transport() {
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-4">
           <h2 className="text-2xl font-bold text-gray-900">{lang === 'es' ? 'Transporte' : 'Transport'}</h2>
-          <select
+          <CompetitionSearch
+            competitions={competitions}
             value={competitionId}
-            onChange={e => setCompetitionId(e.target.value)}
-            className="px-3 py-2 border rounded-lg text-sm font-medium bg-white min-w-[250px]"
-          >
-            {competitions.map(c => (
-              <option key={c.id} value={c.id}>
-                {c.name}{c.start_date ? ` (${c.start_date})` : ''}
-              </option>
-            ))}
-          </select>
+            onChange={setCompetitionId}
+            placeholder={lang === 'es' ? 'Buscar competencia...' : 'Search competition...'}
+          />
         </div>
         {tab === 'schedule' && eventId && (
           <button onClick={exportPDF}

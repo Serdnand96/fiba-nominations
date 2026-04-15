@@ -5,14 +5,7 @@ import {
 } from '../api/client'
 import { useLanguage } from '../i18n/LanguageContext'
 import { useAuth } from '../contexts/AuthContext'
-
-const STATUS_COLORS = {
-  scheduled: 'bg-blue-50 text-blue-700 border-blue-200',
-  completed: 'bg-green-50 text-green-700 border-green-200',
-  live: 'bg-red-50 text-red-700 border-red-200',
-  postponed: 'bg-yellow-50 text-yellow-700 border-yellow-200',
-  cancelled: 'bg-gray-50 text-gray-500 border-gray-200',
-}
+import CompetitionSearch from '../components/CompetitionSearch'
 
 const PHASE_OPTIONS = ['Group Phase', 'Quarterfinals', 'Semifinals', 'Classification', 'Finals']
 
@@ -50,6 +43,7 @@ export default function Games() {
   const [importing, setImporting] = useState(false)
   const [importMsg, setImportMsg] = useState('')
   const fileRef = useRef(null)
+  const autoSyncDone = useRef(new Set()) // track which comps we've auto-synced
 
   // Load competitions
   useEffect(() => {
@@ -62,11 +56,58 @@ export default function Games() {
   // Load games when competition changes
   useEffect(() => {
     if (!selectedCompId) return
-    loadGames()
+    loadGamesAndAutoSync()
   }, [selectedCompId])
 
-  async function loadGames() {
+  async function loadGamesAndAutoSync() {
     setLoading(true)
+    setFilterDate('')
+    setFilterGroup('')
+    try {
+      const [g, d, te] = await Promise.all([
+        getGames(selectedCompId),
+        getGameDates(selectedCompId),
+        getGameTeams(selectedCompId),
+      ])
+      setGames(g)
+      setGameDates(d)
+      setTeams(te)
+
+      // Auto-sync from FIBA if competition has URL and no games yet
+      const comp = competitions.find(c => c.id === selectedCompId)
+      if (g.length === 0 && comp?.fiba_games_url && !autoSyncDone.current.has(selectedCompId)) {
+        autoSyncDone.current.add(selectedCompId)
+        setSyncing(true)
+        setSyncMsg(t('games.syncing'))
+        try {
+          const result = await syncGameResults(selectedCompId)
+          setSyncMsg(t('games.syncSuccess', {
+            synced: result.synced,
+            created: result.created,
+            total: result.total_from_fiba,
+          }))
+          // Reload after sync
+          const [g2, d2, te2] = await Promise.all([
+            getGames(selectedCompId),
+            getGameDates(selectedCompId),
+            getGameTeams(selectedCompId),
+          ])
+          setGames(g2)
+          setGameDates(d2)
+          setTeams(te2)
+        } catch (err) {
+          setSyncMsg(err.response?.data?.detail || 'Auto-sync failed')
+        }
+        setSyncing(false)
+        setTimeout(() => setSyncMsg(''), 6000)
+      }
+    } catch (e) {
+      console.error(e)
+    }
+    setLoading(false)
+  }
+
+  async function loadGames() {
     try {
       const [g, d, te] = await Promise.all([
         getGames(selectedCompId),
@@ -79,7 +120,6 @@ export default function Games() {
     } catch (e) {
       console.error(e)
     }
-    setLoading(false)
   }
 
   // Filtered + grouped games
@@ -90,7 +130,6 @@ export default function Games() {
   })
 
   const groups = [...new Set(games.map(g => g.group_label).filter(Boolean))].sort()
-  const phases = [...new Set(games.map(g => g.phase).filter(Boolean))]
 
   // Group games by phase, then by date
   const gamesByPhase = {}
@@ -103,7 +142,6 @@ export default function Games() {
 
   // Stats
   const completedCount = games.filter(g => g.status === 'completed').length
-  const scheduledCount = games.filter(g => g.status === 'scheduled').length
 
   // Handlers
   function openCreate() {
@@ -247,13 +285,13 @@ export default function Games() {
       )}
 
       {/* Competition selector + filters */}
-      <div className="flex flex-wrap gap-3 mb-6">
-        <select value={selectedCompId} onChange={e => { setSelectedCompId(e.target.value); setFilterDate(''); setFilterGroup('') }}
-          className="px-3 py-2 border rounded-lg text-sm bg-white min-w-[220px]">
-          {competitions.map(c => (
-            <option key={c.id} value={c.id}>{c.name}</option>
-          ))}
-        </select>
+      <div className="flex flex-wrap gap-3 mb-6 items-start">
+        <CompetitionSearch
+          competitions={competitions}
+          value={selectedCompId}
+          onChange={setSelectedCompId}
+          placeholder={t('games.selectCompetition')}
+        />
 
         {gameDates.length > 0 && (
           <select value={filterDate} onChange={e => setFilterDate(e.target.value)}
@@ -299,8 +337,8 @@ export default function Games() {
       )}
 
       {/* Game cards - FIBA style */}
-      {loading ? (
-        <div className="text-center py-12 text-gray-400 text-sm">{t('common.loading')}</div>
+      {loading || syncing ? (
+        <div className="text-center py-12 text-gray-400 text-sm">{syncing ? t('games.syncing') : t('common.loading')}</div>
       ) : filtered.length === 0 ? (
         <div className="text-center py-12 text-gray-400 text-sm">{t('games.noGames')}</div>
       ) : (
