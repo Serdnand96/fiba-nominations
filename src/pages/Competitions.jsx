@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { getCompetitions, createCompetition, updateCompetition, deleteCompetition, getNominations } from '../api/client'
 import { useLanguage } from '../i18n/LanguageContext'
 import { useAuth } from '../contexts/AuthContext'
@@ -21,6 +21,10 @@ export default function Competitions() {
   const [editing, setEditing] = useState(null)
   const [form, setForm] = useState({ name: '', template_key: 'WCQ', year: new Date().getFullYear(), fiba_games_url: '' })
 
+  // Search & filter
+  const [search, setSearch] = useState('')
+  const [filterTemplate, setFilterTemplate] = useState('')
+
   useEffect(() => { load() }, [])
 
   async function load() {
@@ -32,6 +36,25 @@ export default function Competitions() {
   function nomCount(compId) {
     return nominations.filter(n => n.competition_id === compId).length
   }
+
+  // Filtered competitions
+  const filtered = useMemo(() => {
+    return competitions.filter(c => {
+      if (filterTemplate && c.template_key !== filterTemplate) return false
+      if (search) {
+        const q = search.toLowerCase()
+        return (c.name || '').toLowerCase().includes(q)
+          || (c.template_key || '').toLowerCase().includes(q)
+          || String(c.year || '').includes(q)
+      }
+      return true
+    })
+  }, [competitions, search, filterTemplate])
+
+  const templateOptions = useMemo(() =>
+    [...new Set(competitions.map(c => c.template_key).filter(Boolean))].sort(),
+    [competitions]
+  )
 
   function openCreate() {
     setEditing(null)
@@ -84,6 +107,40 @@ export default function Competitions() {
         )}
       </div>
 
+      {/* Search & filter bar */}
+      <div className="flex gap-3 mb-4">
+        <div className="relative flex-1 max-w-md">
+          <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+          </svg>
+          <input
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            placeholder={t('common.search') + '...'}
+            className="w-full pl-10 pr-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-blue-400"
+          />
+          {search && (
+            <button onClick={() => setSearch('')}
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          )}
+        </div>
+        <select
+          value={filterTemplate}
+          onChange={e => setFilterTemplate(e.target.value)}
+          className="px-3 py-2 border rounded-lg text-sm bg-white"
+        >
+          <option value="">All templates</option>
+          {templateOptions.map(t => <option key={t} value={t}>{t}</option>)}
+        </select>
+        {(search || filterTemplate) && (
+          <span className="text-xs text-gray-400 self-center">{filtered.length} / {competitions.length}</span>
+        )}
+      </div>
+
       <div className="bg-white rounded-lg border overflow-hidden">
         <table className="w-full text-sm">
           <thead className="bg-gray-50 border-b">
@@ -96,15 +153,25 @@ export default function Competitions() {
             </tr>
           </thead>
           <tbody className="divide-y">
-            {competitions.map(c => (
+            {filtered.map(c => (
               <tr key={c.id} className="hover:bg-gray-50">
-                <td className="px-4 py-3 font-medium">{c.name}</td>
+                <td className="px-4 py-3">
+                  <div className="font-medium">{c.name}</div>
+                  {c.fiba_games_url && (
+                    <div className="text-[11px] text-green-500 mt-0.5 flex items-center gap-1">
+                      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                      </svg>
+                      FIBA linked
+                    </div>
+                  )}
+                </td>
                 <td className="px-4 py-3">
                   <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${TEMPLATE_BADGES[c.template_key] || ''}`}>
                     {c.template_key}
                   </span>
                 </td>
-                <td className="px-4 py-3">{c.year || '—'}</td>
+                <td className="px-4 py-3">{c.year || '--'}</td>
                 <td className="px-4 py-3">{nomCount(c.id)}</td>
                 <td className="px-4 py-3">
                   {canEdit && (
@@ -116,8 +183,10 @@ export default function Competitions() {
                 </td>
               </tr>
             ))}
-            {competitions.length === 0 && (
-              <tr><td colSpan={5} className="px-4 py-8 text-center text-gray-400">{t('competitions.noCompetitions')}</td></tr>
+            {filtered.length === 0 && (
+              <tr><td colSpan={5} className="px-4 py-8 text-center text-gray-400">
+                {search || filterTemplate ? 'No results' : t('competitions.noCompetitions')}
+              </td></tr>
             )}
           </tbody>
         </table>

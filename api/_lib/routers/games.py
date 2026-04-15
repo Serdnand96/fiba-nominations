@@ -275,109 +275,99 @@ def sync_results(competition_id: str = Query(...)):
     return {"synced": synced, "created": created, "total_from_fiba": len(games_data)}
 
 
-# ── FIBA scraping ────────────────────────────────────────────────────────────
+# ── FIBA API integration ────────────────────────────────────────────────────
+
+_FIBA_API_BASE = "https://digital-api.fiba.basketball/hapi"
+_FIBA_API_KEY = "898cd5e7389140028ecb42943c47eb74"
+
 
 def _scrape_fiba_games(fiba_url: str) -> list:
-    """Scrape game data from a FIBA event games page."""
+    """Fetch game data from FIBA's API. Accepts either:
+    - A FIBA event page URL (extracts competitionId from the page)
+    - A direct GDAP competition ID (numeric string)
+    """
     import httpx
-
-    # Fetch the page HTML
-    resp = httpx.get(fiba_url, timeout=30.0, follow_redirects=True, headers={
-        "User-Agent": "Mozilla/5.0 (compatible; FIBAAmericas/1.0)",
-    })
-    if resp.status_code != 200:
-        raise Exception(f"HTTP {resp.status_code}")
-
-    html = resp.text
-    games = []
-
-    # Parse games from the embedded Next.js data
-    # FIBA pages embed game data as JSON in the page source
-    # Look for game objects with gameId, teamA, teamB patterns
-
     import json
 
-    # Strategy 1: Find JSON-like game objects in the HTML
-    # The page embeds data in RSC format — extract game blocks
-    game_pattern = re.compile(
-        r'"gameId"\s*:\s*(\d+).*?'
-        r'"gameName"\s*:\s*"([^"]*)".*?'
-        r'"teamA"\s*:\s*\{[^}]*"officialName"\s*:\s*"([^"]*)".*?'
-        r'"code"\s*:\s*"([^"]*)".*?\}.*?'
-        r'"teamB"\s*:\s*\{[^}]*"officialName"\s*:\s*"([^"]*)".*?'
-        r'"code"\s*:\s*"([^"]*)".*?\}.*?'
-        r'"teamAScore"\s*:\s*(\d+|null).*?'
-        r'"teamBScore"\s*:\s*(\d+|null).*?'
-        r'"gameDateTime"\s*:\s*"([^"]*)".*?'
-        r'"venueName"\s*:\s*"([^"]*)".*?'
-        r'"hostCity"\s*:\s*"([^"]*)".*?'
-        r'"groupPairingCode"\s*:\s*"?([^",}]*)"?',
-        re.DOTALL
+    competition_id = _extract_fiba_competition_id(fiba_url)
+    if not competition_id:
+        raise Exception("Could not determine FIBA competition ID from the provided URL")
+
+    # Call the FIBA GDAP API directly
+    api_url = f"{_FIBA_API_BASE}/getgdapgamesbycompetitionid"
+    resp = httpx.get(
+        api_url,
+        params={"gdapCompetitionId": competition_id},
+        headers={
+            "Ocp-Apim-Subscription-Key": _FIBA_API_KEY,
+            "Accept": "application/json",
+        },
+        timeout=30.0,
     )
+    if resp.status_code != 200:
+        raise Exception(f"FIBA API returned HTTP {resp.status_code}")
 
-    for m in game_pattern.finditer(html):
-        game_id = int(m.group(1))
-        game_name = m.group(2)
-        team_a = m.group(3)
-        team_a_code = m.group(4)
-        team_b = m.group(5)
-        team_b_code = m.group(6)
-        score_a_raw = m.group(7)
-        score_b_raw = m.group(8)
-        game_dt = m.group(9)
-        venue = m.group(10)
-        city = m.group(11)
-        group = m.group(12).strip('"')
+    data = resp.json()
 
-        # Parse datetime
-        date_str = ""
-        time_str = ""
-        if game_dt:
-            try:
-                dt = datetime.fromisoformat(game_dt.replace("Z", "+00:00"))
-                date_str = dt.strftime("%Y-%m-%d")
-                time_str = dt.strftime("%H:%M")
-            except Exception:
-                date_str = game_dt[:10] if len(game_dt) >= 10 else game_dt
-                time_str = game_dt[11:16] if len(game_dt) >= 16 else ""
+    # The API returns an array of game objects
+    games_list = data if isinstance(data, list) else data.get("games", data.get("data", []))
+    if not isinstance(games_list, list):
+        raise Exception("Unexpected FIBA API response format")
 
-        score_a = int(score_a_raw) if score_a_raw and score_a_raw != "null" else None
-        score_b = int(score_b_raw) if score_b_raw and score_b_raw != "null" else None
+    return [_fiba_json_to_game(g) for g in games_list if g.get("gameId")]
 
-        status = "completed" if score_a is not None and score_b is not None else "scheduled"
 
-        games.append({
-            "fiba_game_id": game_id,
-            "game_number": game_name,
-            "date": date_str,
-            "time": time_str,
-            "team_a": team_a,
-            "team_a_code": team_a_code,
-            "team_b": team_b,
-            "team_b_code": team_b_code,
-            "score_a": score_a,
-            "score_b": score_b,
-            "venue": venue,
-            "city": city,
-            "phase": "Group Phase",
-            "group_label": group if group else None,
-            "status": status,
-            "sport": "Basketball",
+def _extract_fiba_competition_id(fiba_url: str) -> str | None:
+    """Extract the GDAP competitionId from a FIBA URL or RSC payload.
+    Accepts:
+    - Direct numeric ID: "208182"
+    - FIBA page URL: fetches the page, extracts competitionId from RSC data
+    """
+    import httpx
+    import json
+
+    # If it's already a numeric ID, return it
+    if fiba_url.strip().isdigit():
+        return fiba_url.strip()
+
+    # Fetch the page and look for competitionId in the RSC payload
+    try:
+        resp = httpx.get(fiba_url, timeout=20.0, follow_redirects=True, headers={
+            "User-Agent": "Mozilla/5.0 (compatible; FIBAAmericas/1.0)",
         })
+        if resp.status_code != 200:
+            return None
 
-    # Strategy 2: If regex didn't work, try finding JSON arrays
-    if not games:
-        # Look for inline JSON data with game arrays
-        json_pattern = re.compile(r'\[(\{"gameId".*?\})\]', re.DOTALL)
-        for block in json_pattern.finditer(html):
-            try:
-                arr = json.loads(f"[{block.group(1)}]")
-                for g in arr:
-                    games.append(_fiba_json_to_game(g))
-            except json.JSONDecodeError:
-                continue
+        html = resp.text
 
-    return games
+        # Strategy 1: Look for gdapCompetitionId or competitionId in RSC data
+        # These appear as "gdapCompetitionId":208182 or "competitionId":"208182"
+        patterns = [
+            re.compile(r'"gdapCompetitionId"\s*:\s*"?(\d+)"?'),
+            re.compile(r'"competitionId"\s*:\s*"?(\d+)"?'),
+            re.compile(r'gdapCompetitionId[=:](\d+)'),
+            re.compile(r'competitionId["\s:]+(\d+)'),
+        ]
+        for pattern in patterns:
+            m = pattern.search(html)
+            if m:
+                return m.group(1)
+
+        # Strategy 2: Look in script tags for __next_f.push data
+        # The RSC payload contains escaped JSON with competition details
+        escaped_patterns = [
+            re.compile(r'\\?"gdapCompetitionId\\?"\s*:\s*\\?"?(\d+)\\?"?'),
+            re.compile(r'\\?"competitionId\\?"\s*:\s*\\?"?(\d+)\\?"?'),
+        ]
+        for pattern in escaped_patterns:
+            m = pattern.search(html)
+            if m:
+                return m.group(1)
+
+    except Exception:
+        pass
+
+    return None
 
 
 def _fiba_json_to_game(g: dict) -> dict:
