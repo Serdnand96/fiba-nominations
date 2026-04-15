@@ -247,21 +247,13 @@ export default function Games() {
     return d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })
   }
 
-  if (!selectedCompId && competitions.length === 0) {
-    return (
-      <div className="text-center py-20 text-gray-400 text-sm">
-        {t('games.selectCompetition')}
-      </div>
-    )
-  }
-
   return (
     <div>
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <h2 className="text-2xl font-bold text-gray-900">{t('games.title')}</h2>
         <div className="flex items-center gap-3">
-          {canEdit && selectedCompId && (
+          {selectedCompId && (
             <>
               <button onClick={() => setShowImport(true)}
                 className="px-3 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-50">
