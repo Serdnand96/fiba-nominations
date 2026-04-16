@@ -338,17 +338,17 @@ export default function Nominations() {
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
-        <h2 className="text-2xl font-bold text-gray-900">{t('nominations.title')}</h2>
+        <h2 className="text-2xl font-bold text-white">{t('nominations.title')}</h2>
         {canEdit && (
           <div className="flex gap-2">
             {selectedIds.size > 0 && (
               <>
                 <button onClick={handleBulkDelete} disabled={loading}
-                  className="bg-red-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-red-700 disabled:opacity-50">
+                  className="btn-fiba-danger disabled:opacity-50">
                   {t('nominations.deleteCount', { count: selectedIds.size })}
                 </button>
                 <button onClick={handleBulkGenerate} disabled={loading}
-                  className="bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-green-700 disabled:opacity-50">
+                  className="bg-emerald-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-emerald-700 disabled:opacity-50">
                   {loading && bulkProgress
                     ? t('nominations.generatingProgress', { current: bulkProgress.current })
                     : t('nominations.generateCount', { count: selectedIds.size })}
@@ -356,7 +356,7 @@ export default function Nominations() {
               </>
             )}
             <button onClick={() => setShowForm(true)}
-              className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700">
+              className="btn-fiba">
               {t('nominations.newNomination')}
             </button>
           </div>
@@ -371,50 +371,50 @@ export default function Nominations() {
           { label: t('nominations.draft'), value: stats.draft },
           { label: t('nominations.competitions'), value: stats.comps },
         ].map(s => (
-          <div key={s.label} className="bg-white rounded-lg border p-4">
-            <p className="text-sm text-gray-500">{s.label}</p>
-            <p className="text-2xl font-bold text-gray-900">{s.value}</p>
+          <div key={s.label} className="fiba-stat">
+            <p className="text-xs text-fiba-muted">{s.label}</p>
+            <p className="text-2xl font-bold text-white">{s.value}</p>
           </div>
         ))}
       </div>
 
       {/* Search */}
       <input type="text" placeholder={t('nominations.searchNominations')} value={search}
-        onChange={e => setSearch(e.target.value)} className="w-full md:w-80 mb-4 px-4 py-2 border rounded-lg text-sm" />
+        onChange={e => setSearch(e.target.value)} className="fiba-input w-full md:w-80 mb-4" />
 
       {/* Table */}
-      <div className="bg-white rounded-lg border overflow-hidden">
-        <table className="w-full text-sm">
-          <thead className="bg-gray-50 border-b">
+      <div className="rounded-xl border border-fiba-border overflow-hidden">
+        <table className="fiba-table">
+          <thead>
             <tr>
               <th className="px-4 py-3 w-10">
                 <input type="checkbox" checked={filtered.length > 0 && selectedIds.size === filtered.length}
                   onChange={toggleSelectAll} className="rounded" />
               </th>
-              <th className="text-left px-4 py-3 font-medium text-gray-500">{t('nominations.name')}</th>
-              <th className="text-left px-4 py-3 font-medium text-gray-500">{t('nominations.role')}</th>
-              <th className="text-left px-4 py-3 font-medium text-gray-500">{t('nominations.competition')}</th>
-              <th className="text-left px-4 py-3 font-medium text-gray-500">{t('nominations.letterDate')}</th>
-              <th className="text-left px-4 py-3 font-medium text-gray-500">{t('nominations.status')}</th>
-              <th className="text-left px-4 py-3 font-medium text-gray-500">{t('nominations.action')}</th>
+              <th>{t('nominations.name')}</th>
+              <th>{t('nominations.role')}</th>
+              <th>{t('nominations.competition')}</th>
+              <th>{t('nominations.letterDate')}</th>
+              <th>{t('nominations.status')}</th>
+              <th>{t('nominations.action')}</th>
             </tr>
           </thead>
-          <tbody className="divide-y">
+          <tbody>
             {filtered.map(n => (
-              <tr key={n.id} className={`hover:bg-gray-50 ${selectedIds.has(n.id) ? 'bg-blue-50' : ''}`}>
+              <tr key={n.id} className={selectedIds.has(n.id) ? 'bg-fiba-accent/10' : ''}>
                 <td className="px-4 py-3">
                   <input type="checkbox" checked={selectedIds.has(n.id)} onChange={() => toggleTableSelect(n.id)} className="rounded" />
                 </td>
                 <td className="px-4 py-3">{n.personnel?.name}</td>
                 <td className="px-4 py-3">
-                  <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${n.personnel?.role === 'VGO' ? 'bg-purple-100 text-purple-700' : 'bg-green-100 text-green-700'}`}>
+                  <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${n.personnel?.role === 'VGO' ? 'bg-purple-500/20 text-purple-400' : 'bg-emerald-500/20 text-emerald-400'}`}>
                     {n.personnel?.role}
                   </span>
                 </td>
                 <td className="px-4 py-3">{n.competitions?.name}</td>
                 <td className="px-4 py-3">{n.letter_date || '—'}</td>
                 <td className="px-4 py-3">
-                  <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${n.status === 'generated' ? 'bg-blue-100 text-blue-700' : 'bg-yellow-100 text-yellow-700'}`}>
+                  <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${n.status === 'generated' ? 'bg-blue-500/20 text-blue-400' : 'bg-yellow-500/20 text-yellow-400'}`}>
                     {n.status}
                   </span>
                 </td>
@@ -422,7 +422,7 @@ export default function Nominations() {
                   <div className="flex gap-2">
                     {n.status === 'generated' && (
                       <a href={n.pdf_path?.startsWith('http') ? n.pdf_path : getDownloadUrl(n.id)}
-                        target="_blank" rel="noreferrer" className="text-blue-600 hover:underline text-sm">
+                        target="_blank" rel="noreferrer" className="text-fiba-accent hover:underline text-sm">
                         {t('nominations.download')}
                       </a>
                     )}
@@ -430,16 +430,16 @@ export default function Nominations() {
                       <>
                         {n.status === 'generated' ? (
                           <button onClick={() => handleGenerate(n.id)} disabled={loading}
-                            className="text-gray-400 hover:text-blue-600 hover:underline text-sm">
+                            className="text-fiba-muted hover:text-fiba-accent hover:underline text-sm">
                             {t('nominations.regenerate')}
                           </button>
                         ) : (
                           <button onClick={() => handleGenerate(n.id)} disabled={loading}
-                            className="text-blue-600 hover:underline text-sm">
+                            className="text-fiba-accent hover:underline text-sm">
                             {t('nominations.generate')}
                           </button>
                         )}
-                        <button onClick={() => handleDeleteNomination(n)} className="text-red-600 hover:underline text-sm">
+                        <button onClick={() => handleDeleteNomination(n)} className="text-red-400 hover:underline text-sm">
                           {t('nominations.delete')}
                         </button>
                       </>
@@ -449,7 +449,7 @@ export default function Nominations() {
               </tr>
             ))}
             {filtered.length === 0 && (
-              <tr><td colSpan={7} className="px-4 py-8 text-center text-gray-400">{t('nominations.noNominations')}</td></tr>
+              <tr><td colSpan={7} className="px-4 py-8 text-center text-fiba-muted/60">{t('nominations.noNominations')}</td></tr>
             )}
           </tbody>
         </table>
@@ -457,48 +457,48 @@ export default function Nominations() {
 
       {/* Creation Form Modal */}
       {showForm && (
-        <div className="fixed inset-0 bg-black/40 flex items-start justify-center pt-16 z-50">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl max-h-[80vh] overflow-y-auto p-6">
+        <div className="fixed inset-0 bg-black/60 flex items-start justify-center pt-16 z-50">
+          <div className="fiba-modal max-w-2xl max-h-[80vh] overflow-y-auto p-6">
             <div className="flex justify-between items-center mb-4">
-              <h3 className="text-lg font-bold">{t('nominations.newNominationTitle')}</h3>
-              <button onClick={() => setShowForm(false)} className="text-gray-400 hover:text-gray-600 text-xl">&times;</button>
+              <h3 className="text-lg font-bold text-white">{t('nominations.newNominationTitle')}</h3>
+              <button onClick={() => setShowForm(false)} className="text-fiba-muted hover:text-white text-xl">&times;</button>
             </div>
             <form onSubmit={handleSubmit} className="space-y-4">
               {/* Multi-person select */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label className="block text-sm font-medium text-gray-300 mb-1">
                   {t('nominations.persons')} ({form.personnel_ids.length} {t('nominations.selected')})
                 </label>
                 <input type="text" placeholder={t('nominations.searchPerson')} value={personSearch}
-                  onChange={e => setPersonSearch(e.target.value)} className="w-full px-3 py-2 border rounded-lg text-sm mb-1" />
+                  onChange={e => setPersonSearch(e.target.value)} className="fiba-input mb-1" />
                 <div className="flex gap-2 mb-2">
-                  <button type="button" onClick={selectAllFiltered} className="text-blue-600 hover:underline text-xs">
+                  <button type="button" onClick={selectAllFiltered} className="text-fiba-accent hover:underline text-xs">
                     {t('nominations.selectAll')}
                   </button>
-                  <button type="button" onClick={clearSelection} className="text-gray-500 hover:underline text-xs">
+                  <button type="button" onClick={clearSelection} className="text-fiba-muted hover:underline text-xs">
                     {t('nominations.clear')}
                   </button>
                 </div>
-                <div className="border rounded-lg max-h-48 overflow-y-auto">
+                <div className="border border-fiba-border rounded-lg max-h-48 overflow-y-auto">
                   {filteredPersonnel.map(p => (
                     <label key={p.id}
-                      className={`flex items-center gap-2 px-3 py-2 hover:bg-gray-50 cursor-pointer text-sm ${form.personnel_ids.includes(p.id) ? 'bg-blue-50' : ''}`}>
+                      className={`flex items-center gap-2 px-3 py-2 hover:bg-fiba-surface cursor-pointer text-sm ${form.personnel_ids.includes(p.id) ? 'bg-fiba-accent/10' : ''}`}>
                       <input type="checkbox" checked={form.personnel_ids.includes(p.id)} onChange={() => togglePerson(p.id)} className="rounded" />
                       <span>{p.name}</span>
-                      <span className={`ml-auto text-xs px-1.5 py-0.5 rounded ${p.role === 'VGO' ? 'bg-purple-100 text-purple-700' : 'bg-green-100 text-green-700'}`}>{p.role}</span>
+                      <span className={`ml-auto text-xs px-1.5 py-0.5 rounded ${p.role === 'VGO' ? 'bg-purple-500/20 text-purple-400' : 'bg-emerald-500/20 text-emerald-400'}`}>{p.role}</span>
                     </label>
                   ))}
                   {filteredPersonnel.length === 0 && (
-                    <p className="px-3 py-4 text-center text-gray-400 text-sm">{t('nominations.noPersonsFound')}</p>
+                    <p className="px-3 py-4 text-center text-fiba-muted/60 text-sm">{t('nominations.noPersonsFound')}</p>
                   )}
                 </div>
               </div>
 
               {/* Competition select */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">{t('nominations.competition')}</label>
+                <label className="block text-sm font-medium text-gray-300 mb-1">{t('nominations.competition')}</label>
                 <select required value={form.competition_id} onChange={e => handleCompChange(e.target.value)}
-                  className="w-full px-3 py-2 border rounded-lg text-sm">
+                  className="fiba-select">
                   <option value="">{t('nominations.selectCompetition')}</option>
                   {competitions.map(c => (
                     <option key={c.id} value={c.id}>{c.name} ({c.template_key})</option>
@@ -508,9 +508,9 @@ export default function Nominations() {
 
               {/* Letter date */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">{t('nominations.letterDate')}</label>
+                <label className="block text-sm font-medium text-gray-300 mb-1">{t('nominations.letterDate')}</label>
                 <input type="date" value={form.letter_date} onChange={e => setForm(f => ({ ...f, letter_date: e.target.value }))}
-                  className="w-full px-3 py-2 border rounded-lg text-sm" />
+                  className="fiba-input" />
               </div>
 
               {/* Location & Venue */}
@@ -518,26 +518,26 @@ export default function Nominations() {
                 <>
                   <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Location</label>
+                      <label className="block text-sm font-medium text-gray-300 mb-1">Location</label>
                       <input type="text" value={form.location} onChange={e => setForm(f => ({ ...f, location: e.target.value }))}
-                        className="w-full px-3 py-2 border rounded-lg text-sm" />
+                        className="fiba-input" />
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">{t('nominations.venue')}</label>
+                      <label className="block text-sm font-medium text-gray-300 mb-1">{t('nominations.venue')}</label>
                       <input type="text" value={form.venue} onChange={e => setForm(f => ({ ...f, venue: e.target.value }))}
-                        className="w-full px-3 py-2 border rounded-lg text-sm" />
+                        className="fiba-input" />
                     </div>
                   </div>
                   <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">{t('nominations.arrivalDate')}</label>
+                      <label className="block text-sm font-medium text-gray-300 mb-1">{t('nominations.arrivalDate')}</label>
                       <input type="date" value={form.arrival_date} onChange={e => setForm(f => ({ ...f, arrival_date: e.target.value }))}
-                        className="w-full px-3 py-2 border rounded-lg text-sm" />
+                        className="fiba-input" />
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">{t('nominations.departureDate')}</label>
+                      <label className="block text-sm font-medium text-gray-300 mb-1">{t('nominations.departureDate')}</label>
                       <input type="date" value={form.departure_date} onChange={e => setForm(f => ({ ...f, departure_date: e.target.value }))}
-                        className="w-full px-3 py-2 border rounded-lg text-sm" />
+                        className="fiba-input" />
                     </div>
                   </div>
                 </>
@@ -546,24 +546,24 @@ export default function Nominations() {
               {/* Game Dates */}
               {templateKey && templateKey !== 'BCLA_RS' && (
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">{t('nominations.gameDates')}</label>
+                  <label className="block text-sm font-medium text-gray-300 mb-1">{t('nominations.gameDates')}</label>
                   {form.game_dates.map((gd, idx) => (
                     <div key={idx} className="flex gap-2 mb-2 items-center">
                       {templateKey === 'BCLA_F4' ? (
-                        <span className="text-sm text-gray-600 w-28">{gd.label}</span>
+                        <span className="text-sm text-fiba-muted w-28">{gd.label}</span>
                       ) : (
                         <input type="text" value={gd.label} onChange={e => updateGameDate(idx, 'label', e.target.value)}
-                          placeholder="Label" className="w-32 px-2 py-1.5 border rounded text-sm" readOnly={templateKey === 'LSB'} />
+                          placeholder="Label" className="fiba-input w-32" readOnly={templateKey === 'LSB'} />
                       )}
                       <input type="date" value={gd.date} onChange={e => updateGameDate(idx, 'date', e.target.value)}
-                        className="flex-1 px-2 py-1.5 border rounded text-sm" />
+                        className="fiba-input flex-1" />
                       {templateKey !== 'BCLA_F4' && (
-                        <button type="button" onClick={() => removeGameDate(idx)} className="text-red-400 hover:text-red-600 text-lg">&times;</button>
+                        <button type="button" onClick={() => removeGameDate(idx)} className="text-red-400 hover:text-red-300 text-lg">&times;</button>
                       )}
                     </div>
                   ))}
                   {templateKey !== 'BCLA_F4' && (
-                    <button type="button" onClick={addGameDate} className="text-blue-600 hover:underline text-sm">
+                    <button type="button" onClick={addGameDate} className="text-fiba-accent hover:underline text-sm">
                       {t('nominations.addDate')}
                     </button>
                   )}
@@ -573,41 +573,41 @@ export default function Nominations() {
               {/* Confirmation Deadline */}
               {showDeadline && (
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">{t('nominations.confirmationDeadline')}</label>
+                  <label className="block text-sm font-medium text-gray-300 mb-1">{t('nominations.confirmationDeadline')}</label>
                   <input type="date" value={form.confirmation_deadline}
                     onChange={e => setForm(f => ({ ...f, confirmation_deadline: e.target.value }))}
-                    className="w-full px-3 py-2 border rounded-lg text-sm" />
+                    className="fiba-input" />
                 </div>
               )}
 
               {/* Fees */}
               <div className="grid grid-cols-3 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <label className="block text-sm font-medium text-gray-300 mb-1">
                     {showDeadline ? t('nominations.perGameFee') : t('nominations.windowFee')}
                   </label>
                   <input type="number" step="0.01" value={form.window_fee}
                     onChange={e => setForm(f => ({ ...f, window_fee: e.target.value }))}
-                    className="w-full px-3 py-2 border rounded-lg text-sm" />
+                    className="fiba-input" />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">{t('nominations.incidentals')}</label>
+                  <label className="block text-sm font-medium text-gray-300 mb-1">{t('nominations.incidentals')}</label>
                   <input type="number" step="0.01" value={form.incidentals}
                     onChange={e => setForm(f => ({ ...f, incidentals: e.target.value }))}
-                    className="w-full px-3 py-2 border rounded-lg text-sm" />
+                    className="fiba-input" />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Total</label>
-                  <input type="text" value={total} readOnly className="w-full px-3 py-2 border rounded-lg text-sm bg-gray-50" />
+                  <label className="block text-sm font-medium text-gray-300 mb-1">Total</label>
+                  <input type="text" value={total} readOnly className="fiba-input bg-fiba-surface" />
                 </div>
               </div>
 
               <div className="flex justify-end gap-3 pt-4">
-                <button type="button" onClick={() => setShowForm(false)} className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800">
+                <button type="button" onClick={() => setShowForm(false)} className="px-4 py-2 text-sm text-fiba-muted hover:text-white">
                   {t('nominations.cancel')}
                 </button>
                 <button type="submit" disabled={loading || form.personnel_ids.length === 0}
-                  className="bg-blue-600 text-white px-6 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50">
+                  className="btn-fiba disabled:opacity-50">
                   {loading ? t('nominations.saving') : form.personnel_ids.length > 1
                     ? t('nominations.createCount', { count: form.personnel_ids.length })
                     : t('nominations.createOne')}

@@ -5,10 +5,10 @@ import { useLanguage } from '../i18n/LanguageContext'
 import { useAuth } from '../contexts/AuthContext'
 
 const STATUS_STYLES = {
-  available: { bg: 'bg-green-500', cell: 'bg-green-100 hover:bg-green-200', text: 'text-green-700' },
-  unavailable: { bg: 'bg-red-500', cell: 'bg-red-100 hover:bg-red-200', text: 'text-red-700' },
-  restricted: { bg: 'bg-yellow-500', cell: 'bg-yellow-100 hover:bg-yellow-200', text: 'text-yellow-700' },
-  no_data: { bg: 'bg-gray-300', cell: 'bg-gray-50 hover:bg-gray-100', text: 'text-gray-400' },
+  available: { bg: 'bg-green-500', cell: 'bg-emerald-500/10 hover:bg-emerald-500/20', text: 'text-emerald-400' },
+  unavailable: { bg: 'bg-red-500', cell: 'bg-red-500/10 hover:bg-red-500/20', text: 'text-red-400' },
+  restricted: { bg: 'bg-yellow-500', cell: 'bg-yellow-500/10 hover:bg-yellow-500/20', text: 'text-yellow-400' },
+  no_data: { bg: 'bg-gray-500', cell: 'bg-fiba-surface hover:bg-fiba-surface-2', text: 'text-fiba-muted' },
 }
 
 const COMP_TYPES = ['BCLA', 'WCQ', 'LSB', 'LSBF', 'WBLA', 'AmeriCup', 'U-Series', '3x3']
@@ -140,7 +140,7 @@ export default function Availability() {
   if (loading) {
     return (
       <div className="flex items-center justify-center py-20">
-        <span className="text-gray-400 text-sm">{t('common.loading')}</span>
+        <span className="text-fiba-muted text-sm">{t('common.loading')}</span>
       </div>
     )
   }
@@ -148,7 +148,7 @@ export default function Availability() {
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
-        <h2 className="text-2xl font-bold text-gray-900">{t('availability.title')}</h2>
+        <h2 className="text-2xl font-bold text-white">{t('availability.title')}</h2>
       </div>
 
       {/* Filters */}
@@ -157,14 +157,14 @@ export default function Availability() {
           {COMP_TYPES.map(type => (
             <button key={type} onClick={() => toggleTypeFilter(type)}
               className={`px-2.5 py-1 rounded-full text-xs font-medium border transition-colors ${
-                typeFilter.includes(type) ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
+                typeFilter.includes(type) ? 'bg-fiba-accent text-fiba-dark border-fiba-accent' : 'bg-fiba-surface text-fiba-muted border-fiba-border hover:bg-fiba-surface-2'
               }`}>
               {type}
             </button>
           ))}
         </div>
         <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)}
-          className="px-3 py-1.5 border rounded-lg text-xs">
+          className="fiba-select text-xs px-3 py-1.5">
           <option value="">{t('availability.allStatuses')}</option>
           <option value="available">{t('availability.available')}</option>
           <option value="unavailable">{t('availability.unavailable')}</option>
@@ -173,42 +173,42 @@ export default function Availability() {
         </select>
         {(typeFilter.length > 0 || statusFilter) && (
           <button onClick={() => { setTypeFilter([]); setStatusFilter('') }}
-            className="text-xs text-blue-600 hover:underline">
+            className="text-xs text-fiba-accent hover:underline">
             {t('availability.resetFilters')}
           </button>
         )}
       </div>
 
       {filteredComps.length === 0 ? (
-        <div className="text-center py-12 text-gray-400">
+        <div className="text-center py-12 text-fiba-muted">
           <p className="text-sm">{t('availability.noCompetitions')}</p>
         </div>
       ) : (
-        <div className="bg-white rounded-lg border overflow-hidden">
+        <div className="rounded-xl border border-fiba-border overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-xs">
               <thead>
-                <tr className="bg-gray-50 border-b">
-                  <th className="text-left px-3 py-2 font-medium text-gray-500 sticky left-0 bg-gray-50 z-10 min-w-[180px]">
+                <tr className="bg-fiba-surface border-b border-fiba-border">
+                  <th className="text-left px-3 py-2 font-medium text-fiba-muted sticky left-0 bg-fiba-surface z-10 min-w-[180px]">
                     TD
                   </th>
                   {filteredComps.map(comp => (
-                    <th key={comp.id} className="px-2 py-2 text-center font-medium text-gray-500 min-w-[80px]">
+                    <th key={comp.id} className="px-2 py-2 text-center font-medium text-fiba-muted min-w-[80px]">
                       <div className="truncate max-w-[80px]" title={comp.name}>
                         {comp.short_name || comp.name?.substring(0, 10)}
                       </div>
-                      <div className="text-[10px] text-gray-400 font-normal">{formatCompDate(comp)}</div>
+                      <div className="text-[10px] text-fiba-muted/60 font-normal">{formatCompDate(comp)}</div>
                     </th>
                   ))}
                 </tr>
               </thead>
-              <tbody className="divide-y">
+              <tbody>
                 {filteredTds.map(td => (
-                  <tr key={td.id}>
-                    <td className="px-3 py-2 font-medium text-gray-800 sticky left-0 bg-white z-10 border-r">
+                  <tr key={td.id} className="border-t border-fiba-border">
+                    <td className="px-3 py-2 font-medium text-white sticky left-0 bg-fiba-card z-10 border-r border-fiba-border">
                       <div className="flex items-center gap-1.5">
                         <span>{td.name}</span>
-                        {td.country && <span className="text-[10px] text-gray-400">{td.country}</span>}
+                        {td.country && <span className="text-[10px] text-fiba-muted/60">{td.country}</span>}
                       </div>
                     </td>
                     {filteredComps.map(comp => {
@@ -234,14 +234,14 @@ export default function Availability() {
                   </tr>
                 ))}
                 {/* Summary row */}
-                <tr className="bg-gray-50 border-t-2 font-medium">
-                  <td className="px-3 py-2 text-gray-600 sticky left-0 bg-gray-50 z-10 border-r">
+                <tr className="bg-fiba-surface border-t-2 border-fiba-border font-medium">
+                  <td className="px-3 py-2 text-fiba-muted sticky left-0 bg-fiba-surface z-10 border-r border-fiba-border">
                     {t('availability.availableTds')}
                   </td>
                   {filteredComps.map(comp => (
-                    <td key={comp.id} className="px-2 py-2 text-center text-gray-600">
-                      <span className="text-green-700">{getAvailableCount(comp.id)}</span>
-                      <span className="text-gray-400"> / {tds.length}</span>
+                    <td key={comp.id} className="px-2 py-2 text-center text-fiba-muted">
+                      <span className="text-emerald-400">{getAvailableCount(comp.id)}</span>
+                      <span className="text-fiba-muted/60"> / {tds.length}</span>
                     </td>
                   ))}
                 </tr>
@@ -253,19 +253,19 @@ export default function Availability() {
 
       {/* Quick-set Modal */}
       {modal && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-sm p-6">
-            <h3 className="text-sm font-bold mb-1 text-gray-900">
+        <div className="fiba-modal-overlay">
+          <div className="fiba-modal max-w-sm p-6">
+            <h3 className="text-sm font-bold mb-1 text-white">
               {modal.existing ? t('availability.editAvailability') : t('availability.newAvailability')}
             </h3>
-            <p className="text-xs text-gray-500 mb-4">
+            <p className="text-xs text-fiba-muted mb-4">
               {modal.td.name} — {modal.competition.short_name || modal.competition.name}
             </p>
             <form onSubmit={handleModalSubmit} className="space-y-3">
               <div>
-                <label className="block text-xs font-medium text-gray-500 mb-1">{t('availability.status')}</label>
+                <label className="fiba-label">{t('availability.status')}</label>
                 <select value={modalForm.status} onChange={e => setModalForm(f => ({ ...f, status: e.target.value }))}
-                  className="w-full px-3 py-2 border rounded-lg text-sm">
+                  className="fiba-select">
                   <option value="available">{t('availability.available')}</option>
                   <option value="unavailable">{t('availability.unavailable')}</option>
                   <option value="restricted">{t('availability.restricted')}</option>
@@ -273,13 +273,13 @@ export default function Availability() {
               </div>
               <textarea placeholder={t('availability.notesPlaceholder')} value={modalForm.notes}
                 onChange={e => setModalForm(f => ({ ...f, notes: e.target.value }))}
-                className="w-full px-3 py-2 border rounded-lg text-sm" rows={2} />
+                className="fiba-input" rows={2} />
               <div className="flex justify-end gap-3 pt-1">
-                <button type="button" onClick={() => setModal(null)} className="px-4 py-2 text-sm text-gray-600">
+                <button type="button" onClick={() => setModal(null)} className="px-4 py-2 text-sm text-fiba-muted">
                   {t('availability.cancel')}
                 </button>
                 <button type="submit" disabled={saving}
-                  className="bg-blue-600 text-white px-5 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50">
+                  className="btn-fiba disabled:opacity-50">
                   {saving ? t('availability.saving') : t('availability.save')}
                 </button>
               </div>

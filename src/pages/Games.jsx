@@ -251,20 +251,20 @@ export default function Games() {
     <div>
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
-        <h2 className="text-2xl font-bold text-gray-900">{t('games.title')}</h2>
+        <h2 className="text-2xl font-bold text-white">{t('games.title')}</h2>
         <div className="flex items-center gap-3">
           {selectedCompId && (
             <>
               <button onClick={() => setShowImport(true)}
-                className="px-3 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-50">
+                className="btn-fiba-ghost">
                 {t('games.importExcel')}
               </button>
               <button onClick={handleSync} disabled={syncing}
-                className="px-3 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50">
+                className="btn-fiba-ghost disabled:opacity-50">
                 {syncing ? t('games.syncing') : t('games.syncResults')}
               </button>
               <button onClick={openCreate}
-                className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700">
+                className="btn-fiba">
                 {t('games.addGame')}
               </button>
             </>
@@ -273,7 +273,7 @@ export default function Games() {
       </div>
 
       {syncMsg && (
-        <div className="mb-4 px-4 py-2 bg-blue-50 text-blue-700 rounded-lg text-sm">{syncMsg}</div>
+        <div className="mb-4 px-4 py-2 bg-blue-500/10 text-blue-400 rounded-lg text-sm">{syncMsg}</div>
       )}
 
       {/* Competition selector + filters */}
@@ -287,7 +287,7 @@ export default function Games() {
 
         {gameDates.length > 0 && (
           <select value={filterDate} onChange={e => setFilterDate(e.target.value)}
-            className="px-3 py-2 border rounded-lg text-sm bg-white">
+            className="fiba-select">
             <option value="">{t('games.allDates')}</option>
             {gameDates.map(d => (
               <option key={d} value={d}>{formatDate(d)}</option>
@@ -297,7 +297,7 @@ export default function Games() {
 
         {groups.length > 0 && (
           <select value={filterGroup} onChange={e => setFilterGroup(e.target.value)}
-            className="px-3 py-2 border rounded-lg text-sm bg-white">
+            className="fiba-select">
             <option value="">{t('games.allGroups')}</option>
             {groups.map(g => (
               <option key={g} value={g}>{g}</option>
@@ -309,37 +309,37 @@ export default function Games() {
       {/* Stats row */}
       {games.length > 0 && (
         <div className="flex gap-6 mb-6">
-          <div className="bg-white rounded-lg border px-4 py-3 flex-1">
-            <div className="text-2xl font-bold text-gray-900">{games.length}</div>
-            <div className="text-xs text-gray-500">{t('games.totalGames')}</div>
+          <div className="fiba-stat flex-1">
+            <div className="text-2xl font-bold text-white">{games.length}</div>
+            <div className="text-xs text-fiba-muted">{t('games.totalGames')}</div>
           </div>
-          <div className="bg-white rounded-lg border px-4 py-3 flex-1">
-            <div className="text-2xl font-bold text-gray-900">{teams.length}</div>
-            <div className="text-xs text-gray-500">{t('games.teams')}</div>
+          <div className="fiba-stat flex-1">
+            <div className="text-2xl font-bold text-white">{teams.length}</div>
+            <div className="text-xs text-fiba-muted">{t('games.teams')}</div>
           </div>
-          <div className="bg-white rounded-lg border px-4 py-3 flex-1">
-            <div className="text-2xl font-bold text-gray-900">{gameDates.length}</div>
-            <div className="text-xs text-gray-500">{t('games.gameDays')}</div>
+          <div className="fiba-stat flex-1">
+            <div className="text-2xl font-bold text-white">{gameDates.length}</div>
+            <div className="text-xs text-fiba-muted">{t('games.gameDays')}</div>
           </div>
-          <div className="bg-white rounded-lg border px-4 py-3 flex-1">
-            <div className="text-2xl font-bold text-green-600">{completedCount}</div>
-            <div className="text-xs text-gray-500">{t('games.completed')}</div>
+          <div className="fiba-stat flex-1">
+            <div className="text-2xl font-bold text-emerald-400">{completedCount}</div>
+            <div className="text-xs text-fiba-muted">{t('games.completed')}</div>
           </div>
         </div>
       )}
 
       {/* Game cards - FIBA style */}
       {loading || syncing ? (
-        <div className="text-center py-12 text-gray-400 text-sm">{syncing ? t('games.syncing') : t('common.loading')}</div>
+        <div className="text-center py-12 text-fiba-muted text-sm">{syncing ? t('games.syncing') : t('common.loading')}</div>
       ) : filtered.length === 0 ? (
-        <div className="text-center py-12 text-gray-400 text-sm">{t('games.noGames')}</div>
+        <div className="text-center py-12 text-fiba-muted text-sm">{t('games.noGames')}</div>
       ) : (
         Object.entries(gamesByPhase).map(([phase, dateGroups]) => (
           <div key={phase} className="mb-8">
-            <h3 className="text-sm font-bold text-gray-500 uppercase tracking-wider mb-4 px-1">{phase}</h3>
+            <h3 className="text-sm font-bold text-fiba-muted uppercase tracking-wider mb-4 px-1">{phase}</h3>
             {Object.entries(dateGroups).sort(([a], [b]) => a.localeCompare(b)).map(([date, dateGames]) => (
               <div key={date} className="mb-6">
-                <div className="text-xs font-semibold text-gray-400 uppercase mb-2 px-1">{formatDate(date)}</div>
+                <div className="text-xs font-semibold text-fiba-muted/60 uppercase mb-2 px-1">{formatDate(date)}</div>
                 <div className="space-y-2">
                   {dateGames.sort((a, b) => (a.time || '').localeCompare(b.time || '')).map(game => (
                     <GameCard key={game.id} game={game} canEdit={canEdit}
@@ -354,99 +354,99 @@ export default function Games() {
 
       {/* Create/Edit modal */}
       {showModal && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-lg p-6 max-h-[90vh] overflow-y-auto">
-            <h3 className="text-lg font-bold mb-4">{editing ? t('games.editGame') : t('games.newGame')}</h3>
+        <div className="fiba-modal-overlay">
+          <div className="fiba-modal max-w-lg p-6 max-h-[90vh] overflow-y-auto">
+            <h3 className="text-lg font-bold text-white mb-4">{editing ? t('games.editGame') : t('games.newGame')}</h3>
             <form onSubmit={handleSubmit} className="space-y-3">
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-medium text-gray-500 mb-1">{t('games.date')}</label>
+                  <label className="fiba-label">{t('games.date')}</label>
                   <input type="date" required value={form.date} onChange={e => setForm(f => ({ ...f, date: e.target.value }))}
-                    className="w-full px-3 py-2 border rounded-lg text-sm" />
+                    className="fiba-input" />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-gray-500 mb-1">{t('games.time')}</label>
+                  <label className="fiba-label">{t('games.time')}</label>
                   <input type="time" value={form.time} onChange={e => setForm(f => ({ ...f, time: e.target.value }))}
-                    className="w-full px-3 py-2 border rounded-lg text-sm" />
+                    className="fiba-input" />
                 </div>
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-medium text-gray-500 mb-1">{t('games.teamA')}</label>
+                  <label className="fiba-label">{t('games.teamA')}</label>
                   <input required placeholder="e.g. Argentina" value={form.team_a}
                     onChange={e => setForm(f => ({ ...f, team_a: e.target.value }))}
-                    className="w-full px-3 py-2 border rounded-lg text-sm" />
+                    className="fiba-input" />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-gray-500 mb-1">{t('games.teamB')}</label>
+                  <label className="fiba-label">{t('games.teamB')}</label>
                   <input required placeholder="e.g. Brazil" value={form.team_b}
                     onChange={e => setForm(f => ({ ...f, team_b: e.target.value }))}
-                    className="w-full px-3 py-2 border rounded-lg text-sm" />
+                    className="fiba-input" />
                 </div>
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-medium text-gray-500 mb-1">{t('games.codeA')}</label>
+                  <label className="fiba-label">{t('games.codeA')}</label>
                   <input placeholder="ARG" value={form.team_a_code}
                     onChange={e => setForm(f => ({ ...f, team_a_code: e.target.value.toUpperCase() }))}
-                    className="w-full px-3 py-2 border rounded-lg text-sm" maxLength={3} />
+                    className="fiba-input" maxLength={3} />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-gray-500 mb-1">{t('games.codeB')}</label>
+                  <label className="fiba-label">{t('games.codeB')}</label>
                   <input placeholder="BRA" value={form.team_b_code}
                     onChange={e => setForm(f => ({ ...f, team_b_code: e.target.value.toUpperCase() }))}
-                    className="w-full px-3 py-2 border rounded-lg text-sm" maxLength={3} />
+                    className="fiba-input" maxLength={3} />
                 </div>
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-medium text-gray-500 mb-1">{t('games.scoreA')}</label>
+                  <label className="fiba-label">{t('games.scoreA')}</label>
                   <input type="number" placeholder="-" value={form.score_a}
                     onChange={e => setForm(f => ({ ...f, score_a: e.target.value }))}
-                    className="w-full px-3 py-2 border rounded-lg text-sm" />
+                    className="fiba-input" />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-gray-500 mb-1">{t('games.scoreB')}</label>
+                  <label className="fiba-label">{t('games.scoreB')}</label>
                   <input type="number" placeholder="-" value={form.score_b}
                     onChange={e => setForm(f => ({ ...f, score_b: e.target.value }))}
-                    className="w-full px-3 py-2 border rounded-lg text-sm" />
+                    className="fiba-input" />
                 </div>
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-medium text-gray-500 mb-1">{t('games.venue')}</label>
+                  <label className="fiba-label">{t('games.venue')}</label>
                   <input value={form.venue} onChange={e => setForm(f => ({ ...f, venue: e.target.value }))}
-                    className="w-full px-3 py-2 border rounded-lg text-sm" />
+                    className="fiba-input" />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-gray-500 mb-1">{t('games.city')}</label>
+                  <label className="fiba-label">{t('games.city')}</label>
                   <input value={form.city} onChange={e => setForm(f => ({ ...f, city: e.target.value }))}
-                    className="w-full px-3 py-2 border rounded-lg text-sm" />
+                    className="fiba-input" />
                 </div>
               </div>
 
               <div className="grid grid-cols-3 gap-3">
                 <div>
-                  <label className="block text-xs font-medium text-gray-500 mb-1">{t('games.phase')}</label>
+                  <label className="fiba-label">{t('games.phase')}</label>
                   <select value={form.phase} onChange={e => setForm(f => ({ ...f, phase: e.target.value }))}
-                    className="w-full px-3 py-2 border rounded-lg text-sm">
+                    className="fiba-select">
                     {PHASE_OPTIONS.map(p => <option key={p} value={p}>{p}</option>)}
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-gray-500 mb-1">{t('games.group')}</label>
+                  <label className="fiba-label">{t('games.group')}</label>
                   <input placeholder="A" value={form.group_label}
                     onChange={e => setForm(f => ({ ...f, group_label: e.target.value }))}
-                    className="w-full px-3 py-2 border rounded-lg text-sm" />
+                    className="fiba-input" />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-gray-500 mb-1">{t('games.status')}</label>
+                  <label className="fiba-label">{t('games.status')}</label>
                   <select value={form.status} onChange={e => setForm(f => ({ ...f, status: e.target.value }))}
-                    className="w-full px-3 py-2 border rounded-lg text-sm">
+                    className="fiba-select">
                     <option value="scheduled">{t('games.scheduled')}</option>
                     <option value="completed">{t('games.completed')}</option>
                     <option value="live">{t('games.live')}</option>
@@ -456,11 +456,11 @@ export default function Games() {
 
               <div className="flex justify-end gap-3 pt-3">
                 <button type="button" onClick={() => setShowModal(false)}
-                  className="px-4 py-2 text-sm text-gray-600 hover:text-gray-900">
+                  className="px-4 py-2 text-sm text-fiba-muted hover:text-white">
                   {t('games.cancel')}
                 </button>
                 <button type="submit"
-                  className="bg-blue-600 text-white px-6 py-2 rounded-lg text-sm font-medium hover:bg-blue-700">
+                  className="btn-fiba">
                   {editing ? t('games.save') : t('games.create')}
                 </button>
               </div>
@@ -471,38 +471,38 @@ export default function Games() {
 
       {/* Import modal */}
       {showImport && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6">
-            <h3 className="text-lg font-bold mb-4">{t('games.importExcel')}</h3>
+        <div className="fiba-modal-overlay">
+          <div className="fiba-modal max-w-md p-6">
+            <h3 className="text-lg font-bold text-white mb-4">{t('games.importExcel')}</h3>
 
             <div
               onClick={() => fileRef.current?.click()}
               onDragOver={e => e.preventDefault()}
               onDrop={e => { e.preventDefault(); if (e.dataTransfer.files[0]) setImportFile(e.dataTransfer.files[0]) }}
-              className="border-2 border-dashed rounded-lg p-8 text-center cursor-pointer hover:border-blue-400 transition-colors"
+              className="border-2 border-dashed border-fiba-border rounded-lg p-8 text-center cursor-pointer hover:border-fiba-muted transition-colors"
             >
               {importFile ? (
-                <p className="text-sm font-medium text-gray-700">{importFile.name}</p>
+                <p className="text-sm font-medium text-gray-300">{importFile.name}</p>
               ) : (
-                <p className="text-sm text-gray-400">{t('games.dragOrClick')}</p>
+                <p className="text-sm text-fiba-muted">{t('games.dragOrClick')}</p>
               )}
               <input ref={fileRef} type="file" accept=".xlsx,.xls" className="hidden"
                 onChange={e => { if (e.target.files[0]) setImportFile(e.target.files[0]) }} />
             </div>
 
-            <div className="mt-3 text-xs text-gray-400">
+            <div className="mt-3 text-xs text-fiba-muted/60">
               <p>Columns: Date | Time | Team A | Team B | Venue | Phase | Group</p>
             </div>
 
             {importMsg && (
-              <div className="mt-3 px-3 py-2 bg-blue-50 text-blue-700 rounded text-sm">{importMsg}</div>
+              <div className="mt-3 px-3 py-2 bg-blue-500/10 text-blue-400 rounded text-sm">{importMsg}</div>
             )}
 
             <div className="flex justify-end gap-3 mt-4">
               <button onClick={() => { setShowImport(false); setImportFile(null); setImportMsg('') }}
-                className="px-4 py-2 text-sm text-gray-600">{t('games.cancel')}</button>
+                className="px-4 py-2 text-sm text-fiba-muted">{t('games.cancel')}</button>
               <button onClick={handleImport} disabled={!importFile || importing}
-                className="bg-blue-600 text-white px-6 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50">
+                className="btn-fiba disabled:opacity-50">
                 {importing ? t('games.importing') : t('games.importExcel')}
               </button>
             </div>
@@ -523,14 +523,14 @@ function GameCard({ game, canEdit, onEdit, onDelete, t }) {
   const scoreB = game.score_b ?? '-'
 
   return (
-    <div className={`bg-white rounded-lg border overflow-hidden hover:shadow-sm transition-shadow ${
-      isLive ? 'border-red-300 ring-1 ring-red-100' : ''
+    <div className={`bg-fiba-card rounded-lg border border-fiba-border overflow-hidden hover:shadow-sm transition-shadow ${
+      isLive ? 'border-red-500/50 ring-1 ring-red-500/20' : ''
     }`}>
       <div className="flex items-center">
         {/* Group label */}
         {game.group_label && (
-          <div className="w-10 bg-gray-50 flex items-center justify-center border-r self-stretch">
-            <span className="text-xs font-bold text-gray-400 rotate-0">{game.group_label}</span>
+          <div className="w-10 bg-fiba-surface flex items-center justify-center border-r border-fiba-border self-stretch">
+            <span className="text-xs font-bold text-fiba-muted/60 rotate-0">{game.group_label}</span>
           </div>
         )}
 
@@ -539,11 +539,11 @@ function GameCard({ game, canEdit, onEdit, onDelete, t }) {
           <div className="flex items-center gap-4">
             {/* Team A */}
             <div className="flex-1 text-right">
-              <div className={`text-sm font-semibold ${isCompleted && game.score_a > game.score_b ? 'text-gray-900' : 'text-gray-700'}`}>
+              <div className={`text-sm font-semibold ${isCompleted && game.score_a > game.score_b ? 'text-white' : 'text-gray-300'}`}>
                 {game.team_a}
               </div>
               {game.team_a_code && (
-                <div className="text-xs text-gray-400 font-medium">{game.team_a_code}</div>
+                <div className="text-xs text-fiba-muted/60 font-medium">{game.team_a_code}</div>
               )}
             </div>
 
@@ -552,15 +552,15 @@ function GameCard({ game, canEdit, onEdit, onDelete, t }) {
               {isCompleted || isLive ? (
                 <div className="flex items-center justify-center gap-2">
                   <span className={`text-xl font-bold min-w-[2rem] text-right ${
-                    isCompleted && game.score_a > game.score_b ? 'text-gray-900' : 'text-gray-500'
+                    isCompleted && game.score_a > game.score_b ? 'text-white' : 'text-fiba-muted'
                   }`}>{scoreA}</span>
-                  <span className="text-gray-300 text-sm">-</span>
+                  <span className="text-fiba-border text-sm">-</span>
                   <span className={`text-xl font-bold min-w-[2rem] text-left ${
-                    isCompleted && game.score_b > game.score_a ? 'text-gray-900' : 'text-gray-500'
+                    isCompleted && game.score_b > game.score_a ? 'text-white' : 'text-fiba-muted'
                   }`}>{scoreB}</span>
                 </div>
               ) : (
-                <div className="text-sm font-semibold text-blue-600">
+                <div className="text-sm font-semibold text-fiba-accent">
                   {game.time || '--:--'}
                 </div>
               )}
@@ -568,17 +568,17 @@ function GameCard({ game, canEdit, onEdit, onDelete, t }) {
                 <div className="text-[10px] font-bold text-red-500 uppercase tracking-wider mt-0.5">LIVE</div>
               )}
               {isCompleted && (
-                <div className="text-[10px] text-gray-400 uppercase tracking-wider mt-0.5">Final</div>
+                <div className="text-[10px] text-fiba-muted/60 uppercase tracking-wider mt-0.5">Final</div>
               )}
             </div>
 
             {/* Team B */}
             <div className="flex-1">
-              <div className={`text-sm font-semibold ${isCompleted && game.score_b > game.score_a ? 'text-gray-900' : 'text-gray-700'}`}>
+              <div className={`text-sm font-semibold ${isCompleted && game.score_b > game.score_a ? 'text-white' : 'text-gray-300'}`}>
                 {game.team_b}
               </div>
               {game.team_b_code && (
-                <div className="text-xs text-gray-400 font-medium">{game.team_b_code}</div>
+                <div className="text-xs text-fiba-muted/60 font-medium">{game.team_b_code}</div>
               )}
             </div>
           </div>
@@ -587,10 +587,10 @@ function GameCard({ game, canEdit, onEdit, onDelete, t }) {
           {(game.venue || game.game_number) && (
             <div className="flex items-center justify-center gap-3 mt-1.5">
               {game.venue && (
-                <span className="text-[11px] text-gray-400">{game.venue}</span>
+                <span className="text-[11px] text-fiba-muted/60">{game.venue}</span>
               )}
               {game.game_number && (
-                <span className="text-[11px] text-gray-300">{game.game_number}</span>
+                <span className="text-[11px] text-fiba-border">{game.game_number}</span>
               )}
             </div>
           )}
@@ -599,14 +599,14 @@ function GameCard({ game, canEdit, onEdit, onDelete, t }) {
         {/* Actions */}
         {canEdit && (
           <div className="flex items-center gap-1 pr-3">
-            <button onClick={onEdit} className="p-1.5 text-gray-400 hover:text-blue-600 rounded transition-colors"
+            <button onClick={onEdit} className="p-1.5 text-fiba-muted hover:text-fiba-accent rounded transition-colors"
               title={t('games.editGame')}>
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
                   d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
               </svg>
             </button>
-            <button onClick={onDelete} className="p-1.5 text-gray-400 hover:text-red-600 rounded transition-colors"
+            <button onClick={onDelete} className="p-1.5 text-fiba-muted hover:text-red-400 rounded transition-colors"
               title={t('games.delete')}>
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}

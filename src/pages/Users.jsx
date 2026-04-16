@@ -113,35 +113,35 @@ export default function Users() {
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
-        <h2 className="text-xl font-bold text-gray-900">{t('users.title')}</h2>
+        <h2 className="text-xl font-bold text-white">{t('users.title')}</h2>
         {canEdit && (
           <button onClick={() => setShowForm(!showForm)}
-            className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700">
+            className="btn-fiba">
             {showForm ? t('users.cancel') : t('users.newUser')}
           </button>
         )}
       </div>
 
       {showForm && canEdit && (
-        <form onSubmit={handleCreate} className="bg-white rounded-xl shadow p-6 mb-6 max-w-md">
+        <form onSubmit={handleCreate} className="fiba-card p-6 mb-6 max-w-md">
           {error && (
-            <div className="bg-red-50 text-red-700 text-sm px-4 py-3 rounded-lg mb-4">{error}</div>
+            <div className="bg-red-500/10 text-red-400 text-sm px-4 py-3 rounded-lg mb-4">{error}</div>
           )}
           <div className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">{t('users.email')}</label>
+              <label className="fiba-label">{t('users.email')}</label>
               <input type="email" required value={email} onChange={e => setEmail(e.target.value)}
-                className="w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="fiba-input"
                 placeholder="usuario@fiba.basketball" />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">{t('users.password')}</label>
+              <label className="fiba-label">{t('users.password')}</label>
               <input type="password" required minLength={6} value={password} onChange={e => setPassword(e.target.value)}
-                className="w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="fiba-input"
                 placeholder={t('users.minChars')} />
             </div>
             <button type="submit" disabled={saving}
-              className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50">
+              className="btn-fiba disabled:opacity-50">
               {saving ? t('users.creating') : t('users.createUser')}
             </button>
           </div>
@@ -149,46 +149,46 @@ export default function Users() {
       )}
 
       {loading ? (
-        <p className="text-gray-400 text-sm">{t('users.loading')}</p>
+        <p className="text-fiba-muted/60 text-sm">{t('users.loading')}</p>
       ) : (
-        <div className="bg-white rounded-xl shadow overflow-hidden">
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
+        <div className="rounded-xl border border-fiba-border overflow-hidden">
+          <table className="fiba-table">
+            <thead>
               <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">{t('users.email')}</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">{t('users.created')}</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">{t('users.lastAccess')}</th>
-                <th className="px-6 py-3"></th>
+                <th>{t('users.email')}</th>
+                <th>{t('users.created')}</th>
+                <th>{t('users.lastAccess')}</th>
+                <th></th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-200">
+            <tbody>
               {users.map(u => (
-                <tr key={u.id} className={`hover:bg-gray-50 ${permUser?.id === u.id ? 'bg-blue-50' : ''}`}>
-                  <td className="px-6 py-4 text-sm text-gray-900">
+                <tr key={u.id} className={permUser?.id === u.id ? 'bg-fiba-accent/10' : ''}>
+                  <td className="px-6 py-4 text-sm text-white">
                     <div className="flex items-center gap-2">
                       {u.email}
                       {u.is_superadmin && (
-                        <span className="inline-block px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-700">
+                        <span className="inline-block px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-500/20 text-amber-400">
                           {t('permissions.superadmin')}
                         </span>
                       )}
                     </div>
                   </td>
-                  <td className="px-6 py-4 text-sm text-gray-500">
+                  <td className="px-6 py-4 text-sm text-fiba-muted">
                     {u.created_at ? new Date(u.created_at).toLocaleDateString() : '-'}
                   </td>
-                  <td className="px-6 py-4 text-sm text-gray-500">
+                  <td className="px-6 py-4 text-sm text-fiba-muted">
                     {u.last_sign_in_at ? new Date(u.last_sign_in_at).toLocaleDateString() : t('users.never')}
                   </td>
                   <td className="px-6 py-4 text-right">
                     <div className="flex gap-3 justify-end">
                       {isSuperadmin && !u.is_superadmin && (
-                        <button onClick={() => openPermEditor(u)} className="text-blue-600 hover:underline text-sm">
+                        <button onClick={() => openPermEditor(u)} className="text-fiba-accent hover:underline text-sm">
                           {t('permissions.editPermissions')}
                         </button>
                       )}
                       {canEdit && !u.is_superadmin && (
-                        <button onClick={() => handleDelete(u)} className="text-red-600 hover:text-red-800 text-sm">
+                        <button onClick={() => handleDelete(u)} className="text-red-400 hover:text-red-300 text-sm">
                           {t('users.delete')}
                         </button>
                       )}
@@ -198,7 +198,7 @@ export default function Users() {
               ))}
               {users.length === 0 && (
                 <tr>
-                  <td colSpan={4} className="px-6 py-8 text-center text-gray-400 text-sm">
+                  <td colSpan={4} className="px-6 py-8 text-center text-fiba-muted/60 text-sm">
                     {t('users.noUsers')}
                   </td>
                 </tr>
@@ -210,41 +210,41 @@ export default function Users() {
 
       {/* Permission Editor Modal */}
       {permUser && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6">
+        <div className="fiba-modal-overlay">
+          <div className="fiba-modal max-w-md p-6">
             <div className="flex justify-between items-start mb-4">
               <div>
-                <h3 className="text-lg font-bold">{t('permissions.editPermissions')}</h3>
-                <p className="text-sm text-gray-500">{permUser.email}</p>
+                <h3 className="text-lg font-bold text-white">{t('permissions.editPermissions')}</h3>
+                <p className="text-sm text-fiba-muted">{permUser.email}</p>
               </div>
-              <button onClick={() => setPermUser(null)} className="text-gray-400 hover:text-gray-600 text-xl">&times;</button>
+              <button onClick={() => setPermUser(null)} className="text-fiba-muted hover:text-white text-xl">&times;</button>
             </div>
 
             {permLoading ? (
-              <div className="text-center py-8 text-gray-400 text-sm">{t('common.loading')}</div>
+              <div className="text-center py-8 text-fiba-muted/60 text-sm">{t('common.loading')}</div>
             ) : (
               <>
                 <table className="w-full text-sm mb-4">
-                  <thead className="bg-gray-50">
+                  <thead className="bg-fiba-surface">
                     <tr>
-                      <th className="text-left px-3 py-2 font-medium text-gray-500">{t('permissions.module')}</th>
-                      <th className="text-center px-3 py-2 font-medium text-gray-500 w-24">{t('permissions.canView')}</th>
-                      <th className="text-center px-3 py-2 font-medium text-gray-500 w-24">{t('permissions.canEdit')}</th>
+                      <th className="text-left px-3 py-2 font-medium text-fiba-muted">{t('permissions.module')}</th>
+                      <th className="text-center px-3 py-2 font-medium text-fiba-muted w-24">{t('permissions.canView')}</th>
+                      <th className="text-center px-3 py-2 font-medium text-fiba-muted w-24">{t('permissions.canEdit')}</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y">
+                  <tbody>
                     {permData.map(p => (
-                      <tr key={p.module} className="hover:bg-gray-50">
+                      <tr key={p.module} className="border-t border-fiba-border">
                         <td className="px-3 py-2 font-medium">{getModuleLabel(p.module)}</td>
                         <td className="px-3 py-2 text-center">
                           <input type="checkbox" checked={p.can_view}
                             onChange={() => toggleView(p.module)}
-                            className="rounded border-gray-300" />
+                            className="rounded border-fiba-border" />
                         </td>
                         <td className="px-3 py-2 text-center">
                           <input type="checkbox" checked={p.can_edit}
                             onChange={() => toggleEdit(p.module)}
-                            className="rounded border-gray-300" />
+                            className="rounded border-fiba-border" />
                         </td>
                       </tr>
                     ))}
@@ -252,17 +252,17 @@ export default function Users() {
                 </table>
 
                 {permSuccess && (
-                  <div className="bg-green-50 text-green-700 text-sm px-4 py-2 rounded-lg mb-3">
+                  <div className="bg-emerald-500/10 text-emerald-400 text-sm px-4 py-2 rounded-lg mb-3">
                     {t('permissions.permissionsUpdated')}
                   </div>
                 )}
 
                 <div className="flex justify-end gap-3">
-                  <button onClick={() => setPermUser(null)} className="px-4 py-2 text-sm text-gray-600">
+                  <button onClick={() => setPermUser(null)} className="px-4 py-2 text-sm text-fiba-muted">
                     {t('permissions.cancel')}
                   </button>
                   <button onClick={savePermissions} disabled={permSaving}
-                    className="bg-blue-600 text-white px-5 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50">
+                    className="btn-fiba disabled:opacity-50">
                     {permSaving ? t('permissions.saving') : t('permissions.savePermissions')}
                   </button>
                 </div>

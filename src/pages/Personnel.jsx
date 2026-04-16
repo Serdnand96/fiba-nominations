@@ -5,9 +5,9 @@ import { useLanguage } from '../i18n/LanguageContext'
 import { useAuth } from '../contexts/AuthContext'
 
 const STATUS_STYLES = {
-  available: 'bg-green-100 text-green-700',
-  unavailable: 'bg-red-100 text-red-700',
-  restricted: 'bg-yellow-100 text-yellow-700',
+  available: 'bg-emerald-500/20 text-emerald-400',
+  unavailable: 'bg-red-500/20 text-red-400',
+  restricted: 'bg-yellow-500/20 text-yellow-400',
 }
 
 export default function Personnel() {
@@ -172,13 +172,13 @@ export default function Personnel() {
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
-        <h2 className="text-2xl font-bold text-gray-900">{t('personnel.title')}</h2>
+        <h2 className="text-2xl font-bold text-white">{t('personnel.title')}</h2>
         {canEdit && (
           <div className="flex gap-2">
-            <button onClick={() => setShowImport(true)} className="border border-gray-300 text-gray-700 px-4 py-2 rounded-lg text-sm font-medium hover:bg-gray-50">
+            <button onClick={() => setShowImport(true)} className="btn-fiba-ghost">
               {t('personnel.importCsv')}
             </button>
-            <button onClick={openCreate} className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700">
+            <button onClick={openCreate} className="btn-fiba">
               {t('personnel.addPerson')}
             </button>
           </div>
@@ -193,9 +193,9 @@ export default function Personnel() {
           { label: 'TDs', value: stats.td },
           { label: t('personnel.countries'), value: stats.countries },
         ].map(s => (
-          <div key={s.label} className="bg-white rounded-lg border p-4">
-            <p className="text-sm text-gray-500">{s.label}</p>
-            <p className="text-2xl font-bold text-gray-900">{s.value}</p>
+          <div key={s.label} className="fiba-stat">
+            <p className="text-xs text-fiba-muted">{s.label}</p>
+            <p className="text-2xl font-bold text-white">{s.value}</p>
           </div>
         ))}
       </div>
@@ -203,8 +203,8 @@ export default function Personnel() {
       {/* Filters */}
       <div className="flex gap-3 mb-4">
         <input type="text" placeholder={t('personnel.search')} value={search} onChange={e => setSearch(e.target.value)}
-          className="w-80 px-4 py-2 border rounded-lg text-sm" />
-        <select value={roleFilter} onChange={e => setRoleFilter(e.target.value)} className="px-3 py-2 border rounded-lg text-sm">
+          className="fiba-input w-80" />
+        <select value={roleFilter} onChange={e => setRoleFilter(e.target.value)} className="fiba-select">
           <option value="">{t('personnel.allRoles')}</option>
           <option value="VGO">VGO</option>
           <option value="TD">TD</option>
@@ -212,24 +212,24 @@ export default function Personnel() {
       </div>
 
       {/* Table */}
-      <div className="bg-white rounded-lg border overflow-hidden">
-        <table className="w-full text-sm">
-          <thead className="bg-gray-50 border-b">
+      <div className="rounded-xl border border-fiba-border overflow-hidden">
+        <table className="fiba-table">
+          <thead>
             <tr>
-              <th className="text-left px-4 py-3 font-medium text-gray-500">{t('personnel.name')}</th>
-              <th className="text-left px-4 py-3 font-medium text-gray-500">{t('personnel.role')}</th>
-              <th className="text-left px-4 py-3 font-medium text-gray-500">{t('personnel.country')}</th>
-              <th className="text-left px-4 py-3 font-medium text-gray-500">{t('personnel.email')}</th>
-              <th className="text-left px-4 py-3 font-medium text-gray-500">{t('personnel.passport')}</th>
-              <th className="text-left px-4 py-3 font-medium text-gray-500"></th>
+              <th>{t('personnel.name')}</th>
+              <th>{t('personnel.role')}</th>
+              <th>{t('personnel.country')}</th>
+              <th>{t('personnel.email')}</th>
+              <th>{t('personnel.passport')}</th>
+              <th></th>
             </tr>
           </thead>
-          <tbody className="divide-y">
+          <tbody>
             {filtered.map(p => (
-              <tr key={p.id} className={`hover:bg-gray-50 ${availPerson?.id === p.id ? 'bg-blue-50' : ''}`}>
+              <tr key={p.id} className={availPerson?.id === p.id ? 'bg-fiba-accent/10' : ''}>
                 <td className="px-4 py-3 font-medium">{p.name}</td>
                 <td className="px-4 py-3">
-                  <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${p.role === 'VGO' ? 'bg-purple-100 text-purple-700' : 'bg-green-100 text-green-700'}`}>{p.role}</span>
+                  <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${p.role === 'VGO' ? 'bg-purple-500/20 text-purple-400' : 'bg-emerald-500/20 text-emerald-400'}`}>{p.role}</span>
                 </td>
                 <td className="px-4 py-3">{p.country || '—'}</td>
                 <td className="px-4 py-3">{p.email}</td>
@@ -237,12 +237,12 @@ export default function Personnel() {
                 <td className="px-4 py-3">
                   <div className="flex gap-3">
                     {p.role === 'TD' && (
-                      <button onClick={() => openAvailPanel(p)} className="text-green-600 hover:underline text-sm">{t('availability.tab')}</button>
+                      <button onClick={() => openAvailPanel(p)} className="text-emerald-400 hover:underline text-sm">{t('availability.tab')}</button>
                     )}
                     {canEdit && (
                       <>
-                        <button onClick={() => openEdit(p)} className="text-blue-600 hover:underline text-sm">{t('personnel.edit')}</button>
-                        <button onClick={() => handleDelete(p)} className="text-red-600 hover:underline text-sm">{t('personnel.delete')}</button>
+                        <button onClick={() => openEdit(p)} className="text-fiba-accent hover:underline text-sm">{t('personnel.edit')}</button>
+                        <button onClick={() => handleDelete(p)} className="text-red-400 hover:underline text-sm">{t('personnel.delete')}</button>
                       </>
                     )}
                   </div>
@@ -250,7 +250,7 @@ export default function Personnel() {
               </tr>
             ))}
             {filtered.length === 0 && (
-              <tr><td colSpan={6} className="px-4 py-8 text-center text-gray-400">{t('personnel.noPersonnel')}</td></tr>
+              <tr><td colSpan={6} className="px-4 py-8 text-center text-fiba-muted/60">{t('personnel.noPersonnel')}</td></tr>
             )}
           </tbody>
         </table>
@@ -258,22 +258,22 @@ export default function Personnel() {
 
       {/* Person Modal */}
       {showModal && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6">
-            <h3 className="text-lg font-bold mb-4">{editing ? t('personnel.editPerson') : t('personnel.addPersonTitle')}</h3>
+        <div className="fiba-modal-overlay">
+          <div className="fiba-modal max-w-md p-6">
+            <h3 className="text-lg font-bold text-white mb-4">{editing ? t('personnel.editPerson') : t('personnel.addPersonTitle')}</h3>
             <form onSubmit={handleSubmit} className="space-y-3">
-              <input required placeholder={t('personnel.name')} value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} className="w-full px-3 py-2 border rounded-lg text-sm" />
-              <input required type="email" placeholder={t('personnel.email')} value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} className="w-full px-3 py-2 border rounded-lg text-sm" />
-              <input placeholder={t('personnel.country')} value={form.country} onChange={e => setForm(f => ({ ...f, country: e.target.value }))} className="w-full px-3 py-2 border rounded-lg text-sm" />
-              <input placeholder={t('personnel.phone')} value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))} className="w-full px-3 py-2 border rounded-lg text-sm" />
-              <input placeholder={t('personnel.passport')} value={form.passport} onChange={e => setForm(f => ({ ...f, passport: e.target.value }))} className="w-full px-3 py-2 border rounded-lg text-sm" />
-              <select value={form.role} onChange={e => setForm(f => ({ ...f, role: e.target.value }))} className="w-full px-3 py-2 border rounded-lg text-sm">
+              <input required placeholder={t('personnel.name')} value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} className="fiba-input" />
+              <input required type="email" placeholder={t('personnel.email')} value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} className="fiba-input" />
+              <input placeholder={t('personnel.country')} value={form.country} onChange={e => setForm(f => ({ ...f, country: e.target.value }))} className="fiba-input" />
+              <input placeholder={t('personnel.phone')} value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))} className="fiba-input" />
+              <input placeholder={t('personnel.passport')} value={form.passport} onChange={e => setForm(f => ({ ...f, passport: e.target.value }))} className="fiba-input" />
+              <select value={form.role} onChange={e => setForm(f => ({ ...f, role: e.target.value }))} className="fiba-select">
                 <option value="VGO">VGO</option>
                 <option value="TD">TD</option>
               </select>
               <div className="flex justify-end gap-3 pt-2">
-                <button type="button" onClick={() => setShowModal(false)} className="px-4 py-2 text-sm text-gray-600">{t('personnel.cancel')}</button>
-                <button type="submit" className="bg-blue-600 text-white px-6 py-2 rounded-lg text-sm font-medium hover:bg-blue-700">
+                <button type="button" onClick={() => setShowModal(false)} className="px-4 py-2 text-sm text-fiba-muted">{t('personnel.cancel')}</button>
+                <button type="submit" className="btn-fiba">
                   {editing ? t('personnel.save') : t('personnel.add')}
                 </button>
               </div>
@@ -286,25 +286,25 @@ export default function Personnel() {
       {availPerson && (
         <>
           <div className="fixed inset-0 bg-black/40 z-40" onClick={() => setAvailPerson(null)} />
-          <div className="fixed top-0 right-0 h-full w-full max-w-lg bg-white shadow-2xl z-50 flex flex-col animate-slide-in">
-            <div className="flex items-start justify-between p-6 border-b border-gray-200">
+          <div className="fixed top-0 right-0 h-full w-full max-w-lg bg-fiba-card border-l border-fiba-border z-50 flex flex-col animate-slide-in">
+            <div className="flex items-start justify-between p-6 border-b border-fiba-border">
               <div>
                 <div className="flex items-center gap-2 mb-1">
-                  <span className="inline-block px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-700">TD</span>
-                  {availPerson.country && <span className="text-xs text-gray-400">{availPerson.country}</span>}
+                  <span className="inline-block px-2 py-0.5 rounded text-xs font-medium bg-emerald-500/20 text-emerald-400">TD</span>
+                  {availPerson.country && <span className="text-xs text-fiba-muted/60">{availPerson.country}</span>}
                 </div>
-                <h3 className="text-lg font-bold text-gray-900">{availPerson.name}</h3>
-                <p className="text-sm text-gray-500">{availPerson.email}</p>
+                <h3 className="text-lg font-bold text-white">{availPerson.name}</h3>
+                <p className="text-sm text-fiba-muted">{availPerson.email}</p>
               </div>
-              <button onClick={() => setAvailPerson(null)} className="p-1.5 rounded hover:bg-gray-100 text-gray-400 hover:text-gray-600">
+              <button onClick={() => setAvailPerson(null)} className="p-1.5 rounded hover:bg-fiba-surface text-fiba-muted hover:text-white">
                 <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
               </button>
             </div>
 
-            <div className="flex items-center justify-between px-6 py-3 border-b bg-gray-50">
-              <h4 className="text-sm font-semibold text-gray-700">{t('availability.tab')}</h4>
+            <div className="flex items-center justify-between px-6 py-3 border-b border-fiba-border bg-fiba-surface/50">
+              <h4 className="text-sm font-semibold text-gray-300">{t('availability.tab')}</h4>
               {canEditAvail && (
-                <button onClick={openCreateAvail} className="bg-blue-600 text-white px-3 py-1.5 rounded-lg text-xs font-medium hover:bg-blue-700">
+                <button onClick={openCreateAvail} className="btn-fiba text-xs px-3 py-1.5">
                   {t('availability.addAvailability')}
                 </button>
               )}
@@ -312,16 +312,16 @@ export default function Personnel() {
 
             <div className="flex-1 overflow-auto p-6">
               {availLoading ? (
-                <div className="text-center py-8 text-gray-400 text-sm">{t('common.loading')}</div>
+                <div className="text-center py-8 text-fiba-muted/60 text-sm">{t('common.loading')}</div>
               ) : availRecords.length === 0 ? (
-                <div className="text-center py-8 text-gray-400 text-sm">{t('availability.noRecords')}</div>
+                <div className="text-center py-8 text-fiba-muted/60 text-sm">{t('availability.noRecords')}</div>
               ) : (
                 <div className="space-y-3">
                   {availRecords.map(rec => (
-                    <div key={rec.id} className="border rounded-lg p-3">
+                    <div key={rec.id} className="border border-fiba-border rounded-lg p-3">
                       <div className="flex items-center justify-between mb-2">
                         <div className="flex items-center gap-2">
-                          <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${rec.type === 'event_specific' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-700'}`}>
+                          <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${rec.type === 'event_specific' ? 'bg-blue-500/20 text-blue-400' : 'bg-fiba-surface text-fiba-muted'}`}>
                             {rec.type === 'event_specific' ? t('availability.eventSpecific') : t('availability.dateRange')}
                           </span>
                           <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${STATUS_STYLES[rec.status]}`}>
@@ -330,19 +330,19 @@ export default function Personnel() {
                         </div>
                         {canEditAvail && (
                           <div className="flex gap-2">
-                            <button onClick={() => openEditAvail(rec)} className="text-blue-600 hover:underline text-xs">{t('availability.edit')}</button>
-                            <button onClick={() => handleDeleteAvail(rec)} className="text-red-600 hover:underline text-xs">{t('availability.delete')}</button>
+                            <button onClick={() => openEditAvail(rec)} className="text-fiba-accent hover:underline text-xs">{t('availability.edit')}</button>
+                            <button onClick={() => handleDeleteAvail(rec)} className="text-red-400 hover:underline text-xs">{t('availability.delete')}</button>
                           </div>
                         )}
                       </div>
-                      <div className="text-sm text-gray-700">
+                      <div className="text-sm text-gray-300">
                         {rec.type === 'event_specific' ? (
                           <span>{rec.competition?.name || rec.competition_id}</span>
                         ) : (
                           <span>{rec.start_date} — {rec.end_date}</span>
                         )}
                       </div>
-                      {rec.notes && <p className="text-xs text-gray-500 mt-1">{rec.notes}</p>}
+                      {rec.notes && <p className="text-xs text-fiba-muted mt-1">{rec.notes}</p>}
                     </div>
                   ))}
                 </div>
@@ -354,20 +354,20 @@ export default function Personnel() {
 
       {/* Availability Modal */}
       {showAvailModal && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[60]">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6">
-            <h3 className="text-lg font-bold mb-4">
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[60]">
+          <div className="fiba-modal max-w-md p-6">
+            <h3 className="text-lg font-bold text-white mb-4">
               {editingAvail ? t('availability.editAvailability') : t('availability.newAvailability')}
             </h3>
             <form onSubmit={handleAvailSubmit} className="space-y-3">
               {/* Type toggle */}
-              <div className="flex bg-gray-100 rounded-lg p-0.5">
+              <div className="flex bg-fiba-surface rounded-lg p-0.5">
                 <button type="button" onClick={() => setAvailForm(f => ({ ...f, type: 'event_specific' }))}
-                  className={`flex-1 px-3 py-2 rounded-md text-xs font-medium transition-colors ${availForm.type === 'event_specific' ? 'bg-white shadow text-gray-900' : 'text-gray-500'}`}>
+                  className={`flex-1 px-3 py-2 rounded-md text-xs font-medium transition-colors ${availForm.type === 'event_specific' ? 'bg-fiba-accent text-fiba-dark' : 'text-fiba-muted'}`}>
                   {t('availability.eventSpecific')}
                 </button>
                 <button type="button" onClick={() => setAvailForm(f => ({ ...f, type: 'date_range' }))}
-                  className={`flex-1 px-3 py-2 rounded-md text-xs font-medium transition-colors ${availForm.type === 'date_range' ? 'bg-white shadow text-gray-900' : 'text-gray-500'}`}>
+                  className={`flex-1 px-3 py-2 rounded-md text-xs font-medium transition-colors ${availForm.type === 'date_range' ? 'bg-fiba-accent text-fiba-dark' : 'text-fiba-muted'}`}>
                   {t('availability.dateRange')}
                 </button>
               </div>
@@ -375,7 +375,7 @@ export default function Personnel() {
               {/* Conditional fields */}
               {availForm.type === 'event_specific' ? (
                 <select required value={availForm.competition_id} onChange={e => setAvailForm(f => ({ ...f, competition_id: e.target.value }))}
-                  className="w-full px-3 py-2 border rounded-lg text-sm">
+                  className="fiba-select">
                   <option value="">{t('availability.selectCompetition')}</option>
                   {competitions
                     .sort((a, b) => (a.start_date || '').localeCompare(b.start_date || ''))
@@ -384,25 +384,25 @@ export default function Personnel() {
               ) : (
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-xs font-medium text-gray-500 mb-1">{t('availability.startDate')}</label>
+                    <label className="fiba-label">{t('availability.startDate')}</label>
                     <input required type="date" value={availForm.start_date}
                       onChange={e => setAvailForm(f => ({ ...f, start_date: e.target.value }))}
-                      className="w-full px-3 py-2 border rounded-lg text-sm" />
+                      className="fiba-input" />
                   </div>
                   <div>
-                    <label className="block text-xs font-medium text-gray-500 mb-1">{t('availability.endDate')}</label>
+                    <label className="fiba-label">{t('availability.endDate')}</label>
                     <input required type="date" value={availForm.end_date}
                       onChange={e => setAvailForm(f => ({ ...f, end_date: e.target.value }))}
-                      className="w-full px-3 py-2 border rounded-lg text-sm" />
+                      className="fiba-input" />
                   </div>
                 </div>
               )}
 
               {/* Status */}
               <div>
-                <label className="block text-xs font-medium text-gray-500 mb-1">{t('availability.status')}</label>
+                <label className="fiba-label">{t('availability.status')}</label>
                 <select value={availForm.status} onChange={e => setAvailForm(f => ({ ...f, status: e.target.value }))}
-                  className="w-full px-3 py-2 border rounded-lg text-sm">
+                  className="fiba-select">
                   <option value="available">{t('availability.available')}</option>
                   <option value="unavailable">{t('availability.unavailable')}</option>
                   <option value="restricted">{t('availability.restricted')}</option>
@@ -412,11 +412,11 @@ export default function Personnel() {
               {/* Notes */}
               <textarea placeholder={t('availability.notesPlaceholder')} value={availForm.notes}
                 onChange={e => setAvailForm(f => ({ ...f, notes: e.target.value }))}
-                className="w-full px-3 py-2 border rounded-lg text-sm" rows={2} />
+                className="fiba-input" rows={2} />
 
               <div className="flex justify-end gap-3 pt-2">
-                <button type="button" onClick={() => setShowAvailModal(false)} className="px-4 py-2 text-sm text-gray-600">{t('availability.cancel')}</button>
-                <button type="submit" className="bg-blue-600 text-white px-6 py-2 rounded-lg text-sm font-medium hover:bg-blue-700">
+                <button type="button" onClick={() => setShowAvailModal(false)} className="px-4 py-2 text-sm text-fiba-muted">{t('availability.cancel')}</button>
+                <button type="submit" className="btn-fiba">
                   {t('availability.save')}
                 </button>
               </div>
@@ -490,17 +490,17 @@ function ImportView({ onClose }) {
   ]
 
   return (
-    <div className="fixed inset-0 bg-black/40 flex items-start justify-center pt-16 z-50">
-      <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl p-6">
+    <div className="fixed inset-0 bg-black/60 flex items-start justify-center pt-16 z-50">
+      <div className="fiba-modal max-w-2xl p-6">
         <div className="flex justify-between items-center mb-4">
-          <h3 className="text-lg font-bold">{t('personnel.importTitle')}</h3>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl">&times;</button>
+          <h3 className="text-lg font-bold text-white">{t('personnel.importTitle')}</h3>
+          <button onClick={onClose} className="text-fiba-muted hover:text-white text-xl">&times;</button>
         </div>
 
-        <div className="flex border-b mb-4">
+        <div className="flex border-b border-fiba-border mb-4">
           {tabs.map(tb => (
             <button key={tb.key} onClick={() => setTab(tb.key)}
-              className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px ${tab === tb.key ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500'}`}>
+              className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px ${tab === tb.key ? 'border-fiba-accent text-fiba-accent' : 'border-transparent text-fiba-muted'}`}>
               {tb.label}
             </button>
           ))}
@@ -513,25 +513,25 @@ function ImportView({ onClose }) {
               onDragLeave={() => setDragOver(false)}
               onDrop={handleDrop}
               onClick={() => inputRef.current?.click()}
-              className={`border-2 border-dashed rounded-xl p-12 text-center cursor-pointer transition-colors ${dragOver ? 'border-blue-400 bg-blue-50' : 'border-gray-300 hover:border-gray-400'}`}
+              className={`border-2 border-dashed rounded-xl p-12 text-center cursor-pointer transition-colors ${dragOver ? 'border-fiba-accent bg-fiba-accent/5' : 'border-fiba-border hover:border-fiba-muted'}`}
             >
-              <p className="text-gray-500 text-sm">{t('personnel.dropzone')}</p>
-              <p className="text-gray-400 text-xs mt-1">{t('personnel.dropzoneHint')}</p>
+              <p className="text-fiba-muted text-sm">{t('personnel.dropzone')}</p>
+              <p className="text-fiba-muted/60 text-xs mt-1">{t('personnel.dropzoneHint')}</p>
               <input ref={inputRef} type="file" accept=".csv,.xlsx,.xls" className="hidden"
                 onChange={e => e.target.files[0] && handleFile(e.target.files[0])} />
             </div>
 
             <div className="mt-6">
-              <h4 className="text-sm font-medium text-gray-700 mb-2">{t('personnel.columnFormat')}</h4>
-              <table className="w-full text-xs border rounded">
-                <thead className="bg-gray-50">
+              <h4 className="text-sm font-medium text-gray-300 mb-2">{t('personnel.columnFormat')}</h4>
+              <table className="w-full text-xs border border-fiba-border rounded">
+                <thead className="bg-fiba-surface">
                   <tr>
                     <th className="text-left px-3 py-2">{t('personnel.column')}</th>
                     <th className="text-left px-3 py-2">{t('personnel.required')}</th>
                     <th className="text-left px-3 py-2">{t('personnel.validValues')}</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y">
+                <tbody>
                   {[
                     [t('personnel.name'), t('personnel.yes'), t('personnel.freeText')],
                     [t('personnel.email'), t('personnel.yes'), t('personnel.validEmail')],
@@ -540,7 +540,7 @@ function ImportView({ onClose }) {
                     [t('personnel.passport'), t('personnel.no'), t('personnel.freeText')],
                     [t('personnel.role'), t('personnel.yes'), 'VGO / TD'],
                   ].map(([col, req, vals]) => (
-                    <tr key={col}>
+                    <tr key={col} className="border-t border-fiba-border">
                       <td className="px-3 py-1.5">{col}</td>
                       <td className="px-3 py-1.5">{req}</td>
                       <td className="px-3 py-1.5">{vals}</td>
@@ -550,7 +550,7 @@ function ImportView({ onClose }) {
               </table>
             </div>
 
-            <button onClick={downloadTemplate} className="mt-4 text-blue-600 hover:underline text-sm">
+            <button onClick={downloadTemplate} className="mt-4 text-fiba-accent hover:underline text-sm">
               {t('personnel.downloadTemplate')}
             </button>
           </div>
@@ -560,16 +560,16 @@ function ImportView({ onClose }) {
           <div>
             {file ? (
               <>
-                <p className="text-sm text-gray-600 mb-4">{t('personnel.file')}: <strong>{file.name}</strong> ({(file.size / 1024).toFixed(1)} KB)</p>
+                <p className="text-sm text-fiba-muted mb-4">{t('personnel.file')}: <strong className="text-white">{file.name}</strong> ({(file.size / 1024).toFixed(1)} KB)</p>
                 <div className="flex justify-end">
                   <button onClick={handleImport} disabled={loading}
-                    className="bg-blue-600 text-white px-6 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50">
+                    className="btn-fiba disabled:opacity-50">
                     {loading ? t('personnel.importing') : t('personnel.confirmImport')}
                   </button>
                 </div>
               </>
             ) : (
-              <p className="text-gray-400 text-sm">{t('personnel.uploadFirst')}</p>
+              <p className="text-fiba-muted/60 text-sm">{t('personnel.uploadFirst')}</p>
             )}
           </div>
         )}
@@ -577,34 +577,34 @@ function ImportView({ onClose }) {
         {tab === 'result' && result && (
           <div className="space-y-4">
             <div className="grid grid-cols-3 gap-4">
-              <div className="bg-green-50 border border-green-200 rounded-lg p-3 text-center">
-                <p className="text-2xl font-bold text-green-700">{result.imported}</p>
-                <p className="text-xs text-green-600">{t('personnel.imported')}</p>
+              <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-lg p-3 text-center">
+                <p className="text-2xl font-bold text-emerald-400">{result.imported}</p>
+                <p className="text-xs text-emerald-400">{t('personnel.imported')}</p>
               </div>
-              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 text-center">
-                <p className="text-2xl font-bold text-yellow-700">{result.skipped}</p>
-                <p className="text-xs text-yellow-600">{t('personnel.skipped')}</p>
+              <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-lg p-3 text-center">
+                <p className="text-2xl font-bold text-yellow-400">{result.skipped}</p>
+                <p className="text-xs text-yellow-400">{t('personnel.skipped')}</p>
               </div>
-              <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-center">
-                <p className="text-2xl font-bold text-red-700">{result.errors.length}</p>
-                <p className="text-xs text-red-600">{t('personnel.errors')}</p>
+              <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-3 text-center">
+                <p className="text-2xl font-bold text-red-400">{result.errors.length}</p>
+                <p className="text-xs text-red-400">{t('personnel.errors')}</p>
               </div>
             </div>
             {result.errors.length > 0 && (
               <div>
-                <h4 className="text-sm font-medium text-gray-700 mb-2">{t('personnel.errorDetail')}</h4>
-                <div className="max-h-40 overflow-y-auto border rounded">
+                <h4 className="text-sm font-medium text-gray-300 mb-2">{t('personnel.errorDetail')}</h4>
+                <div className="max-h-40 overflow-y-auto border border-fiba-border rounded">
                   <table className="w-full text-xs">
-                    <thead className="bg-gray-50 sticky top-0">
+                    <thead className="bg-fiba-surface sticky top-0">
                       <tr>
                         <th className="text-left px-3 py-1.5">{t('personnel.row')}</th>
                         <th className="text-left px-3 py-1.5">{t('personnel.email')}</th>
                         <th className="text-left px-3 py-1.5">{t('personnel.reason')}</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y">
+                    <tbody>
                       {result.errors.map((err, i) => (
-                        <tr key={i}>
+                        <tr key={i} className="border-t border-fiba-border">
                           <td className="px-3 py-1.5">{err.row}</td>
                           <td className="px-3 py-1.5">{err.email}</td>
                           <td className="px-3 py-1.5">{err.reason}</td>

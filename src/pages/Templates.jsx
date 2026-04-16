@@ -28,10 +28,10 @@ const TEMPLATES = [
 ]
 
 const BADGE_COLORS = {
-  WCQ: 'bg-red-100 text-red-700',
-  BCLA: 'bg-blue-100 text-blue-700',
-  LSB: 'bg-amber-100 text-amber-700',
-  GENERIC: 'bg-gray-100 text-gray-700',
+  WCQ: 'bg-red-500/20 text-red-400',
+  BCLA: 'bg-blue-500/20 text-blue-400',
+  LSB: 'bg-amber-500/20 text-amber-400',
+  GENERIC: 'bg-fiba-surface text-fiba-muted',
 }
 
 export default function Templates() {
@@ -39,20 +39,20 @@ export default function Templates() {
 
   return (
     <div>
-      <h2 className="text-2xl font-bold text-gray-900 mb-6">{t('templates.title')}</h2>
-      <div className="bg-white rounded-lg border overflow-hidden">
-        <table className="w-full text-sm">
-          <thead className="bg-gray-50 border-b">
+      <h2 className="text-2xl font-bold text-white mb-6">{t('templates.title')}</h2>
+      <div className="rounded-xl border border-fiba-border overflow-hidden">
+        <table className="fiba-table">
+          <thead>
             <tr>
-              <th className="text-left px-4 py-3 font-medium text-gray-500">{t('templates.template')}</th>
-              <th className="text-left px-4 py-3 font-medium text-gray-500">{t('templates.file')}</th>
-              <th className="text-left px-4 py-3 font-medium text-gray-500">{t('templates.type')}</th>
-              <th className="text-left px-4 py-3 font-medium text-gray-500">{t('templates.signatory')}</th>
+              <th>{t('templates.template')}</th>
+              <th>{t('templates.file')}</th>
+              <th>{t('templates.type')}</th>
+              <th>{t('templates.signatory')}</th>
             </tr>
           </thead>
-          <tbody className="divide-y">
+          <tbody>
             {TEMPLATES.map(tmpl => (
-              <tr key={tmpl.key} className="hover:bg-gray-50">
+              <tr key={tmpl.key}>
                 <td className="px-4 py-3">
                   <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${BADGE_COLORS[tmpl.key]}`}>
                     {tmpl.key}
