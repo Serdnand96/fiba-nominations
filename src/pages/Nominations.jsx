@@ -44,7 +44,7 @@ export default function Nominations() {
       if (comp) {
         const tk = comp.template_key || ''
         let gameDates = []
-        if (tk === 'BCLA_F4') {
+        if (tk === 'BCLA' || tk === 'BCLA_F4') {
           gameDates = BCLA_F4_ROUNDS.map(label => ({ label, date: '' }))
         }
         setForm(f => ({ ...f, competition_id: compId, game_dates: gameDates }))
@@ -64,7 +64,7 @@ export default function Nominations() {
 
   const selectedComp = competitions.find(c => c.id === form.competition_id)
   const templateKey = selectedComp?.template_key || ''
-  const showLocationFields = ['BCLA_F4', 'BCLA_RS', 'LSB'].includes(templateKey)
+  const showLocationFields = ['BCLA', 'BCLA_F4', 'BCLA_RS', 'LSB'].includes(templateKey)
   const showDeadline = ['WCQ', 'GENERIC'].includes(templateKey)
 
   const total = useMemo(() => {
@@ -93,7 +93,7 @@ export default function Nominations() {
     const comp = competitions.find(c => c.id === competition_id)
     const tk = comp?.template_key || ''
     let gameDates = []
-    if (tk === 'BCLA_F4') {
+    if (tk === 'BCLA' || tk === 'BCLA_F4') {
       gameDates = BCLA_F4_ROUNDS.map(label => ({ label, date: '' }))
     }
     setForm(f => ({ ...f, competition_id, game_dates: gameDates }))
@@ -549,7 +549,7 @@ export default function Nominations() {
                   <label className="block text-sm font-medium text-gray-300 mb-1">{t('nominations.gameDates')}</label>
                   {form.game_dates.map((gd, idx) => (
                     <div key={idx} className="flex gap-2 mb-2 items-center">
-                      {templateKey === 'BCLA_F4' ? (
+                      {(templateKey === 'BCLA' || templateKey === 'BCLA_F4') ? (
                         <span className="text-sm text-fiba-muted w-28">{gd.label}</span>
                       ) : (
                         <input type="text" value={gd.label} onChange={e => updateGameDate(idx, 'label', e.target.value)}
@@ -557,12 +557,12 @@ export default function Nominations() {
                       )}
                       <input type="date" value={gd.date} onChange={e => updateGameDate(idx, 'date', e.target.value)}
                         className="fiba-input flex-1" />
-                      {templateKey !== 'BCLA_F4' && (
+                      {templateKey !== 'BCLA' && templateKey !== 'BCLA_F4' && (
                         <button type="button" onClick={() => removeGameDate(idx)} className="text-red-400 hover:text-red-300 text-lg">&times;</button>
                       )}
                     </div>
                   ))}
-                  {templateKey !== 'BCLA_F4' && (
+                  {templateKey !== 'BCLA' && templateKey !== 'BCLA_F4' && (
                     <button type="button" onClick={addGameDate} className="text-fiba-accent hover:underline text-sm">
                       {t('nominations.addDate')}
                     </button>

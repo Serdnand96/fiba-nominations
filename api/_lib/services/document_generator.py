@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import os
 import re
 import copy
@@ -30,6 +32,7 @@ CONFIRMATION_EMAIL = {
 SIGNATORIES = {
     "WCQ": ("Carlos Alves", "Executive Director", "FIBA Americas"),
     "GENERIC": ("Carlos Alves", "Executive Director", "FIBA Americas"),
+    "BCLA": ("Gino Rullo", "Head of Operations", "Basketball Champions League Americas"),
     "BCLA_F4": ("Gino Rullo", "Head of Operations", "Basketball Champions League Americas"),
     "BCLA_RS": ("Gino Rullo", "Head of Operations", "Basketball Champions League Americas"),
     "LSB": ("Gino Rullo", "Head of Operations", "Club Competitions – FIBA Americas"),
@@ -46,6 +49,13 @@ def generate_nomination(nomination_data: dict) -> tuple[str, str | None, str | N
         doc = _build_wcq_letter(nomination_data)
     elif template_key == "GENERIC":
         doc = _build_generic_letter(nomination_data)
+    elif template_key == "BCLA":
+        # Auto-detect variant: if game_dates have F4 round labels → F4, otherwise RS
+        game_dates = nomination_data.get("game_dates") or []
+        f4_labels = {"Semifinals", "3rd Place", "Final"}
+        has_f4 = any(gd.get("label") in f4_labels for gd in game_dates)
+        variant = "F4" if has_f4 else "RS"
+        doc = _build_bcla_letter(nomination_data, variant=variant)
     elif template_key == "BCLA_F4":
         doc = _build_bcla_letter(nomination_data, variant="F4")
     elif template_key == "BCLA_RS":
