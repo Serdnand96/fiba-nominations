@@ -16,9 +16,6 @@ import tempfile
 from datetime import datetime
 from pathlib import Path
 
-from api._lib.services.pdf.pdf_generator import PDFGenerator
-from api._lib.services.pdf.pdf_storage import upload_pdf_sync
-
 logger = logging.getLogger(__name__)
 
 OUTPUT_DIR = Path(tempfile.gettempdir()) / "fiba_generated"
@@ -38,7 +35,17 @@ ROLE_LABELS = {
     "TD":  "Technical Delegate",
 }
 
-_pdf_gen = PDFGenerator()
+# Lazy-loaded to avoid importing WeasyPrint at module level
+# (WeasyPrint requires system libraries that may not be available)
+_pdf_gen = None
+
+
+def _get_pdf_gen():
+    global _pdf_gen
+    if _pdf_gen is None:
+        from api._lib.services.pdf.pdf_generator import PDFGenerator
+        _pdf_gen = PDFGenerator()
+    return _pdf_gen
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
@@ -108,8 +115,8 @@ def generate_nomination(nomination_data: dict) -> tuple[str, str | None, str | N
     role_code = nomination_data.get("role", "TD")
     role_label = ROLE_LABELS.get(role_code, role_code)
 
-    # Build the context for PDFGenerator
-    pdf_bytes = _pdf_gen.nomination_letter(
+    # Build the context for PDFGenerator (lazy import)
+    pdf_bytes = _get_pdf_gen().nomination_letter(
         competition_name=nomination_data.get("competition_name", ""),
         competition_dates=_format_competition_dates(nomination_data.get("game_dates", [])),
         competition_location=_format_location(nomination_data),
@@ -136,6 +143,7 @@ def generate_nomination(nomination_data: dict) -> tuple[str, str | None, str | N
     # Upload to Supabase Storage
     storage_url = None
     try:
+        from api._lib.services.pdf.pdf_storage import upload_pdf_sync
         storage_url = upload_pdf_sync(
             pdf_bytes,
             filename=f"{base_name}.pdf",
