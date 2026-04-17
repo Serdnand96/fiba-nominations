@@ -1,0 +1,140 @@
+/* ── Reset & base ── */
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: 'Liberation Sans', Arial, sans-serif;
+  font-size: 10pt;
+  color: #1a1a1a;
+  line-height: 1.5;
+}
+
+/* ── Header elements (positioned) ── */
+#header-logo {
+  position: running(header-logo);
+}
+#header-title {
+  position: running(header-title);
+  text-align: center;
+  font-size: 8pt;
+  font-weight: bold;
+  color: #003DA5;
+  font-family: 'Liberation Sans', Arial, sans-serif;
+}
+#header-date {
+  position: running(header-date);
+  text-align: right;
+  font-size: 7pt;
+  color: #666666;
+  font-family: 'Liberation Sans', Arial, sans-serif;
+}
+
+/* ── Typography ── */
+h1 {
+  font-size: 16pt;
+  color: #003DA5;
+  margin-bottom: 6mm;
+  border-bottom: 2px solid #003DA5;
+  padding-bottom: 2mm;
+}
+h2 {
+  font-size: 12pt;
+  color: #003DA5;
+  margin-top: 6mm;
+  margin-bottom: 3mm;
+}
+h3 {
+  font-size: 10pt;
+  color: #003DA5;
+  margin-top: 4mm;
+  margin-bottom: 2mm;
+}
+p { margin-bottom: 3mm; }
+
+/* ── Tables ── */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 5mm;
+  font-size: 9pt;
+}
+thead tr {
+  background-color: #003DA5;
+  color: #ffffff;
+}
+thead th {
+  padding: 2.5mm 3mm;
+  text-align: left;
+  font-weight: bold;
+}
+tbody tr:nth-child(even) { background-color: #F4F7FB; }
+tbody tr:nth-child(odd)  { background-color: #ffffff; }
+tbody td {
+  padding: 2mm 3mm;
+  border-bottom: 1px solid #dde3ef;
+  vertical-align: top;
+}
+
+/* ── Group header row inside table ── */
+tr.group-header td {
+  background-color: #003DA5 !important;
+  color: #ffffff;
+  font-weight: bold;
+  font-size: 8.5pt;
+  padding: 2mm 3mm;
+}
+
+/* ── Status badges ── */
+.badge {
+  display: inline-block;
+  padding: 1mm 3mm;
+  border-radius: 2mm;
+  font-size: 8pt;
+  font-weight: bold;
+  color: #ffffff;
+}
+.badge-available    { background-color: #1e7e34; }
+.badge-unavailable  { background-color: #c82333; }
+.badge-restricted   { background-color: #d39e00; color: #1a1a1a; }
+.badge-nodata       { background-color: #868e96; }
+
+/* ── Accent bar ── */
+.accent-bar {
+  height: 1mm;
+  background-color: #E8002D;
+  margin-bottom: 5mm;
+}
+
+/* ── Info block (key-value pairs) ── */
+.info-block {
+  border: 1px solid #dde3ef;
+  border-radius: 1.5mm;
+  padding: 4mm;
+  margin-bottom: 5mm;
+  background-color: #F4F7FB;
+}
+.info-row {
+  display: table;
+  width: 100%;
+  margin-bottom: 1.5mm;
+}
+.info-label {
+  display: table-cell;
+  width: 40%;
+  font-weight: bold;
+  color: #003DA5;
+  font-size: 9pt;
+}
+.info-value {
+  display: table-cell;
+  font-size: 9pt;
+}
+
+/* ── Utility ── */
+.text-muted  { color: #868e96; font-style: italic; }
+.text-right  { text-align: right; }
+.text-center { text-align: center; }
+.mt-4 { margin-top: 4mm; }
+.mb-4 { margin-bottom: 4mm; }
+.bold { font-weight: bold; }
+.red  { color: #E8002D; }
+.blue { color: #003DA5; }

@@ -73,7 +73,7 @@ def bulk_generate_nominations(nomination_ids: list[str]):
     for nid in nomination_ids:
         try:
             result = supabase.table("nominations").select(
-                "*, personnel(name, role, email), competitions(name, template_key, year)"
+                "*, personnel(name, role, email, country), competitions(name, template_key, year)"
             ).eq("id", nid).execute()
 
             if not result.data:
@@ -88,6 +88,8 @@ def bulk_generate_nominations(nomination_ids: list[str]):
                 "template_key": competition["template_key"],
                 "nominee_name": personnel["name"],
                 "role": personnel["role"],
+                "personnel_email": personnel.get("email", ""),
+                "personnel_country": personnel.get("country", ""),
                 "letter_date": nom.get("letter_date", ""),
                 "competition_name": competition["name"],
                 "competition_year": competition.get("year", ""),
@@ -110,7 +112,7 @@ def bulk_generate_nominations(nomination_ids: list[str]):
                 "pdf_path": saved_path,
             }).eq("id", nid).execute()
 
-            ext = "docx" if conversion_error else "pdf"
+            ext = "pdf"
             filename = f"{personnel['name']} {competition['name']} Nomination.{ext}"
             results.append({
                 "id": nid,
@@ -163,7 +165,7 @@ def get_nomination(nomination_id: str):
 @router.post("/{nomination_id}/generate")
 def generate_nomination_doc(nomination_id: str):
     result = supabase.table("nominations").select(
-        "*, personnel(name, role, email), competitions(name, template_key, year)"
+        "*, personnel(name, role, email, country), competitions(name, template_key, year)"
     ).eq("id", nomination_id).execute()
 
     if not result.data:
@@ -177,6 +179,8 @@ def generate_nomination_doc(nomination_id: str):
         "template_key": competition["template_key"],
         "nominee_name": personnel["name"],
         "role": personnel["role"],
+        "personnel_email": personnel.get("email", ""),
+        "personnel_country": personnel.get("country", ""),
         "letter_date": nom.get("letter_date", ""),
         "competition_name": competition["name"],
         "competition_year": competition.get("year", ""),
@@ -206,7 +210,7 @@ def generate_nomination_doc(nomination_id: str):
 
     supabase.table("nominations").update(update_data).eq("id", nomination_id).execute()
 
-    ext = "docx" if conversion_error else "pdf"
+    ext = "pdf"
     filename = f"{personnel['name']} {competition['name']} Nomination.{ext}"
 
     response = {
@@ -215,8 +219,6 @@ def generate_nomination_doc(nomination_id: str):
         "filename": filename,
         "format": ext,
     }
-    if conversion_error:
-        response["conversion_error"] = conversion_error
 
     return response
 

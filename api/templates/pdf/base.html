@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="{{ language }}">
+<head>
+<meta charset="UTF-8">
+<link rel="stylesheet" href="styles.css">
+<style>
+  /* Page setup stays inline because it contains i18n strings that Jinja
+     must render; static rules live in styles.css. */
+  @page {
+    size: A4;
+    margin: 25mm 20mm 20mm 20mm;
+
+    @top-left    { content: element(header-logo); }
+    @top-center  { content: element(header-title); }
+    @top-right   { content: element(header-date); }
+
+    @bottom-left {
+      content: "FIBA Americas — {{ t('footer.confidential', language) }}";
+      font-family: 'Liberation Sans', Arial, sans-serif;
+      font-size: 7pt;
+      color: #666666;
+    }
+    @bottom-center {
+      content: "{{ t('footer.page', language) }} " counter(page) " / " counter(pages);
+      font-family: 'Liberation Sans', Arial, sans-serif;
+      font-size: 7pt;
+      color: #666666;
+    }
+    @bottom-right {
+      content: "{{ competition_name | default('') | css_str }}";
+      font-family: 'Liberation Sans', Arial, sans-serif;
+      font-size: 7pt;
+      color: #666666;
+    }
+  }
+
+  {% block extra_styles %}{% endblock %}
+</style>
+</head>
+<body>
+
+<!-- Running header elements -->
+<div id="header-logo">
+  {% if logo_base64 %}
+  <img src="data:image/png;base64,{{ logo_base64 }}"
+       style="height:10mm; width:auto;" alt="FIBA Americas">
+  {% endif %}
+</div>
+<div id="header-title">{% block header_title %}FIBA Americas{% endblock %}</div>
+<div id="header-date">{{ generated_at }}</div>
+
+<!-- Page content -->
+{% block content %}{% endblock %}
+
+</body>
+</html>
