@@ -66,9 +66,13 @@ async def require_auth(request: Request) -> dict:
 # Store auth user on request state so routers can access it
 @app.middleware("http")
 async def auth_middleware(request: Request, call_next):
-    # Skip auth for OPTIONS (CORS preflight) and the health-check root
+    # Skip auth for OPTIONS (CORS preflight), health-check root, and download endpoints
     path = request.url.path.rstrip("/")
     if request.method == "OPTIONS" or path in ("/api", ""):
+        return await call_next(request)
+
+    # Allow unauthenticated access to download/export endpoints (browser <a> clicks don't send JWT)
+    if ("/nominations/" in path and path.endswith("/download")) or "/export/pdf" in path:
         return await call_next(request)
 
     auth_header = request.headers.get("Authorization", "")
