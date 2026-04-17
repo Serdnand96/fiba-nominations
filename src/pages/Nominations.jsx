@@ -421,7 +421,7 @@ export default function Nominations() {
                 <td className="px-4 py-3">
                   <div className="flex gap-2">
                     {n.status === 'generated' && (
-                      <a href={n.pdf_path?.startsWith('http') ? n.pdf_path : getDownloadUrl(n.id)}
+                      <a href={getDownloadUrl(n.id)}
                         target="_blank" rel="noreferrer" className="text-fiba-accent hover:underline text-sm">
                         {t('nominations.download')}
                       </a>
