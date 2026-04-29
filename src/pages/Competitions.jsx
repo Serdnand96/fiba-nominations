@@ -131,7 +131,7 @@ export default function Competitions() {
         <select
           value={filterTemplate}
           onChange={e => setFilterTemplate(e.target.value)}
-          className="fiba-select"
+          className="fiba-select !w-auto min-w-[160px] flex-shrink-0"
         >
           <option value="">All templates</option>
           {templateOptions.map(t => <option key={t} value={t}>{t}</option>)}
