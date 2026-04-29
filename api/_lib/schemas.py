@@ -25,6 +25,7 @@ class CompetitionCreate(BaseModel):
     template_key: str
     year: Optional[int] = None
     fiba_games_url: Optional[str] = None
+    fee_type: Optional[str] = "per_game"  # 'per_game' or 'tournament'
 
 
 class CompetitionUpdate(BaseModel):
@@ -32,6 +33,7 @@ class CompetitionUpdate(BaseModel):
     template_key: Optional[str] = None
     year: Optional[int] = None
     fiba_games_url: Optional[str] = None
+    fee_type: Optional[str] = None
 
 
 class GameDate(BaseModel):

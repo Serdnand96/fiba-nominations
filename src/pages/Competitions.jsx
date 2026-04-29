@@ -19,7 +19,7 @@ export default function Competitions() {
   const [nominations, setNominations] = useState([])
   const [showModal, setShowModal] = useState(false)
   const [editing, setEditing] = useState(null)
-  const [form, setForm] = useState({ name: '', template_key: 'WCQ', year: new Date().getFullYear(), fiba_games_url: '' })
+  const [form, setForm] = useState({ name: '', template_key: 'WCQ', year: new Date().getFullYear(), fiba_games_url: '', fee_type: 'per_game' })
 
   // Search & filter
   const [search, setSearch] = useState('')
@@ -58,13 +58,13 @@ export default function Competitions() {
 
   function openCreate() {
     setEditing(null)
-    setForm({ name: '', template_key: 'WCQ', year: new Date().getFullYear(), fiba_games_url: '' })
+    setForm({ name: '', template_key: 'WCQ', year: new Date().getFullYear(), fiba_games_url: '', fee_type: 'per_game' })
     setShowModal(true)
   }
 
   function openEdit(comp) {
     setEditing(comp)
-    setForm({ name: comp.name, template_key: comp.template_key, year: comp.year || new Date().getFullYear(), fiba_games_url: comp.fiba_games_url || '' })
+    setForm({ name: comp.name, template_key: comp.template_key, year: comp.year || new Date().getFullYear(), fiba_games_url: comp.fiba_games_url || '', fee_type: comp.fee_type || 'per_game' })
     setShowModal(true)
   }
 
@@ -209,6 +209,14 @@ export default function Competitions() {
               <div>
                 <input placeholder={t('games.fibaUrl')} value={form.fiba_games_url} onChange={e => setForm(f => ({ ...f, fiba_games_url: e.target.value }))} className="fiba-input" />
                 <p className="text-xs text-fiba-muted/60 mt-1">{t('games.fibaUrlHint')}</p>
+              </div>
+              <div>
+                <label className="text-xs text-fiba-muted block mb-1">Fee type</label>
+                <select value={form.fee_type} onChange={e => setForm(f => ({ ...f, fee_type: e.target.value }))} className="fiba-select">
+                  <option value="per_game">Per Game Fee</option>
+                  <option value="tournament">Tournament Fee</option>
+                </select>
+                <p className="text-xs text-fiba-muted/60 mt-1">Determina el texto de honorarios en la nominación.</p>
               </div>
               <div className="flex justify-end gap-3 pt-2">
                 <button type="button" onClick={() => setShowModal(false)} className="px-4 py-2 text-sm text-fiba-muted">{t('competitions.cancel')}</button>

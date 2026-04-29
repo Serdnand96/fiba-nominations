@@ -15,7 +15,7 @@ _SAFE_FILENAME_RE = re.compile(r'[^\w\s\-\.\(\)]')
 @router.get("")
 def list_nominations():
     result = supabase.table("nominations").select(
-        "*, personnel(name, role, email), competitions(name, template_key, year)"
+        "*, personnel(name, role, email), competitions(name, template_key, year, fee_type)"
     ).order("created_at", desc=True).execute()
     return result.data
 
@@ -73,7 +73,7 @@ def bulk_generate_nominations(nomination_ids: list[str]):
     for nid in nomination_ids:
         try:
             result = supabase.table("nominations").select(
-                "*, personnel(name, role, email), competitions(name, template_key, year)"
+                "*, personnel(name, role, email), competitions(name, template_key, year, fee_type)"
             ).eq("id", nid).execute()
 
             if not result.data:
@@ -100,6 +100,7 @@ def bulk_generate_nominations(nomination_ids: list[str]):
                 "incidentals": nom.get("incidentals"),
                 "total": nom.get("total"),
                 "confirmation_deadline": nom.get("confirmation_deadline", ""),
+                "fee_type": competition.get("fee_type", "per_game"),
             }
 
             local_path, storage_url, conversion_error = generate_nomination(nom_data)
@@ -153,7 +154,7 @@ def bulk_delete_nominations(nomination_ids: list[str]):
 @router.get("/{nomination_id}")
 def get_nomination(nomination_id: str):
     result = supabase.table("nominations").select(
-        "*, personnel(name, role, email), competitions(name, template_key, year)"
+        "*, personnel(name, role, email), competitions(name, template_key, year, fee_type)"
     ).eq("id", nomination_id).execute()
     if not result.data:
         raise HTTPException(status_code=404, detail="Nomination not found")
@@ -163,7 +164,7 @@ def get_nomination(nomination_id: str):
 @router.post("/{nomination_id}/generate")
 def generate_nomination_doc(nomination_id: str):
     result = supabase.table("nominations").select(
-        "*, personnel(name, role, email), competitions(name, template_key, year)"
+        "*, personnel(name, role, email), competitions(name, template_key, year, fee_type)"
     ).eq("id", nomination_id).execute()
 
     if not result.data:
@@ -189,6 +190,7 @@ def generate_nomination_doc(nomination_id: str):
         "incidentals": nom.get("incidentals"),
         "total": nom.get("total"),
         "confirmation_deadline": nom.get("confirmation_deadline", ""),
+        "fee_type": competition.get("fee_type", "per_game"),
     }
 
     try:

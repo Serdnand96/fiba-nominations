@@ -584,7 +584,9 @@ export default function Nominations() {
               <div className="grid grid-cols-3 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-300 mb-1">
-                    {showDeadline ? t('nominations.perGameFee') : t('nominations.windowFee')}
+                    {selectedComp?.fee_type === 'tournament'
+                      ? 'Tournament Fee'
+                      : (showDeadline ? t('nominations.perGameFee') : t('nominations.windowFee'))}
                   </label>
                   <input type="number" step="0.01" value={form.window_fee}
                     onChange={e => setForm(f => ({ ...f, window_fee: e.target.value }))}

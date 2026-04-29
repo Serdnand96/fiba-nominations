@@ -116,6 +116,13 @@ def _fmt_deadline(date_str: str) -> str:
         return date_str
 
 
+def _fee_label(fee_type: str | None) -> str:
+    """Return the fee line label based on the competition's fee_type."""
+    if (fee_type or "per_game") == "tournament":
+        return "Tournament Fee"
+    return "Per Game Fee"
+
+
 # ─── WCQ / GENERIC LETTER ────────────────────────────────────────────────────
 
 def _build_wcq_letter(data: dict) -> Document:
@@ -212,7 +219,7 @@ def _build_wcq_letter(data: dict) -> Document:
     # Fee items — 2 blank lines after payment intro, then the fees
     fee_idx = payment_idx + 3
     fee_items = [
-        (f"Per Game Fee: {_fmt_money(fee)}", False),
+        (f"{_fee_label(data.get('fee_type'))}: {_fmt_money(fee)}", False),
         (f"Incidentals: {_fmt_money(incidentals)}", False),
         (f"Total: {_fmt_money(total)}", True),
     ]
@@ -364,7 +371,7 @@ def _build_generic_letter(data: dict) -> Document:
     # Fee items
     fee_idx = payment_idx + 3
     fee_items = [
-        (f"Per Game Fee: {_fmt_money(fee)}", False),
+        (f"{_fee_label(data.get('fee_type'))}: {_fmt_money(fee)}", False),
         (f"Incidentals: {_fmt_money(incidentals)}", False),
         (f"Total: {_fmt_money(total)}", True),
     ]
@@ -506,7 +513,7 @@ def _build_bcla_letter(data: dict, variant: str = "F4") -> Document:
             "color": COLOR_DARK, "align": WD_ALIGN_PARAGRAPH.JUSTIFY
         })
 
-    content_lines.append({"text": f"Window Fee: {_fmt_money(fee)}", "color": COLOR_DARK,
+    content_lines.append({"text": f"{_fee_label(data.get('fee_type'))}: {_fmt_money(fee)}", "color": COLOR_DARK,
                           "align": WD_ALIGN_PARAGRAPH.JUSTIFY})
     content_lines.append({"text": f"Incidentals Fee: {_fmt_money(incidentals)}", "color": COLOR_DARK,
                           "align": WD_ALIGN_PARAGRAPH.JUSTIFY})
@@ -639,7 +646,7 @@ def _build_confirmation_from_scratch(data: dict) -> Document:
 
     _add_body_text(doc, f"Below list the details of payment you will receive as {role_label} assigned to the competition listed above:")
     _add_empty(doc)
-    _add_fee_line(doc, f"Window Fee: {_fmt_money(data.get('window_fee'))}", bold=False)
+    _add_fee_line(doc, f"{_fee_label(data.get('fee_type'))}: {_fmt_money(data.get('window_fee'))}", bold=False)
     _add_fee_line(doc, f"Incidentals: {_fmt_money(data.get('incidentals'))}", bold=False)
     _add_fee_line(doc, f"Total: {_fmt_money(data.get('total'))}", bold=True)
     _add_empty(doc)
@@ -698,7 +705,7 @@ def _build_wcq_from_scratch(data: dict) -> Document:
     _add_empty(doc)
     _add_empty(doc)
 
-    _add_fee_line(doc, f"Per Game Fee: {_fmt_money(data.get('window_fee'))}", bold=False)
+    _add_fee_line(doc, f"{_fee_label(data.get('fee_type'))}: {_fmt_money(data.get('window_fee'))}", bold=False)
     _add_fee_line(doc, f"Incidentals: {_fmt_money(data.get('incidentals'))}", bold=False)
     _add_fee_line(doc, f"Total: {_fmt_money(data.get('total'))}", bold=True)
 
