@@ -48,6 +48,8 @@ export const getNominationById = (id) => api.get(`/nominations/${id}`).then(r =>
 export const deleteNomination = (id) => api.delete(`/nominations/${id}`).then(r => r.data)
 export const bulkDeleteNominations = (ids) => api.delete('/nominations/bulk/delete', { data: ids }).then(r => r.data)
 export const generateNomination = (id) => api.post(`/nominations/${id}/generate`).then(r => r.data)
+export const updateNominationConfirmation = (id, status, notes = null) =>
+  api.patch(`/nominations/${id}/confirmation`, { status, notes }).then(r => r.data)
 export const getDownloadUrl = (id) => `${api.defaults.baseURL}/nominations/${id}/download`
 
 // Calendar

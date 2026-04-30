@@ -4,8 +4,15 @@ import {
   getNominations, getPersonnel, getCompetitions,
   createNomination, createBulkNominations, generateNomination,
   bulkGenerateNominations, deleteNomination, bulkDeleteNominations,
-  getDownloadUrl,
+  getDownloadUrl, updateNominationConfirmation,
 } from '../api/client'
+
+const CONFIRMATION_BADGES = {
+  pending: 'bg-gray-500/20 text-gray-300 border border-gray-500/40',
+  nominated: 'bg-fiba-accent/20 text-fiba-accent border border-fiba-accent/40',
+  confirmed: 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40',
+  declined: 'bg-orange-500/20 text-orange-400 border border-orange-500/40',
+}
 import { useLanguage } from '../i18n/LanguageContext'
 import { useAuth } from '../contexts/AuthContext'
 
@@ -20,6 +27,7 @@ export default function Nominations() {
   const [personnel, setPersonnel] = useState([])
   const [competitions, setCompetitions] = useState([])
   const [search, setSearch] = useState('')
+  const [confirmationFilter, setConfirmationFilter] = useState('')
   const [showForm, setShowForm] = useState(false)
   const [loading, setLoading] = useState(false)
   const [bulkProgress, setBulkProgress] = useState(null)
@@ -81,13 +89,26 @@ export default function Nominations() {
   }, [nominations])
 
   const filtered = useMemo(() => {
-    if (!search) return nominations
     const q = search.toLowerCase()
-    return nominations.filter(n =>
-      n.personnel?.name?.toLowerCase().includes(q) ||
-      n.competitions?.name?.toLowerCase().includes(q)
-    )
-  }, [nominations, search])
+    return nominations.filter(n => {
+      if (confirmationFilter && (n.confirmation_status || 'pending') !== confirmationFilter) return false
+      if (!q) return true
+      return (
+        n.personnel?.name?.toLowerCase().includes(q) ||
+        n.competitions?.name?.toLowerCase().includes(q)
+      )
+    })
+  }, [nominations, search, confirmationFilter])
+
+  async function handleConfirmationChange(nom, newStatus) {
+    if (newStatus === (nom.confirmation_status || 'pending')) return
+    try {
+      const updated = await updateNominationConfirmation(nom.id, newStatus)
+      setNominations(prev => prev.map(n => n.id === nom.id ? { ...n, ...updated } : n))
+    } catch (err) {
+      alert(t('nominations.errorUpdatingConfirmation') + ': ' + (err.response?.data?.detail || err.message))
+    }
+  }
 
   function handleCompChange(competition_id) {
     const comp = competitions.find(c => c.id === competition_id)
@@ -378,9 +399,19 @@ export default function Nominations() {
         ))}
       </div>
 
-      {/* Search */}
-      <input type="text" placeholder={t('nominations.searchNominations')} value={search}
-        onChange={e => setSearch(e.target.value)} className="fiba-input w-full md:w-80 mb-4" />
+      {/* Search + filters */}
+      <div className="flex flex-wrap gap-3 mb-4">
+        <input type="text" placeholder={t('nominations.searchNominations')} value={search}
+          onChange={e => setSearch(e.target.value)} className="fiba-input w-full md:w-80" />
+        <select value={confirmationFilter} onChange={e => setConfirmationFilter(e.target.value)}
+          className="fiba-select !w-auto min-w-[180px] flex-shrink-0">
+          <option value="">{t('nominations.allConfirmations')}</option>
+          <option value="pending">{t('nominations.confPending')}</option>
+          <option value="nominated">{t('nominations.confNominated')}</option>
+          <option value="confirmed">{t('nominations.confConfirmed')}</option>
+          <option value="declined">{t('nominations.confDeclined')}</option>
+        </select>
+      </div>
 
       {/* Table */}
       <div className="rounded-xl border border-fiba-border overflow-hidden">
@@ -396,6 +427,7 @@ export default function Nominations() {
               <th>{t('nominations.competition')}</th>
               <th>{t('nominations.letterDate')}</th>
               <th>{t('nominations.status')}</th>
+              <th>{t('nominations.confirmation')}</th>
               <th>{t('nominations.action')}</th>
             </tr>
           </thead>
@@ -417,6 +449,33 @@ export default function Nominations() {
                   <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${n.status === 'generated' ? 'bg-blue-500/20 text-blue-400' : 'bg-yellow-500/20 text-yellow-400'}`}>
                     {n.status}
                   </span>
+                </td>
+                <td className="px-4 py-3">
+                  {(() => {
+                    const cs = n.confirmation_status || 'pending'
+                    const labelKey = `conf${cs.charAt(0).toUpperCase()}${cs.slice(1)}`
+                    if (canEdit) {
+                      return (
+                        <select
+                          value={cs}
+                          onChange={e => handleConfirmationChange(n, e.target.value)}
+                          title={n.confirmation_updated_at ? `${t('nominations.confirmationUpdatedAt')}: ${new Date(n.confirmation_updated_at).toLocaleString()}` : ''}
+                          className={`text-xs font-medium rounded px-2 py-1 cursor-pointer focus:outline-none focus:ring-2 focus:ring-fiba-accent/40 ${CONFIRMATION_BADGES[cs]}`}
+                        >
+                          <option value="pending">{t('nominations.confPending')}</option>
+                          <option value="nominated">{t('nominations.confNominated')}</option>
+                          <option value="confirmed">{t('nominations.confConfirmed')}</option>
+                          <option value="declined">{t('nominations.confDeclined')}</option>
+                        </select>
+                      )
+                    }
+                    return (
+                      <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${CONFIRMATION_BADGES[cs]}`}
+                        title={n.confirmation_updated_at ? `${t('nominations.confirmationUpdatedAt')}: ${new Date(n.confirmation_updated_at).toLocaleString()}` : ''}>
+                        {t(`nominations.${labelKey}`)}
+                      </span>
+                    )
+                  })()}
                 </td>
                 <td className="px-4 py-3">
                   <div className="flex gap-2">

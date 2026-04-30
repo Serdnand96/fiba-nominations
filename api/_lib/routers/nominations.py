@@ -1,7 +1,10 @@
 import os
 import re
+from datetime import datetime, timezone
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse, RedirectResponse
+from pydantic import BaseModel
+from typing import Optional
 from api._lib.database import supabase
 from api._lib.schemas import NominationCreate, BulkNominationCreate
 from api._lib.services.document_generator import generate_nomination
@@ -10,6 +13,12 @@ router = APIRouter(prefix="/nominations", tags=["nominations"])
 
 _MAX_BULK = 100
 _SAFE_FILENAME_RE = re.compile(r'[^\w\s\-\.\(\)]')
+_VALID_CONFIRMATION_STATUSES = {"pending", "nominated", "confirmed", "declined"}
+
+
+class ConfirmationUpdate(BaseModel):
+    status: str
+    notes: Optional[str] = None
 
 
 @router.get("")
@@ -28,6 +37,9 @@ def create_nomination(data: NominationCreate):
             gd if isinstance(gd, dict) else gd.model_dump()
             for gd in record["game_dates"]
         ]
+    # Creating a nomination implies the TD was selected → start at 'nominated'
+    record.setdefault("confirmation_status", "nominated")
+    record.setdefault("confirmation_updated_at", datetime.now(timezone.utc).isoformat())
     result = supabase.table("nominations").insert(record).execute()
     return result.data[0]
 
@@ -54,6 +66,8 @@ def create_bulk_nominations(data: BulkNominationCreate):
                 "window_fee": data.window_fee,
                 "incidentals": data.incidentals,
                 "confirmation_deadline": data.confirmation_deadline,
+                "confirmation_status": "nominated",
+                "confirmation_updated_at": datetime.now(timezone.utc).isoformat(),
             }
             result = supabase.table("nominations").insert(record).execute()
             created.append(result.data[0])
@@ -126,6 +140,31 @@ def bulk_generate_nominations(nomination_ids: list[str]):
             results.append({"id": nid, "status": "error", "error": str(e)})
 
     return {"results": results, "total": len(results), "success": sum(1 for r in results if r["status"] == "generated")}
+
+
+@router.patch("/{nomination_id}/confirmation")
+def update_confirmation(nomination_id: str, payload: ConfirmationUpdate):
+    """Update the confirmation workflow state for a nomination."""
+    if payload.status not in _VALID_CONFIRMATION_STATUSES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"status must be one of {sorted(_VALID_CONFIRMATION_STATUSES)}"
+        )
+    updates = {
+        "confirmation_status": payload.status,
+        "confirmation_updated_at": datetime.now(timezone.utc).isoformat(),
+    }
+    if payload.notes is not None:
+        updates["confirmation_notes"] = payload.notes
+    result = (
+        supabase.table("nominations")
+        .update(updates)
+        .eq("id", nomination_id)
+        .execute()
+    )
+    if not result.data:
+        raise HTTPException(status_code=404, detail="Nomination not found")
+    return result.data[0]
 
 
 @router.delete("/{nomination_id}")

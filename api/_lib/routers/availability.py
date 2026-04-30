@@ -84,6 +84,21 @@ def get_competition_availability(competition_id: str):
     # Get all date_range records for TDs
     date_records = supabase.table("td_availability").select("*").eq("type", "date_range").execute().data
 
+    # Get all nominations for this competition (TD × competition workflow state)
+    noms = (
+        supabase.table("nominations")
+        .select("id,personnel_id,confirmation_status,confirmation_notes,confirmation_updated_at,status")
+        .eq("competition_id", competition_id)
+        .execute()
+        .data
+    )
+    # Map TD → most recent nomination (in case of accidental duplicates)
+    nom_map = {}
+    for n in noms:
+        existing = nom_map.get(n["personnel_id"])
+        if not existing or (n.get("confirmation_updated_at") or "") > (existing.get("confirmation_updated_at") or ""):
+            nom_map[n["personnel_id"]] = n
+
     # Build date overlap map: personnel_id -> list of overlapping date_range records
     overlap_map = {}
     comp_start = comp.get("start_date")
@@ -124,6 +139,17 @@ def get_competition_availability(competition_id: str):
             entry["notes"] = ""
             entry["availability_id"] = None
             entry["source"] = None
+
+        # Attach nomination workflow state for this TD × competition (if any)
+        nom = nom_map.get(td["id"])
+        if nom:
+            entry["nomination_id"] = nom["id"]
+            entry["confirmation_status"] = nom.get("confirmation_status")
+            entry["confirmation_updated_at"] = nom.get("confirmation_updated_at")
+        else:
+            entry["nomination_id"] = None
+            entry["confirmation_status"] = None
+            entry["confirmation_updated_at"] = None
 
         result.append(entry)
 
