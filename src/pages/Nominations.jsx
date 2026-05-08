@@ -4,7 +4,7 @@ import {
   getNominations, getPersonnel, getCompetitions,
   createNomination, createBulkNominations, generateNomination,
   bulkGenerateNominations, deleteNomination, bulkDeleteNominations,
-  getDownloadUrl, updateNominationConfirmation,
+  downloadNominationBlob, updateNominationConfirmation,
 } from '../api/client'
 
 const CONFIRMATION_BADGES = {
@@ -328,13 +328,19 @@ export default function Nominations() {
 
   async function downloadFile(url, format, id, filename) {
     const defaultName = filename || `nomination.${format === 'pdf' ? 'pdf' : 'docx'}`
-    const proxyUrl = `/api/nominations/${id}/download?filename=${encodeURIComponent(defaultName)}`
-    const link = document.createElement('a')
-    link.href = proxyUrl
-    link.download = defaultName
-    document.body.appendChild(link)
-    link.click()
-    document.body.removeChild(link)
+    try {
+      const blob = await downloadNominationBlob(id, defaultName)
+      const objectUrl = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = objectUrl
+      link.download = defaultName
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      setTimeout(() => URL.revokeObjectURL(objectUrl), 1000)
+    } catch (err) {
+      alert(`${t('nominations.errorGenerating')}: ${err.response?.status || err.message}`)
+    }
   }
 
   function toggleTableSelect(id) {
@@ -484,10 +490,11 @@ export default function Nominations() {
                 <td className="px-4 py-3">
                   <div className="flex gap-2">
                     {n.status === 'generated' && (
-                      <a href={getDownloadUrl(n.id)}
-                        target="_blank" rel="noreferrer" className="text-fiba-accent hover:underline text-sm">
+                      <button
+                        onClick={() => downloadFile(null, 'pdf', n.id, `${n.personnel?.name || 'Nomination'} ${n.competitions?.name || ''}.pdf`.trim())}
+                        className="text-fiba-accent hover:underline text-sm">
                         {t('nominations.download')}
-                      </a>
+                      </button>
                     )}
                     {canEdit && (
                       <>

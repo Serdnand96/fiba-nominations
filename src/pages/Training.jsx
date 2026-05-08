@@ -6,7 +6,7 @@ import {
   getCalendarCompetitions, getPersonnel, getCompetitionAvailability,
   getTrainingSlots, createTrainingSlot, updateTrainingSlot,
   deleteTrainingSlot, createTrainingAssignment, deleteTrainingAssignment,
-  importTrainingExcel, previewTrainingExcel, getTrainingPdfUrl,
+  importTrainingExcel, previewTrainingExcel, downloadTrainingPdf,
   checkTrainingConflicts,
 } from '../api/client'
 
@@ -373,11 +373,10 @@ export default function Training() {
                 <span className="text-sm font-medium text-gray-300">{formatDateLabel(selectedDate)}</span>
                 <button onClick={nextDate} disabled={dates.indexOf(selectedDate) >= dates.length - 1}
                   className="px-3 py-1.5 border border-fiba-border rounded-lg text-sm text-fiba-muted disabled:opacity-30 hover:bg-fiba-surface">&rarr;</button>
-                <a href={getTrainingPdfUrl('daily', { competition_id: competitionId, date: selectedDate })}
-                  target="_blank" rel="noopener noreferrer"
+                <button onClick={() => downloadTrainingPdf('daily', { competition_id: competitionId, date: selectedDate }).catch(err => alert(err.message))}
                   className="ml-auto px-3 py-1.5 border border-fiba-border rounded-lg text-sm text-fiba-accent hover:bg-fiba-surface">
                   {t('training.exportPdf')}
-                </a>
+                </button>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
@@ -420,11 +419,10 @@ export default function Training() {
                   {teams.map(team => <option key={team} value={team}>{team}</option>)}
                 </select>
                 {selectedTeam && (
-                  <a href={getTrainingPdfUrl('team', { competition_id: competitionId, team_label: selectedTeam })}
-                    target="_blank" rel="noopener noreferrer"
+                  <button onClick={() => downloadTrainingPdf('team', { competition_id: competitionId, team_label: selectedTeam }).catch(err => alert(err.message))}
                     className="ml-auto px-3 py-1.5 border border-fiba-border rounded-lg text-sm text-fiba-accent hover:bg-fiba-surface">
                     {t('training.exportPdf')}
-                  </a>
+                  </button>
                 )}
               </div>
               {!selectedTeam ? (
@@ -498,11 +496,10 @@ export default function Training() {
                   {availableTds.map(td => <option key={td.id} value={td.id}>{td.name}{td.country ? ` (${td.country})` : ''}</option>)}
                 </select>
                 {selectedTd && (
-                  <a href={getTrainingPdfUrl('competition', { competition_id: competitionId })}
-                    target="_blank" rel="noopener noreferrer"
+                  <button onClick={() => downloadTrainingPdf('competition', { competition_id: competitionId }).catch(err => alert(err.message))}
                     className="ml-auto px-3 py-1.5 border border-fiba-border rounded-lg text-sm text-fiba-accent hover:bg-fiba-surface">
                     {t('training.exportPdf')}
-                  </a>
+                  </button>
                 )}
               </div>
               {!selectedTd ? (

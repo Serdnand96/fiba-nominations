@@ -45,7 +45,17 @@ export const bulkDeleteNominations = (ids) => api.delete('/nominations/bulk/dele
 export const generateNomination = (id) => api.post(`/nominations/${id}/generate`).then(r => r.data)
 export const updateNominationConfirmation = (id, status, notes = null) =>
   api.patch(`/nominations/${id}/confirmation`, { status, notes }).then(r => r.data)
-export const getDownloadUrl = (id) => `${api.defaults.baseURL}/nominations/${id}/download`
+
+// Authenticated file download — fetches with JWT, returns a Blob the caller
+// turns into an object URL to trigger the browser save dialog. Replaces the
+// previous <a href={url}> pattern, which exposed the file without auth.
+export const downloadNominationBlob = async (id, filename) => {
+  const params = filename ? `?filename=${encodeURIComponent(filename)}` : ''
+  const resp = await api.get(`/nominations/${id}/download${params}`, {
+    responseType: 'blob',
+  })
+  return resp.data
+}
 
 // Calendar
 export const getCalendarCompetitions = (params) => api.get('/calendar/competitions', { params }).then(r => r.data)
@@ -124,12 +134,26 @@ export const previewTrainingExcel = (file, competitionId, sport = 'Basketball') 
     headers: { 'Content-Type': 'multipart/form-data' },
   }).then(r => r.data)
 }
-export const getTrainingPdfUrl = (type, params) => {
-  const base = api.defaults.baseURL
-  if (type === 'competition') return `${base}/training/export/pdf/competition/${params.competition_id}`
-  if (type === 'daily') return `${base}/training/export/pdf/daily?competition_id=${params.competition_id}&date=${params.date}`
-  if (type === 'team') return `${base}/training/export/pdf/team?competition_id=${params.competition_id}&team_label=${encodeURIComponent(params.team_label)}`
-  return ''
+// Training PDF export — fetches authenticated and triggers a browser download
+// of the resulting blob. Replaces the previous URL-based <a href> pattern that
+// served PDFs without auth (pen-test N1).
+export const downloadTrainingPdf = async (type, params) => {
+  let url
+  if (type === 'competition') url = `/training/export/pdf/competition/${params.competition_id}`
+  else if (type === 'daily') url = `/training/export/pdf/daily?competition_id=${params.competition_id}&date=${params.date}`
+  else if (type === 'team') url = `/training/export/pdf/team?competition_id=${params.competition_id}&team_label=${encodeURIComponent(params.team_label)}`
+  else throw new Error(`Unknown training PDF type: ${type}`)
+
+  const resp = await api.get(url, { responseType: 'blob' })
+  const filename = `training-${type}-${Date.now()}.pdf`
+  const objectUrl = URL.createObjectURL(resp.data)
+  const link = document.createElement('a')
+  link.href = objectUrl
+  link.download = filename
+  document.body.appendChild(link)
+  link.click()
+  document.body.removeChild(link)
+  setTimeout(() => URL.revokeObjectURL(objectUrl), 1000)
 }
 
 // Games

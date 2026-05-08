@@ -168,15 +168,46 @@ def update_confirmation(nomination_id: str, payload: ConfirmationUpdate):
     return result.data[0]
 
 
-@router.delete("/{nomination_id}")
+def _extract_storage_key(pdf_path: str | None) -> str | None:
+    """Extract the Storage object key from a pdf_path (any supported format)."""
+    if not pdf_path:
+        return None
+    if pdf_path.startswith("storage://nominations/"):
+        return pdf_path[len("storage://nominations/"):]
+    if "/storage/v1/object/public/nominations/" in pdf_path:
+        return pdf_path.split("/storage/v1/object/public/nominations/", 1)[1]
+    if "/storage/v1/object/nominations/" in pdf_path:
+        return pdf_path.split("/storage/v1/object/nominations/", 1)[1]
+    return None
+
+
+def _delete_pdf_from_storage(pdf_path: str | None) -> None:
+    """Best-effort cleanup of a nomination's PDF in Storage."""
+    key = _extract_storage_key(pdf_path)
+    if not key:
+        return
+    try:
+        supabase.storage.from_("nominations").remove([key])
+    except Exception as e:
+        print(f"[storage cleanup] could not remove {key}: {e}")
+
+
+@router.delete("/{nomination_id}", dependencies=[Depends(require_edit("nominations"))])
 def delete_nomination(nomination_id: str):
+    # Pen-test N2: also clean up the PDF in Storage so a stale UUID can't be
+    # used to download a deleted nomination's file.
+    row = supabase.table("nominations").select("pdf_path").eq("id", nomination_id).execute().data
+    pdf_path = row[0].get("pdf_path") if row else None
+
     result = supabase.table("nominations").delete().eq("id", nomination_id).execute()
     if not result.data:
         raise HTTPException(status_code=404, detail="Nomination not found")
+
+    _delete_pdf_from_storage(pdf_path)
     return {"ok": True}
 
 
-@router.delete("/bulk/delete")
+@router.delete("/bulk/delete", dependencies=[Depends(require_edit("nominations"))])
 def bulk_delete_nominations(nomination_ids: list[str]):
     if len(nomination_ids) > _MAX_BULK:
         raise HTTPException(status_code=400, detail=f"Maximum {_MAX_BULK} items per request")
@@ -184,7 +215,10 @@ def bulk_delete_nominations(nomination_ids: list[str]):
     errors = []
     for nid in nomination_ids:
         try:
+            row = supabase.table("nominations").select("pdf_path").eq("id", nid).execute().data
+            pdf_path = row[0].get("pdf_path") if row else None
             supabase.table("nominations").delete().eq("id", nid).execute()
+            _delete_pdf_from_storage(pdf_path)
             deleted += 1
         except Exception as e:
             errors.append({"id": nid, "error": str(e)})

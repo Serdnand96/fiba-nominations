@@ -70,13 +70,11 @@ async def require_auth(request: Request) -> dict:
 # Store auth user on request state so routers can access it
 @app.middleware("http")
 async def auth_middleware(request: Request, call_next):
-    # Skip auth for OPTIONS (CORS preflight), health-check root, and download endpoints
+    # Skip auth for OPTIONS (CORS preflight) and health-check root only.
+    # Download/export endpoints DO require auth — frontend uses fetch()+blob so
+    # the JWT is sent. (Pen-test N1: leaving them open was a P0 leak.)
     path = request.url.path.rstrip("/")
     if request.method == "OPTIONS" or path in ("/api", ""):
-        return await call_next(request)
-
-    # Allow unauthenticated access to download/export endpoints (browser <a> clicks don't send JWT)
-    if ("/nominations/" in path and path.endswith("/download")) or "/export/pdf" in path:
         return await call_next(request)
 
     # Public asset view (QR scan landing) — no auth required
