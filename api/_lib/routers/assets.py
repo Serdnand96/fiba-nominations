@@ -110,23 +110,22 @@ def get_asset(asset_id: str):
         .select("*")
         .eq("asset_id", asset_id)
         .eq("status", "active")
-        .limit(1)
         .execute()
         .data
+        or []
     )
     history = (
         supabase.table("loans")
         .select("*")
         .eq("asset_id", asset_id)
         .order("loan_date", desc=True)
-        .limit(5)
         .execute()
         .data
         or []
     )
 
     asset["active_loan"] = active[0] if active else None
-    asset["loan_history"] = history
+    asset["loan_history"] = history[:5]
     return asset
 
 

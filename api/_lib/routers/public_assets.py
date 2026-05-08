@@ -25,7 +25,6 @@ def public_asset(asset_id: str):
             .select("assigned_to,expected_return")
             .eq("asset_id", asset_id)
             .eq("status", "active")
-            .limit(1)
             .execute()
             .data
         )
