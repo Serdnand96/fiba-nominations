@@ -73,20 +73,19 @@ def list_assets(
             or s in (a.get("brand") or "").lower()
         ]
 
-    # Attach active loan info
+    # Attach active loan info — fetch all active loans then join in memory
+    # (the older supabase-py version doesn't expose .in_/.filter on the builder)
     if assets:
-        ids = [a["id"] for a in assets]
-        # Older supabase-py versions don't expose .in_(); use a PostgREST filter
+        asset_ids = {a["id"] for a in assets}
         loans = (
             supabase.table("loans")
             .select("id,asset_id,assigned_to,expected_return")
-            .filter("asset_id", "in", f"({','.join(ids)})")
             .eq("status", "active")
             .execute()
             .data
             or []
         )
-        loan_map = {l["asset_id"]: l for l in loans}
+        loan_map = {l["asset_id"]: l for l in loans if l["asset_id"] in asset_ids}
         for a in assets:
             l = loan_map.get(a["id"])
             if l:
