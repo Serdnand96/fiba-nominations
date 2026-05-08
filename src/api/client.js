@@ -5,11 +5,6 @@ const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL || '/api',
 })
 
-// FIBA Sync Service — separate service for external API calls
-const fibaService = axios.create({
-  baseURL: import.meta.env.VITE_FIBA_SERVICE_URL || 'http://localhost:3002',
-})
-
 // Attach Supabase JWT to every request
 api.interceptors.request.use(async (config) => {
   const { data: { session } } = await supabase.auth.getSession()
@@ -147,12 +142,12 @@ export const createGame = (data) => api.post('/games', data).then(r => r.data)
 export const bulkCreateGames = (data) => api.post('/games/bulk', data).then(r => r.data)
 export const updateGame = (id, data) => api.put(`/games/${id}`, data).then(r => r.data)
 export const deleteGame = (id) => api.delete(`/games/${id}`).then(r => r.data)
-export const syncGameResults = (competitionId) => fibaService.post('/sync-results', null, { params: { competition_id: competitionId }, timeout: 60000 }).then(r => r.data)
+export const syncGameResults = (competitionId) => api.post('/games/sync-results', null, { params: { competition_id: competitionId }, timeout: 60000 }).then(r => r.data)
 export const importGamesExcel = (file, competitionId) => {
   const form = new FormData()
   form.append('file', file)
   form.append('competition_id', competitionId)
-  return fibaService.post('/import/excel', form, {
+  return api.post('/games/import/excel', form, {
     headers: { 'Content-Type': 'multipart/form-data' },
     timeout: 120000,
   }).then(r => r.data)
