@@ -519,6 +519,12 @@ const translations = {
     confirmReturn: { en: 'Mark this loan as returned?', es: '¿Marcar este préstamo como devuelto?' },
     confirmDelete: { en: 'Delete this loan record?', es: '¿Eliminar este registro de préstamo?' },
     noLoans: { en: 'No loans', es: 'No hay préstamos' },
+    pickPersonOrType: { en: 'Pick a person or enter a name', es: 'Selecciona una persona o ingresa un nombre' },
+    pickFromList: { en: 'Pick from list', es: 'Elegir de la lista' },
+    useFreeText: { en: 'Use free text', es: 'Usar texto libre' },
+    freeTextPlaceholder: { en: 'Enter the name of the person', es: 'Ingresa el nombre de la persona' },
+    searchPersonnel: { en: 'Search personnel...', es: 'Buscar personal...' },
+    noPersonnel: { en: 'No personnel found', es: 'No se encontró personal' },
   },
 
   // ===== Scan =====

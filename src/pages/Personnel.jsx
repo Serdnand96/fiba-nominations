@@ -208,6 +208,7 @@ export default function Personnel() {
           <option value="">{t('personnel.allRoles')}</option>
           <option value="VGO">VGO</option>
           <option value="TD">TD</option>
+          <option value="Staff">Staff</option>
         </select>
       </div>
 
@@ -229,7 +230,11 @@ export default function Personnel() {
               <tr key={p.id} className={availPerson?.id === p.id ? 'bg-fiba-accent/10' : ''}>
                 <td className="px-4 py-3 font-medium">{p.name}</td>
                 <td className="px-4 py-3">
-                  <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${p.role === 'VGO' ? 'bg-purple-500/20 text-purple-400' : 'bg-emerald-500/20 text-emerald-400'}`}>{p.role}</span>
+                  <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${
+                    p.role === 'VGO' ? 'bg-purple-500/20 text-purple-400'
+                    : p.role === 'TD' ? 'bg-emerald-500/20 text-emerald-400'
+                    : 'bg-blue-500/20 text-blue-400'
+                  }`}>{p.role}</span>
                 </td>
                 <td className="px-4 py-3">{p.country || '—'}</td>
                 <td className="px-4 py-3">{p.email}</td>
@@ -270,6 +275,7 @@ export default function Personnel() {
               <select value={form.role} onChange={e => setForm(f => ({ ...f, role: e.target.value }))} className="fiba-select">
                 <option value="VGO">VGO</option>
                 <option value="TD">TD</option>
+                <option value="Staff">Staff</option>
               </select>
               <div className="flex justify-end gap-3 pt-2">
                 <button type="button" onClick={() => setShowModal(false)} className="px-4 py-2 text-sm text-fiba-muted">{t('personnel.cancel')}</button>

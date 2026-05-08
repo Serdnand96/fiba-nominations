@@ -70,6 +70,22 @@ def create_loan(data: LoanCreate, request: Request):
 
     record = data.model_dump(exclude_none=True)
     record["assigned_by"] = _user_id(request)
+
+    # If personnel_id was provided, denormalize the name into assigned_to
+    if record.get("personnel_id"):
+        p = (
+            supabase.table("personnel")
+            .select("name")
+            .eq("id", record["personnel_id"])
+            .execute()
+            .data
+        )
+        if not p:
+            raise HTTPException(status_code=404, detail="Personnel not found")
+        record["assigned_to"] = p[0]["name"]
+    elif not record.get("assigned_to"):
+        raise HTTPException(status_code=400, detail="Either personnel_id or assigned_to is required")
+
     inserted = supabase.table("loans").insert(record).execute()
     loan = inserted.data[0]
 

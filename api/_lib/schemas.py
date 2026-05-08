@@ -104,6 +104,7 @@ class AssetUpdate(BaseModel):
 
 class LoanCreate(BaseModel):
     asset_id: str
-    assigned_to: str
+    assigned_to: Optional[str] = None  # Free text — auto-filled from personnel.name when personnel_id is set
+    personnel_id: Optional[str] = None  # Link to personnel table (preferred)
     expected_return: Optional[str] = None
     notes: Optional[str] = None

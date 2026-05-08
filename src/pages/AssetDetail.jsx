@@ -1,8 +1,8 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useParams, useNavigate } from 'react-router-dom'
 import {
   getAsset, uploadAssetPhoto, getAssetQR,
-  createLoan, returnLoan,
+  createLoan, returnLoan, getPersonnel,
 } from '../api/client'
 import { useLanguage } from '../i18n/LanguageContext'
 import { useAuth } from '../contexts/AuthContext'
@@ -29,9 +29,26 @@ export default function AssetDetail() {
 
   // Loan form state
   const [showLoanForm, setShowLoanForm] = useState(false)
-  const [loanForm, setLoanForm] = useState({ assigned_to: '', expected_return: '', notes: '' })
+  const [loanForm, setLoanForm] = useState({
+    personnel_id: '', assigned_to: '', expected_return: '', notes: '',
+  })
+  const [personnelList, setPersonnelList] = useState([])
+  const [personnelSearch, setPersonnelSearch] = useState('')
+  const [useFreeText, setUseFreeText] = useState(false)
 
   useEffect(() => { load() }, [id])
+  useEffect(() => {
+    getPersonnel().then(setPersonnelList).catch(() => {})
+  }, [])
+
+  const filteredPersonnel = useMemo(() => {
+    const q = personnelSearch.toLowerCase()
+    if (!q) return personnelList
+    return personnelList.filter(p =>
+      (p.name || '').toLowerCase().includes(q) ||
+      (p.email || '').toLowerCase().includes(q)
+    )
+  }, [personnelList, personnelSearch])
 
   async function load() {
     setLoading(true)
@@ -58,9 +75,19 @@ export default function AssetDetail() {
   async function handleCreateLoan(e) {
     e.preventDefault()
     try {
-      await createLoan({ ...loanForm, asset_id: id })
+      const payload = { asset_id: id, expected_return: loanForm.expected_return || null, notes: loanForm.notes || null }
+      if (useFreeText) {
+        if (!loanForm.assigned_to) { alert(t('loans.pickPersonOrType')); return }
+        payload.assigned_to = loanForm.assigned_to
+      } else {
+        if (!loanForm.personnel_id) { alert(t('loans.pickPersonOrType')); return }
+        payload.personnel_id = loanForm.personnel_id
+      }
+      await createLoan(payload)
       setShowLoanForm(false)
-      setLoanForm({ assigned_to: '', expected_return: '', notes: '' })
+      setLoanForm({ personnel_id: '', assigned_to: '', expected_return: '', notes: '' })
+      setUseFreeText(false)
+      setPersonnelSearch('')
       await load()
     } catch (err) {
       alert(err.response?.data?.detail || err.message)
@@ -215,10 +242,43 @@ export default function AssetDetail() {
             <h3 className="text-lg font-bold text-white mb-4">{t('loans.newLoan')}</h3>
             <form onSubmit={handleCreateLoan} className="space-y-3">
               <div>
-                <label className="fiba-label">{t('loans.assignedTo')} *</label>
-                <input required value={loanForm.assigned_to}
-                  onChange={e => setLoanForm(f => ({ ...f, assigned_to: e.target.value }))}
-                  className="fiba-input" />
+                <div className="flex items-center justify-between mb-1">
+                  <label className="fiba-label !mb-0">{t('loans.assignedTo')} *</label>
+                  <button type="button" onClick={() => { setUseFreeText(v => !v); setLoanForm(f => ({ ...f, personnel_id: '', assigned_to: '' })) }}
+                    className="text-xs text-fiba-accent hover:underline">
+                    {useFreeText ? t('loans.pickFromList') : t('loans.useFreeText')}
+                  </button>
+                </div>
+
+                {useFreeText ? (
+                  <input value={loanForm.assigned_to}
+                    onChange={e => setLoanForm(f => ({ ...f, assigned_to: e.target.value }))}
+                    placeholder={t('loans.freeTextPlaceholder')}
+                    className="fiba-input" autoFocus />
+                ) : (
+                  <>
+                    <input type="text" value={personnelSearch}
+                      onChange={e => setPersonnelSearch(e.target.value)}
+                      placeholder={t('loans.searchPersonnel')}
+                      className="fiba-input mb-2" autoFocus />
+                    <div className="max-h-48 overflow-y-auto border border-fiba-border rounded-lg bg-fiba-surface">
+                      {filteredPersonnel.length === 0 && (
+                        <div className="px-3 py-2 text-xs text-fiba-muted">{t('loans.noPersonnel')}</div>
+                      )}
+                      {filteredPersonnel.map(p => (
+                        <label key={p.id}
+                          className={`flex items-center gap-2 px-3 py-2 cursor-pointer text-sm hover:bg-fiba-surface-2 ${loanForm.personnel_id === p.id ? 'bg-fiba-accent/10' : ''}`}>
+                          <input type="radio" name="personnel_pick"
+                            checked={loanForm.personnel_id === p.id}
+                            onChange={() => setLoanForm(f => ({ ...f, personnel_id: p.id, assigned_to: p.name }))}
+                            className="text-fiba-accent" />
+                          <span className="flex-1">{p.name}</span>
+                          {p.role && <span className="text-[10px] px-1.5 py-0.5 rounded bg-fiba-surface-2 text-fiba-muted">{p.role}</span>}
+                        </label>
+                      ))}
+                    </div>
+                  </>
+                )}
               </div>
               <div>
                 <label className="fiba-label">{t('loans.expectedReturn')}</label>
