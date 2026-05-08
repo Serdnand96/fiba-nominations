@@ -1,24 +1,29 @@
-import { useState } from 'react'
+import { lazy, Suspense, useState } from 'react'
 import { Routes, Route, NavLink, Navigate } from 'react-router-dom'
 import { useAuth } from './contexts/AuthContext'
 import { useLanguage } from './i18n/LanguageContext'
+
+// Eager-load Login (always shown when logged out) and PublicAsset (no-auth route)
 import Login from './pages/Login'
-import Nominations from './pages/Nominations'
-import Personnel from './pages/Personnel'
-import Competitions from './pages/Competitions'
-import Templates from './pages/Templates'
-import Users from './pages/Users'
-import Calendar from './pages/Calendar'
-import Transport from './pages/Transport'
-import Availability from './pages/Availability'
-import Training from './pages/Training'
-import Games from './pages/Games'
-import Assets from './pages/Assets'
-import AssetDetail from './pages/AssetDetail'
-import Loans from './pages/Loans'
-import Scan from './pages/Scan'
 import PublicAsset from './pages/PublicAsset'
-import Employees from './pages/Employees'
+
+// Lazy-load every authenticated page so the initial bundle is small
+// React Router shows the Suspense fallback while the chunk downloads.
+const Calendar     = lazy(() => import('./pages/Calendar'))
+const Nominations  = lazy(() => import('./pages/Nominations'))
+const Personnel    = lazy(() => import('./pages/Personnel'))
+const Competitions = lazy(() => import('./pages/Competitions'))
+const Templates    = lazy(() => import('./pages/Templates'))
+const Users        = lazy(() => import('./pages/Users'))
+const Transport    = lazy(() => import('./pages/Transport'))
+const Availability = lazy(() => import('./pages/Availability'))
+const Training     = lazy(() => import('./pages/Training'))
+const Games        = lazy(() => import('./pages/Games'))
+const Assets       = lazy(() => import('./pages/Assets'))
+const AssetDetail  = lazy(() => import('./pages/AssetDetail'))
+const Loans        = lazy(() => import('./pages/Loans'))
+const Scan         = lazy(() => import('./pages/Scan'))
+const Employees    = lazy(() => import('./pages/Employees'))
 
 /* ── Nav icons (simple SVG paths) ─────────────────────────────────────── */
 const icons = {
@@ -268,6 +273,7 @@ export default function App() {
           <span className="text-sm font-semibold text-white">FIBA Americas</span>
         </div>
         <div className="p-4 md:p-6 lg:p-8 max-w-[1400px]">
+          <Suspense fallback={<div className="flex items-center justify-center py-20"><div className="w-6 h-6 border-2 border-fiba-accent border-t-transparent rounded-full animate-spin" /></div>}>
           <Routes>
             <Route path="/" element={<Navigate to={defaultRoute} replace />} />
             <Route path="/calendar" element={<PermissionGuard module="calendar"><Calendar /></PermissionGuard>} />
@@ -286,6 +292,7 @@ export default function App() {
             <Route path="/scan" element={<PermissionGuard module="assets"><Scan /></PermissionGuard>} />
             <Route path="/employees" element={<PermissionGuard module="employees"><Employees /></PermissionGuard>} />
           </Routes>
+          </Suspense>
         </div>
       </main>
     </div>

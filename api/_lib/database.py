@@ -8,6 +8,18 @@ import httpx
 SUPABASE_URL = os.environ.get("SUPABASE_URL", "")
 SUPABASE_KEY = os.environ.get("SUPABASE_SERVICE_ROLE_KEY", "") or os.environ.get("SUPABASE_KEY", "")
 
+# Shared httpx Client — reuses TCP/TLS connections across requests.
+# We use one client for short queries (REST/Auth) and one for bulkier uploads.
+_HTTP = httpx.Client(
+    timeout=30.0,
+    limits=httpx.Limits(max_connections=20, max_keepalive_connections=10),
+    http2=False,
+)
+_HTTP_UPLOAD = httpx.Client(
+    timeout=60.0,
+    limits=httpx.Limits(max_connections=10, max_keepalive_connections=5),
+)
+
 
 class _SupabaseResult:
     """Mimics the result object from supabase-py."""
@@ -58,17 +70,17 @@ class _QueryBuilder:
         return self
 
     def execute(self) -> _SupabaseResult:
-        with httpx.Client(timeout=30.0) as client:
-            if self._method == "GET":
-                resp = client.get(self._url, headers=self._headers, params=self._params)
-            elif self._method == "POST":
-                resp = client.post(self._url, headers=self._headers, params=self._params, json=self._body)
-            elif self._method == "PATCH":
-                resp = client.patch(self._url, headers=self._headers, params=self._params, json=self._body)
-            elif self._method == "DELETE":
-                resp = client.delete(self._url, headers=self._headers, params=self._params)
-            else:
-                raise ValueError(f"Unknown method: {self._method}")
+        client = _HTTP
+        if self._method == "GET":
+            resp = client.get(self._url, headers=self._headers, params=self._params)
+        elif self._method == "POST":
+            resp = client.post(self._url, headers=self._headers, params=self._params, json=self._body)
+        elif self._method == "PATCH":
+            resp = client.patch(self._url, headers=self._headers, params=self._params, json=self._body)
+        elif self._method == "DELETE":
+            resp = client.delete(self._url, headers=self._headers, params=self._params)
+        else:
+            raise ValueError(f"Unknown method: {self._method}")
 
         if resp.status_code >= 400:
             raise Exception(f"Supabase error {resp.status_code}: {resp.text}")
@@ -92,25 +104,25 @@ class _StorageBucket:
         content_type = (file_options or {}).get("content-type", "application/octet-stream")
         upsert = (file_options or {}).get("upsert", "false")
         headers = {**self._headers, "Content-Type": content_type, "x-upsert": str(upsert).lower()}
-        with httpx.Client(timeout=60.0) as client:
-            resp = client.post(url, headers=headers, content=file)
+        resp = _HTTP_UPLOAD.post(url, headers=headers, content=file)
         if resp.status_code >= 400:
             raise Exception(f"Storage upload error {resp.status_code}: {resp.text}")
         return resp.json()
 
     def remove(self, paths: list[str]):
         url = f"{self._url}/object/{self._bucket}"
-        with httpx.Client(timeout=30.0) as client:
-            resp = client.delete(url, headers={**self._headers, "Content-Type": "application/json"}, json={"prefixes": paths})
-        return resp
+        return _HTTP.request(
+            "DELETE", url,
+            headers={**self._headers, "Content-Type": "application/json"},
+            json={"prefixes": paths},
+        )
 
     def get_public_url(self, path: str) -> str:
         return f"{self._url.replace('/storage/v1', '')}/storage/v1/object/public/{self._bucket}/{path}"
 
     def list_buckets(self):
         url = f"{self._url}/bucket"
-        with httpx.Client(timeout=15.0) as client:
-            resp = client.get(url, headers=self._headers)
+        resp = _HTTP.get(url, headers=self._headers)
         return resp.json()
 
 
@@ -124,8 +136,7 @@ class _StorageClient:
 
     def list_buckets(self):
         url = f"{self._url}/storage/v1/bucket"
-        with httpx.Client(timeout=15.0) as client:
-            resp = client.get(url, headers=self._headers)
+        resp = _HTTP.get(url, headers=self._headers)
         items = resp.json()
 
         class _Bucket:
@@ -143,8 +154,7 @@ class _AuthAdmin:
         self._headers = {**headers, "Content-Type": "application/json"}
 
     def list_users(self):
-        with httpx.Client(timeout=15.0) as client:
-            resp = client.get(f"{self._url}/users", headers=self._headers)
+        resp = _HTTP.get(f"{self._url}/users", headers=self._headers)
         if resp.status_code >= 400:
             raise Exception(f"Auth error {resp.status_code}: {resp.text}")
         data = resp.json()
@@ -160,8 +170,7 @@ class _AuthAdmin:
         return [_User(u) for u in users_list]
 
     def create_user(self, params: dict):
-        with httpx.Client(timeout=15.0) as client:
-            resp = client.post(f"{self._url}/users", headers=self._headers, json=params)
+        resp = _HTTP.post(f"{self._url}/users", headers=self._headers, json=params)
         if resp.status_code >= 400:
             raise Exception(f"Auth error {resp.status_code}: {resp.text}")
         data = resp.json()
@@ -179,8 +188,7 @@ class _AuthAdmin:
         return _Result(data)
 
     def delete_user(self, user_id: str):
-        with httpx.Client(timeout=15.0) as client:
-            resp = client.delete(f"{self._url}/users/{user_id}", headers=self._headers)
+        resp = _HTTP.delete(f"{self._url}/users/{user_id}", headers=self._headers)
         if resp.status_code >= 400:
             raise Exception(f"Auth error {resp.status_code}: {resp.text}")
 
