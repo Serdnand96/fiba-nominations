@@ -60,16 +60,17 @@ PUB=$(curl -s -o /dev/null -w "%{http_code}" \
 [[ "$PUB" =~ ^(400|404)$ ]] && pass "Public bucket URL rejected ($PUB)" \
   || fail "Public bucket URL still serves ($PUB)"
 
-# Authenticated download via API still works
-DL=$(curl -s -o /tmp/_verify.pdf -w "%{http_code}" \
+# N1 (round 2): /api/nominations/{id}/download must reject anon callers
+DL=$(curl -s -o /dev/null -w "%{http_code}" \
   "$BASE/api/nominations/bae73b3f-3558-4c4a-92fa-fb4224e720e6/download")
-size=$(wc -c < /tmp/_verify.pdf 2>/dev/null || echo 0)
-rm -f /tmp/_verify.pdf
-if [[ "$DL" == "200" ]] && (( size > 1000 )); then
-  pass "Authenticated download via /api works ($size bytes)"
-else
-  fail "Download via /api returned $DL ($size bytes)"
-fi
+[[ "$DL" == "401" ]] && pass "Anon download rejected (401)" \
+  || fail "Anon download returned $DL — expected 401"
+
+# Same for training PDF exports
+DL2=$(curl -s -o /dev/null -w "%{http_code}" \
+  "$BASE/api/training/export/pdf/competition/bae73b3f-3558-4c4a-92fa-fb4224e720e6")
+[[ "$DL2" == "401" ]] && pass "Anon training PDF rejected (401)" \
+  || fail "Anon training PDF returned $DL2"
 
 echo
 echo "── H7: CSP sin 'unsafe-inline' en script-src ──────────────"
