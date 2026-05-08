@@ -119,6 +119,7 @@ export default function App() {
   const { user, loading, hasView, isSuperadmin } = useAuth()
   const { t } = useLanguage()
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
+  const [mobileOpen, setMobileOpen] = useState(false)
 
   // Public routes (no auth required) — must be rendered before the user check
   if (typeof window !== 'undefined' && /^\/asset\/[0-9a-f-]+/i.test(window.location.pathname)) {
@@ -165,9 +166,25 @@ export default function App() {
   const defaultRoute = navItems.length > 0 ? navItems[0].to : '/calendar'
 
   return (
-    <div className="flex h-screen bg-fiba-dark">
+    <div className="flex h-screen bg-fiba-dark relative">
+      {/* ── Mobile backdrop ──────────────────────────────────── */}
+      {mobileOpen && (
+        <div
+          className="fixed inset-0 bg-black/60 z-30 md:hidden"
+          onClick={() => setMobileOpen(false)}
+          aria-hidden="true"
+        />
+      )}
+
       {/* ── Sidebar ──────────────────────────────────────────── */}
-      <aside className={`${sidebarCollapsed ? 'w-[72px]' : 'w-64'} bg-fiba-darker border-r border-fiba-border flex flex-col transition-all duration-200`}>
+      <aside className={`
+        ${sidebarCollapsed ? 'md:w-[72px]' : 'md:w-64'}
+        ${mobileOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}
+        fixed md:relative z-40 md:z-auto
+        w-64 h-full
+        bg-fiba-darker border-r border-fiba-border flex flex-col
+        transition-transform duration-200 md:transition-all
+      `}>
         {/* Logo area */}
         <div className="p-4 border-b border-fiba-border">
           <div className="flex items-center gap-3">
@@ -178,12 +195,10 @@ export default function App() {
                 <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 3c1.66 0 3 1.79 3 4s-1.34 4-3 4-3-1.79-3-4 1.34-4 3-4z" opacity="0.3" />
               </svg>
             </div>
-            {!sidebarCollapsed && (
-              <div className="min-w-0">
-                <h1 className="text-sm font-bold text-white truncate">FIBA Americas</h1>
-                <p className="text-[11px] text-fiba-muted truncate">{t('app.subtitle')}</p>
-              </div>
-            )}
+            <div className={`min-w-0 ${sidebarCollapsed ? 'md:hidden' : ''}`}>
+              <h1 className="text-sm font-bold text-white truncate">FIBA Americas</h1>
+              <p className="text-[11px] text-fiba-muted truncate">{t('app.subtitle')}</p>
+            </div>
           </div>
         </div>
 
@@ -193,6 +208,7 @@ export default function App() {
             <NavLink
               key={item.to}
               to={item.to}
+              onClick={() => setMobileOpen(false)}
               title={sidebarCollapsed ? item.label : undefined}
               className={({ isActive }) =>
                 `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-150 group ${
@@ -207,9 +223,9 @@ export default function App() {
                   <span className={`shrink-0 ${isActive ? 'text-fiba-accent' : 'text-fiba-muted group-hover:text-white'}`}>
                     {icons[item.to.replace('/', '')] || icons[item.module]}
                   </span>
-                  {!sidebarCollapsed && <span className="truncate">{item.label}</span>}
-                  {isActive && !sidebarCollapsed && (
-                    <span className="ml-auto w-1.5 h-1.5 rounded-full bg-fiba-accent" />
+                  <span className={`truncate ${sidebarCollapsed ? 'md:hidden' : ''}`}>{item.label}</span>
+                  {isActive && (
+                    <span className={`ml-auto w-1.5 h-1.5 rounded-full bg-fiba-accent ${sidebarCollapsed ? 'md:hidden' : ''}`} />
                   )}
                 </>
               )}
@@ -219,12 +235,14 @@ export default function App() {
 
         {/* Bottom section */}
         <div className="p-3 border-t border-fiba-border space-y-2">
-          {!sidebarCollapsed && <LanguageSwitcher />}
+          <div className={sidebarCollapsed ? 'md:hidden' : ''}>
+            <LanguageSwitcher />
+          </div>
           <LogoutButton collapsed={sidebarCollapsed} />
-          {/* Collapse toggle */}
+          {/* Collapse toggle — desktop only */}
           <button
             onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-            className="w-full flex items-center justify-center py-1.5 text-fiba-muted hover:text-white transition-colors"
+            className="hidden md:flex w-full items-center justify-center py-1.5 text-fiba-muted hover:text-white transition-colors"
             title={sidebarCollapsed ? 'Expand' : 'Collapse'}
           >
             <svg className={`w-4 h-4 transition-transform ${sidebarCollapsed ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -235,8 +253,21 @@ export default function App() {
       </aside>
 
       {/* ── Main content ─────────────────────────────────────── */}
-      <main className="flex-1 overflow-auto">
-        <div className="p-6 lg:p-8 max-w-[1400px]">
+      <main className="flex-1 overflow-auto w-full">
+        {/* Mobile top bar with hamburger */}
+        <div className="md:hidden sticky top-0 z-20 flex items-center gap-3 px-4 py-3 bg-fiba-darker border-b border-fiba-border">
+          <button
+            onClick={() => setMobileOpen(true)}
+            aria-label="Open menu"
+            className="p-1 -m-1 text-fiba-muted hover:text-white"
+          >
+            <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
+            </svg>
+          </button>
+          <span className="text-sm font-semibold text-white">FIBA Americas</span>
+        </div>
+        <div className="p-4 md:p-6 lg:p-8 max-w-[1400px]">
           <Routes>
             <Route path="/" element={<Navigate to={defaultRoute} replace />} />
             <Route path="/calendar" element={<PermissionGuard module="calendar"><Calendar /></PermissionGuard>} />

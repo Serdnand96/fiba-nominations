@@ -186,7 +186,7 @@ export default function Personnel() {
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-4 gap-4 mb-6">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
         {[
           { label: t('personnel.total'), value: stats.total },
           { label: 'VGOs', value: stats.vgo },
@@ -213,6 +213,7 @@ export default function Personnel() {
 
       {/* Table */}
       <div className="rounded-xl border border-fiba-border overflow-hidden">
+        <div className="overflow-x-auto">
         <table className="fiba-table">
           <thead>
             <tr>
@@ -254,6 +255,7 @@ export default function Personnel() {
             )}
           </tbody>
         </table>
+        </div>
       </div>
 
       {/* Person Modal */}
@@ -382,7 +384,7 @@ export default function Personnel() {
                     .map(c => <option key={c.id} value={c.id}>{c.name} {c.year ? `(${c.year})` : ''}</option>)}
                 </select>
               ) : (
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
                     <label className="fiba-label">{t('availability.startDate')}</label>
                     <input required type="date" value={availForm.start_date}

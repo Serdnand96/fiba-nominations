@@ -388,7 +388,7 @@ export default function Nominations() {
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-4 gap-4 mb-6">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
         {[
           { label: t('nominations.total'), value: stats.total },
           { label: t('nominations.generated'), value: stats.generated },
@@ -418,6 +418,7 @@ export default function Nominations() {
 
       {/* Table */}
       <div className="rounded-xl border border-fiba-border overflow-hidden">
+        <div className="overflow-x-auto">
         <table className="fiba-table">
           <thead>
             <tr>
@@ -515,6 +516,7 @@ export default function Nominations() {
             )}
           </tbody>
         </table>
+        </div>
       </div>
 
       {/* Creation Form Modal */}

@@ -121,7 +121,7 @@ export default function Employees() {
         )}
       </div>
 
-      <div className="grid grid-cols-3 gap-4 mb-6">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
         <div className="fiba-stat"><p className="text-xs text-fiba-muted">{t('employees.total')}</p><p className="text-2xl font-bold text-white">{stats.total}</p></div>
         <div className="fiba-stat"><p className="text-xs text-fiba-muted">{t('employees.active')}</p><p className="text-2xl font-bold text-emerald-400">{stats.active}</p></div>
         <div className="fiba-stat"><p className="text-xs text-fiba-muted">{t('employees.departments')}</p><p className="text-2xl font-bold text-blue-400">{stats.departments}</p></div>
@@ -144,6 +144,7 @@ export default function Employees() {
       </div>
 
       <div className="rounded-xl border border-fiba-border overflow-hidden">
+        <div className="overflow-x-auto">
         <table className="fiba-table">
           <thead>
             <tr>
@@ -186,6 +187,7 @@ export default function Employees() {
             )}
           </tbody>
         </table>
+        </div>
       </div>
 
       {showForm && (
@@ -194,7 +196,7 @@ export default function Employees() {
             <h3 className="text-lg font-bold text-white mb-4">
               {editing ? t('employees.editEmployee') : t('employees.newEmployee')}
             </h3>
-            <form onSubmit={handleSubmit} className="grid grid-cols-2 gap-3">
+            <form onSubmit={handleSubmit} className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div className="col-span-2">
                 <label className="fiba-label">{t('employees.name')} *</label>
                 <input required value={form.name}

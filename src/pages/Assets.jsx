@@ -135,7 +135,7 @@ export default function Assets() {
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-4 gap-4 mb-6">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
         {[
           { label: t('assets.total'), value: stats.total },
           { label: t('assets.available'), value: stats.available, color: 'text-emerald-400' },
@@ -171,6 +171,7 @@ export default function Assets() {
 
       {/* Table */}
       <div className="rounded-xl border border-fiba-border overflow-hidden">
+        <div className="overflow-x-auto">
         <table className="fiba-table">
           <thead>
             <tr>
@@ -219,6 +220,7 @@ export default function Assets() {
             )}
           </tbody>
         </table>
+        </div>
       </div>
 
       {/* Modal */}
@@ -228,7 +230,7 @@ export default function Assets() {
             <h3 className="text-lg font-bold text-white mb-4">
               {editing ? t('assets.editAsset') : t('assets.newAsset')}
             </h3>
-            <form onSubmit={handleSubmit} className="grid grid-cols-2 gap-3">
+            <form onSubmit={handleSubmit} className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div className="col-span-2">
                 <label className="fiba-label">{t('assets.name')} *</label>
                 <input required value={form.name}

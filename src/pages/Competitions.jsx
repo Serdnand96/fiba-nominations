@@ -142,6 +142,7 @@ export default function Competitions() {
       </div>
 
       <div className="rounded-xl border border-fiba-border overflow-hidden">
+        <div className="overflow-x-auto">
         <table className="fiba-table">
           <thead>
             <tr>
@@ -190,6 +191,7 @@ export default function Competitions() {
             )}
           </tbody>
         </table>
+        </div>
       </div>
 
       {showModal && (

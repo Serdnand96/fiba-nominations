@@ -69,7 +69,7 @@ export default function Loans() {
     <div>
       <h2 className="text-2xl font-bold text-white mb-6">{t('loans.title')}</h2>
 
-      <div className="grid grid-cols-3 gap-4 mb-6">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
         <div className="fiba-stat"><p className="text-xs text-fiba-muted">{t('loans.total')}</p><p className="text-2xl font-bold text-white">{stats.total}</p></div>
         <div className="fiba-stat"><p className="text-xs text-fiba-muted">{t('loans.active')}</p><p className="text-2xl font-bold text-blue-400">{stats.active}</p></div>
         <div className="fiba-stat"><p className="text-xs text-fiba-muted">{t('loans.overdue')}</p><p className="text-2xl font-bold text-red-400">{stats.overdue}</p></div>
@@ -87,6 +87,7 @@ export default function Loans() {
       </div>
 
       <div className="rounded-xl border border-fiba-border overflow-hidden">
+        <div className="overflow-x-auto">
         <table className="fiba-table">
           <thead>
             <tr>
@@ -135,6 +136,7 @@ export default function Loans() {
             )}
           </tbody>
         </table>
+        </div>
       </div>
     </div>
   )

@@ -41,6 +41,7 @@ export default function Templates() {
     <div>
       <h2 className="text-2xl font-bold text-white mb-6">{t('templates.title')}</h2>
       <div className="rounded-xl border border-fiba-border overflow-hidden">
+        <div className="overflow-x-auto">
         <table className="fiba-table">
           <thead>
             <tr>
@@ -65,6 +66,7 @@ export default function Templates() {
             ))}
           </tbody>
         </table>
+        </div>
       </div>
     </div>
   )

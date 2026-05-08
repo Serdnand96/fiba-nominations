@@ -152,7 +152,8 @@ export default function Users() {
         <p className="text-fiba-muted/60 text-sm">{t('users.loading')}</p>
       ) : (
         <div className="rounded-xl border border-fiba-border overflow-hidden">
-          <table className="fiba-table">
+        <div className="overflow-x-auto">
+        <table className="fiba-table">
             <thead>
               <tr>
                 <th>{t('users.email')}</th>
@@ -205,6 +206,7 @@ export default function Users() {
               )}
             </tbody>
           </table>
+        </div>
         </div>
       )}
 
