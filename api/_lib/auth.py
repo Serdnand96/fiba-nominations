@@ -75,16 +75,29 @@ def require_superadmin(request: Request):
 
 
 def require_view(module: str):
-    """Dependency factory: 403 unless caller has can_view on `module` (or is superadmin)."""
+    """Dependency factory: 403 unless caller has can_view on `module` (or is superadmin).
+
+    If `request.state.user` is missing, the request was let through by the auth
+    middleware as an explicit bypass (e.g. /nominations/{id}/download for
+    <a href> clicks, /api/public/* for QR landing). In that case we skip the
+    permission check — those routes implement their own access control.
+    """
     def _check(request: Request):
+        if not getattr(request.state, "user", None):
+            return
         if not _has_permission(request, _user_id(request), module, "view"):
             raise HTTPException(status_code=403, detail=f"Missing {module}:view permission")
     return _check
 
 
 def require_edit(module: str):
-    """Dependency factory: 403 unless caller has can_edit on `module` (or is superadmin)."""
+    """Dependency factory: 403 unless caller has can_edit on `module` (or is superadmin).
+
+    Same auth-middleware-bypass logic as require_view.
+    """
     def _check(request: Request):
+        if not getattr(request.state, "user", None):
+            return
         if not _has_permission(request, _user_id(request), module, "edit"):
             raise HTTPException(status_code=403, detail=f"Missing {module}:edit permission")
     return _check
