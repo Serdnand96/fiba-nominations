@@ -1,10 +1,11 @@
 import re
-from fastapi import APIRouter, HTTPException, UploadFile, File
+from fastapi import APIRouter, HTTPException, UploadFile, File, Depends
 from api._lib.database import supabase
+from api._lib.auth import require_view, require_edit
 from api._lib.schemas import PersonnelCreate, PersonnelUpdate
 from api._lib.services.bulk_import import process_bulk_import
 
-router = APIRouter(prefix="/personnel", tags=["personnel"])
+router = APIRouter(prefix="/personnel", tags=["personnel"], dependencies=[Depends(require_view("personnel"))])
 
 # Max upload size: 5 MB
 _MAX_UPLOAD_BYTES = 5 * 1024 * 1024

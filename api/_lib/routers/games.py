@@ -4,14 +4,15 @@ FIBA website scraping for auto-import, and results sync.
 """
 import io
 import re
-from fastapi import APIRouter, HTTPException, Query, UploadFile, File, Form
+from fastapi import APIRouter, HTTPException, Query, UploadFile, File, Form, Depends
 from pydantic import BaseModel
 from typing import Optional, List
 from datetime import datetime
 
 from api._lib.database import supabase
+from api._lib.auth import require_view, require_edit
 
-router = APIRouter(prefix="/games", tags=["games"])
+router = APIRouter(prefix="/games", tags=["games"], dependencies=[Depends(require_view("games"))])
 
 _MAX_UPLOAD_BYTES = 5 * 1024 * 1024
 

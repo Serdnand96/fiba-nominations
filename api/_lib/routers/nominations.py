@@ -1,15 +1,16 @@
 import os
 import re
 from datetime import datetime, timezone
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from fastapi.responses import FileResponse, RedirectResponse
 from pydantic import BaseModel
 from typing import Optional
 from api._lib.database import supabase
+from api._lib.auth import require_view, require_edit
 from api._lib.schemas import NominationCreate, BulkNominationCreate
 from api._lib.services.document_generator import generate_nomination
 
-router = APIRouter(prefix="/nominations", tags=["nominations"])
+router = APIRouter(prefix="/nominations", tags=["nominations"], dependencies=[Depends(require_view("nominations"))])
 
 _MAX_BULK = 100
 _SAFE_FILENAME_RE = re.compile(r'[^\w\s\-\.\(\)]')
@@ -288,13 +289,33 @@ def download_nomination(nomination_id: str, filename: str = None):
     if not filename:
         filename = "Nomination.pdf"
 
-    # If it's a URL (Supabase Storage), fetch and serve with proper filename
-    if doc_path.startswith("http"):
-        try:
-            resp = httpx.get(doc_path, timeout=30.0, follow_redirects=True)
-            if resp.status_code != 200:
-                return RedirectResponse(url=doc_path)
+    # Resolve the doc_path into a Supabase Storage object URL we can fetch
+    # with service_role credentials (bucket is now PRIVATE).
+    SUPABASE_URL = os.environ.get("SUPABASE_URL", "")
+    SUPABASE_KEY = os.environ.get("SUPABASE_SERVICE_ROLE_KEY", "") or os.environ.get("SUPABASE_KEY", "")
+    storage_object_url = None
 
+    if doc_path.startswith("storage://"):
+        # New format: storage://<bucket>/<path>
+        rest = doc_path[len("storage://"):]
+        bucket, _, key = rest.partition("/")
+        storage_object_url = f"{SUPABASE_URL}/storage/v1/object/{bucket}/{key}"
+    elif doc_path.startswith("http") and "/storage/v1/object/public/nominations/" in doc_path:
+        # Legacy format: rewrite the public URL to the authenticated path.
+        # Same key, but the bucket is now private — use /object/{bucket}/{path}
+        # with service_role.
+        key = doc_path.split("/storage/v1/object/public/nominations/", 1)[1]
+        storage_object_url = f"{SUPABASE_URL}/storage/v1/object/nominations/{key}"
+    elif doc_path.startswith("http"):
+        # Some other http URL (shouldn't happen). Fall back to passthrough fetch.
+        storage_object_url = doc_path
+
+    if storage_object_url:
+        try:
+            headers = {"Authorization": f"Bearer {SUPABASE_KEY}", "apikey": SUPABASE_KEY}
+            resp = httpx.get(storage_object_url, headers=headers, timeout=30.0, follow_redirects=True)
+            if resp.status_code != 200:
+                raise HTTPException(status_code=404, detail="Document not available")
             content_type = resp.headers.get("content-type", "application/octet-stream")
             from fastapi.responses import Response
             return Response(
@@ -302,10 +323,13 @@ def download_nomination(nomination_id: str, filename: str = None):
                 media_type=content_type,
                 headers={
                     "Content-Disposition": f'attachment; filename="{filename}"',
+                    "Cache-Control": "private, no-store",
                 },
             )
+        except HTTPException:
+            raise
         except Exception:
-            return RedirectResponse(url=doc_path)
+            raise HTTPException(status_code=502, detail="Storage fetch failed")
 
     # Local file (dev mode only)
     if not os.path.exists(doc_path):

@@ -1,12 +1,13 @@
 """Internal staff (employees) — separate from TDs/VGOs in `personnel`."""
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Depends
 
 from api._lib.database import supabase
+from api._lib.auth import require_view, require_edit
 from api._lib.schemas import EmployeeCreate, EmployeeUpdate
 
-router = APIRouter(prefix="/employees", tags=["employees"])
+router = APIRouter(prefix="/employees", tags=["employees"], dependencies=[Depends(require_view("employees"))])
 
 
 @router.get("")

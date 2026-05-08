@@ -1,11 +1,12 @@
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Depends
 from pydantic import BaseModel
 from typing import Optional, List
 from datetime import date, time, timedelta, datetime
 
 from api._lib.database import supabase
+from api._lib.auth import require_view, require_edit
 
-router = APIRouter(prefix="/transport", tags=["transport"])
+router = APIRouter(prefix="/transport", tags=["transport"], dependencies=[Depends(require_view("transport"))])
 
 
 # ── Schemas ──────────────────────────────────────────────────────────────────

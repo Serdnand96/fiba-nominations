@@ -2,12 +2,13 @@
 from datetime import datetime, timezone
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi import APIRouter, HTTPException, Query, Request, Depends
 
 from api._lib.database import supabase
+from api._lib.auth import require_view, require_edit
 from api._lib.schemas import LoanCreate
 
-router = APIRouter(prefix="/loans", tags=["loans"])
+router = APIRouter(prefix="/loans", tags=["loans"], dependencies=[Depends(require_view("loans"))])
 
 
 def _user_id(request: Request) -> Optional[str]:

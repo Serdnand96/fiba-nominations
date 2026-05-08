@@ -5,13 +5,14 @@ from datetime import datetime, timezone
 from typing import Optional
 
 import qrcode
-from fastapi import APIRouter, HTTPException, Query, Request, UploadFile, File
+from fastapi import APIRouter, HTTPException, Query, Request, UploadFile, File, Depends
 from fastapi.responses import Response
 
 from api._lib.database import supabase
+from api._lib.auth import require_view, require_edit
 from api._lib.schemas import AssetCreate, AssetUpdate
 
-router = APIRouter(prefix="/assets", tags=["assets"])
+router = APIRouter(prefix="/assets", tags=["assets"], dependencies=[Depends(require_view("assets"))])
 
 _BUCKET = "inventory"
 _PUBLIC_BASE = (os.environ.get("PUBLIC_APP_URL") or "https://www.fibaapp.com").rstrip("/")

@@ -1,8 +1,9 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 from typing import Optional
 
 from api._lib.database import supabase
+from api._lib.auth import require_superadmin, _user_id, _is_superadmin_cached
 
 router = APIRouter(prefix="/permissions", tags=["permissions"])
 
@@ -31,8 +32,11 @@ class PermissionsUpdate(BaseModel):
 # GET /permissions/{user_id}
 # ---------------------------------------------------------------------------
 @router.get("/{user_id}")
-def get_permissions(user_id: str):
-    """Get all module permissions for a user."""
+def get_permissions(user_id: str, request: Request):
+    """Get all module permissions for a user. Caller must be superadmin OR querying themselves."""
+    caller_id = _user_id(request)
+    if user_id != caller_id and not _is_superadmin_cached(request, caller_id):
+        raise HTTPException(status_code=403, detail="Forbidden")
     superadmin = is_superadmin(user_id)
 
     if superadmin:
@@ -66,7 +70,7 @@ def get_permissions(user_id: str):
 # ---------------------------------------------------------------------------
 # PUT /permissions/{user_id}
 # ---------------------------------------------------------------------------
-@router.put("/{user_id}")
+@router.put("/{user_id}", dependencies=[Depends(require_superadmin)])
 def update_permissions(user_id: str, payload: PermissionsUpdate):
     """Bulk update permissions for a user. Only superadmin can call this."""
     # Cannot modify superadmin permissions

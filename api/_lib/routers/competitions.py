@@ -1,8 +1,9 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from api._lib.database import supabase
+from api._lib.auth import require_view, require_edit
 from api._lib.schemas import CompetitionCreate, CompetitionUpdate
 
-router = APIRouter(prefix="/competitions", tags=["competitions"])
+router = APIRouter(prefix="/competitions", tags=["competitions"], dependencies=[Depends(require_view("competitions"))])
 
 
 @router.get("")

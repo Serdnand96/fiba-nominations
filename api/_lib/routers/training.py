@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, Query, UploadFile, File, Form
+from fastapi import APIRouter, HTTPException, Query, UploadFile, File, Form, Depends
 from pydantic import BaseModel
 from typing import Optional, List
 from datetime import datetime, timedelta
@@ -7,8 +7,9 @@ import tempfile
 import os
 
 from api._lib.database import supabase
+from api._lib.auth import require_view, require_edit
 
-router = APIRouter(prefix="/training", tags=["training"])
+router = APIRouter(prefix="/training", tags=["training"], dependencies=[Depends(require_view("training"))])
 
 _MAX_UPLOAD_BYTES = 5 * 1024 * 1024  # 5 MB
 

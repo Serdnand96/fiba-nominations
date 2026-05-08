@@ -1025,15 +1025,23 @@ def _fmt_money(val) -> str:
 # ─── STORAGE ─────────────────────────────────────────────────────────────────
 
 def _upload_to_storage(file_path: str, base_name: str) -> str | None:
-    """Upload generated file to Supabase Storage bucket 'nominations'."""
+    """Upload generated file to private Supabase Storage bucket 'nominations'.
+
+    Uses a random UUID for the path so filenames aren't predictable from
+    public information (person + competition). Returns the storage path
+    (NOT a public URL); the download endpoint fetches it via authenticated
+    Storage REST.
+    """
     import traceback
+    import uuid
     try:
         from api._lib.database import get_supabase
 
         client = get_supabase()
         bucket_name = "nominations"
         ext = Path(file_path).suffix
-        storage_path = f"{base_name}{ext}"
+        # Random UUID-based path keeps the bucket private and unenumerable
+        storage_path = f"{uuid.uuid4()}{ext}"
 
         with open(file_path, "rb") as f:
             file_bytes = f.read()
@@ -1058,8 +1066,9 @@ def _upload_to_storage(file_path: str, base_name: str) -> str | None:
                 file_options={"content-type": content_type},
             )
 
-        public_url = client.storage.from_(bucket_name).get_public_url(storage_path)
-        return public_url
+        # Return the storage path (relative to bucket). The download endpoint
+        # fetches via authenticated Storage REST using service_role.
+        return f"storage://nominations/{storage_path}"
 
     except Exception as e:
         print(f"[STORAGE ERROR] {type(e).__name__}: {e}")

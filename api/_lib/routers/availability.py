@@ -1,10 +1,11 @@
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Depends
 from pydantic import BaseModel
 from typing import Optional
 
 from api._lib.database import supabase
+from api._lib.auth import require_view, require_edit
 
-router = APIRouter(prefix="/availability", tags=["availability"])
+router = APIRouter(prefix="/availability", tags=["availability"], dependencies=[Depends(require_view("availability"))])
 
 
 class AvailabilityCreate(BaseModel):
