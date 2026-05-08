@@ -104,7 +104,29 @@ class AssetUpdate(BaseModel):
 
 class LoanCreate(BaseModel):
     asset_id: str
-    assigned_to: Optional[str] = None  # Free text — auto-filled from personnel.name when personnel_id is set
-    personnel_id: Optional[str] = None  # Link to personnel table (preferred)
+    assigned_to: Optional[str] = None  # Free text — auto-filled from employees.name when employee_id is set
+    employee_id: Optional[str] = None  # Link to employees table (preferred)
     expected_return: Optional[str] = None
+    notes: Optional[str] = None
+
+
+# ─── EMPLOYEES ────────────────────────────────────────────────────────────
+
+class EmployeeCreate(BaseModel):
+    name: str
+    email: Optional[str] = None
+    position: Optional[str] = None
+    department: Optional[str] = None
+    phone: Optional[str] = None
+    active: Optional[bool] = True
+    notes: Optional[str] = None
+
+
+class EmployeeUpdate(BaseModel):
+    name: Optional[str] = None
+    email: Optional[str] = None
+    position: Optional[str] = None
+    department: Optional[str] = None
+    phone: Optional[str] = None
+    active: Optional[bool] = None
     notes: Optional[str] = None

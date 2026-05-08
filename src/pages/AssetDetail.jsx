@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useParams, useNavigate } from 'react-router-dom'
 import {
   getAsset, uploadAssetPhoto, getAssetQR,
-  createLoan, returnLoan, getPersonnel,
+  createLoan, returnLoan, getEmployees,
 } from '../api/client'
 import { useLanguage } from '../i18n/LanguageContext'
 import { useAuth } from '../contexts/AuthContext'
@@ -30,25 +30,26 @@ export default function AssetDetail() {
   // Loan form state
   const [showLoanForm, setShowLoanForm] = useState(false)
   const [loanForm, setLoanForm] = useState({
-    personnel_id: '', assigned_to: '', expected_return: '', notes: '',
+    employee_id: '', assigned_to: '', expected_return: '', notes: '',
   })
-  const [personnelList, setPersonnelList] = useState([])
-  const [personnelSearch, setPersonnelSearch] = useState('')
+  const [employeeList, setEmployeeList] = useState([])
+  const [employeeSearch, setEmployeeSearch] = useState('')
   const [useFreeText, setUseFreeText] = useState(false)
 
   useEffect(() => { load() }, [id])
   useEffect(() => {
-    getPersonnel().then(setPersonnelList).catch(() => {})
+    getEmployees({ active: true }).then(setEmployeeList).catch(() => {})
   }, [])
 
-  const filteredPersonnel = useMemo(() => {
-    const q = personnelSearch.toLowerCase()
-    if (!q) return personnelList
-    return personnelList.filter(p =>
+  const filteredEmployees = useMemo(() => {
+    const q = employeeSearch.toLowerCase()
+    if (!q) return employeeList
+    return employeeList.filter(p =>
       (p.name || '').toLowerCase().includes(q) ||
-      (p.email || '').toLowerCase().includes(q)
+      (p.email || '').toLowerCase().includes(q) ||
+      (p.position || '').toLowerCase().includes(q)
     )
-  }, [personnelList, personnelSearch])
+  }, [employeeList, employeeSearch])
 
   async function load() {
     setLoading(true)
@@ -80,14 +81,14 @@ export default function AssetDetail() {
         if (!loanForm.assigned_to) { alert(t('loans.pickPersonOrType')); return }
         payload.assigned_to = loanForm.assigned_to
       } else {
-        if (!loanForm.personnel_id) { alert(t('loans.pickPersonOrType')); return }
-        payload.personnel_id = loanForm.personnel_id
+        if (!loanForm.employee_id) { alert(t('loans.pickPersonOrType')); return }
+        payload.employee_id = loanForm.employee_id
       }
       await createLoan(payload)
       setShowLoanForm(false)
-      setLoanForm({ personnel_id: '', assigned_to: '', expected_return: '', notes: '' })
+      setLoanForm({ employee_id: '', assigned_to: '', expected_return: '', notes: '' })
       setUseFreeText(false)
-      setPersonnelSearch('')
+      setEmployeeSearch('')
       await load()
     } catch (err) {
       alert(err.response?.data?.detail || err.message)
@@ -244,7 +245,7 @@ export default function AssetDetail() {
               <div>
                 <div className="flex items-center justify-between mb-1">
                   <label className="fiba-label !mb-0">{t('loans.assignedTo')} *</label>
-                  <button type="button" onClick={() => { setUseFreeText(v => !v); setLoanForm(f => ({ ...f, personnel_id: '', assigned_to: '' })) }}
+                  <button type="button" onClick={() => { setUseFreeText(v => !v); setLoanForm(f => ({ ...f, employee_id: '', assigned_to: '' })) }}
                     className="text-xs text-fiba-accent hover:underline">
                     {useFreeText ? t('loans.pickFromList') : t('loans.useFreeText')}
                   </button>
@@ -257,23 +258,26 @@ export default function AssetDetail() {
                     className="fiba-input" autoFocus />
                 ) : (
                   <>
-                    <input type="text" value={personnelSearch}
-                      onChange={e => setPersonnelSearch(e.target.value)}
-                      placeholder={t('loans.searchPersonnel')}
+                    <input type="text" value={employeeSearch}
+                      onChange={e => setEmployeeSearch(e.target.value)}
+                      placeholder={t('loans.searchEmployees')}
                       className="fiba-input mb-2" autoFocus />
                     <div className="max-h-48 overflow-y-auto border border-fiba-border rounded-lg bg-fiba-surface">
-                      {filteredPersonnel.length === 0 && (
-                        <div className="px-3 py-2 text-xs text-fiba-muted">{t('loans.noPersonnel')}</div>
+                      {filteredEmployees.length === 0 && (
+                        <div className="px-3 py-2 text-xs text-fiba-muted">{t('loans.noEmployees')}</div>
                       )}
-                      {filteredPersonnel.map(p => (
+                      {filteredEmployees.map(p => (
                         <label key={p.id}
-                          className={`flex items-center gap-2 px-3 py-2 cursor-pointer text-sm hover:bg-fiba-surface-2 ${loanForm.personnel_id === p.id ? 'bg-fiba-accent/10' : ''}`}>
-                          <input type="radio" name="personnel_pick"
-                            checked={loanForm.personnel_id === p.id}
-                            onChange={() => setLoanForm(f => ({ ...f, personnel_id: p.id, assigned_to: p.name }))}
+                          className={`flex items-center gap-2 px-3 py-2 cursor-pointer text-sm hover:bg-fiba-surface-2 ${loanForm.employee_id === p.id ? 'bg-fiba-accent/10' : ''}`}>
+                          <input type="radio" name="employee_pick"
+                            checked={loanForm.employee_id === p.id}
+                            onChange={() => setLoanForm(f => ({ ...f, employee_id: p.id, assigned_to: p.name }))}
                             className="text-fiba-accent" />
-                          <span className="flex-1">{p.name}</span>
-                          {p.role && <span className="text-[10px] px-1.5 py-0.5 rounded bg-fiba-surface-2 text-fiba-muted">{p.role}</span>}
+                          <span className="flex-1">
+                            {p.name}
+                            {p.position && <span className="text-fiba-muted text-xs ml-2">· {p.position}</span>}
+                          </span>
+                          {p.department && <span className="text-[10px] px-1.5 py-0.5 rounded bg-fiba-surface-2 text-fiba-muted">{p.department}</span>}
                         </label>
                       ))}
                     </div>

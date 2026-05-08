@@ -21,6 +21,7 @@ const translations = {
     inventory: { en: 'Inventory', es: 'Inventario' },
     loans: { en: 'Loans', es: 'Préstamos' },
     scan: { en: 'Scan QR', es: 'Escanear QR' },
+    employees: { en: 'Employees', es: 'Empleados' },
   },
 
   // ===== Login =====
@@ -523,8 +524,30 @@ const translations = {
     pickFromList: { en: 'Pick from list', es: 'Elegir de la lista' },
     useFreeText: { en: 'Use free text', es: 'Usar texto libre' },
     freeTextPlaceholder: { en: 'Enter the name of the person', es: 'Ingresa el nombre de la persona' },
-    searchPersonnel: { en: 'Search personnel...', es: 'Buscar personal...' },
-    noPersonnel: { en: 'No personnel found', es: 'No se encontró personal' },
+    searchEmployees: { en: 'Search employees...', es: 'Buscar empleados...' },
+    noEmployees: { en: 'No employees found', es: 'No se encontraron empleados' },
+  },
+
+  // ===== Employees =====
+  employees: {
+    title: { en: 'Employees', es: 'Empleados' },
+    newEmployee: { en: '+ New employee', es: '+ Nuevo empleado' },
+    editEmployee: { en: 'Edit employee', es: 'Editar empleado' },
+    name: { en: 'Name', es: 'Nombre' },
+    email: { en: 'Email', es: 'Email' },
+    position: { en: 'Position', es: 'Cargo' },
+    department: { en: 'Department', es: 'Departamento' },
+    phone: { en: 'Phone', es: 'Teléfono' },
+    active: { en: 'Active', es: 'Activo' },
+    inactive: { en: 'Inactive', es: 'Inactivo' },
+    all: { en: 'All', es: 'Todos' },
+    allDepartments: { en: 'All departments', es: 'Todos los departamentos' },
+    total: { en: 'Total', es: 'Total' },
+    departments: { en: 'Departments', es: 'Departamentos' },
+    searchPlaceholder: { en: 'Search by name, email, position...', es: 'Buscar por nombre, email, cargo...' },
+    deactivate: { en: 'Deactivate', es: 'Desactivar' },
+    confirmDeactivate: { en: 'Deactivate employee', es: 'Desactivar empleado' },
+    noEmployees: { en: 'No employees', es: 'No hay empleados' },
   },
 
   // ===== Scan =====
