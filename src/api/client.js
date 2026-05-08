@@ -159,3 +159,25 @@ export const getCompetitionAvailability = (competitionId) => api.get(`/availabil
 export const createAvailability = (data) => api.post('/availability', data).then(r => r.data)
 export const updateAvailability = (id, data) => api.put(`/availability/${id}`, data).then(r => r.data)
 export const deleteAvailability = (id) => api.delete(`/availability/${id}`).then(r => r.data)
+
+// Inventory: Assets
+export const getAssets = (params) => api.get('/assets', { params }).then(r => r.data)
+export const getAsset = (id) => api.get(`/assets/${id}`).then(r => r.data)
+export const createAsset = (data) => api.post('/assets', data).then(r => r.data)
+export const updateAsset = (id, data) => api.put(`/assets/${id}`, data).then(r => r.data)
+export const retireAsset = (id) => api.delete(`/assets/${id}`).then(r => r.data)
+export const getAssetQR = (id) => api.get(`/assets/${id}/qr`).then(r => r.data)
+export const uploadAssetPhoto = (id, file) => {
+  const fd = new FormData()
+  fd.append('photo', file)
+  return api.post(`/assets/${id}/photo`, fd, { headers: { 'Content-Type': 'multipart/form-data' } }).then(r => r.data)
+}
+
+// Inventory: Loans
+export const getLoans = (params) => api.get('/loans', { params }).then(r => r.data)
+export const createLoan = (data) => api.post('/loans', data).then(r => r.data)
+export const returnLoan = (id) => api.put(`/loans/${id}/return`).then(r => r.data)
+export const deleteLoan = (id) => api.delete(`/loans/${id}`).then(r => r.data)
+
+// Public asset (no auth)
+export const getPublicAsset = (id) => api.get(`/public/asset/${id}`).then(r => r.data)

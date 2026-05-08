@@ -74,3 +74,36 @@ class BulkImportResult(BaseModel):
     imported: int
     skipped: int
     errors: list[dict]
+
+
+# ─── INVENTORY ─────────────────────────────────────────────────────────────
+
+class AssetCreate(BaseModel):
+    name: str
+    serial_number: Optional[str] = None
+    category: Optional[str] = None
+    brand: Optional[str] = None
+    model: Optional[str] = None
+    status: Optional[str] = "available"  # available|in_use|maintenance|retired
+    location: Optional[str] = None
+    purchase_date: Optional[str] = None
+    notes: Optional[str] = None
+
+
+class AssetUpdate(BaseModel):
+    name: Optional[str] = None
+    serial_number: Optional[str] = None
+    category: Optional[str] = None
+    brand: Optional[str] = None
+    model: Optional[str] = None
+    status: Optional[str] = None
+    location: Optional[str] = None
+    purchase_date: Optional[str] = None
+    notes: Optional[str] = None
+
+
+class LoanCreate(BaseModel):
+    asset_id: str
+    assigned_to: str
+    expected_return: Optional[str] = None
+    notes: Optional[str] = None

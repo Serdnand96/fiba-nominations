@@ -13,6 +13,11 @@ import Transport from './pages/Transport'
 import Availability from './pages/Availability'
 import Training from './pages/Training'
 import Games from './pages/Games'
+import Assets from './pages/Assets'
+import AssetDetail from './pages/AssetDetail'
+import Loans from './pages/Loans'
+import Scan from './pages/Scan'
+import PublicAsset from './pages/PublicAsset'
 
 /* ── Nav icons (simple SVG paths) ─────────────────────────────────────── */
 const icons = {
@@ -68,6 +73,22 @@ const icons = {
       <path strokeLinecap="round" strokeLinejoin="round" d="M9 9.563C9 9.252 9.252 9 9.563 9h4.874c.311 0 .563.252.563.563v4.874c0 .311-.252.563-.563.563H9.564A.562.562 0 019 14.437V9.564z" />
     </svg>
   ),
+  assets: (
+    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M20.25 7.5l-.625 10.632a2.25 2.25 0 01-2.247 2.118H6.622a2.25 2.25 0 01-2.247-2.118L3.75 7.5M10 11.25h4M3.375 7.5h17.25c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125z" />
+    </svg>
+  ),
+  loans: (
+    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 8.25V6a2.25 2.25 0 00-2.25-2.25H6A2.25 2.25 0 003.75 6v8.25A2.25 2.25 0 006 16.5h2.25m8.25-8.25H18a2.25 2.25 0 012.25 2.25V18A2.25 2.25 0 0118 20.25h-7.5A2.25 2.25 0 018.25 18v-1.5m8.25-8.25h-8.25" />
+    </svg>
+  ),
+  scan: (
+    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 4.875c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5A1.125 1.125 0 013.75 9.375v-4.5zM3.75 14.625c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5a1.125 1.125 0 01-1.125-1.125v-4.5zM13.5 4.875c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5A1.125 1.125 0 0113.5 9.375v-4.5z" />
+      <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 6.75h.75v.75h-.75v-.75zM6.75 16.5h.75v.75h-.75v-.75zM16.5 6.75h.75v.75h-.75v-.75zM13.5 13.5h.75v.75h-.75v-.75zM13.5 19.5h.75v.75h-.75v-.75zM19.5 13.5h.75v.75h-.75v-.75zM19.5 19.5h.75v.75h-.75v-.75zM16.5 16.5h.75v.75h-.75v-.75z" />
+    </svg>
+  ),
 }
 
 function PermissionGuard({ module, children }) {
@@ -92,6 +113,15 @@ export default function App() {
   const { user, loading, hasView, isSuperadmin } = useAuth()
   const { t } = useLanguage()
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
+
+  // Public routes (no auth required) — must be rendered before the user check
+  if (typeof window !== 'undefined' && /^\/asset\/[0-9a-f-]+/i.test(window.location.pathname)) {
+    return (
+      <Routes>
+        <Route path="/asset/:id" element={<PublicAsset />} />
+      </Routes>
+    )
+  }
 
   if (loading) {
     return (
@@ -119,6 +149,9 @@ export default function App() {
     { to: '/transport', label: t('nav.transport'), module: 'transport' },
     { to: '/training', label: t('nav.training'), module: 'training' },
     { to: '/games', label: t('nav.games'), module: 'games' },
+    { to: '/inventory', label: t('nav.inventory'), module: 'assets' },
+    { to: '/loans', label: t('nav.loans'), module: 'loans' },
+    { to: '/scan', label: t('nav.scan'), module: 'assets' },
   ]
 
   const navItems = allNavItems.filter(item => hasView(item.module))
@@ -165,7 +198,7 @@ export default function App() {
               {({ isActive }) => (
                 <>
                   <span className={`shrink-0 ${isActive ? 'text-fiba-accent' : 'text-fiba-muted group-hover:text-white'}`}>
-                    {icons[item.module]}
+                    {icons[item.to.replace('/', '')] || icons[item.module]}
                   </span>
                   {!sidebarCollapsed && <span className="truncate">{item.label}</span>}
                   {isActive && !sidebarCollapsed && (
@@ -209,6 +242,10 @@ export default function App() {
             <Route path="/transport" element={<PermissionGuard module="transport"><Transport /></PermissionGuard>} />
             <Route path="/training" element={<PermissionGuard module="training"><Training /></PermissionGuard>} />
             <Route path="/games" element={<PermissionGuard module="games"><Games /></PermissionGuard>} />
+            <Route path="/inventory" element={<PermissionGuard module="assets"><Assets /></PermissionGuard>} />
+            <Route path="/inventory/:id" element={<PermissionGuard module="assets"><AssetDetail /></PermissionGuard>} />
+            <Route path="/loans" element={<PermissionGuard module="loans"><Loans /></PermissionGuard>} />
+            <Route path="/scan" element={<PermissionGuard module="assets"><Scan /></PermissionGuard>} />
           </Routes>
         </div>
       </main>

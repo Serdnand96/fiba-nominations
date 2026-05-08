@@ -4,4 +4,4 @@ python-dotenv
 httpx
 openpyxl
 python-multipart
-
+qrcode[pil]

@@ -3,9 +3,13 @@ import re
 from fastapi import FastAPI, Request, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from api._lib.routers import personnel, competitions, nominations, users, calendar, transport, availability, permissions, training, games
+from api._lib.routers import (
+    personnel, competitions, nominations, users, calendar, transport,
+    availability, permissions, training, games,
+    assets, loans, public_assets,
+)
 
-app = FastAPI(title="FIBA Americas Nominations API", docs_url=None, redoc_url=None)
+app = FastAPI(title="FIBA Americas Administration API", docs_url=None, redoc_url=None)
 
 # ── CORS — restrict to known origins ────────────────────────────────────────
 _allowed_origins = [
@@ -75,6 +79,10 @@ async def auth_middleware(request: Request, call_next):
     if ("/nominations/" in path and path.endswith("/download")) or "/export/pdf" in path:
         return await call_next(request)
 
+    # Public asset view (QR scan landing) — no auth required
+    if path.startswith("/api/public/"):
+        return await call_next(request)
+
     auth_header = request.headers.get("Authorization", "")
     if auth_header.startswith("Bearer "):
         token = auth_header[7:]
@@ -107,9 +115,12 @@ app.include_router(availability.router, prefix="/api")
 app.include_router(permissions.router, prefix="/api")
 app.include_router(training.router, prefix="/api")
 app.include_router(games.router, prefix="/api")
+app.include_router(assets.router, prefix="/api")
+app.include_router(loans.router, prefix="/api")
+app.include_router(public_assets.router, prefix="/api")
 
 
 @app.get("/api")
 @app.get("/api/")
 def root():
-    return {"message": "FIBA Americas Nominations API"}
+    return {"message": "FIBA Americas Administration API"}
