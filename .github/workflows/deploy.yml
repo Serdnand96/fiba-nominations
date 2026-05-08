@@ -1,0 +1,49 @@
+name: Deploy to DigitalOcean Droplet
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:  # Permite disparar manualmente desde GitHub UI
+
+jobs:
+  deploy:
+    name: Deploy to droplet
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.DROPLET_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H "${{ secrets.DROPLET_HOST }}" >> ~/.ssh/known_hosts
+
+      - name: Deploy
+        run: |
+          ssh -i ~/.ssh/deploy_key fiba@${{ secrets.DROPLET_HOST }} 'bash -s' << 'EOF'
+          set -euo pipefail
+          cd /opt/fiba-nominations
+
+          echo "=== git pull ==="
+          git fetch --quiet origin main
+          git reset --hard origin/main
+
+          echo "=== Python deps ==="
+          ./venv/bin/pip install -r requirements.txt -q
+          ./venv/bin/pip install gunicorn "uvicorn[standard]" supabase -q
+
+          echo "=== Frontend build ==="
+          set -a && . ./.env && set +a
+          npm install --silent --no-audit --no-fund
+          npm run build
+
+          echo "=== Restart API ==="
+          sudo systemctl restart fiba-api
+          sleep 2
+          sudo systemctl is-active fiba-api
+
+          echo "=== Smoke test ==="
+          curl -fsS -o /dev/null -w "HTTPS %{http_code}\n" https://www.fibaamericascloud.com/ || true
+          echo "✅ Deploy OK"
+          EOF
