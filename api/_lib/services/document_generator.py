@@ -725,14 +725,57 @@ def _build_wcq_from_scratch(data: dict) -> Document:
 
 # ─── PDF CONVERSION (CloudConvert) ───────────────────────────────────────────
 
+def _convert_to_pdf_libreoffice(docx_path: str) -> tuple[str | None, str | None]:
+    """Convert .docx to .pdf using local LibreOffice headless. Returns (pdf_path, error)."""
+    import subprocess, shutil, tempfile
+    soffice = shutil.which("soffice") or shutil.which("libreoffice")
+    if not soffice:
+        return None, "LibreOffice not installed"
+
+    pdf_path = docx_path.replace(".docx", ".pdf")
+    out_dir = str(Path(docx_path).parent)
+    # Use a per-call user profile to avoid concurrency lock contention
+    with tempfile.TemporaryDirectory(prefix="lo-profile-") as profile_dir:
+        try:
+            result = subprocess.run(
+                [
+                    soffice, "--headless",
+                    f"-env:UserInstallation=file://{profile_dir}",
+                    "--convert-to", "pdf",
+                    "--outdir", out_dir,
+                    docx_path,
+                ],
+                capture_output=True, text=True, timeout=90,
+            )
+        except subprocess.TimeoutExpired:
+            return None, "LibreOffice conversion timed out"
+        except Exception as e:
+            return None, f"LibreOffice exception: {type(e).__name__}: {e}"
+
+    if result.returncode != 0:
+        return None, f"LibreOffice failed: {result.stderr[:300] or result.stdout[:300]}"
+    if not Path(pdf_path).exists():
+        return None, f"LibreOffice produced no output. stdout={result.stdout[:200]}"
+    return pdf_path, None
+
+
 def _convert_to_pdf(docx_path: str) -> tuple[str | None, str | None]:
     """
-    Convert .docx to .pdf using CloudConvert API.
-    Returns (pdf_path, error_message). If conversion succeeds, error is None.
+    Convert .docx to .pdf. Prefer local LibreOffice (set USE_LOCAL_LIBREOFFICE=1).
+    Falls back to CloudConvert API if local not available.
     """
+    use_local = os.environ.get("USE_LOCAL_LIBREOFFICE", "").strip() in ("1", "true", "yes")
+    if use_local:
+        result = _convert_to_pdf_libreoffice(docx_path)
+        if result[0]:
+            return result
+        # If local fails and CC key exists, fall through to CloudConvert
+        if not os.environ.get("CLOUDCONVERT_API_KEY", "").strip():
+            return result
+
     api_key = os.environ.get("CLOUDCONVERT_API_KEY", "").strip()
     if not api_key:
-        return None, "CLOUDCONVERT_API_KEY not set"
+        return None, "Neither USE_LOCAL_LIBREOFFICE nor CLOUDCONVERT_API_KEY configured"
 
     pdf_path = docx_path.replace(".docx", ".pdf")
     base_url = "https://api.cloudconvert.com/v2"
