@@ -76,10 +76,11 @@ def list_assets(
     # Attach active loan info
     if assets:
         ids = [a["id"] for a in assets]
+        # Older supabase-py versions don't expose .in_(); use a PostgREST filter
         loans = (
             supabase.table("loans")
             .select("id,asset_id,assigned_to,expected_return")
-            .in_("asset_id", ids)
+            .filter("asset_id", "in", f"({','.join(ids)})")
             .eq("status", "active")
             .execute()
             .data
