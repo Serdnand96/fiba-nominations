@@ -199,6 +199,9 @@ export default function Nominations() {
         window_fee: '', incidentals: '', confirmation_deadline: '',
       })
 
+      // Refresh list immediately so the new row(s) appear before PDF generation finishes
+      await load()
+
       if (createdIds.length > 0) {
         let successCount = 0
         let errorCount = 0
