@@ -146,7 +146,12 @@ export default function App() {
       `}>
         {/* Brand */}
         <div className="h-14 px-4 flex items-center gap-2.5 border-b border-navy-800 flex-shrink-0">
-          <div className="w-7 h-7 rounded-md bg-basketball-500 text-white flex items-center justify-center font-bold text-[13px] tracking-tight flex-shrink-0">F</div>
+          <div className="w-8 h-8 rounded-md bg-basketball-500 flex items-center justify-center flex-shrink-0 shadow-card">
+            <svg viewBox="0 0 64 64" className="w-5 h-5" aria-label="FIBA Americas">
+              <path d="M18 14 L44 14 L44 22 L26 22 L26 30 L40 30 L40 38 L26 38 L26 50 L18 50 Z" fill="#fff"/>
+              <path d="M14 38 Q32 56 50 38" stroke="#0c2340" strokeWidth="4" fill="none" strokeLinecap="round"/>
+            </svg>
+          </div>
           <div className={`leading-tight min-w-0 ${sidebarCollapsed ? 'md:hidden' : ''}`}>
             <div className="text-[13px] font-semibold truncate">FIBA Americas</div>
             <div className="text-2xs text-navy-300 font-medium tracking-wide truncate">{t('app.subtitle') || 'Nominations'}</div>
