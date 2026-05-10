@@ -1,14 +1,14 @@
-import { lazy, Suspense, useState } from 'react'
+import { lazy, Suspense, useState, useEffect } from 'react'
 import { Routes, Route, NavLink, Navigate } from 'react-router-dom'
 import { useAuth } from './contexts/AuthContext'
 import { useLanguage } from './i18n/LanguageContext'
+import { Icon } from './lib/icons'
 
 // Eager-load Login (always shown when logged out) and PublicAsset (no-auth route)
 import Login from './pages/Login'
 import PublicAsset from './pages/PublicAsset'
 
 // Lazy-load every authenticated page so the initial bundle is small
-// React Router shows the Suspense fallback while the chunk downloads.
 const Calendar     = lazy(() => import('./pages/Calendar'))
 const Nominations  = lazy(() => import('./pages/Nominations'))
 const Personnel    = lazy(() => import('./pages/Personnel'))
@@ -25,81 +25,22 @@ const Loans        = lazy(() => import('./pages/Loans'))
 const Scan         = lazy(() => import('./pages/Scan'))
 const Employees    = lazy(() => import('./pages/Employees'))
 
-/* ── Nav icons (simple SVG paths) ─────────────────────────────────────── */
-const icons = {
-  calendar: (
-    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5" />
-    </svg>
-  ),
-  nominations: (
-    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
-    </svg>
-  ),
-  personnel: (
-    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 018.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0111.964-3.07M12 6.375a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zm8.25 2.25a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0z" />
-    </svg>
-  ),
-  competitions: (
-    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 18.75h-9m9 0a3 3 0 013 3h-15a3 3 0 013-3m9 0v-3.375c0-.621-.503-1.125-1.125-1.125h-.871M7.5 18.75v-3.375c0-.621.504-1.125 1.125-1.125h.872m5.007 0H9.497m5.007 0a7.454 7.454 0 01-.982-3.172M9.497 14.25a7.454 7.454 0 00.981-3.172M5.25 4.236c-.982.143-1.954.317-2.916.52A6.003 6.003 0 007.73 9.728M5.25 4.236V4.5c0 2.108.966 3.99 2.48 5.228M5.25 4.236V2.721C7.456 2.41 9.71 2.25 12 2.25c2.291 0 4.545.16 6.75.47v1.516M18.75 4.236c.982.143 1.954.317 2.916.52A6.003 6.003 0 0016.27 9.728M18.75 4.236V4.5c0 2.108-.966 3.99-2.48 5.228m0 0a6.016 6.016 0 01-4.27 1.772 6.016 6.016 0 01-4.27-1.772" />
-    </svg>
-  ),
-  templates: (
-    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6A2.25 2.25 0 016 3.75h2.25A2.25 2.25 0 0110.5 6v2.25a2.25 2.25 0 01-2.25 2.25H6a2.25 2.25 0 01-2.25-2.25V6zM3.75 15.75A2.25 2.25 0 016 13.5h2.25a2.25 2.25 0 012.25 2.25V18a2.25 2.25 0 01-2.25 2.25H6A2.25 2.25 0 013.75 18v-2.25zM13.5 6a2.25 2.25 0 012.25-2.25H18A2.25 2.25 0 0120.25 6v2.25A2.25 2.25 0 0118 10.5h-2.25a2.25 2.25 0 01-2.25-2.25V6zM13.5 15.75a2.25 2.25 0 012.25-2.25H18a2.25 2.25 0 012.25 2.25V18A2.25 2.25 0 0118 20.25h-2.25A2.25 2.25 0 0113.5 18v-2.25z" />
-    </svg>
-  ),
-  users: (
-    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.324.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 011.37.49l1.296 2.247a1.125 1.125 0 01-.26 1.431l-1.003.827c-.293.24-.438.613-.431.992a6.759 6.759 0 010 .255c-.007.378.138.75.43.99l1.005.828c.424.35.534.954.26 1.43l-1.298 2.247a1.125 1.125 0 01-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.57 6.57 0 01-.22.128c-.331.183-.581.495-.644.869l-.213 1.28c-.09.543-.56.941-1.11.941h-2.594c-.55 0-1.02-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 01-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 01-1.369-.49l-1.297-2.247a1.125 1.125 0 01.26-1.431l1.004-.827c.292-.24.437-.613.43-.992a6.932 6.932 0 010-.255c.007-.378-.138-.75-.43-.99l-1.004-.828a1.125 1.125 0 01-.26-1.43l1.297-2.247a1.125 1.125 0 011.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.087.22-.128.332-.183.582-.495.644-.869l.214-1.281z" />
-      <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-    </svg>
-  ),
-  availability: (
-    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-    </svg>
-  ),
-  transport: (
-    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 18.75a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m3 0h6m-9 0H3.375a1.125 1.125 0 01-1.125-1.125V14.25m17.25 4.5a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m3 0h1.125c.621 0 1.129-.504 1.09-1.124a17.902 17.902 0 00-3.213-9.193 2.056 2.056 0 00-1.58-.86H14.25M16.5 18.75h-2.25m0-11.177v-.958c0-.568-.422-1.048-.987-1.106a48.554 48.554 0 00-10.026 0 1.106 1.106 0 00-.987 1.106v7.635m12-6.677v6.677m0 4.5v-4.5m0 0h-12" />
-    </svg>
-  ),
-  training: (
-    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
-    </svg>
-  ),
-  games: (
-    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-      <path strokeLinecap="round" strokeLinejoin="round" d="M9 9.563C9 9.252 9.252 9 9.563 9h4.874c.311 0 .563.252.563.563v4.874c0 .311-.252.563-.563.563H9.564A.562.562 0 019 14.437V9.564z" />
-    </svg>
-  ),
-  assets: (
-    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M20.25 7.5l-.625 10.632a2.25 2.25 0 01-2.247 2.118H6.622a2.25 2.25 0 01-2.247-2.118L3.75 7.5M10 11.25h4M3.375 7.5h17.25c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125z" />
-    </svg>
-  ),
-  loans: (
-    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 8.25V6a2.25 2.25 0 00-2.25-2.25H6A2.25 2.25 0 003.75 6v8.25A2.25 2.25 0 006 16.5h2.25m8.25-8.25H18a2.25 2.25 0 012.25 2.25V18A2.25 2.25 0 0118 20.25h-7.5A2.25 2.25 0 018.25 18v-1.5m8.25-8.25h-8.25" />
-    </svg>
-  ),
-  scan: (
-    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 4.875c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5A1.125 1.125 0 013.75 9.375v-4.5zM3.75 14.625c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5a1.125 1.125 0 01-1.125-1.125v-4.5zM13.5 4.875c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5A1.125 1.125 0 0113.5 9.375v-4.5z" />
-      <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 6.75h.75v.75h-.75v-.75zM6.75 16.5h.75v.75h-.75v-.75zM16.5 6.75h.75v.75h-.75v-.75zM13.5 13.5h.75v.75h-.75v-.75zM13.5 19.5h.75v.75h-.75v-.75zM19.5 13.5h.75v.75h-.75v-.75zM19.5 19.5h.75v.75h-.75v-.75zM16.5 16.5h.75v.75h-.75v-.75z" />
-    </svg>
-  ),
-  employees: (
-    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M18 18.72a9.094 9.094 0 003.741-.479 3 3 0 00-4.682-2.72m.94 3.198l.001.031c0 .225-.012.447-.037.666A11.944 11.944 0 0112 21c-2.17 0-4.207-.576-5.963-1.584A6.062 6.062 0 016 18.719m12 0a5.971 5.971 0 00-.941-3.197m0 0A5.995 5.995 0 0012 12.75a5.995 5.995 0 00-5.058 2.772m0 0a3 3 0 00-4.681 2.72 8.986 8.986 0 003.74.477m.94-3.197a5.971 5.971 0 00-.94 3.197M15 6.75a3 3 0 11-6 0 3 3 0 016 0zm6 3a2.25 2.25 0 11-4.5 0 2.25 2.25 0 014.5 0zm-13.5 0a2.25 2.25 0 11-4.5 0 2.25 2.25 0 014.5 0z" />
-    </svg>
-  ),
+/* ── Module → icon map (uses Tabler-style icons from lib/icons) ──── */
+const moduleIcon = {
+  calendar:     Icon.Calendar,
+  nominations:  Icon.Trophy,
+  personnel:    Icon.Users,
+  competitions: Icon.Trophy,
+  templates:    Icon.Doc,
+  users:        Icon.Shield,
+  availability: Icon.Clock,
+  transport:    Icon.Truck,
+  training:     Icon.Whistle,
+  games:        Icon.Globe,
+  assets:       Icon.Dashboard,
+  loans:        Icon.Upload,
+  scan:         Icon.Pin,
+  employees:    Icon.Users,
 }
 
 function PermissionGuard({ module, children }) {
@@ -110,8 +51,8 @@ function PermissionGuard({ module, children }) {
     return (
       <div className="flex items-center justify-center py-20">
         <div className="text-center">
-          <div className="text-5xl text-fiba-border mb-4">403</div>
-          <p className="text-fiba-muted text-sm">{t('permissions.accessDenied')}</p>
+          <div className="text-5xl text-ink-300 dark:text-navy-700 font-bold mb-4">403</div>
+          <p className="text-ink-500 dark:text-ink-400 text-sm">{t('permissions.accessDenied')}</p>
         </div>
       </div>
     )
@@ -121,10 +62,23 @@ function PermissionGuard({ module, children }) {
 }
 
 export default function App() {
-  const { user, loading, hasView, isSuperadmin } = useAuth()
+  const { user, loading, hasView } = useAuth()
   const { t } = useLanguage()
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [mobileOpen, setMobileOpen] = useState(false)
+  // Default to dark mode: the not-yet-migrated pages use dark-only styling.
+  // Once all pages are on the new design system, default can switch to light.
+  const [dark, setDark] = useState(() => {
+    if (typeof window === 'undefined') return true
+    const stored = localStorage.getItem('fiba_dark')
+    return stored === null ? true : stored === '1'
+  })
+
+  // Sync dark mode with <html> class + localStorage
+  useEffect(() => {
+    document.documentElement.classList.toggle('dark', dark)
+    localStorage.setItem('fiba_dark', dark ? '1' : '0')
+  }, [dark])
 
   // Public routes (no auth required) — must be rendered before the user check
   if (typeof window !== 'undefined' && /^\/asset\/[0-9a-f-]+/i.test(window.location.pathname)) {
@@ -137,10 +91,10 @@ export default function App() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-fiba-dark flex items-center justify-center">
+      <div className="min-h-screen bg-ink-50 dark:bg-navy-950 flex items-center justify-center">
         <div className="flex flex-col items-center gap-3">
-          <div className="w-8 h-8 border-2 border-fiba-accent border-t-transparent rounded-full animate-spin" />
-          <span className="text-fiba-muted text-sm">{t('app.loading')}</span>
+          <div className="w-8 h-8 border-2 border-basketball-500 border-t-transparent rounded-full animate-spin" />
+          <span className="text-ink-500 dark:text-ink-400 text-sm">{t('app.loading')}</span>
         </div>
       </div>
     )
@@ -151,31 +105,31 @@ export default function App() {
   }
 
   const allNavItems = [
-    { to: '/calendar', label: t('nav.calendar'), module: 'calendar' },
-    { to: '/nominations', label: t('nav.nominations'), module: 'nominations' },
-    { to: '/personnel', label: t('nav.personnel'), module: 'personnel' },
+    { to: '/calendar',     label: t('nav.calendar'),     module: 'calendar' },
+    { to: '/nominations',  label: t('nav.nominations'),  module: 'nominations' },
+    { to: '/personnel',    label: t('nav.personnel'),    module: 'personnel' },
     { to: '/competitions', label: t('nav.competitions'), module: 'competitions' },
-    { to: '/templates', label: t('nav.templates'), module: 'templates' },
-    { to: '/users', label: t('nav.users'), module: 'users' },
+    { to: '/templates',    label: t('nav.templates'),    module: 'templates' },
+    { to: '/users',        label: t('nav.users'),        module: 'users' },
     { to: '/availability', label: t('nav.availability'), module: 'availability' },
-    { to: '/transport', label: t('nav.transport'), module: 'transport' },
-    { to: '/training', label: t('nav.training'), module: 'training' },
-    { to: '/games', label: t('nav.games'), module: 'games' },
-    { to: '/inventory', label: t('nav.inventory'), module: 'assets' },
-    { to: '/loans', label: t('nav.loans'), module: 'loans' },
-    { to: '/scan', label: t('nav.scan'), module: 'assets' },
-    { to: '/employees', label: t('nav.employees'), module: 'employees' },
+    { to: '/transport',    label: t('nav.transport'),    module: 'transport' },
+    { to: '/training',     label: t('nav.training'),     module: 'training' },
+    { to: '/games',        label: t('nav.games'),        module: 'games' },
+    { to: '/inventory',    label: t('nav.inventory'),    module: 'assets' },
+    { to: '/loans',        label: t('nav.loans'),        module: 'loans' },
+    { to: '/scan',         label: t('nav.scan'),         module: 'assets' },
+    { to: '/employees',    label: t('nav.employees'),    module: 'employees' },
   ]
 
   const navItems = allNavItems.filter(item => hasView(item.module))
   const defaultRoute = navItems.length > 0 ? navItems[0].to : '/calendar'
 
   return (
-    <div className="flex h-screen bg-fiba-dark relative">
+    <div className="flex h-screen bg-ink-50 dark:bg-navy-950 relative">
       {/* ── Mobile backdrop ──────────────────────────────────── */}
       {mobileOpen && (
         <div
-          className="fixed inset-0 bg-black/60 z-30 md:hidden"
+          className="fixed inset-0 bg-navy-950/60 backdrop-blur-sm z-30 md:hidden"
           onClick={() => setMobileOpen(false)}
           aria-hidden="true"
         />
@@ -183,71 +137,68 @@ export default function App() {
 
       {/* ── Sidebar ──────────────────────────────────────────── */}
       <aside className={`
-        ${sidebarCollapsed ? 'md:w-[72px]' : 'md:w-64'}
+        ${sidebarCollapsed ? 'md:w-[72px]' : 'md:w-[232px]'}
         ${mobileOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}
         fixed md:relative z-40 md:z-auto
-        w-64 h-full
-        bg-fiba-darker border-r border-fiba-border flex flex-col
+        w-[232px] h-full
+        bg-navy-900 text-white flex flex-col flex-shrink-0 border-r border-navy-950
         transition-transform duration-200 md:transition-all
       `}>
-        {/* Logo area */}
-        <div className="p-4 border-b border-fiba-border">
-          <div className="flex items-center gap-3">
-            {/* FIBA icon */}
-            <div className="w-9 h-9 bg-fiba-accent rounded-lg flex items-center justify-center shrink-0">
-              <svg className="w-5 h-5 text-fiba-dark" viewBox="0 0 24 24" fill="currentColor">
-                <circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" strokeWidth="2" />
-                <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 3c1.66 0 3 1.79 3 4s-1.34 4-3 4-3-1.79-3-4 1.34-4 3-4z" opacity="0.3" />
-              </svg>
-            </div>
-            <div className={`min-w-0 ${sidebarCollapsed ? 'md:hidden' : ''}`}>
-              <h1 className="text-sm font-bold text-white truncate">FIBA Americas</h1>
-              <p className="text-[11px] text-fiba-muted truncate">{t('app.subtitle')}</p>
-            </div>
+        {/* Brand */}
+        <div className="h-14 px-4 flex items-center gap-2.5 border-b border-navy-800 flex-shrink-0">
+          <div className="w-7 h-7 rounded-md bg-basketball-500 text-white flex items-center justify-center font-bold text-[13px] tracking-tight flex-shrink-0">F</div>
+          <div className={`leading-tight min-w-0 ${sidebarCollapsed ? 'md:hidden' : ''}`}>
+            <div className="text-[13px] font-semibold truncate">FIBA Americas</div>
+            <div className="text-2xs text-navy-300 font-medium tracking-wide truncate">{t('app.subtitle') || 'Nominations'}</div>
           </div>
         </div>
 
         {/* Navigation */}
-        <nav className="flex-1 p-2 space-y-0.5 overflow-y-auto">
-          {navItems.map(item => (
-            <NavLink
-              key={item.to}
-              to={item.to}
-              onClick={() => setMobileOpen(false)}
-              title={sidebarCollapsed ? item.label : undefined}
-              className={({ isActive }) =>
-                `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-150 group ${
-                  isActive
-                    ? 'bg-fiba-accent/10 text-fiba-accent'
-                    : 'text-fiba-muted hover:text-white hover:bg-fiba-surface/50'
-                }`
-              }
-            >
-              {({ isActive }) => (
-                <>
-                  <span className={`shrink-0 ${isActive ? 'text-fiba-accent' : 'text-fiba-muted group-hover:text-white'}`}>
-                    {icons[item.to.replace('/', '')] || icons[item.module]}
-                  </span>
-                  <span className={`truncate ${sidebarCollapsed ? 'md:hidden' : ''}`}>{item.label}</span>
-                  {isActive && (
-                    <span className={`ml-auto w-1.5 h-1.5 rounded-full bg-fiba-accent ${sidebarCollapsed ? 'md:hidden' : ''}`} />
-                  )}
-                </>
-              )}
-            </NavLink>
-          ))}
+        <nav className="flex-1 overflow-y-auto p-2 space-y-0.5">
+          {!sidebarCollapsed && (
+            <div className="text-2xs font-semibold text-navy-400 uppercase tracking-wider px-2.5 mb-1.5 mt-1">
+              Operación
+            </div>
+          )}
+          {navItems.map(item => {
+            const IconComp = moduleIcon[item.module] || Icon.Dashboard
+            return (
+              <NavLink
+                key={item.to}
+                to={item.to}
+                onClick={() => setMobileOpen(false)}
+                title={sidebarCollapsed ? item.label : undefined}
+                className={({ isActive }) =>
+                  `w-full flex items-center gap-3 px-2.5 h-9 text-[13.5px] rounded-md transition-colors relative ${
+                    isActive
+                      ? 'bg-navy-800 text-white font-medium'
+                      : 'text-navy-200 hover:bg-navy-800/60 hover:text-white'
+                  }`
+                }
+              >
+                {({ isActive }) => (
+                  <>
+                    {isActive && (
+                      <span className="absolute left-0 top-1.5 bottom-1.5 w-[3px] rounded-r-full bg-basketball-500" />
+                    )}
+                    <IconComp className="w-[18px] h-[18px] flex-shrink-0" />
+                    <span className={`flex-1 text-left truncate ${sidebarCollapsed ? 'md:hidden' : ''}`}>
+                      {item.label}
+                    </span>
+                  </>
+                )}
+              </NavLink>
+            )
+          })}
         </nav>
 
-        {/* Bottom section */}
-        <div className="p-3 border-t border-fiba-border space-y-2">
-          <div className={sidebarCollapsed ? 'md:hidden' : ''}>
-            <LanguageSwitcher />
-          </div>
-          <LogoutButton collapsed={sidebarCollapsed} />
-          {/* Collapse toggle — desktop only */}
+        {/* Bottom: user card + collapse */}
+        <div className="border-t border-navy-800 p-3 space-y-2 flex-shrink-0">
+          <UserCard collapsed={sidebarCollapsed} />
+          {!sidebarCollapsed && <LanguageSwitcher />}
           <button
             onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-            className="hidden md:flex w-full items-center justify-center py-1.5 text-fiba-muted hover:text-white transition-colors"
+            className="hidden md:flex w-full items-center justify-center py-1.5 text-navy-300 hover:text-white transition-colors"
             title={sidebarCollapsed ? 'Expand' : 'Collapse'}
           >
             <svg className={`w-4 h-4 transition-transform ${sidebarCollapsed ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -257,44 +208,69 @@ export default function App() {
         </div>
       </aside>
 
-      {/* ── Main content ─────────────────────────────────────── */}
-      <main className="flex-1 overflow-auto w-full">
-        {/* Mobile top bar with hamburger */}
-        <div className="md:hidden sticky top-0 z-20 flex items-center gap-3 px-4 py-3 bg-fiba-darker border-b border-fiba-border">
+      {/* ── Main column ─────────────────────────────────────── */}
+      <div className="flex-1 flex flex-col min-w-0">
+        {/* Topbar */}
+        <header className="h-14 px-4 md:px-6 bg-white dark:bg-navy-900 border-b border-ink-200 dark:border-navy-800 flex items-center gap-3 flex-shrink-0">
+          {/* Mobile hamburger */}
           <button
             onClick={() => setMobileOpen(true)}
             aria-label="Open menu"
-            className="p-1 -m-1 text-fiba-muted hover:text-white"
+            className="md:hidden p-1.5 -ml-1.5 rounded-md text-ink-600 dark:text-ink-300 hover:bg-ink-100 dark:hover:bg-navy-800"
           >
-            <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
             </svg>
           </button>
-          <span className="text-sm font-semibold text-white">FIBA Americas</span>
-        </div>
-        <div className="p-4 md:p-6 lg:p-8 max-w-[1400px]">
-          <Suspense fallback={<div className="flex items-center justify-center py-20"><div className="w-6 h-6 border-2 border-fiba-accent border-t-transparent rounded-full animate-spin" /></div>}>
-          <Routes>
-            <Route path="/" element={<Navigate to={defaultRoute} replace />} />
-            <Route path="/calendar" element={<PermissionGuard module="calendar"><Calendar /></PermissionGuard>} />
-            <Route path="/nominations" element={<PermissionGuard module="nominations"><Nominations /></PermissionGuard>} />
-            <Route path="/personnel" element={<PermissionGuard module="personnel"><Personnel /></PermissionGuard>} />
-            <Route path="/competitions" element={<PermissionGuard module="competitions"><Competitions /></PermissionGuard>} />
-            <Route path="/templates" element={<PermissionGuard module="templates"><Templates /></PermissionGuard>} />
-            <Route path="/users" element={<PermissionGuard module="users"><Users /></PermissionGuard>} />
-            <Route path="/availability" element={<PermissionGuard module="availability"><Availability /></PermissionGuard>} />
-            <Route path="/transport" element={<PermissionGuard module="transport"><Transport /></PermissionGuard>} />
-            <Route path="/training" element={<PermissionGuard module="training"><Training /></PermissionGuard>} />
-            <Route path="/games" element={<PermissionGuard module="games"><Games /></PermissionGuard>} />
-            <Route path="/inventory" element={<PermissionGuard module="assets"><Assets /></PermissionGuard>} />
-            <Route path="/inventory/:id" element={<PermissionGuard module="assets"><AssetDetail /></PermissionGuard>} />
-            <Route path="/loans" element={<PermissionGuard module="loans"><Loans /></PermissionGuard>} />
-            <Route path="/scan" element={<PermissionGuard module="assets"><Scan /></PermissionGuard>} />
-            <Route path="/employees" element={<PermissionGuard module="employees"><Employees /></PermissionGuard>} />
-          </Routes>
-          </Suspense>
-        </div>
-      </main>
+
+          <div className="flex-1 min-w-0">
+            <h1 className="text-[15px] md:text-[17px] font-semibold text-navy-900 dark:text-white tracking-tight truncate">
+              FIBA Americas
+            </h1>
+          </div>
+
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => setDark(d => !d)}
+              aria-label="Toggle theme"
+              title="Toggle theme"
+              className="w-9 h-9 inline-flex items-center justify-center rounded-md text-ink-600 dark:text-ink-300 hover:bg-ink-100 dark:hover:bg-navy-800 transition-colors"
+            >
+              {dark ? <Icon.Sun className="w-[18px] h-[18px]" /> : <Icon.Moon className="w-[18px] h-[18px]" />}
+            </button>
+          </div>
+        </header>
+
+        {/* Page content */}
+        <main className="flex-1 overflow-y-auto">
+          <div className="p-4 md:p-6 lg:p-8 max-w-[1440px] mx-auto screen-enter">
+            <Suspense fallback={
+              <div className="flex items-center justify-center py-20">
+                <div className="w-6 h-6 border-2 border-basketball-500 border-t-transparent rounded-full animate-spin" />
+              </div>
+            }>
+              <Routes>
+                <Route path="/" element={<Navigate to={defaultRoute} replace />} />
+                <Route path="/calendar"        element={<PermissionGuard module="calendar"><Calendar /></PermissionGuard>} />
+                <Route path="/nominations"     element={<PermissionGuard module="nominations"><Nominations /></PermissionGuard>} />
+                <Route path="/personnel"       element={<PermissionGuard module="personnel"><Personnel /></PermissionGuard>} />
+                <Route path="/competitions"    element={<PermissionGuard module="competitions"><Competitions /></PermissionGuard>} />
+                <Route path="/templates"       element={<PermissionGuard module="templates"><Templates /></PermissionGuard>} />
+                <Route path="/users"           element={<PermissionGuard module="users"><Users /></PermissionGuard>} />
+                <Route path="/availability"    element={<PermissionGuard module="availability"><Availability /></PermissionGuard>} />
+                <Route path="/transport"       element={<PermissionGuard module="transport"><Transport /></PermissionGuard>} />
+                <Route path="/training"        element={<PermissionGuard module="training"><Training /></PermissionGuard>} />
+                <Route path="/games"           element={<PermissionGuard module="games"><Games /></PermissionGuard>} />
+                <Route path="/inventory"       element={<PermissionGuard module="assets"><Assets /></PermissionGuard>} />
+                <Route path="/inventory/:id"   element={<PermissionGuard module="assets"><AssetDetail /></PermissionGuard>} />
+                <Route path="/loans"           element={<PermissionGuard module="loans"><Loans /></PermissionGuard>} />
+                <Route path="/scan"            element={<PermissionGuard module="assets"><Scan /></PermissionGuard>} />
+                <Route path="/employees"       element={<PermissionGuard module="employees"><Employees /></PermissionGuard>} />
+              </Routes>
+            </Suspense>
+          </div>
+        </main>
+      </div>
     </div>
   )
 }
@@ -302,23 +278,23 @@ export default function App() {
 function LanguageSwitcher() {
   const { lang, setLang } = useLanguage()
   return (
-    <div className="flex items-center gap-0.5 bg-fiba-surface rounded-lg p-0.5">
+    <div className="flex items-center gap-0.5 bg-navy-800 rounded-md p-0.5">
       <button
         onClick={() => setLang('es')}
-        className={`flex-1 px-2 py-1.5 rounded-md text-xs font-medium transition-all ${
+        className={`flex-1 px-2 py-1 rounded text-2xs font-semibold transition-all ${
           lang === 'es'
-            ? 'bg-fiba-accent text-fiba-dark'
-            : 'text-fiba-muted hover:text-white'
+            ? 'bg-basketball-500 text-white'
+            : 'text-navy-300 hover:text-white'
         }`}
       >
         ES
       </button>
       <button
         onClick={() => setLang('en')}
-        className={`flex-1 px-2 py-1.5 rounded-md text-xs font-medium transition-all ${
+        className={`flex-1 px-2 py-1 rounded text-2xs font-semibold transition-all ${
           lang === 'en'
-            ? 'bg-fiba-accent text-fiba-dark'
-            : 'text-fiba-muted hover:text-white'
+            ? 'bg-basketball-500 text-white'
+            : 'text-navy-300 hover:text-white'
         }`}
       >
         EN
@@ -327,34 +303,43 @@ function LanguageSwitcher() {
   )
 }
 
-function LogoutButton({ collapsed }) {
+function UserCard({ collapsed }) {
   const { signOut, user, isSuperadmin } = useAuth()
-  const { t } = useLanguage()
-  return (
-    <div>
-      {!collapsed && (
-        <div className="flex items-center gap-2 mb-2 px-1">
-          <div className="w-6 h-6 bg-fiba-surface-2 rounded-full flex items-center justify-center shrink-0">
-            <span className="text-[10px] font-bold text-fiba-accent">
-              {(user.email || '?')[0].toUpperCase()}
-            </span>
-          </div>
-          <p className="text-xs text-fiba-muted truncate">{user.email}</p>
-          {isSuperadmin && (
-            <span className="inline-block px-1.5 py-0.5 rounded text-[9px] font-bold bg-fiba-accent/20 text-fiba-accent shrink-0">SA</span>
-          )}
+  const initial = (user.email || '?')[0].toUpperCase()
+  const role = isSuperadmin ? 'Superadmin' : 'Usuario'
+
+  if (collapsed) {
+    return (
+      <div className="hidden md:flex flex-col items-center gap-2">
+        <div className="w-8 h-8 rounded-full bg-basketball-500/20 text-basketball-300 flex items-center justify-center text-xs font-semibold">
+          {initial}
         </div>
-      )}
+        <button
+          onClick={signOut}
+          title="Cerrar sesión"
+          className="text-navy-300 hover:text-white"
+        >
+          <Icon.Logout className="w-4 h-4" />
+        </button>
+      </div>
+    )
+  }
+
+  return (
+    <div className="flex items-center gap-2.5">
+      <div className="w-8 h-8 rounded-full bg-basketball-500/20 text-basketball-300 flex items-center justify-center text-xs font-semibold flex-shrink-0">
+        {initial}
+      </div>
+      <div className="flex-1 min-w-0 leading-tight">
+        <div className="text-[13px] font-medium text-white truncate">{user.email}</div>
+        <div className="text-2xs text-navy-300 truncate">{role}</div>
+      </div>
       <button
         onClick={signOut}
-        title={collapsed ? t('app.logout') : undefined}
-        className={`${collapsed ? 'w-full flex justify-center' : 'w-full text-left px-1'} text-xs text-fiba-muted hover:text-red-400 transition-colors`}
+        title="Cerrar sesión"
+        className="text-navy-300 hover:text-white flex-shrink-0"
       >
-        {collapsed ? (
-          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15m3 0l3-3m0 0l-3-3m3 3H9" />
-          </svg>
-        ) : t('app.logout')}
+        <Icon.Logout className="w-4 h-4" />
       </button>
     </div>
   )

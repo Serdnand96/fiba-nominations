@@ -26,44 +26,44 @@ export default function Login() {
   }
 
   return (
-    <div className="min-h-screen bg-fiba-dark flex items-center justify-center relative overflow-hidden">
-      {/* Background pattern */}
-      <div className="absolute inset-0 opacity-[0.03]"
+    <div className="min-h-screen bg-navy-900 flex items-center justify-center relative overflow-hidden p-4">
+      {/* Subtle dot pattern */}
+      <div className="absolute inset-0 opacity-[0.04] pointer-events-none"
         style={{
-          backgroundImage: `radial-gradient(circle at 1px 1px, #F2FE5A 1px, transparent 0)`,
+          backgroundImage: 'radial-gradient(circle at 1px 1px, #F57C2A 1px, transparent 0)',
           backgroundSize: '40px 40px',
         }}
       />
 
-      {/* Accent glow */}
-      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[600px] h-[300px] bg-fiba-accent/5 rounded-full blur-[120px]" />
+      {/* Basketball glow */}
+      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[600px] h-[300px] bg-basketball-500/10 rounded-full blur-[120px] pointer-events-none" />
 
       <div className="relative z-10 w-full max-w-sm">
-        {/* Logo card */}
+        {/* Brand */}
         <div className="text-center mb-8">
-          <div className="w-16 h-16 bg-fiba-accent rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg shadow-fiba-accent/20">
-            <svg className="w-9 h-9 text-fiba-dark" viewBox="0 0 24 24" fill="currentColor">
-              <circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" strokeWidth="2" />
-              <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 3c1.66 0 3 1.79 3 4s-1.34 4-3 4-3-1.79-3-4 1.34-4 3-4z" opacity="0.3" />
+          <div className="w-16 h-16 bg-basketball-500 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-pop">
+            <svg viewBox="0 0 64 64" className="w-10 h-10">
+              <path d="M18 14 L44 14 L44 22 L26 22 L26 30 L40 30 L40 38 L26 38 L26 50 L18 50 Z" fill="#fff"/>
+              <path d="M14 38 Q32 56 50 38" stroke="#0c2340" strokeWidth="3" fill="none" strokeLinecap="round"/>
             </svg>
           </div>
-          <h1 className="text-2xl font-bold text-white">FIBA Americas</h1>
-          <p className="text-sm text-fiba-muted mt-1">{t('app.subtitle')}</p>
+          <h1 className="text-2xl font-semibold text-white tracking-tight">FIBA Americas</h1>
+          <p className="text-sm text-navy-300 mt-1">{t('app.subtitle')}</p>
         </div>
 
-        {/* Login form */}
-        <div className="bg-fiba-card border border-fiba-border rounded-2xl p-8 shadow-2xl">
+        {/* Card */}
+        <div className="bg-white dark:bg-navy-800 rounded-2xl p-8 shadow-pop">
           {/* Language toggle */}
-          <div className="flex items-center justify-center gap-0.5 mb-6 bg-fiba-surface rounded-lg p-0.5 max-w-[140px] mx-auto">
+          <div className="flex items-center justify-center gap-0.5 mb-6 bg-ink-100 dark:bg-navy-900 rounded-md p-0.5 max-w-[140px] mx-auto">
             <button onClick={() => setLang('es')}
-              className={`flex-1 px-3 py-1.5 rounded-md text-xs font-semibold transition-all ${
-                lang === 'es' ? 'bg-fiba-accent text-fiba-dark' : 'text-fiba-muted hover:text-white'
+              className={`flex-1 px-3 py-1.5 rounded text-xs font-semibold transition-all ${
+                lang === 'es' ? 'bg-basketball-500 text-white' : 'text-ink-500 dark:text-ink-400 hover:text-ink-900 dark:hover:text-white'
               }`}>
               ES
             </button>
             <button onClick={() => setLang('en')}
-              className={`flex-1 px-3 py-1.5 rounded-md text-xs font-semibold transition-all ${
-                lang === 'en' ? 'bg-fiba-accent text-fiba-dark' : 'text-fiba-muted hover:text-white'
+              className={`flex-1 px-3 py-1.5 rounded text-xs font-semibold transition-all ${
+                lang === 'en' ? 'bg-basketball-500 text-white' : 'text-ink-500 dark:text-ink-400 hover:text-ink-900 dark:hover:text-white'
               }`}>
               EN
             </button>
@@ -71,39 +71,48 @@ export default function Login() {
 
           <form onSubmit={handleSubmit} className="space-y-4">
             {error && (
-              <div className="bg-red-500/10 border border-red-500/20 text-red-400 text-sm px-4 py-3 rounded-lg">
+              <div className="bg-danger-50 dark:bg-danger-700/20 border border-danger-200 dark:border-danger-700/40 text-danger-700 dark:text-danger-100 text-sm px-4 py-3 rounded-lg">
                 {error}
               </div>
             )}
 
             <div>
-              <label className="fiba-label">{t('login.email')}</label>
+              <label className="block text-sm font-medium text-ink-700 dark:text-ink-300 mb-1.5">
+                {t('login.email')}
+              </label>
               <input
                 type="email"
                 required
                 value={email}
                 onChange={e => setEmail(e.target.value)}
-                className="fiba-input"
                 placeholder={t('login.placeholder_email')}
+                className="w-full bg-white dark:bg-navy-900 border border-ink-300 dark:border-navy-700 text-ink-900 dark:text-ink-100 rounded-lg px-3 py-2.5 text-sm
+                           placeholder:text-ink-400 focus:outline-none focus:ring-2 focus:ring-navy-500/30 focus:border-navy-500
+                           transition-all duration-150"
               />
             </div>
 
             <div>
-              <label className="fiba-label">{t('login.password')}</label>
+              <label className="block text-sm font-medium text-ink-700 dark:text-ink-300 mb-1.5">
+                {t('login.password')}
+              </label>
               <input
                 type="password"
                 required
                 value={password}
                 onChange={e => setPassword(e.target.value)}
-                className="fiba-input"
                 placeholder="••••••••"
+                className="w-full bg-white dark:bg-navy-900 border border-ink-300 dark:border-navy-700 text-ink-900 dark:text-ink-100 rounded-lg px-3 py-2.5 text-sm
+                           placeholder:text-ink-400 focus:outline-none focus:ring-2 focus:ring-navy-500/30 focus:border-navy-500
+                           transition-all duration-150"
               />
             </div>
 
             <button
               type="submit"
               disabled={loading}
-              className="btn-fiba w-full"
+              className="w-full bg-basketball-500 hover:bg-basketball-600 active:bg-basketball-700 text-white font-semibold px-4 py-2.5 rounded-lg
+                         transition-all duration-150 text-sm shadow-card disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {loading ? (
                 <span className="flex items-center justify-center gap-2">
@@ -117,6 +126,10 @@ export default function Login() {
             </button>
           </form>
         </div>
+
+        <p className="text-center text-xs text-navy-300 mt-6">
+          © {new Date().getFullYear()} FIBA Americas
+        </p>
       </div>
     </div>
   )

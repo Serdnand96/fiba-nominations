@@ -1,91 +1,89 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
 
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 @layer base {
+  :root { color-scheme: light; }
+  html, body, #root { height: 100%; }
   body {
-    @apply bg-fiba-dark text-white font-sans antialiased;
+    @apply font-sans bg-ink-50 text-ink-900;
+    font-feature-settings: 'cv11', 'ss01';
+    -webkit-font-smoothing: antialiased;
   }
-
-  /* Custom scrollbar — dark theme */
-  ::-webkit-scrollbar {
-    @apply w-1.5;
-  }
-  ::-webkit-scrollbar-track {
-    @apply bg-transparent;
-  }
-  ::-webkit-scrollbar-thumb {
-    @apply bg-fiba-border rounded-full;
-  }
-  ::-webkit-scrollbar-thumb:hover {
-    @apply bg-fiba-muted;
-  }
+  .dark body { @apply bg-navy-950 text-ink-100; }
 }
 
+@layer utilities {
+  .num { font-variant-numeric: tabular-nums; }
+  .tabler { width: 1em; height: 1em; stroke-width: 1.75; stroke: currentColor; fill: none; stroke-linecap: round; stroke-linejoin: round; flex-shrink: 0; }
+  .row-divide > * + * { @apply border-t border-ink-100 dark:border-navy-800; }
+  .screen-enter { animation: screenIn 240ms cubic-bezier(.2,.7,.2,1) both; }
+  @keyframes screenIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+}
+
+/* Scrollbars */
+*::-webkit-scrollbar { width: 10px; height: 10px; }
+*::-webkit-scrollbar-thumb { background: #cbd2dc; border-radius: 8px; border: 2px solid transparent; background-clip: padding-box; }
+*::-webkit-scrollbar-thumb:hover { background: #9aa3b2; background-clip: padding-box; border: 2px solid transparent; }
+.dark *::-webkit-scrollbar-thumb { background: #1f2433; background-clip: padding-box; border: 2px solid transparent; }
+
+/* Focus ring */
+button:focus-visible, a:focus-visible, [role="button"]:focus-visible {
+  outline: 2px solid transparent;
+  box-shadow: 0 0 0 3px rgba(51, 90, 154, 0.35);
+  border-radius: 6px;
+}
+
+/* ─────────────────────────────────────────────────────────────────────
+ * LEGACY aliases (.fiba-*, .btn-fiba*)
+ * Kept so the not-yet-migrated pages keep rendering during the
+ * rollout. Each one is re-pointed at the new palette so the look
+ * already aligns with the new design.
+ * Migrate page → remove rule.
+ * ────────────────────────────────────────────────────────────── */
 @layer components {
-  /* FIBA accent button */
   .btn-fiba {
-    @apply bg-fiba-accent text-fiba-dark font-semibold px-4 py-2.5 rounded-lg
-           hover:bg-fiba-accent-hover transition-all duration-150
+    @apply bg-basketball-500 text-white font-semibold px-4 py-2.5 rounded-lg
+           hover:bg-basketball-600 transition-all duration-150
            disabled:opacity-50 disabled:cursor-not-allowed text-sm;
   }
-
-  /* Secondary / ghost button */
   .btn-fiba-ghost {
-    @apply border border-fiba-border text-fiba-muted font-medium px-4 py-2.5 rounded-lg
-           hover:border-fiba-accent hover:text-fiba-accent transition-all duration-150
-           disabled:opacity-50 text-sm;
+    @apply border border-ink-300 dark:border-navy-700 text-ink-700 dark:text-ink-300 font-medium px-4 py-2.5 rounded-lg
+           hover:border-basketball-500 hover:text-basketball-600 transition-all duration-150
+           disabled:opacity-50 text-sm bg-white dark:bg-navy-900;
   }
-
-  /* Danger button */
   .btn-fiba-danger {
-    @apply bg-red-500/10 text-red-400 font-medium px-4 py-2.5 rounded-lg
-           hover:bg-red-500/20 transition-all duration-150
-           disabled:opacity-50 text-sm border border-red-500/20;
+    @apply bg-danger-50 dark:bg-danger-700/20 text-danger-700 dark:text-danger-100 font-medium px-4 py-2.5 rounded-lg
+           hover:bg-danger-100 dark:hover:bg-danger-700/30 transition-all duration-150
+           disabled:opacity-50 text-sm border border-danger-100 dark:border-danger-700/40;
   }
-
-  /* Card component */
   .fiba-card {
-    @apply bg-fiba-card border border-fiba-border rounded-xl p-5;
+    @apply bg-white dark:bg-navy-900 border border-ink-200 dark:border-navy-800 rounded-xl p-5 shadow-card;
   }
-
-  /* Stat card */
   .fiba-stat {
-    @apply bg-fiba-card border border-fiba-border rounded-xl p-4 flex flex-col;
+    @apply bg-white dark:bg-navy-900 border border-ink-200 dark:border-navy-800 rounded-xl p-4 flex flex-col shadow-card;
   }
-
-  /* Input field */
   .fiba-input {
-    @apply w-full bg-fiba-surface border border-fiba-border text-white rounded-lg px-3 py-2.5 text-sm
-           placeholder:text-fiba-muted/50 focus:outline-none focus:ring-2 focus:ring-fiba-accent/40 focus:border-fiba-accent/40
+    @apply w-full bg-white dark:bg-navy-900 border border-ink-300 dark:border-navy-700 text-ink-900 dark:text-ink-100 rounded-lg px-3 py-2.5 text-sm
+           placeholder:text-ink-400 focus:outline-none focus:ring-2 focus:ring-navy-500/20 focus:border-navy-500
            transition-all duration-150;
   }
-
-  /* Select field */
   .fiba-select {
-    @apply w-full bg-fiba-surface border border-fiba-border text-white rounded-lg px-3 py-2.5 text-sm
-           focus:outline-none focus:ring-2 focus:ring-fiba-accent/40 focus:border-fiba-accent/40
+    @apply w-full bg-white dark:bg-navy-900 border border-ink-300 dark:border-navy-700 text-ink-900 dark:text-ink-100 rounded-lg px-3 py-2.5 text-sm
+           focus:outline-none focus:ring-2 focus:ring-navy-500/20 focus:border-navy-500
            transition-all duration-150;
   }
-
-  /* Label */
   .fiba-label {
-    @apply block text-sm font-medium text-fiba-muted mb-1.5;
+    @apply block text-sm font-medium text-ink-700 dark:text-ink-300 mb-1.5;
   }
-
-  /* Modal overlay */
   .fiba-modal-overlay {
-    @apply fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4;
+    @apply fixed inset-0 z-50 bg-navy-950/60 backdrop-blur-sm flex items-center justify-center p-4;
   }
-
-  /* Modal card */
   .fiba-modal {
-    @apply bg-fiba-card border border-fiba-border rounded-2xl shadow-2xl w-full max-h-[90vh] overflow-auto;
+    @apply bg-white dark:bg-navy-900 border border-ink-200 dark:border-navy-800 rounded-2xl shadow-pop w-full max-h-[90vh] overflow-auto;
   }
-
-  /* Table styles */
   .fiba-table {
     @apply w-full text-sm;
   }
@@ -93,22 +91,16 @@
     @apply sticky top-0;
   }
   .fiba-table thead th {
-    @apply bg-fiba-accent text-fiba-dark font-semibold px-4 py-3 text-left text-xs uppercase tracking-wider;
+    @apply bg-navy-50 dark:bg-navy-800 text-navy-900 dark:text-ink-100 font-semibold px-4 py-3 text-left text-xs uppercase tracking-wider;
   }
-  .fiba-table thead th:first-child {
-    @apply rounded-tl-lg;
-  }
-  .fiba-table thead th:last-child {
-    @apply rounded-tr-lg;
-  }
+  .fiba-table thead th:first-child { @apply rounded-tl-lg; }
+  .fiba-table thead th:last-child  { @apply rounded-tr-lg; }
   .fiba-table tbody tr {
-    @apply border-b border-fiba-border/50 hover:bg-fiba-surface/50 transition-colors;
+    @apply border-b border-ink-100 dark:border-navy-800 hover:bg-ink-50 dark:hover:bg-navy-800/40 transition-colors;
   }
   .fiba-table tbody td {
-    @apply px-4 py-3 text-gray-300;
+    @apply px-4 py-3 text-ink-700 dark:text-ink-300;
   }
-
-  /* Badge */
   .fiba-badge {
     @apply inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold;
   }
