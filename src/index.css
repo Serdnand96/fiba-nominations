@@ -5,7 +5,28 @@
 @tailwind utilities;
 
 @layer base {
-  :root { color-scheme: light; }
+  :root {
+    color-scheme: light;
+    /* fiba-* legacy tokens — LIGHT values */
+    --c-fiba-dark:      248 250 252;  /* ink-50  (page bg)    */
+    --c-fiba-darker:    241 244 248;  /* ink-100 (sidebar bg) */
+    --c-fiba-card:      255 255 255;  /* white   (cards)      */
+    --c-fiba-surface:   248 250 252;  /* ink-50  (surface)    */
+    --c-fiba-surface-2: 241 244 248;  /* ink-100              */
+    --c-fiba-border:    228 232 238;  /* ink-200              */
+    --c-fiba-muted:     107 115 133;  /* ink-500              */
+  }
+  .dark {
+    color-scheme: dark;
+    /* fiba-* legacy tokens — DARK values (match original look) */
+    --c-fiba-dark:      12  35  64;   /* navy-900 */
+    --c-fiba-darker:    8   22  40;   /* navy-950 */
+    --c-fiba-card:      20  44  78;   /* navy-800 */
+    --c-fiba-surface:   26  54  104;  /* navy-700 */
+    --c-fiba-surface-2: 34  70  128;  /* navy-600 */
+    --c-fiba-border:    26  54  104;  /* navy-700 */
+    --c-fiba-muted:     154 163 178;  /* ink-400  */
+  }
   html, body, #root { height: 100%; }
   body {
     @apply font-sans bg-ink-50 text-ink-900;

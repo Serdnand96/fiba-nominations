@@ -8,7 +8,7 @@ import {
 } from '../api/client'
 
 const CONFIRMATION_BADGES = {
-  pending: 'bg-gray-500/20 text-gray-300 border border-gray-500/40',
+  pending: 'bg-gray-500/20 text-ink-700 dark:text-gray-300 border border-gray-500/40',
   nominated: 'bg-fiba-accent/20 text-fiba-accent border border-fiba-accent/40',
   confirmed: 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40',
   declined: 'bg-orange-500/20 text-orange-400 border border-orange-500/40',
@@ -368,7 +368,7 @@ export default function Nominations() {
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
-        <h2 className="text-2xl font-bold text-white">{t('nominations.title')}</h2>
+        <h2 className="text-2xl font-bold text-ink-900 dark:text-white">{t('nominations.title')}</h2>
         {canEdit && (
           <div className="flex gap-2">
             {selectedIds.size > 0 && (
@@ -378,7 +378,7 @@ export default function Nominations() {
                   {t('nominations.deleteCount', { count: selectedIds.size })}
                 </button>
                 <button onClick={handleBulkGenerate} disabled={loading}
-                  className="bg-emerald-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-emerald-700 disabled:opacity-50">
+                  className="bg-emerald-600 text-ink-900 dark:text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-emerald-700 disabled:opacity-50">
                   {loading && bulkProgress
                     ? t('nominations.generatingProgress', { current: bulkProgress.current })
                     : t('nominations.generateCount', { count: selectedIds.size })}
@@ -403,7 +403,7 @@ export default function Nominations() {
         ].map(s => (
           <div key={s.label} className="fiba-stat">
             <p className="text-xs text-fiba-muted">{s.label}</p>
-            <p className="text-2xl font-bold text-white">{s.value}</p>
+            <p className="text-2xl font-bold text-ink-900 dark:text-white">{s.value}</p>
           </div>
         ))}
       </div>
@@ -531,13 +531,13 @@ export default function Nominations() {
         <div className="fixed inset-0 bg-black/60 flex items-start justify-center pt-16 z-50">
           <div className="fiba-modal max-w-2xl max-h-[80vh] overflow-y-auto p-6">
             <div className="flex justify-between items-center mb-4">
-              <h3 className="text-lg font-bold text-white">{t('nominations.newNominationTitle')}</h3>
-              <button onClick={() => setShowForm(false)} className="text-fiba-muted hover:text-white text-xl">&times;</button>
+              <h3 className="text-lg font-bold text-ink-900 dark:text-white">{t('nominations.newNominationTitle')}</h3>
+              <button onClick={() => setShowForm(false)} className="text-fiba-muted hover:text-ink-900 dark:text-white text-xl">&times;</button>
             </div>
             <form onSubmit={handleSubmit} className="space-y-4">
               {/* Multi-person select */}
               <div>
-                <label className="block text-sm font-medium text-gray-300 mb-1">
+                <label className="block text-sm font-medium text-ink-700 dark:text-gray-300 mb-1">
                   {t('nominations.persons')} ({form.personnel_ids.length} {t('nominations.selected')})
                 </label>
                 <input type="text" placeholder={t('nominations.searchPerson')} value={personSearch}
@@ -567,7 +567,7 @@ export default function Nominations() {
 
               {/* Competition select */}
               <div>
-                <label className="block text-sm font-medium text-gray-300 mb-1">{t('nominations.competition')}</label>
+                <label className="block text-sm font-medium text-ink-700 dark:text-gray-300 mb-1">{t('nominations.competition')}</label>
                 <select required value={form.competition_id} onChange={e => handleCompChange(e.target.value)}
                   className="fiba-select">
                   <option value="">{t('nominations.selectCompetition')}</option>
@@ -579,7 +579,7 @@ export default function Nominations() {
 
               {/* Letter date */}
               <div>
-                <label className="block text-sm font-medium text-gray-300 mb-1">{t('nominations.letterDate')}</label>
+                <label className="block text-sm font-medium text-ink-700 dark:text-gray-300 mb-1">{t('nominations.letterDate')}</label>
                 <input type="date" value={form.letter_date} onChange={e => setForm(f => ({ ...f, letter_date: e.target.value }))}
                   className="fiba-input" />
               </div>
@@ -589,24 +589,24 @@ export default function Nominations() {
                 <>
                   <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <label className="block text-sm font-medium text-gray-300 mb-1">Location</label>
+                      <label className="block text-sm font-medium text-ink-700 dark:text-gray-300 mb-1">Location</label>
                       <input type="text" value={form.location} onChange={e => setForm(f => ({ ...f, location: e.target.value }))}
                         className="fiba-input" />
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-gray-300 mb-1">{t('nominations.venue')}</label>
+                      <label className="block text-sm font-medium text-ink-700 dark:text-gray-300 mb-1">{t('nominations.venue')}</label>
                       <input type="text" value={form.venue} onChange={e => setForm(f => ({ ...f, venue: e.target.value }))}
                         className="fiba-input" />
                     </div>
                   </div>
                   <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <label className="block text-sm font-medium text-gray-300 mb-1">{t('nominations.arrivalDate')}</label>
+                      <label className="block text-sm font-medium text-ink-700 dark:text-gray-300 mb-1">{t('nominations.arrivalDate')}</label>
                       <input type="date" value={form.arrival_date} onChange={e => setForm(f => ({ ...f, arrival_date: e.target.value }))}
                         className="fiba-input" />
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-gray-300 mb-1">{t('nominations.departureDate')}</label>
+                      <label className="block text-sm font-medium text-ink-700 dark:text-gray-300 mb-1">{t('nominations.departureDate')}</label>
                       <input type="date" value={form.departure_date} onChange={e => setForm(f => ({ ...f, departure_date: e.target.value }))}
                         className="fiba-input" />
                     </div>
@@ -617,7 +617,7 @@ export default function Nominations() {
               {/* Game Dates */}
               {templateKey && templateKey !== 'BCLA_RS' && (
                 <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-1">{t('nominations.gameDates')}</label>
+                  <label className="block text-sm font-medium text-ink-700 dark:text-gray-300 mb-1">{t('nominations.gameDates')}</label>
                   {form.game_dates.map((gd, idx) => (
                     <div key={idx} className="flex gap-2 mb-2 items-center">
                       {(templateKey === 'BCLA' || templateKey === 'BCLA_F4') ? (
@@ -644,7 +644,7 @@ export default function Nominations() {
               {/* Confirmation Deadline */}
               {showDeadline && (
                 <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-1">{t('nominations.confirmationDeadline')}</label>
+                  <label className="block text-sm font-medium text-ink-700 dark:text-gray-300 mb-1">{t('nominations.confirmationDeadline')}</label>
                   <input type="date" value={form.confirmation_deadline}
                     onChange={e => setForm(f => ({ ...f, confirmation_deadline: e.target.value }))}
                     className="fiba-input" />
@@ -654,7 +654,7 @@ export default function Nominations() {
               {/* Fees */}
               <div className="grid grid-cols-3 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-1">
+                  <label className="block text-sm font-medium text-ink-700 dark:text-gray-300 mb-1">
                     {selectedComp?.fee_type === 'tournament'
                       ? 'Tournament Fee'
                       : (showDeadline ? t('nominations.perGameFee') : t('nominations.windowFee'))}
@@ -664,19 +664,19 @@ export default function Nominations() {
                     className="fiba-input" />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-1">{t('nominations.incidentals')}</label>
+                  <label className="block text-sm font-medium text-ink-700 dark:text-gray-300 mb-1">{t('nominations.incidentals')}</label>
                   <input type="number" step="0.01" value={form.incidentals}
                     onChange={e => setForm(f => ({ ...f, incidentals: e.target.value }))}
                     className="fiba-input" />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-1">Total</label>
+                  <label className="block text-sm font-medium text-ink-700 dark:text-gray-300 mb-1">Total</label>
                   <input type="text" value={total} readOnly className="fiba-input bg-fiba-surface" />
                 </div>
               </div>
 
               <div className="flex justify-end gap-3 pt-4">
-                <button type="button" onClick={() => setShowForm(false)} className="px-4 py-2 text-sm text-fiba-muted hover:text-white">
+                <button type="button" onClick={() => setShowForm(false)} className="px-4 py-2 text-sm text-fiba-muted hover:text-ink-900 dark:text-white">
                   {t('nominations.cancel')}
                 </button>
                 <button type="submit" disabled={loading || form.personnel_ids.length === 0}

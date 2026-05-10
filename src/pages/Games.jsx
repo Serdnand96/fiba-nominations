@@ -251,7 +251,7 @@ export default function Games() {
     <div>
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
-        <h2 className="text-2xl font-bold text-white">{t('games.title')}</h2>
+        <h2 className="text-2xl font-bold text-ink-900 dark:text-white">{t('games.title')}</h2>
         <div className="flex items-center gap-3">
           {selectedCompId && (
             <>
@@ -310,15 +310,15 @@ export default function Games() {
       {games.length > 0 && (
         <div className="flex gap-6 mb-6">
           <div className="fiba-stat flex-1">
-            <div className="text-2xl font-bold text-white">{games.length}</div>
+            <div className="text-2xl font-bold text-ink-900 dark:text-white">{games.length}</div>
             <div className="text-xs text-fiba-muted">{t('games.totalGames')}</div>
           </div>
           <div className="fiba-stat flex-1">
-            <div className="text-2xl font-bold text-white">{teams.length}</div>
+            <div className="text-2xl font-bold text-ink-900 dark:text-white">{teams.length}</div>
             <div className="text-xs text-fiba-muted">{t('games.teams')}</div>
           </div>
           <div className="fiba-stat flex-1">
-            <div className="text-2xl font-bold text-white">{gameDates.length}</div>
+            <div className="text-2xl font-bold text-ink-900 dark:text-white">{gameDates.length}</div>
             <div className="text-xs text-fiba-muted">{t('games.gameDays')}</div>
           </div>
           <div className="fiba-stat flex-1">
@@ -356,7 +356,7 @@ export default function Games() {
       {showModal && (
         <div className="fiba-modal-overlay">
           <div className="fiba-modal max-w-lg p-6 max-h-[90vh] overflow-y-auto">
-            <h3 className="text-lg font-bold text-white mb-4">{editing ? t('games.editGame') : t('games.newGame')}</h3>
+            <h3 className="text-lg font-bold text-ink-900 dark:text-white mb-4">{editing ? t('games.editGame') : t('games.newGame')}</h3>
             <form onSubmit={handleSubmit} className="space-y-3">
               <div className="grid grid-cols-2 gap-3">
                 <div>
@@ -456,7 +456,7 @@ export default function Games() {
 
               <div className="flex justify-end gap-3 pt-3">
                 <button type="button" onClick={() => setShowModal(false)}
-                  className="px-4 py-2 text-sm text-fiba-muted hover:text-white">
+                  className="px-4 py-2 text-sm text-fiba-muted hover:text-ink-900 dark:text-white">
                   {t('games.cancel')}
                 </button>
                 <button type="submit"
@@ -473,7 +473,7 @@ export default function Games() {
       {showImport && (
         <div className="fiba-modal-overlay">
           <div className="fiba-modal max-w-md p-6">
-            <h3 className="text-lg font-bold text-white mb-4">{t('games.importExcel')}</h3>
+            <h3 className="text-lg font-bold text-ink-900 dark:text-white mb-4">{t('games.importExcel')}</h3>
 
             <div
               onClick={() => fileRef.current?.click()}
@@ -482,7 +482,7 @@ export default function Games() {
               className="border-2 border-dashed border-fiba-border rounded-lg p-8 text-center cursor-pointer hover:border-fiba-muted transition-colors"
             >
               {importFile ? (
-                <p className="text-sm font-medium text-gray-300">{importFile.name}</p>
+                <p className="text-sm font-medium text-ink-700 dark:text-gray-300">{importFile.name}</p>
               ) : (
                 <p className="text-sm text-fiba-muted">{t('games.dragOrClick')}</p>
               )}
@@ -539,7 +539,7 @@ function GameCard({ game, canEdit, onEdit, onDelete, t }) {
           <div className="flex items-center gap-4">
             {/* Team A */}
             <div className="flex-1 text-right">
-              <div className={`text-sm font-semibold ${isCompleted && game.score_a > game.score_b ? 'text-white' : 'text-gray-300'}`}>
+              <div className={`text-sm font-semibold ${isCompleted && game.score_a > game.score_b ? 'text-ink-900 dark:text-white' : 'text-ink-700 dark:text-gray-300'}`}>
                 {game.team_a}
               </div>
               {game.team_a_code && (
@@ -552,11 +552,11 @@ function GameCard({ game, canEdit, onEdit, onDelete, t }) {
               {isCompleted || isLive ? (
                 <div className="flex items-center justify-center gap-2">
                   <span className={`text-xl font-bold min-w-[2rem] text-right ${
-                    isCompleted && game.score_a > game.score_b ? 'text-white' : 'text-fiba-muted'
+                    isCompleted && game.score_a > game.score_b ? 'text-ink-900 dark:text-white' : 'text-fiba-muted'
                   }`}>{scoreA}</span>
                   <span className="text-fiba-border text-sm">-</span>
                   <span className={`text-xl font-bold min-w-[2rem] text-left ${
-                    isCompleted && game.score_b > game.score_a ? 'text-white' : 'text-fiba-muted'
+                    isCompleted && game.score_b > game.score_a ? 'text-ink-900 dark:text-white' : 'text-fiba-muted'
                   }`}>{scoreB}</span>
                 </div>
               ) : (
@@ -574,7 +574,7 @@ function GameCard({ game, canEdit, onEdit, onDelete, t }) {
 
             {/* Team B */}
             <div className="flex-1">
-              <div className={`text-sm font-semibold ${isCompleted && game.score_b > game.score_a ? 'text-white' : 'text-gray-300'}`}>
+              <div className={`text-sm font-semibold ${isCompleted && game.score_b > game.score_a ? 'text-ink-900 dark:text-white' : 'text-ink-700 dark:text-gray-300'}`}>
                 {game.team_b}
               </div>
               {game.team_b_code && (

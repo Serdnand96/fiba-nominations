@@ -67,10 +67,10 @@ export default function Loans() {
 
   return (
     <div>
-      <h2 className="text-2xl font-bold text-white mb-6">{t('loans.title')}</h2>
+      <h2 className="text-2xl font-bold text-ink-900 dark:text-white mb-6">{t('loans.title')}</h2>
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
-        <div className="fiba-stat"><p className="text-xs text-fiba-muted">{t('loans.total')}</p><p className="text-2xl font-bold text-white">{stats.total}</p></div>
+        <div className="fiba-stat"><p className="text-xs text-fiba-muted">{t('loans.total')}</p><p className="text-2xl font-bold text-ink-900 dark:text-white">{stats.total}</p></div>
         <div className="fiba-stat"><p className="text-xs text-fiba-muted">{t('loans.active')}</p><p className="text-2xl font-bold text-blue-400">{stats.active}</p></div>
         <div className="fiba-stat"><p className="text-xs text-fiba-muted">{t('loans.overdue')}</p><p className="text-2xl font-bold text-red-400">{stats.overdue}</p></div>
       </div>

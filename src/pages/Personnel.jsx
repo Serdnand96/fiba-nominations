@@ -172,7 +172,7 @@ export default function Personnel() {
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
-        <h2 className="text-2xl font-bold text-white">{t('personnel.title')}</h2>
+        <h2 className="text-2xl font-bold text-ink-900 dark:text-white">{t('personnel.title')}</h2>
         {canEdit && (
           <div className="flex gap-2">
             <button onClick={() => setShowImport(true)} className="btn-fiba-ghost">
@@ -195,7 +195,7 @@ export default function Personnel() {
         ].map(s => (
           <div key={s.label} className="fiba-stat">
             <p className="text-xs text-fiba-muted">{s.label}</p>
-            <p className="text-2xl font-bold text-white">{s.value}</p>
+            <p className="text-2xl font-bold text-ink-900 dark:text-white">{s.value}</p>
           </div>
         ))}
       </div>
@@ -262,7 +262,7 @@ export default function Personnel() {
       {showModal && (
         <div className="fiba-modal-overlay">
           <div className="fiba-modal max-w-md p-6">
-            <h3 className="text-lg font-bold text-white mb-4">{editing ? t('personnel.editPerson') : t('personnel.addPersonTitle')}</h3>
+            <h3 className="text-lg font-bold text-ink-900 dark:text-white mb-4">{editing ? t('personnel.editPerson') : t('personnel.addPersonTitle')}</h3>
             <form onSubmit={handleSubmit} className="space-y-3">
               <input required placeholder={t('personnel.name')} value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} className="fiba-input" />
               <input required type="email" placeholder={t('personnel.email')} value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} className="fiba-input" />
@@ -295,16 +295,16 @@ export default function Personnel() {
                   <span className="inline-block px-2 py-0.5 rounded text-xs font-medium bg-emerald-500/20 text-emerald-400">TD</span>
                   {availPerson.country && <span className="text-xs text-fiba-muted/60">{availPerson.country}</span>}
                 </div>
-                <h3 className="text-lg font-bold text-white">{availPerson.name}</h3>
+                <h3 className="text-lg font-bold text-ink-900 dark:text-white">{availPerson.name}</h3>
                 <p className="text-sm text-fiba-muted">{availPerson.email}</p>
               </div>
-              <button onClick={() => setAvailPerson(null)} className="p-1.5 rounded hover:bg-fiba-surface text-fiba-muted hover:text-white">
+              <button onClick={() => setAvailPerson(null)} className="p-1.5 rounded hover:bg-fiba-surface text-fiba-muted hover:text-ink-900 dark:text-white">
                 <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
               </button>
             </div>
 
             <div className="flex items-center justify-between px-6 py-3 border-b border-fiba-border bg-fiba-surface/50">
-              <h4 className="text-sm font-semibold text-gray-300">{t('availability.tab')}</h4>
+              <h4 className="text-sm font-semibold text-ink-700 dark:text-gray-300">{t('availability.tab')}</h4>
               {canEditAvail && (
                 <button onClick={openCreateAvail} className="btn-fiba text-xs px-3 py-1.5">
                   {t('availability.addAvailability')}
@@ -337,7 +337,7 @@ export default function Personnel() {
                           </div>
                         )}
                       </div>
-                      <div className="text-sm text-gray-300">
+                      <div className="text-sm text-ink-700 dark:text-gray-300">
                         {rec.type === 'event_specific' ? (
                           <span>{rec.competition?.name || rec.competition_id}</span>
                         ) : (
@@ -358,18 +358,18 @@ export default function Personnel() {
       {showAvailModal && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[60]">
           <div className="fiba-modal max-w-md p-6">
-            <h3 className="text-lg font-bold text-white mb-4">
+            <h3 className="text-lg font-bold text-ink-900 dark:text-white mb-4">
               {editingAvail ? t('availability.editAvailability') : t('availability.newAvailability')}
             </h3>
             <form onSubmit={handleAvailSubmit} className="space-y-3">
               {/* Type toggle */}
               <div className="flex bg-fiba-surface rounded-lg p-0.5">
                 <button type="button" onClick={() => setAvailForm(f => ({ ...f, type: 'event_specific' }))}
-                  className={`flex-1 px-3 py-2 rounded-md text-xs font-medium transition-colors ${availForm.type === 'event_specific' ? 'bg-fiba-accent text-fiba-dark' : 'text-fiba-muted'}`}>
+                  className={`flex-1 px-3 py-2 rounded-md text-xs font-medium transition-colors ${availForm.type === 'event_specific' ? 'bg-fiba-accent text-white' : 'text-fiba-muted'}`}>
                   {t('availability.eventSpecific')}
                 </button>
                 <button type="button" onClick={() => setAvailForm(f => ({ ...f, type: 'date_range' }))}
-                  className={`flex-1 px-3 py-2 rounded-md text-xs font-medium transition-colors ${availForm.type === 'date_range' ? 'bg-fiba-accent text-fiba-dark' : 'text-fiba-muted'}`}>
+                  className={`flex-1 px-3 py-2 rounded-md text-xs font-medium transition-colors ${availForm.type === 'date_range' ? 'bg-fiba-accent text-white' : 'text-fiba-muted'}`}>
                   {t('availability.dateRange')}
                 </button>
               </div>
@@ -495,8 +495,8 @@ function ImportView({ onClose }) {
     <div className="fixed inset-0 bg-black/60 flex items-start justify-center pt-16 z-50">
       <div className="fiba-modal max-w-2xl p-6">
         <div className="flex justify-between items-center mb-4">
-          <h3 className="text-lg font-bold text-white">{t('personnel.importTitle')}</h3>
-          <button onClick={onClose} className="text-fiba-muted hover:text-white text-xl">&times;</button>
+          <h3 className="text-lg font-bold text-ink-900 dark:text-white">{t('personnel.importTitle')}</h3>
+          <button onClick={onClose} className="text-fiba-muted hover:text-ink-900 dark:text-white text-xl">&times;</button>
         </div>
 
         <div className="flex border-b border-fiba-border mb-4">
@@ -524,7 +524,7 @@ function ImportView({ onClose }) {
             </div>
 
             <div className="mt-6">
-              <h4 className="text-sm font-medium text-gray-300 mb-2">{t('personnel.columnFormat')}</h4>
+              <h4 className="text-sm font-medium text-ink-700 dark:text-gray-300 mb-2">{t('personnel.columnFormat')}</h4>
               <table className="w-full text-xs border border-fiba-border rounded">
                 <thead className="bg-fiba-surface">
                   <tr>
@@ -562,7 +562,7 @@ function ImportView({ onClose }) {
           <div>
             {file ? (
               <>
-                <p className="text-sm text-fiba-muted mb-4">{t('personnel.file')}: <strong className="text-white">{file.name}</strong> ({(file.size / 1024).toFixed(1)} KB)</p>
+                <p className="text-sm text-fiba-muted mb-4">{t('personnel.file')}: <strong className="text-ink-900 dark:text-white">{file.name}</strong> ({(file.size / 1024).toFixed(1)} KB)</p>
                 <div className="flex justify-end">
                   <button onClick={handleImport} disabled={loading}
                     className="btn-fiba disabled:opacity-50">
@@ -594,7 +594,7 @@ function ImportView({ onClose }) {
             </div>
             {result.errors.length > 0 && (
               <div>
-                <h4 className="text-sm font-medium text-gray-300 mb-2">{t('personnel.errorDetail')}</h4>
+                <h4 className="text-sm font-medium text-ink-700 dark:text-gray-300 mb-2">{t('personnel.errorDetail')}</h4>
                 <div className="max-h-40 overflow-y-auto border border-fiba-border rounded">
                   <table className="w-full text-xs">
                     <thead className="bg-fiba-surface sticky top-0">

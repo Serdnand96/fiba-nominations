@@ -115,14 +115,14 @@ export default function Employees() {
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
-        <h2 className="text-2xl font-bold text-white">{t('employees.title')}</h2>
+        <h2 className="text-2xl font-bold text-ink-900 dark:text-white">{t('employees.title')}</h2>
         {canEdit && (
           <button onClick={openNew} className="btn-fiba">{t('employees.newEmployee')}</button>
         )}
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
-        <div className="fiba-stat"><p className="text-xs text-fiba-muted">{t('employees.total')}</p><p className="text-2xl font-bold text-white">{stats.total}</p></div>
+        <div className="fiba-stat"><p className="text-xs text-fiba-muted">{t('employees.total')}</p><p className="text-2xl font-bold text-ink-900 dark:text-white">{stats.total}</p></div>
         <div className="fiba-stat"><p className="text-xs text-fiba-muted">{t('employees.active')}</p><p className="text-2xl font-bold text-emerald-400">{stats.active}</p></div>
         <div className="fiba-stat"><p className="text-xs text-fiba-muted">{t('employees.departments')}</p><p className="text-2xl font-bold text-blue-400">{stats.departments}</p></div>
       </div>
@@ -160,13 +160,13 @@ export default function Employees() {
           <tbody>
             {filtered.map(e => (
               <tr key={e.id} className={!e.active ? 'opacity-50' : ''}>
-                <td className="px-4 py-3 font-medium text-white">{e.name}</td>
+                <td className="px-4 py-3 font-medium text-ink-900 dark:text-white">{e.name}</td>
                 <td className="px-4 py-3 text-fiba-muted text-sm">{e.email || '—'}</td>
                 <td className="px-4 py-3 text-sm">{e.position || '—'}</td>
                 <td className="px-4 py-3 text-sm">{e.department || '—'}</td>
                 <td className="px-4 py-3 text-sm">{e.phone || '—'}</td>
                 <td className="px-4 py-3">
-                  <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${e.active ? 'bg-emerald-500/20 text-emerald-400' : 'bg-gray-500/20 text-gray-400'}`}>
+                  <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${e.active ? 'bg-emerald-500/20 text-emerald-400' : 'bg-gray-500/20 text-ink-500 dark:text-gray-400'}`}>
                     {e.active ? t('employees.active') : t('employees.inactive')}
                   </span>
                 </td>
@@ -193,7 +193,7 @@ export default function Employees() {
       {showForm && (
         <div className="fiba-modal-overlay">
           <div className="fiba-modal max-w-xl p-6">
-            <h3 className="text-lg font-bold text-white mb-4">
+            <h3 className="text-lg font-bold text-ink-900 dark:text-white mb-4">
               {editing ? t('employees.editEmployee') : t('employees.newEmployee')}
             </h3>
             <form onSubmit={handleSubmit} className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -244,7 +244,7 @@ export default function Employees() {
               </div>
               <div className="col-span-2 flex justify-end gap-3 pt-2">
                 <button type="button" onClick={() => setShowForm(false)}
-                  className="px-4 py-2 text-sm text-fiba-muted hover:text-white">
+                  className="px-4 py-2 text-sm text-fiba-muted hover:text-ink-900 dark:text-white">
                   {t('common.cancel')}
                 </button>
                 <button type="submit" disabled={saving} className="btn-fiba disabled:opacity-50">

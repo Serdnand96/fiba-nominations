@@ -57,19 +57,21 @@ export default {
         danger:  { 50:'#fef3f2', 100:'#fee4e2', 500:'#f04438', 600:'#d92d20', 700:'#b42318' },
         info:    { 50:'#eff8ff', 100:'#d1e9ff', 500:'#2e90fa', 600:'#1570ef', 700:'#175cd3' },
 
-        // ── Legacy aliases: kept so existing fiba-* classes still compile. ──
-        // Mapped to the new palette so the look approaches the new design even
-        // before each page is migrated to the new components.
+        // ── Legacy aliases: dark-aware via CSS variables. ──
+        // Each fiba-* token resolves to a light value by default and a dark
+        // value under `.dark`. See `:root` and `.dark` in src/index.css.
+        // This keeps not-yet-migrated pages legible in both themes without
+        // touching their markup.
         fiba: {
-          dark:          '#0c2340',  // navy-900
-          darker:        '#081628',  // navy-950
-          card:          '#142c4e',  // navy-800
-          border:        '#1a3668',  // navy-700
-          muted:         '#9aa3b2',  // ink-400
-          accent:        '#F57C2A',  // basketball-500
+          dark:          'rgb(var(--c-fiba-dark) / <alpha-value>)',
+          darker:        'rgb(var(--c-fiba-darker) / <alpha-value>)',
+          card:          'rgb(var(--c-fiba-card) / <alpha-value>)',
+          border:        'rgb(var(--c-fiba-border) / <alpha-value>)',
+          muted:         'rgb(var(--c-fiba-muted) / <alpha-value>)',
+          accent:        '#F57C2A',  // basketball-500 (same both modes)
           'accent-hover':'#d96a1a',  // basketball-600
-          surface:       '#1a3668',  // navy-700
-          'surface-2':   '#224680',  // navy-600
+          surface:       'rgb(var(--c-fiba-surface) / <alpha-value>)',
+          'surface-2':   'rgb(var(--c-fiba-surface-2) / <alpha-value>)',
         },
       },
       boxShadow: {

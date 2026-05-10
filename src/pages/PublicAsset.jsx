@@ -7,7 +7,7 @@ const STATUS_LABEL = {
   available:   { color: 'text-emerald-400', icon: '✓' },
   in_use:      { color: 'text-blue-400', icon: '→' },
   maintenance: { color: 'text-yellow-400', icon: '⚙' },
-  retired:     { color: 'text-gray-400', icon: '✕' },
+  retired:     { color: 'text-ink-500 dark:text-gray-400', icon: '✕' },
 }
 
 export default function PublicAsset() {
@@ -34,7 +34,7 @@ export default function PublicAsset() {
   if (error || !asset) return (
     <div className="min-h-screen bg-fiba-dark flex items-center justify-center p-6">
       <div className="text-center">
-        <h1 className="text-xl font-bold text-white mb-2">{t('assets.notFound')}</h1>
+        <h1 className="text-xl font-bold text-ink-900 dark:text-white mb-2">{t('assets.notFound')}</h1>
         <p className="text-fiba-muted text-sm">ID: {id}</p>
       </div>
     </div>
@@ -47,7 +47,7 @@ export default function PublicAsset() {
       <div className="max-w-md w-full">
         <div className="text-center mb-6">
           <div className="w-12 h-12 mx-auto bg-fiba-accent rounded-xl flex items-center justify-center mb-3">
-            <span className="text-2xl text-fiba-dark font-bold">F</span>
+            <span className="text-2xl text-white font-bold">F</span>
           </div>
           <p className="text-fiba-muted text-xs">FIBA Americas Inventory</p>
         </div>
@@ -57,7 +57,7 @@ export default function PublicAsset() {
             <img src={asset.photo_url} alt={asset.name} className="w-full rounded-lg mb-4 aspect-square object-cover" />
           )}
 
-          <h1 className="text-2xl font-bold text-white mb-1">{asset.name}</h1>
+          <h1 className="text-2xl font-bold text-ink-900 dark:text-white mb-1">{asset.name}</h1>
           {asset.brand && <p className="text-fiba-muted text-sm mb-3">{asset.brand} {asset.model}</p>}
 
           <div className={`text-lg font-bold mb-4 ${statusStyle.color}`}>
@@ -86,7 +86,7 @@ function Row({ k, v, mono }) {
   return (
     <div className="flex justify-between gap-3">
       <dt className="text-fiba-muted shrink-0">{k}</dt>
-      <dd className={`text-white text-right ${mono ? 'font-mono text-xs' : ''}`}>{v}</dd>
+      <dd className={`text-ink-900 dark:text-white text-right ${mono ? 'font-mono text-xs' : ''}`}>{v}</dd>
     </div>
   )
 }

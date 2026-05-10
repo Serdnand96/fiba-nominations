@@ -99,7 +99,7 @@ export default function Competitions() {
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
-        <h2 className="text-2xl font-bold text-white">{t('competitions.title')}</h2>
+        <h2 className="text-2xl font-bold text-ink-900 dark:text-white">{t('competitions.title')}</h2>
         {canEdit && (
           <button onClick={openCreate} className="btn-fiba">
             {t('competitions.newCompetition')}
@@ -121,7 +121,7 @@ export default function Competitions() {
           />
           {search && (
             <button onClick={() => setSearch('')}
-              className="absolute right-2 top-1/2 -translate-y-1/2 text-fiba-muted hover:text-white">
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-fiba-muted hover:text-ink-900 dark:text-white">
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
               </svg>
@@ -197,7 +197,7 @@ export default function Competitions() {
       {showModal && (
         <div className="fiba-modal-overlay">
           <div className="fiba-modal max-w-md p-6">
-            <h3 className="text-lg font-bold text-white mb-4">{editing ? t('competitions.editCompetition') : t('competitions.newCompetitionTitle')}</h3>
+            <h3 className="text-lg font-bold text-ink-900 dark:text-white mb-4">{editing ? t('competitions.editCompetition') : t('competitions.newCompetitionTitle')}</h3>
             <form onSubmit={handleSubmit} className="space-y-3">
               <input required placeholder={t('competitions.name')} value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} className="fiba-input" />
               <select value={form.template_key} onChange={e => setForm(f => ({ ...f, template_key: e.target.value }))} className="fiba-select">

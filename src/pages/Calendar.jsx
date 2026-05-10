@@ -241,7 +241,7 @@ export default function Calendar() {
   return (
     <div className="relative">
       <div className="flex items-center justify-between mb-4">
-        <h2 className="text-2xl font-bold text-white">{t('calendar.title')}</h2>
+        <h2 className="text-2xl font-bold text-ink-900 dark:text-white">{t('calendar.title')}</h2>
         {canEdit && (
           <div className="flex gap-2">
             <button onClick={openCreateEvent} className="btn-fiba">
@@ -255,11 +255,11 @@ export default function Calendar() {
       <div className="flex items-center gap-4 mb-4">
         <div className="flex bg-fiba-surface rounded-lg p-0.5">
           <button onClick={() => setView('year')}
-            className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${view === 'year' ? 'bg-fiba-accent text-fiba-dark' : 'text-fiba-muted'}`}>
+            className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${view === 'year' ? 'bg-fiba-accent text-white' : 'text-fiba-muted'}`}>
             {t('calendar.year')}
           </button>
           <button onClick={() => setView('month')}
-            className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${view === 'month' ? 'bg-fiba-accent text-fiba-dark' : 'text-fiba-muted'}`}>
+            className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${view === 'month' ? 'bg-fiba-accent text-white' : 'text-fiba-muted'}`}>
             {t('calendar.month')}
           </button>
         </div>
@@ -269,7 +269,7 @@ export default function Calendar() {
             <button onClick={prevMonth} className="p-1 rounded hover:bg-fiba-surface">
               <svg className="w-5 h-5 text-fiba-muted" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
             </button>
-            <span className="text-sm font-semibold text-gray-300 w-40 text-center">{MONTHS[calMonth]} {calYear}</span>
+            <span className="text-sm font-semibold text-ink-700 dark:text-gray-300 w-40 text-center">{MONTHS[calMonth]} {calYear}</span>
             <button onClick={nextMonth} className="p-1 rounded hover:bg-fiba-surface">
               <svg className="w-5 h-5 text-fiba-muted" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
             </button>
@@ -281,7 +281,7 @@ export default function Calendar() {
       <div className="flex flex-wrap gap-2 mb-6">
         {COMP_TYPES.map(ct => (
           <button key={ct.key} onClick={() => setFilter(ct.key)}
-            className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors border ${filter === ct.key ? 'text-white border-transparent' : 'bg-fiba-surface text-fiba-muted border-fiba-border hover:bg-fiba-surface-2'}`}
+            className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors border ${filter === ct.key ? 'text-ink-900 dark:text-white border-transparent' : 'bg-fiba-surface text-fiba-muted border-fiba-border hover:bg-fiba-surface-2'}`}
             style={filter === ct.key ? { backgroundColor: ct.color || '#374151', borderColor: ct.color || '#374151' } : {}}>
             <span className="inline-block w-1.5 h-1.5 rounded-full mr-1.5 align-middle"
               style={{ backgroundColor: filter === ct.key ? '#fff' : (ct.color || '#9CA3AF') }} />
@@ -298,7 +298,7 @@ export default function Calendar() {
             return (
               <div key={idx} className="bg-fiba-card rounded-xl border border-fiba-border overflow-hidden">
                 <div className="px-4 py-2.5 bg-fiba-surface border-b border-fiba-border flex justify-between items-center">
-                  <h3 className="text-sm font-semibold text-gray-300">{monthName}</h3>
+                  <h3 className="text-sm font-semibold text-ink-700 dark:text-gray-300">{monthName}</h3>
                   <span className="text-xs text-fiba-muted/60">{events.length} {events.length !== 1 ? t('calendar.events') : t('calendar.event')}</span>
                 </div>
                 <div className="divide-y divide-fiba-border">
@@ -308,7 +308,7 @@ export default function Calendar() {
                       className="w-full text-left px-4 py-2.5 hover:bg-fiba-surface transition-colors flex items-center gap-3 group">
                       <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: getTypeColor(ev.competition_type) }} />
                       <div className="flex-1 min-w-0">
-                        <div className="text-sm font-medium text-white truncate group-hover:text-fiba-accent">{ev.short_name || ev.name}</div>
+                        <div className="text-sm font-medium text-ink-900 dark:text-white truncate group-hover:text-fiba-accent">{ev.short_name || ev.name}</div>
                         <div className="flex items-center gap-2 mt-0.5">
                           {formatDateRange(ev) ? (
                             <span className="text-xs text-fiba-muted/60">{formatDateRange(ev)}</span>
@@ -348,13 +348,13 @@ export default function Calendar() {
               const isToday = day === today.getDate() && calMonth === today.getMonth() && calYear === today.getFullYear()
               return (
                 <div key={day} className="min-h-[100px] border-b border-r border-fiba-border/50 p-1">
-                  <div className={`text-xs font-medium mb-1 w-6 h-6 flex items-center justify-center rounded-full ${isToday ? 'bg-red-500 text-white' : 'text-fiba-muted'}`}>
+                  <div className={`text-xs font-medium mb-1 w-6 h-6 flex items-center justify-center rounded-full ${isToday ? 'bg-red-500 text-ink-900 dark:text-white' : 'text-fiba-muted'}`}>
                     {day}
                   </div>
                   <div className="space-y-0.5">
                     {dayEvents.slice(0, 3).map(ev => (
                       <button key={ev.id} onClick={() => openPanel(ev)}
-                        className="w-full text-left px-1 py-0.5 rounded text-[10px] font-medium truncate hover:opacity-80 transition-opacity text-white"
+                        className="w-full text-left px-1 py-0.5 rounded text-[10px] font-medium truncate hover:opacity-80 transition-opacity text-ink-900 dark:text-white"
                         style={{ backgroundColor: getTypeColor(ev.competition_type) }}
                         title={ev.name}>
                         {ev.short_name || ev.name}
@@ -377,7 +377,7 @@ export default function Calendar() {
                 <div className="flex flex-wrap gap-2">
                   {tbdEvents.map(ev => (
                     <button key={ev.id} onClick={() => openPanel(ev)}
-                      className="flex items-center gap-1.5 px-2 py-1 rounded-full text-xs border border-fiba-border hover:bg-fiba-surface transition-colors text-gray-300">
+                      className="flex items-center gap-1.5 px-2 py-1 rounded-full text-xs border border-fiba-border hover:bg-fiba-surface transition-colors text-ink-700 dark:text-gray-300">
                       <span className="w-2 h-2 rounded-full" style={{ backgroundColor: getTypeColor(ev.competition_type) }} />
                       {ev.short_name || ev.name}
                     </button>
@@ -397,7 +397,7 @@ export default function Calendar() {
             <div className="flex items-start justify-between p-6 border-b border-fiba-border">
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 mb-1">
-                  <span className="inline-block px-2 py-0.5 rounded text-xs font-medium text-white"
+                  <span className="inline-block px-2 py-0.5 rounded text-xs font-medium text-ink-900 dark:text-white"
                     style={{ backgroundColor: getTypeColor(panelData?.competition_type || selectedEvent.competition_type) }}>
                     {panelData?.competition_type || selectedEvent.competition_type}
                   </span>
@@ -405,7 +405,7 @@ export default function Calendar() {
                     {panelData?.template_key || selectedEvent.template_key || 'GENERIC'}
                   </span>
                 </div>
-                <h3 className="text-lg font-bold text-white">{panelData?.name || selectedEvent.name}</h3>
+                <h3 className="text-lg font-bold text-ink-900 dark:text-white">{panelData?.name || selectedEvent.name}</h3>
                 <p className="text-sm text-fiba-muted mt-1">{formatFullDate(panelData || selectedEvent)}</p>
                 {(panelData?.location || selectedEvent.location) && (
                   <p className="text-sm text-fiba-muted/60 mt-0.5">{panelData?.location || selectedEvent.location}</p>
@@ -425,7 +425,7 @@ export default function Calendar() {
                   </>
                 )}
                 <button onClick={closePanel}
-                  className="p-1.5 rounded hover:bg-fiba-surface text-fiba-muted hover:text-white">
+                  className="p-1.5 rounded hover:bg-fiba-surface text-fiba-muted hover:text-ink-900 dark:text-white">
                   <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
                 </button>
               </div>
@@ -436,7 +436,7 @@ export default function Calendar() {
             ) : (
               <div className="flex-1 overflow-auto p-6 space-y-6">
                 <div>
-                  <h4 className="text-sm font-semibold text-gray-300 mb-3">{t('calendar.assignedStaff')}</h4>
+                  <h4 className="text-sm font-semibold text-ink-700 dark:text-gray-300 mb-3">{t('calendar.assignedStaff')}</h4>
                   {(!panelData?.assignments || panelData.assignments.length === 0) ? (
                     <p className="text-sm text-fiba-muted">{t('calendar.noAssignments')}</p>
                   ) : (
@@ -445,7 +445,7 @@ export default function Calendar() {
                         <div key={a.id} className="flex items-center justify-between bg-fiba-surface/50 rounded-lg px-3 py-2">
                           <div className="flex items-center gap-2">
                             {a.personnel?.id && a.role === 'TD' && <AvailDot personnelId={a.personnel.id} />}
-                            <span className="text-sm font-medium text-white">{a.personnel?.name || 'Staff'}</span>
+                            <span className="text-sm font-medium text-ink-900 dark:text-white">{a.personnel?.name || 'Staff'}</span>
                             <span className={`inline-block px-1.5 py-0.5 rounded text-xs font-medium ${a.role === 'VGO' ? 'bg-purple-500/20 text-purple-400' : 'bg-emerald-500/20 text-emerald-400'}`}>{a.role}</span>
                           </div>
                           {canEdit && (
@@ -461,7 +461,7 @@ export default function Calendar() {
                 </div>
 
                 {canEdit && <div>
-                  <h4 className="text-sm font-semibold text-gray-300 mb-3">{t('calendar.addStaff')}</h4>
+                  <h4 className="text-sm font-semibold text-ink-700 dark:text-gray-300 mb-3">{t('calendar.addStaff')}</h4>
                   <div className="space-y-3">
                     <div className="relative" ref={dropdownRef}>
                       <input type="text" placeholder={t('calendar.searchPersonnel')}
@@ -504,7 +504,7 @@ export default function Calendar() {
 
             <div className="p-6 border-t border-fiba-border">
               <button onClick={() => navigate(`/nominations?competition=${panelData?.id || selectedEvent.id}`)}
-                className="w-full bg-fiba-accent text-fiba-dark px-4 py-2.5 rounded-lg text-sm font-medium hover:bg-fiba-accent-hover">
+                className="w-full bg-fiba-accent text-white px-4 py-2.5 rounded-lg text-sm font-medium hover:bg-fiba-accent-hover">
                 {t('calendar.generateNominations')}
               </button>
             </div>
@@ -516,7 +516,7 @@ export default function Calendar() {
       {showEventModal && (
         <div className="fiba-modal-overlay">
           <div className="fiba-modal max-w-lg p-6 max-h-[85vh] overflow-y-auto">
-            <h3 className="text-lg font-bold text-white mb-4">{editingEvent ? t('calendar.editEvent') : t('calendar.newEventTitle')}</h3>
+            <h3 className="text-lg font-bold text-ink-900 dark:text-white mb-4">{editingEvent ? t('calendar.editEvent') : t('calendar.newEventTitle')}</h3>
             <form onSubmit={handleEventSubmit} className="space-y-3">
               <input required placeholder={t('calendar.eventName')} value={eventForm.name}
                 onChange={e => setEventForm(f => ({ ...f, name: e.target.value }))}
@@ -570,7 +570,7 @@ export default function Calendar() {
                 </div>
               </div>
 
-              <label className="flex items-center gap-2 text-sm text-gray-300">
+              <label className="flex items-center gap-2 text-sm text-ink-700 dark:text-gray-300">
                 <input type="checkbox" checked={eventForm.is_tbd}
                   onChange={e => setEventForm(f => ({ ...f, is_tbd: e.target.checked }))}
                   className="rounded" />

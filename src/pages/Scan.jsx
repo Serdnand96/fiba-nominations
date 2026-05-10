@@ -63,7 +63,7 @@ export default function Scan() {
 
   return (
     <div>
-      <h2 className="text-2xl font-bold text-white mb-6">{t('scan.title')}</h2>
+      <h2 className="text-2xl font-bold text-ink-900 dark:text-white mb-6">{t('scan.title')}</h2>
       <p className="text-sm text-fiba-muted mb-4">{t('scan.instructions')}</p>
 
       <div id={containerId} style={{ maxWidth: 500 }} className="bg-fiba-surface rounded-xl overflow-hidden" />

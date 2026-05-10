@@ -11,7 +11,7 @@ const STATUS_BADGES = {
   available:   'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40',
   in_use:      'bg-blue-500/20 text-blue-400 border border-blue-500/40',
   maintenance: 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/40',
-  retired:     'bg-gray-500/20 text-gray-400 border border-gray-500/40',
+  retired:     'bg-gray-500/20 text-ink-500 dark:text-gray-400 border border-gray-500/40',
 }
 
 export default function AssetDetail() {
@@ -116,7 +116,7 @@ export default function AssetDetail() {
 
       <div className="flex items-start justify-between mb-6">
         <div>
-          <h2 className="text-2xl font-bold text-white">{asset.name}</h2>
+          <h2 className="text-2xl font-bold text-ink-900 dark:text-white">{asset.name}</h2>
           {asset.brand && (
             <p className="text-fiba-muted text-sm">{asset.brand} {asset.model}</p>
           )}
@@ -172,7 +172,7 @@ export default function AssetDetail() {
         {/* Info */}
         <div className="col-span-2 space-y-4">
           <div className="fiba-card p-4">
-            <h3 className="text-sm font-bold text-white mb-3">{t('assets.details')}</h3>
+            <h3 className="text-sm font-bold text-ink-900 dark:text-white mb-3">{t('assets.details')}</h3>
             <dl className="grid grid-cols-2 gap-x-6 gap-y-3 text-sm">
               <Row k={t('assets.serial')} v={asset.serial_number} />
               <Row k={t('assets.category')} v={asset.category} />
@@ -206,7 +206,7 @@ export default function AssetDetail() {
           {/* Loan History */}
           {asset.loan_history?.length > 0 && (
             <div className="fiba-card p-4">
-              <h3 className="text-sm font-bold text-white mb-3">{t('loans.history')}</h3>
+              <h3 className="text-sm font-bold text-ink-900 dark:text-white mb-3">{t('loans.history')}</h3>
               <table className="w-full text-sm">
                 <thead className="text-xs text-fiba-muted">
                   <tr>
@@ -240,7 +240,7 @@ export default function AssetDetail() {
       {showLoanForm && (
         <div className="fiba-modal-overlay">
           <div className="fiba-modal max-w-md p-6">
-            <h3 className="text-lg font-bold text-white mb-4">{t('loans.newLoan')}</h3>
+            <h3 className="text-lg font-bold text-ink-900 dark:text-white mb-4">{t('loans.newLoan')}</h3>
             <form onSubmit={handleCreateLoan} className="space-y-3">
               <div>
                 <div className="flex items-center justify-between mb-1">
@@ -297,7 +297,7 @@ export default function AssetDetail() {
                   className="fiba-input" />
               </div>
               <div className="flex justify-end gap-3 pt-2">
-                <button type="button" onClick={() => setShowLoanForm(false)} className="px-4 py-2 text-sm text-fiba-muted hover:text-white">
+                <button type="button" onClick={() => setShowLoanForm(false)} className="px-4 py-2 text-sm text-fiba-muted hover:text-ink-900 dark:text-white">
                   {t('common.cancel')}
                 </button>
                 <button type="submit" className="btn-fiba">{t('common.create')}</button>
@@ -314,7 +314,7 @@ function Row({ k, v, full }) {
   return (
     <div className={full ? 'col-span-2' : ''}>
       <dt className="text-xs text-fiba-muted">{k}</dt>
-      <dd className="text-white">{v || '—'}</dd>
+      <dd className="text-ink-900 dark:text-white">{v || '—'}</dd>
     </div>
   )
 }

@@ -113,7 +113,7 @@ export default function Users() {
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
-        <h2 className="text-xl font-bold text-white">{t('users.title')}</h2>
+        <h2 className="text-xl font-bold text-ink-900 dark:text-white">{t('users.title')}</h2>
         {canEdit && (
           <button onClick={() => setShowForm(!showForm)}
             className="btn-fiba">
@@ -165,7 +165,7 @@ export default function Users() {
             <tbody>
               {users.map(u => (
                 <tr key={u.id} className={permUser?.id === u.id ? 'bg-fiba-accent/10' : ''}>
-                  <td className="px-6 py-4 text-sm text-white">
+                  <td className="px-6 py-4 text-sm text-ink-900 dark:text-white">
                     <div className="flex items-center gap-2">
                       {u.email}
                       {u.is_superadmin && (
@@ -216,10 +216,10 @@ export default function Users() {
           <div className="fiba-modal max-w-md p-6">
             <div className="flex justify-between items-start mb-4">
               <div>
-                <h3 className="text-lg font-bold text-white">{t('permissions.editPermissions')}</h3>
+                <h3 className="text-lg font-bold text-ink-900 dark:text-white">{t('permissions.editPermissions')}</h3>
                 <p className="text-sm text-fiba-muted">{permUser.email}</p>
               </div>
-              <button onClick={() => setPermUser(null)} className="text-fiba-muted hover:text-white text-xl">&times;</button>
+              <button onClick={() => setPermUser(null)} className="text-fiba-muted hover:text-ink-900 dark:text-white text-xl">&times;</button>
             </div>
 
             {permLoading ? (

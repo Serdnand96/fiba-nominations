@@ -311,7 +311,7 @@ export default function Transport() {
   if (competitions.length === 0) {
     return (
       <div>
-        <h2 className="text-2xl font-bold text-white mb-6">{lang === 'es' ? 'Transporte' : 'Transport'}</h2>
+        <h2 className="text-2xl font-bold text-ink-900 dark:text-white mb-6">{lang === 'es' ? 'Transporte' : 'Transport'}</h2>
         <div className="text-center py-16 text-fiba-muted">
           <p className="text-sm">{lang === 'es' ? 'No hay competencias disponibles.' : 'No competitions available.'}</p>
           <p className="text-xs mt-1">{lang === 'es' ? 'Crea una competencia en el Calendario primero.' : 'Create a competition in Calendar first.'}</p>
@@ -324,7 +324,7 @@ export default function Transport() {
     <div>
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-4">
-          <h2 className="text-2xl font-bold text-white">{lang === 'es' ? 'Transporte' : 'Transport'}</h2>
+          <h2 className="text-2xl font-bold text-ink-900 dark:text-white">{lang === 'es' ? 'Transporte' : 'Transport'}</h2>
           <CompetitionSearch competitions={competitions} value={competitionId} onChange={setCompetitionId} placeholder={lang === 'es' ? 'Buscar competencia...' : 'Search competition...'} />
         </div>
         {tab === 'schedule' && eventId && (
@@ -345,7 +345,7 @@ export default function Transport() {
             {Object.entries(TAB_LABELS).map(([key, label]) => (
               <button key={key} onClick={() => setTab(key)}
                 className={`px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors ${
-                  tab === key ? 'border-fiba-accent text-fiba-accent' : 'border-transparent text-fiba-muted hover:text-gray-300'
+                  tab === key ? 'border-fiba-accent text-fiba-accent' : 'border-transparent text-fiba-muted hover:text-ink-700 dark:text-gray-300'
                 }`}>
                 {label}
               </button>
@@ -419,21 +419,21 @@ export default function Transport() {
                   const { vehicle, trips, driver } = group
                   return (
                     <div key={vid} className="bg-fiba-card rounded-xl border border-fiba-border overflow-hidden">
-                      <div className="bg-blue-900 text-white px-4 py-2.5 flex items-center justify-between">
+                      <div className="bg-blue-900 text-ink-900 dark:text-white px-4 py-2.5 flex items-center justify-between">
                         <div className="flex items-center gap-3">
                           <span className="font-bold text-sm">{vehicle.name}</span>
                           {driver ? (
                             <span className="text-blue-200 text-xs">{lang === 'es' ? 'Chofer' : 'Driver'}: {driver.name} {driver.phone ? `(${driver.phone})` : ''}</span>
                           ) : canEdit ? (
-                            <button onClick={() => setAssigningVehicle(assigningVehicle === vid ? null : vid)} className="text-blue-200 hover:text-white text-xs underline">
+                            <button onClick={() => setAssigningVehicle(assigningVehicle === vid ? null : vid)} className="text-blue-200 hover:text-ink-900 dark:text-white text-xs underline">
                               {lang === 'es' ? 'Asignar chofer' : 'Assign driver'}
                             </button>
                           ) : null}
                         </div>
                         {canEdit && (
                           <div className="flex gap-2">
-                            {driver && <button onClick={() => setAssigningVehicle(assigningVehicle === vid ? null : vid)} className="text-blue-200 hover:text-white text-xs">{lang === 'es' ? 'Cambiar' : 'Change'}</button>}
-                            <button onClick={() => openCreateTrip(vid)} className="bg-fiba-accent hover:bg-fiba-accent-hover text-fiba-dark px-3 py-1 rounded text-xs font-medium">+ {lang === 'es' ? 'Viaje' : 'Trip'}</button>
+                            {driver && <button onClick={() => setAssigningVehicle(assigningVehicle === vid ? null : vid)} className="text-blue-200 hover:text-ink-900 dark:text-white text-xs">{lang === 'es' ? 'Cambiar' : 'Change'}</button>}
+                            <button onClick={() => openCreateTrip(vid)} className="bg-fiba-accent hover:bg-fiba-accent-hover text-white px-3 py-1 rounded text-xs font-medium">+ {lang === 'es' ? 'Viaje' : 'Trip'}</button>
                           </div>
                         )}
                       </div>
@@ -510,7 +510,7 @@ export default function Transport() {
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               <div>
                 <div className="flex items-center justify-between mb-3">
-                  <h3 className="text-lg font-semibold text-white">{lang === 'es' ? 'Vehículos' : 'Vehicles'}</h3>
+                  <h3 className="text-lg font-semibold text-ink-900 dark:text-white">{lang === 'es' ? 'Vehículos' : 'Vehicles'}</h3>
                   {canEdit && <button onClick={openCreateVehicle} className="btn-fiba text-xs px-3 py-1.5">+ {lang === 'es' ? 'Agregar' : 'Add'}</button>}
                 </div>
                 <div className="rounded-xl border border-fiba-border overflow-hidden">
@@ -531,7 +531,7 @@ export default function Transport() {
               </div>
               <div>
                 <div className="flex items-center justify-between mb-3">
-                  <h3 className="text-lg font-semibold text-white">{lang === 'es' ? 'Choferes' : 'Drivers'}</h3>
+                  <h3 className="text-lg font-semibold text-ink-900 dark:text-white">{lang === 'es' ? 'Choferes' : 'Drivers'}</h3>
                   {canEdit && <button onClick={openCreateDriver} className="btn-fiba text-xs px-3 py-1.5">+ {lang === 'es' ? 'Agregar' : 'Add'}</button>}
                 </div>
                 <div className="rounded-xl border border-fiba-border overflow-hidden">
@@ -558,7 +558,7 @@ export default function Transport() {
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               <div>
                 <div className="flex items-center justify-between mb-3">
-                  <h3 className="text-lg font-semibold text-white">{lang === 'es' ? 'Pasajeros por Hotel' : 'Passengers by Hotel'}</h3>
+                  <h3 className="text-lg font-semibold text-ink-900 dark:text-white">{lang === 'es' ? 'Pasajeros por Hotel' : 'Passengers by Hotel'}</h3>
                   {canEdit && <button onClick={() => { setPassengerForm({ name: '', hotel: hotels[0] || '', category: '' }); setShowPassengerModal(true) }} className="btn-fiba text-xs px-3 py-1.5">+ {lang === 'es' ? 'Agregar' : 'Add'}</button>}
                 </div>
                 {hotels.length === 0 && (
@@ -566,7 +566,7 @@ export default function Transport() {
                 )}
                 {hotels.map(hotel => (
                   <div key={hotel} className="bg-fiba-card rounded-xl border border-fiba-border overflow-hidden mb-4">
-                    <div className="bg-gray-800 text-white px-4 py-2 text-sm font-bold">{hotel}</div>
+                    <div className="bg-gray-800 text-ink-900 dark:text-white px-4 py-2 text-sm font-bold">{hotel}</div>
                     {Object.entries(passengersByHotel[hotel] || {}).map(([cat, people]) => (
                       <div key={cat}>
                         <div className="bg-fiba-surface px-4 py-1.5 text-xs font-semibold text-fiba-muted border-b border-fiba-border">{cat}</div>
@@ -586,7 +586,7 @@ export default function Transport() {
               </div>
               <div>
                 <div className="flex items-center justify-between mb-3">
-                  <h3 className="text-lg font-semibold text-white">Venues</h3>
+                  <h3 className="text-lg font-semibold text-ink-900 dark:text-white">Venues</h3>
                   {canEdit && <button onClick={() => setShowVenueModal(true)} className="btn-fiba text-xs px-3 py-1.5">+ {lang === 'es' ? 'Agregar' : 'Add'}</button>}
                 </div>
                 <div className="rounded-xl border border-fiba-border overflow-hidden">
@@ -614,7 +614,7 @@ export default function Transport() {
           {showTripModal && (
             <div className="fiba-modal-overlay">
               <div className="fiba-modal max-w-lg p-6">
-                <h3 className="text-lg font-bold text-white mb-4">{editingTrip ? (lang === 'es' ? 'Editar Viaje' : 'Edit Trip') : (lang === 'es' ? 'Nuevo Viaje' : 'New Trip')}</h3>
+                <h3 className="text-lg font-bold text-ink-900 dark:text-white mb-4">{editingTrip ? (lang === 'es' ? 'Editar Viaje' : 'Edit Trip') : (lang === 'es' ? 'Nuevo Viaje' : 'New Trip')}</h3>
                 <form onSubmit={handleTripSubmit} className="space-y-3">
                   <div className="grid grid-cols-2 gap-3">
                     <div><label className="fiba-label">{lang === 'es' ? 'N° Viaje' : 'Trip #'}</label><input type="number" min={1} value={tripForm.trip_number} onChange={e => setTripForm(f => ({ ...f, trip_number: parseInt(e.target.value) || 1 }))} className="fiba-input" /></div>
@@ -642,7 +642,7 @@ export default function Transport() {
           {showVehicleModal && (
             <div className="fiba-modal-overlay">
               <div className="fiba-modal max-w-sm p-6">
-                <h3 className="text-lg font-bold text-white mb-4">{editingVehicle ? (lang === 'es' ? 'Editar Vehículo' : 'Edit Vehicle') : (lang === 'es' ? 'Nuevo Vehículo' : 'New Vehicle')}</h3>
+                <h3 className="text-lg font-bold text-ink-900 dark:text-white mb-4">{editingVehicle ? (lang === 'es' ? 'Editar Vehículo' : 'Edit Vehicle') : (lang === 'es' ? 'Nuevo Vehículo' : 'New Vehicle')}</h3>
                 <form onSubmit={handleVehicleSubmit} className="space-y-3">
                   <input required placeholder={lang === 'es' ? 'Nombre (ej: Movilidad 1)' : 'Name (e.g. Mobility 1)'} value={vehicleForm.name} onChange={e => setVehicleForm(f => ({ ...f, name: e.target.value }))} className="fiba-input" />
                   <input placeholder={lang === 'es' ? 'Tipo (ej: Van, SUV)' : 'Type (e.g. Van, SUV)'} value={vehicleForm.vehicle_type} onChange={e => setVehicleForm(f => ({ ...f, vehicle_type: e.target.value }))} className="fiba-input" />
@@ -658,7 +658,7 @@ export default function Transport() {
           {showDriverModal && (
             <div className="fiba-modal-overlay">
               <div className="fiba-modal max-w-sm p-6">
-                <h3 className="text-lg font-bold text-white mb-4">{editingDriver ? (lang === 'es' ? 'Editar Chofer' : 'Edit Driver') : (lang === 'es' ? 'Nuevo Chofer' : 'New Driver')}</h3>
+                <h3 className="text-lg font-bold text-ink-900 dark:text-white mb-4">{editingDriver ? (lang === 'es' ? 'Editar Chofer' : 'Edit Driver') : (lang === 'es' ? 'Nuevo Chofer' : 'New Driver')}</h3>
                 <form onSubmit={handleDriverSubmit} className="space-y-3">
                   <input required placeholder={lang === 'es' ? 'Nombre completo' : 'Full name'} value={driverForm.name} onChange={e => setDriverForm(f => ({ ...f, name: e.target.value }))} className="fiba-input" />
                   <input placeholder={lang === 'es' ? 'Teléfono' : 'Phone'} value={driverForm.phone} onChange={e => setDriverForm(f => ({ ...f, phone: e.target.value }))} className="fiba-input" />
@@ -674,7 +674,7 @@ export default function Transport() {
           {showPassengerModal && (
             <div className="fiba-modal-overlay">
               <div className="fiba-modal max-w-sm p-6">
-                <h3 className="text-lg font-bold text-white mb-4">{lang === 'es' ? 'Agregar Pasajero' : 'Add Passenger'}</h3>
+                <h3 className="text-lg font-bold text-ink-900 dark:text-white mb-4">{lang === 'es' ? 'Agregar Pasajero' : 'Add Passenger'}</h3>
                 <form onSubmit={handlePassengerSubmit} className="space-y-3">
                   <input required placeholder={lang === 'es' ? 'Nombre' : 'Name'} value={passengerForm.name} onChange={e => setPassengerForm(f => ({ ...f, name: e.target.value }))} className="fiba-input" />
                   <select value={passengerForm.hotel} onChange={e => setPassengerForm(f => ({ ...f, hotel: e.target.value }))} className="fiba-select">
@@ -694,7 +694,7 @@ export default function Transport() {
           {showVenueModal && (
             <div className="fiba-modal-overlay">
               <div className="fiba-modal max-w-sm p-6">
-                <h3 className="text-lg font-bold text-white mb-4">{lang === 'es' ? 'Agregar Venue' : 'Add Venue'}</h3>
+                <h3 className="text-lg font-bold text-ink-900 dark:text-white mb-4">{lang === 'es' ? 'Agregar Venue' : 'Add Venue'}</h3>
                 <form onSubmit={handleVenueSubmit} className="space-y-3">
                   <input required placeholder={lang === 'es' ? 'Nombre' : 'Name'} value={venueForm.name} onChange={e => setVenueForm(f => ({ ...f, name: e.target.value }))} className="fiba-input" />
                   <select value={venueForm.type} onChange={e => setVenueForm(f => ({ ...f, type: e.target.value }))} className="fiba-select">

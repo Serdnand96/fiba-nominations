@@ -39,7 +39,7 @@ export default function Templates() {
 
   return (
     <div>
-      <h2 className="text-2xl font-bold text-white mb-6">{t('templates.title')}</h2>
+      <h2 className="text-2xl font-bold text-ink-900 dark:text-white mb-6">{t('templates.title')}</h2>
       <div className="rounded-xl border border-fiba-border overflow-hidden">
         <div className="overflow-x-auto">
         <table className="fiba-table">

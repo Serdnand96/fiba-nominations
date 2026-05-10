@@ -322,7 +322,7 @@ export default function Training() {
     <div>
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
-        <h2 className="text-2xl font-bold text-white">{t('training.title')}</h2>
+        <h2 className="text-2xl font-bold text-ink-900 dark:text-white">{t('training.title')}</h2>
         <div className="flex gap-2">
           {canEdit && (
             <button onClick={openImport} className="btn-fiba-ghost">
@@ -352,7 +352,7 @@ export default function Training() {
       <div className="flex gap-1 mb-6 bg-fiba-surface rounded-lg p-1 w-fit">
         {[{ key: 'byDay', label: t('training.byDay') }, { key: 'byTeam', label: t('training.byTeam') }, { key: 'byTd', label: t('training.byTd') }].map(tb => (
           <button key={tb.key} onClick={() => setTab(tb.key)}
-            className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${tab === tb.key ? 'bg-fiba-accent text-fiba-dark' : 'text-fiba-muted hover:text-white'}`}>
+            className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${tab === tb.key ? 'bg-fiba-accent text-white' : 'text-fiba-muted hover:text-ink-900 dark:text-white'}`}>
             {tb.label}
           </button>
         ))}
@@ -370,7 +370,7 @@ export default function Training() {
                   className="px-3 py-1.5 border border-fiba-border rounded-lg text-sm text-fiba-muted disabled:opacity-30 hover:bg-fiba-surface">&larr;</button>
                 <input type="date" value={selectedDate} onChange={e => setSelectedDate(e.target.value)}
                   className="fiba-input px-3 py-1.5 text-sm" />
-                <span className="text-sm font-medium text-gray-300">{formatDateLabel(selectedDate)}</span>
+                <span className="text-sm font-medium text-ink-700 dark:text-gray-300">{formatDateLabel(selectedDate)}</span>
                 <button onClick={nextDate} disabled={dates.indexOf(selectedDate) >= dates.length - 1}
                   className="px-3 py-1.5 border border-fiba-border rounded-lg text-sm text-fiba-muted disabled:opacity-30 hover:bg-fiba-surface">&rarr;</button>
                 <button onClick={() => downloadTrainingPdf('daily', { competition_id: competitionId, date: selectedDate }).catch(err => alert(err.message))}
@@ -446,7 +446,7 @@ export default function Training() {
                       <tbody>
                         {teamSlots.map(slot => (
                           <tr key={slot.id} className={overlappingSlotIds.has(slot.id) ? 'bg-yellow-500/10' : ''}>
-                            <td className="px-4 py-2 text-white">
+                            <td className="px-4 py-2 text-ink-900 dark:text-white">
                               {formatDateLabel(slot.date)}
                               {overlappingSlotIds.has(slot.id) && <span className="ml-1 text-yellow-400 text-xs">&#9888;</span>}
                             </td>
@@ -523,11 +523,11 @@ export default function Training() {
                       <tbody>
                         {tdSlots.map(slot => (
                           <tr key={slot.id}>
-                            <td className="px-4 py-2 text-white">{formatDateLabel(slot.date)}</td>
+                            <td className="px-4 py-2 text-ink-900 dark:text-white">{formatDateLabel(slot.date)}</td>
                             <td className="px-4 py-2 text-fiba-muted">{formatTime(slot.start_time)}</td>
                             <td className="px-4 py-2 text-fiba-muted">{formatTime(slot.end_time)}</td>
                             <td className="px-4 py-2 text-fiba-muted">{slot.venue}</td>
-                            <td className="px-4 py-2 font-medium text-white">{slot.team_label}</td>
+                            <td className="px-4 py-2 font-medium text-ink-900 dark:text-white">{slot.team_label}</td>
                             {canEdit && (
                               <td className="px-4 py-2 text-right">
                                 <button onClick={() => openEditSlot(slot)} className="text-fiba-muted hover:underline text-xs mr-2">{t('common.edit')}</button>
@@ -551,8 +551,8 @@ export default function Training() {
         <div className="fiba-modal-overlay">
           <div className="fiba-modal max-w-md p-6">
             <div className="flex justify-between items-start mb-4">
-              <h3 className="text-lg font-bold text-white">{editingSlot ? t('training.editSlot') : t('training.addSlot')}</h3>
-              <button onClick={() => setShowSlotModal(false)} className="text-fiba-muted hover:text-white text-xl">&times;</button>
+              <h3 className="text-lg font-bold text-ink-900 dark:text-white">{editingSlot ? t('training.editSlot') : t('training.addSlot')}</h3>
+              <button onClick={() => setShowSlotModal(false)} className="text-fiba-muted hover:text-ink-900 dark:text-white text-xl">&times;</button>
             </div>
             <form onSubmit={handleSlotSubmit} className="space-y-3">
               <div>
@@ -618,13 +618,13 @@ export default function Training() {
           <div className="fiba-modal max-w-sm p-6">
             <div className="flex justify-between items-start mb-3">
               <div>
-                <h3 className="text-sm font-bold text-white">{t('training.assignTd')}</h3>
+                <h3 className="text-sm font-bold text-ink-900 dark:text-white">{t('training.assignTd')}</h3>
                 <p className="text-xs text-fiba-muted mt-0.5">
                   {formatDateLabel(assignSlot.date)} | {formatTime(assignSlot.start_time)}-{formatTime(assignSlot.end_time)} | {assignSlot.venue}
                 </p>
-                <p className="text-xs font-medium text-gray-300">{assignSlot.team_label}</p>
+                <p className="text-xs font-medium text-ink-700 dark:text-gray-300">{assignSlot.team_label}</p>
               </div>
-              <button onClick={() => setAssignSlot(null)} className="text-fiba-muted hover:text-white text-xl">&times;</button>
+              <button onClick={() => setAssignSlot(null)} className="text-fiba-muted hover:text-ink-900 dark:text-white text-xl">&times;</button>
             </div>
             {assignedInModal.length > 0 && (
               <div className="mb-4">
@@ -675,8 +675,8 @@ export default function Training() {
         <div className="fiba-modal-overlay">
           <div className="fiba-modal max-w-lg p-6">
             <div className="flex justify-between items-start mb-4">
-              <h3 className="text-lg font-bold text-white">{t('training.importExcel')}</h3>
-              <button onClick={() => setShowImport(false)} className="text-fiba-muted hover:text-white text-xl">&times;</button>
+              <h3 className="text-lg font-bold text-ink-900 dark:text-white">{t('training.importExcel')}</h3>
+              <button onClick={() => setShowImport(false)} className="text-fiba-muted hover:text-ink-900 dark:text-white text-xl">&times;</button>
             </div>
             {importResult ? (
               <div>
@@ -728,7 +728,7 @@ export default function Training() {
                         <thead><tr className="text-fiba-muted"><th className="text-left px-2 py-1">{t('training.date')}</th><th className="text-left px-2 py-1">{t('training.start')}</th><th className="text-left px-2 py-1">{t('training.venue')}</th><th className="text-left px-2 py-1">{t('training.team')}</th></tr></thead>
                         <tbody>
                           {importPreview.preview.map((s, i) => (
-                            <tr key={i} className="border-t border-fiba-border text-gray-300"><td className="px-2 py-1">{s.date}</td><td className="px-2 py-1">{s.start_time}</td><td className="px-2 py-1">{s.venue}</td><td className="px-2 py-1">{s.team_label}</td></tr>
+                            <tr key={i} className="border-t border-fiba-border text-ink-700 dark:text-gray-300"><td className="px-2 py-1">{s.date}</td><td className="px-2 py-1">{s.start_time}</td><td className="px-2 py-1">{s.venue}</td><td className="px-2 py-1">{s.team_label}</td></tr>
                           ))}
                         </tbody>
                       </table>
@@ -757,7 +757,7 @@ export default function Training() {
 
       {/* Toast */}
       {toast && (
-        <div className={`fixed bottom-6 right-6 z-50 px-5 py-3 rounded-lg shadow-lg text-sm font-medium text-white ${
+        <div className={`fixed bottom-6 right-6 z-50 px-5 py-3 rounded-lg shadow-lg text-sm font-medium text-ink-900 dark:text-white ${
           toast.color === 'green' ? 'bg-green-600' : toast.color === 'yellow' ? 'bg-yellow-500' : 'bg-red-600'
         }`}>
           {toast.message}
@@ -796,7 +796,7 @@ function SlotCard({ slot, canEdit, t, conflictTds, isOverlapping, onAssign, onEd
           </div>
         )}
       </div>
-      <div className="text-sm font-bold text-white mb-1">{slot.team_label}</div>
+      <div className="text-sm font-bold text-ink-900 dark:text-white mb-1">{slot.team_label}</div>
       <div className="flex flex-wrap gap-1">
         {assigned.length === 0
           ? <span className="text-[11px] text-fiba-muted italic">{t('training.unassigned')}</span>

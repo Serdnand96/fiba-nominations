@@ -3,7 +3,7 @@
 export default function Generate() {
   return (
     <div>
-      <h2 className="text-2xl font-bold text-white mb-4">Generar Documentos</h2>
+      <h2 className="text-2xl font-bold text-ink-900 dark:text-white mb-4">Generar Documentos</h2>
       <p className="text-fiba-muted">Usa la p&aacute;gina de Nominaciones para generar documentos.</p>
     </div>
   )

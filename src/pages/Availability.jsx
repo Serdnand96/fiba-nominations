@@ -156,7 +156,7 @@ export default function Availability() {
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
-        <h2 className="text-2xl font-bold text-white">{t('availability.title')}</h2>
+        <h2 className="text-2xl font-bold text-ink-900 dark:text-white">{t('availability.title')}</h2>
       </div>
 
       {/* Filters */}
@@ -165,7 +165,7 @@ export default function Availability() {
           {COMP_TYPES.map(type => (
             <button key={type} onClick={() => toggleTypeFilter(type)}
               className={`px-2.5 py-1 rounded-full text-xs font-medium border transition-colors ${
-                typeFilter.includes(type) ? 'bg-fiba-accent text-fiba-dark border-fiba-accent' : 'bg-fiba-surface text-fiba-muted border-fiba-border hover:bg-fiba-surface-2'
+                typeFilter.includes(type) ? 'bg-fiba-accent text-white border-fiba-accent' : 'bg-fiba-surface text-fiba-muted border-fiba-border hover:bg-fiba-surface-2'
               }`}>
               {type}
             </button>
@@ -226,7 +226,7 @@ export default function Availability() {
               <tbody>
                 {filteredTds.map(td => (
                   <tr key={td.id} className="border-t border-fiba-border">
-                    <td className="px-3 py-2 font-medium text-white sticky left-0 bg-fiba-card z-10 border-r border-fiba-border">
+                    <td className="px-3 py-2 font-medium text-ink-900 dark:text-white sticky left-0 bg-fiba-card z-10 border-r border-fiba-border">
                       <div className="flex items-center gap-1.5">
                         <span>{td.name}</span>
                         {td.country && <span className="text-[10px] text-fiba-muted/60">{td.country}</span>}
@@ -284,7 +284,7 @@ export default function Availability() {
       {modal && (
         <div className="fiba-modal-overlay">
           <div className="fiba-modal max-w-sm p-6">
-            <h3 className="text-sm font-bold mb-1 text-white">
+            <h3 className="text-sm font-bold mb-1 text-ink-900 dark:text-white">
               {modal.existing ? t('availability.editAvailability') : t('availability.newAvailability')}
             </h3>
             <p className="text-xs text-fiba-muted mb-4">

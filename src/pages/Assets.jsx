@@ -10,7 +10,7 @@ const STATUS_BADGES = {
   available:   'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40',
   in_use:      'bg-blue-500/20 text-blue-400 border border-blue-500/40',
   maintenance: 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/40',
-  retired:     'bg-gray-500/20 text-gray-400 border border-gray-500/40',
+  retired:     'bg-gray-500/20 text-ink-500 dark:text-gray-400 border border-gray-500/40',
 }
 
 const EMPTY_FORM = {
@@ -128,7 +128,7 @@ export default function Assets() {
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
-        <h2 className="text-2xl font-bold text-white">{t('assets.title')}</h2>
+        <h2 className="text-2xl font-bold text-ink-900 dark:text-white">{t('assets.title')}</h2>
         {canEdit && (
           <button onClick={openNew} className="btn-fiba">{t('assets.newAsset')}</button>
         )}
@@ -144,7 +144,7 @@ export default function Assets() {
         ].map(s => (
           <div key={s.label} className="fiba-stat">
             <p className="text-xs text-fiba-muted">{s.label}</p>
-            <p className={`text-2xl font-bold ${s.color || 'text-white'}`}>{s.value}</p>
+            <p className={`text-2xl font-bold ${s.color || 'text-ink-900 dark:text-white'}`}>{s.value}</p>
           </div>
         ))}
       </div>
@@ -227,7 +227,7 @@ export default function Assets() {
       {showForm && (
         <div className="fiba-modal-overlay">
           <div className="fiba-modal max-w-2xl p-6">
-            <h3 className="text-lg font-bold text-white mb-4">
+            <h3 className="text-lg font-bold text-ink-900 dark:text-white mb-4">
               {editing ? t('assets.editAsset') : t('assets.newAsset')}
             </h3>
             <form onSubmit={handleSubmit} className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -292,7 +292,7 @@ export default function Assets() {
               </div>
               <div className="col-span-2 flex justify-end gap-3 pt-2">
                 <button type="button" onClick={() => setShowForm(false)}
-                  className="px-4 py-2 text-sm text-fiba-muted hover:text-white">
+                  className="px-4 py-2 text-sm text-fiba-muted hover:text-ink-900 dark:text-white">
                   {t('common.cancel')}
                 </button>
                 <button type="submit" disabled={saving} className="btn-fiba disabled:opacity-50">
