@@ -1,111 +1,160 @@
-# FIBA Americas Nominations System
+# FIBA Americas Administration System
 
-Web application to generate nomination and confirmation letters for Video Graphic Operators (VGO) and Technical Delegates (TD) assigned to FIBA Americas competitions.
+Sistema admin de FIBA Americas para gestión de nominaciones de oficiales
+(TDs / VGOs), training, transport, inventario, calendario y staff.
+
+**Producción:** https://www.fibaapp.com (redirect 301 desde el legacy
+`fibaamericascloud.com`).
+
+---
+
+## 📚 Documentación
+
+| Doc                         | Para qué                                                       |
+|-----------------------------|----------------------------------------------------------------|
+| [`CLAUDE.md`](CLAUDE.md)               | **Onboarding para sesiones AI.** Léelo si arrancás de cero. |
+| [`ARCHITECTURE.md`](ARCHITECTURE.md)   | Cómo encajan frontend / backend / DB / storage / deploy.      |
+| [`DEPLOYMENT.md`](DEPLOYMENT.md)       | Pipeline GitHub Actions → DigitalOcean droplet.               |
+| [`DEVELOPMENT.md`](DEVELOPMENT.md)     | Correr el stack local.                                        |
+| [`DESIGN_SYSTEM.md`](DESIGN_SYSTEM.md) | Tokens, componentes UI, modo oscuro, migración pendiente.     |
+| [`SECURITY_RUNBOOK.md`](SECURITY_RUNBOOK.md) | Acciones manuales pendientes del último pen-test.         |
+
+---
 
 ## Stack
 
-- **Frontend:** React + Tailwind CSS (Vite)
-- **Backend:** FastAPI (Python 3.11+) as Vercel Serverless Functions
-- **Database:** Supabase (PostgreSQL)
-- **Document generation:** python-docx
-- **File storage:** Supabase Storage
-- **Deploy:** Vercel
+- **Frontend:** React 18 + Vite + Tailwind 3 + IBM Plex
+- **Backend:** FastAPI (Python 3.11) + gunicorn + uvicorn workers
+- **DB / Auth / Storage:** Supabase (PostgreSQL + RLS, Auth, Storage)
+- **PDF generation:** python-docx → LibreOffice headless local
+- **Hosting:** DigitalOcean droplet ($16 plan, 2GB / 1vCPU)
+- **CI/CD:** GitHub Actions → SSH deploy
+- **TLS:** Let's Encrypt (4 dominios)
 
-## Project Structure
+---
+
+## Estructura
 
 ```
 fiba-nominations/
-├── api/                    # Vercel serverless Python backend
-│   ├── index.py            # FastAPI entry point (/api/*)
-│   └── _lib/               # Backend modules (underscore = not exposed as endpoints)
-│       ├── database.py
-│       ├── models.py
-│       ├── schemas.py
-│       ├── routers/
+├── api/                      # FastAPI backend
+│   ├── index.py              # entry + middleware + mount routers
+│   └── _lib/
+│       ├── auth.py           # require_view, require_edit
+│       ├── database.py       # supabase client httpx-based
+│       ├── routers/          # uno por módulo
 │       └── services/
-├── src/                    # React frontend
-│   ├── api/client.js
-│   ├── pages/
-│   ├── App.jsx
-│   └── main.jsx
-├── templates/              # .docx letter templates
-├── supabase/migrations/    # Database schema
-├── vercel.json             # Vercel configuration
-├── package.json            # Frontend dependencies
-└── requirements.txt        # Python dependencies
+│           └── document_generator.py
+│
+├── src/                      # React frontend
+│   ├── App.jsx               # shell + router
+│   ├── pages/                # uno por ruta
+│   ├── components/
+│   │   ├── ui/               # Button, Input, Table, …
+│   │   ├── layout/           # Sidebar, Topbar, AppShell
+│   │   └── brand/            # Logos
+│   ├── lib/icons.jsx         # Tabler icons
+│   ├── contexts/             # Auth, Language
+│   └── i18n/                 # ES + EN
+│
+├── public/                   # estáticos (favicon, logos)
+├── scripts/
+│   └── fiba-security-scan.sh # scanner horario de logs (corre en droplet)
+├── services/
+│   └── fiba_sync.py          # microservicio aparte
+├── supabase/migrations/      # schema SQL
+├── templates/                # .docx templates
+├── verify_security.sh        # smoke test post-deploy
+├── .github/workflows/        # CI/CD
+├── tailwind.config.js
+├── vite.config.js
+├── package.json
+└── requirements.txt
 ```
 
-## Deploy to Vercel
+---
 
-### 1. Database setup
+## Quickstart
 
-1. Create a Supabase project at [supabase.com](https://supabase.com)
-2. Run `supabase/migrations/001_initial_schema.sql` in the SQL Editor
-3. (Optional) Create a `nominations` storage bucket for generated documents
-
-### 2. Deploy
+### Producción
 
 ```bash
-# Install Vercel CLI
-npm i -g vercel
+# Deploy automático: push a main
+git push origin main
 
-# Deploy
-vercel
+# Smoke test
+bash verify_security.sh
 ```
 
-### 3. Environment Variables
-
-Set these in your Vercel project settings (Settings → Environment Variables):
-
-| Variable | Value |
-|----------|-------|
-| `SUPABASE_URL` | Your Supabase project URL |
-| `SUPABASE_KEY` | Your Supabase anon/service key |
-
-## Local Development
+### Local
 
 ```bash
-# Frontend (terminal 1)
+# 1) Frontend + fiba-sync micro-service (concurrently)
 npm install
-npm run dev
-# → http://localhost:5173
+npm run dev                  # vite:5173 + fiba-sync:3002
 
-# Backend (terminal 2)
+# 2) Backend FastAPI (otra terminal)
 pip install -r requirements.txt
 python -m uvicorn api.index:app --reload --port 8000
 ```
 
-The Vite dev server proxies `/api/*` requests to `localhost:8000` automatically.
+Ver [`DEVELOPMENT.md`](DEVELOPMENT.md) para detalles de env vars y setup
+inicial.
 
-Create a `.env` file in the project root:
-```
-SUPABASE_URL=your_supabase_url
-SUPABASE_KEY=your_supabase_anon_key
-```
+---
+
+## Módulos del sistema
+
+| Módulo         | Ruta            | Tabla principal       |
+|----------------|-----------------|-----------------------|
+| Calendar       | `/calendar`     | `competitions`        |
+| Nominations    | `/nominations`  | `nominations`         |
+| Personnel      | `/personnel`    | `personnel` (TDs/VGOs)|
+| Competitions   | `/competitions` | `competitions`        |
+| Templates      | `/templates`    | filesystem            |
+| Users          | `/users`        | `auth.users` + `user_permissions` |
+| Availability   | `/availability` | `availability`        |
+| Transport      | `/transport`    | `vehicles`, `trips`   |
+| Training       | `/training`     | `training_*`          |
+| Games          | `/games`        | `games`               |
+| Inventory      | `/inventory`    | `assets`              |
+| Loans          | `/loans`        | `loans`               |
+| Scan           | `/scan`         | (QR landing)          |
+| Employees      | `/employees`    | `employees` (staff interno) |
+
+---
 
 ## Adding a New Competition Template
 
-1. Place the `.docx` template in `templates/`
-2. Add the template key to `competitions.template_key` CHECK constraint in the DB
-3. Add file mapping in `api/_lib/services/document_generator.py` → `TEMPLATE_FILES`
-4. Add field mapping in `api/_lib/models.py` → `TEMPLATE_FIELDS`
-5. Update `src/pages/Nominations.jsx` for any template-specific form logic
+1. Coloca el `.docx` template en `templates/`
+2. Agregá la `template_key` al CHECK constraint en `competitions.template_key`
+3. Agregá el mapping en `api/_lib/services/document_generator.py` →
+   `TEMPLATE_FILES`
+4. Agregá el field mapping en `api/_lib/models.py` → `TEMPLATE_FIELDS`
+5. Actualizá `src/pages/Nominations.jsx` para lógica template-specific
 
-## Bulk Import Format
+---
 
-Upload `.csv`, `.xlsx`, or `.xls` files with these columns:
+## Bulk Import (Personnel)
 
-| Column | Required | Valid Values |
-|--------|----------|-------------|
-| Nombre / Name | Yes | Free text |
-| Email | Yes | Valid email |
-| País / Country | No | Free text |
-| Teléfono / Phone | No | Free text |
-| Pasaporte / Passport | No | Free text |
-| Rol / Role | Yes | VGO / TD |
+`.csv`, `.xlsx`, `.xls` con columnas:
 
-## Notes
+| Column            | Required | Valid Values                     |
+|-------------------|----------|----------------------------------|
+| Nombre / Name     | Yes      | Free text                        |
+| Email             | Yes      | Valid email                      |
+| País / Country    | No       | Free text                        |
+| Teléfono / Phone  | No       | Free text                        |
+| Pasaporte / Passport | No    | Free text                        |
+| Rol / Role        | Yes      | `VGO` / `TD`                     |
 
-- **PDF conversion:** LibreOffice is not available on Vercel serverless. Documents are generated as `.docx` and stored in Supabase Storage. For PDF conversion, consider adding a post-processing step or using an external API.
-- **File storage:** Generated documents are uploaded to the Supabase Storage `nominations` bucket. Create this bucket in your Supabase dashboard with public access.
-- **Function timeout:** Vercel Pro plan allows up to 60s function execution. Hobby plan is 10s.
+---
+
+## Estado actual (mayo 2026)
+
+- ✅ Migración a DigitalOcean droplet completada
+- ✅ Reemplazado CloudConvert por LibreOffice local
+- ✅ Pen-test 3 rondas — H1-H9 + N1, N2, N3 cerrados
+- ✅ Design system completo (navy + basketball orange + IBM Plex)
+- ✅ Scanner horario de alertas en `/var/log/fiba-security-alerts.log`
+- ⏳ Manuales pendientes: ver [`SECURITY_RUNBOOK.md`](SECURITY_RUNBOOK.md)
