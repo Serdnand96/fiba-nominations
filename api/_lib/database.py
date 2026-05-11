@@ -64,6 +64,16 @@ class _QueryBuilder:
         self._params["or"] = f"({filters})"
         return self
 
+    def in_(self, column: str, values: list):
+        # PostgREST IN syntax: ?col=in.("v1","v2"). Quoting handles UUIDs and
+        # anything with commas. Empty list short-circuits to a no-match filter.
+        if not values:
+            self._params[column] = "in.()"
+        else:
+            quoted = ",".join(f'"{v}"' for v in values)
+            self._params[column] = f"in.({quoted})"
+        return self
+
     def order(self, column: str, desc: bool = False):
         direction = "desc" if desc else "asc"
         self._params["order"] = f"{column}.{direction}"
