@@ -127,10 +127,9 @@ def _fee_lines(data: dict, *, incidentals_label: str = "Incidentals",
                total_label: str = "Total") -> list[tuple[str, bool]]:
     """Build the fee block (rate, incidentals, total) honoring fee_type.
 
-    For per_game competitions the window_fee is multiplied by the number of
-    nominated games and the multiplication is shown ('$450 × 2 = $900') so
-    the math is transparent on the letter. Total = fee × games + incidentals.
-    Tournament fee_type renders the fee as a single amount with no multiplier.
+    The fee line always shows the per-game (or tournament) rate as a single
+    amount. The total is computed correctly: for per_game, fee × number of
+    nominated games + incidentals; for tournament, fee + incidentals.
     """
     fee_type = (data.get("fee_type") or "per_game")
     fee = data.get("window_fee") or 0
@@ -138,16 +137,11 @@ def _fee_lines(data: dict, *, incidentals_label: str = "Incidentals",
     game_dates = data.get("game_dates") or []
     num_games = max(len(game_dates), 1)
 
-    if fee_type == "per_game" and num_games > 1:
-        subtotal = fee * num_games
-        fee_text = f"{_fee_label(fee_type)}: {_fmt_money(fee)} × {num_games} = {_fmt_money(subtotal)}"
-    else:
-        subtotal = fee
-        fee_text = f"{_fee_label(fee_type)}: {_fmt_money(fee)}"
-
+    subtotal = fee * num_games if fee_type == "per_game" else fee
     total = subtotal + incidentals
+
     return [
-        (fee_text, False),
+        (f"{_fee_label(fee_type)}: {_fmt_money(fee)}", False),
         (f"{incidentals_label}: {_fmt_money(incidentals)}", False),
         (f"{total_label}: {_fmt_money(total)}", True),
     ]
