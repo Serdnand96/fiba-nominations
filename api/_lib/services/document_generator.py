@@ -123,6 +123,36 @@ def _fee_label(fee_type: str | None) -> str:
     return "Per Game Fee"
 
 
+def _fee_lines(data: dict, *, incidentals_label: str = "Incidentals",
+               total_label: str = "Total") -> list[tuple[str, bool]]:
+    """Build the fee block (rate, incidentals, total) honoring fee_type.
+
+    For per_game competitions the window_fee is multiplied by the number of
+    nominated games and the multiplication is shown ('$450 × 2 = $900') so
+    the math is transparent on the letter. Total = fee × games + incidentals.
+    Tournament fee_type renders the fee as a single amount with no multiplier.
+    """
+    fee_type = (data.get("fee_type") or "per_game")
+    fee = data.get("window_fee") or 0
+    incidentals = data.get("incidentals") or 0
+    game_dates = data.get("game_dates") or []
+    num_games = max(len(game_dates), 1)
+
+    if fee_type == "per_game" and num_games > 1:
+        subtotal = fee * num_games
+        fee_text = f"{_fee_label(fee_type)}: {_fmt_money(fee)} × {num_games} = {_fmt_money(subtotal)}"
+    else:
+        subtotal = fee
+        fee_text = f"{_fee_label(fee_type)}: {_fmt_money(fee)}"
+
+    total = subtotal + incidentals
+    return [
+        (fee_text, False),
+        (f"{incidentals_label}: {_fmt_money(incidentals)}", False),
+        (f"{total_label}: {_fmt_money(total)}", True),
+    ]
+
+
 # ─── WCQ / GENERIC LETTER ────────────────────────────────────────────────────
 
 def _build_wcq_letter(data: dict) -> Document:
@@ -218,11 +248,7 @@ def _build_wcq_letter(data: dict) -> Document:
 
     # Fee items — 2 blank lines after payment intro, then the fees
     fee_idx = payment_idx + 3
-    fee_items = [
-        (f"{_fee_label(data.get('fee_type'))}: {_fmt_money(fee)}", False),
-        (f"Incidentals: {_fmt_money(incidentals)}", False),
-        (f"Total: {_fmt_money(total)}", True),
-    ]
+    fee_items = _fee_lines(data)
     for i, (text, bold) in enumerate(fee_items):
         idx = fee_idx + i
         if idx < len(paras) - 3:
@@ -370,11 +396,7 @@ def _build_generic_letter(data: dict) -> Document:
 
     # Fee items
     fee_idx = payment_idx + 3
-    fee_items = [
-        (f"{_fee_label(data.get('fee_type'))}: {_fmt_money(fee)}", False),
-        (f"Incidentals: {_fmt_money(incidentals)}", False),
-        (f"Total: {_fmt_money(total)}", True),
-    ]
+    fee_items = _fee_lines(data)
     for i, (text, bold) in enumerate(fee_items):
         idx = fee_idx + i
         if idx < sig_start - 2:
@@ -513,12 +535,12 @@ def _build_bcla_letter(data: dict, variant: str = "F4") -> Document:
             "color": COLOR_DARK, "align": WD_ALIGN_PARAGRAPH.JUSTIFY
         })
 
-    content_lines.append({"text": f"{_fee_label(data.get('fee_type'))}: {_fmt_money(fee)}", "color": COLOR_DARK,
-                          "align": WD_ALIGN_PARAGRAPH.JUSTIFY})
-    content_lines.append({"text": f"Incidentals Fee: {_fmt_money(incidentals)}", "color": COLOR_DARK,
-                          "align": WD_ALIGN_PARAGRAPH.JUSTIFY})
-    content_lines.append({"text": f"Total Fees to be received: {_fmt_money(total)}", "color": COLOR_DARK,
-                          "bold": True, "align": WD_ALIGN_PARAGRAPH.JUSTIFY})
+    for line_text, line_bold in _fee_lines(data,
+                                           incidentals_label="Incidentals Fee",
+                                           total_label="Total Fees to be received"):
+        content_lines.append({"text": line_text, "color": COLOR_DARK,
+                              "bold": line_bold,
+                              "align": WD_ALIGN_PARAGRAPH.JUSTIFY})
     content_lines.append({"text": ""})
 
     # Additional info
@@ -646,9 +668,8 @@ def _build_confirmation_from_scratch(data: dict) -> Document:
 
     _add_body_text(doc, f"Below list the details of payment you will receive as {role_label} assigned to the competition listed above:")
     _add_empty(doc)
-    _add_fee_line(doc, f"{_fee_label(data.get('fee_type'))}: {_fmt_money(data.get('window_fee'))}", bold=False)
-    _add_fee_line(doc, f"Incidentals: {_fmt_money(data.get('incidentals'))}", bold=False)
-    _add_fee_line(doc, f"Total: {_fmt_money(data.get('total'))}", bold=True)
+    for line_text, line_bold in _fee_lines(data):
+        _add_fee_line(doc, line_text, bold=line_bold)
     _add_empty(doc)
 
     _add_body_text(doc, "Thank you for your commitment and professionalism.")
@@ -705,9 +726,8 @@ def _build_wcq_from_scratch(data: dict) -> Document:
     _add_empty(doc)
     _add_empty(doc)
 
-    _add_fee_line(doc, f"{_fee_label(data.get('fee_type'))}: {_fmt_money(data.get('window_fee'))}", bold=False)
-    _add_fee_line(doc, f"Incidentals: {_fmt_money(data.get('incidentals'))}", bold=False)
-    _add_fee_line(doc, f"Total: {_fmt_money(data.get('total'))}", bold=True)
+    for line_text, line_bold in _fee_lines(data):
+        _add_fee_line(doc, line_text, bold=line_bold)
 
     _add_empty(doc)
     _add_empty(doc)
