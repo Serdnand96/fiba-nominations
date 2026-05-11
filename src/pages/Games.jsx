@@ -1,4 +1,5 @@
-import { useState, useEffect, useRef, useMemo } from 'react'
+import { useState, useEffect, useRef, useMemo, useLayoutEffect } from 'react'
+import { createPortal } from 'react-dom'
 import {
   getGames, getGameDates, getGameTeams, createGame, updateGame, deleteGame,
   syncGameResults, importGamesExcel, getCalendarCompetitions,
@@ -740,11 +741,37 @@ function GameCard({
 function AssignmentSlot({ role, game, assignment, options, canEdit, onAssign, onUnassign, t }) {
   const [open, setOpen] = useState(false)
   const [search, setSearch] = useState('')
-  const ref = useRef(null)
+  const [coords, setCoords] = useState(null)
+  const triggerRef = useRef(null)
+  const dropdownRef = useRef(null)
+
+  // The GameCard wrapper uses overflow-hidden for its rounded corners, which
+  // would clip an in-tree dropdown. We render into document.body via a portal
+  // with fixed positioning so the picker is always visible.
+  useLayoutEffect(() => {
+    if (!open || !triggerRef.current) return
+    function updatePosition() {
+      const rect = triggerRef.current.getBoundingClientRect()
+      const width = Math.max(rect.width, 240)
+      const viewportWidth = window.innerWidth
+      // Keep the panel inside the viewport horizontally
+      const left = Math.min(rect.left, viewportWidth - width - 8)
+      setCoords({ top: rect.bottom + 4, left: Math.max(8, left), width })
+    }
+    updatePosition()
+    window.addEventListener('resize', updatePosition)
+    window.addEventListener('scroll', updatePosition, true)
+    return () => {
+      window.removeEventListener('resize', updatePosition)
+      window.removeEventListener('scroll', updatePosition, true)
+    }
+  }, [open])
 
   useEffect(() => {
     function handleClickOutside(e) {
-      if (ref.current && !ref.current.contains(e.target)) {
+      const inTrigger = triggerRef.current && triggerRef.current.contains(e.target)
+      const inDropdown = dropdownRef.current && dropdownRef.current.contains(e.target)
+      if (!inTrigger && !inDropdown) {
         setOpen(false)
         setSearch('')
       }
@@ -763,7 +790,7 @@ function AssignmentSlot({ role, game, assignment, options, canEdit, onAssign, on
   const roleLabel = role === 'TD' ? t('games.roleTD') : t('games.roleVGO')
 
   return (
-    <div className="relative flex-1 min-w-0" ref={ref}>
+    <div className="flex-1 min-w-0" ref={triggerRef}>
       <div className="flex items-center gap-2">
         <span className="text-[10px] font-bold uppercase tracking-wider text-fiba-muted/70 w-8">{role}</span>
         {name ? (
@@ -800,8 +827,12 @@ function AssignmentSlot({ role, game, assignment, options, canEdit, onAssign, on
         )}
       </div>
 
-      {open && canEdit && (
-        <div className="absolute z-20 left-0 right-0 top-full mt-1 bg-fiba-card border border-fiba-border rounded-lg shadow-lg max-h-64 overflow-hidden flex flex-col">
+      {open && canEdit && coords && createPortal(
+        <div
+          ref={dropdownRef}
+          style={{ position: 'fixed', top: coords.top, left: coords.left, width: coords.width, zIndex: 60 }}
+          className="bg-fiba-card border border-fiba-border rounded-lg shadow-lg max-h-64 overflow-hidden flex flex-col"
+        >
           <input
             type="text"
             autoFocus
@@ -831,7 +862,8 @@ function AssignmentSlot({ role, game, assignment, options, canEdit, onAssign, on
               ))
             )}
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
     </div>
   )
