@@ -417,6 +417,18 @@ const translations = {
     errorImporting: { en: 'Error importing games', es: 'Error importando juegos' },
     fibaUrl: { en: 'FIBA Games URL or Competition ID', es: 'URL de Juegos FIBA o ID de Competencia' },
     fibaUrlHint: { en: 'Paste the FIBA games page URL or the numeric competition ID (e.g. 209032)', es: 'Pega la URL de la pagina de juegos FIBA o el ID numerico de competencia (ej. 209032)' },
+    // Per-game TD/VGO assignment (WCQ / BCLA / LSB)
+    roleTD: { en: 'TD', es: 'TD' },
+    roleVGO: { en: 'VGO', es: 'VGO' },
+    assignRole: { en: 'Assign {role}', es: 'Asignar {role}' },
+    unassign: { en: 'Remove assignment', es: 'Quitar asignación' },
+    unassigned: { en: 'Unassigned', es: 'Sin asignar' },
+    searchPerson: { en: 'Search person...', es: 'Buscar persona...' },
+    noResults: { en: 'No results', es: 'Sin resultados' },
+    assignedPeople: { en: 'Assigned', es: 'Asignados' },
+    syncNominations: { en: 'Sync to nominations', es: 'Sincronizar nominaciones' },
+    syncNominationsHint: { en: 'Create/update competition-level nomination drafts from per-game assignments', es: 'Crear/actualizar borradores de nominación a partir de las asignaciones por juego' },
+    nominationsSynced: { en: '{created} created, {updated} updated ({people} people)', es: '{created} creadas, {updated} actualizadas ({people} personas)' },
   },
 
   // ===== Permissions =====

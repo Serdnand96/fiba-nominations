@@ -1,18 +1,22 @@
 """
 Game Schedule router — CRUD for competition game schedules,
-FIBA website scraping for auto-import, and results sync.
+FIBA website scraping for auto-import, results sync, and per-game
+TD/VGO assignments (WCQ, BCLA, LSB).
 """
 import io
 import re
 from fastapi import APIRouter, HTTPException, Query, UploadFile, File, Form, Depends
 from pydantic import BaseModel
 from typing import Optional, List
-from datetime import datetime
+from datetime import datetime, timezone
 
 from api._lib.database import supabase
 from api._lib.auth import require_view, require_edit
 
 router = APIRouter(prefix="/games", tags=["games"], dependencies=[Depends(require_view("games"))])
+
+# Templates that support per-game TD/VGO assignment from the Games page.
+ASSIGNMENT_TEMPLATES = {"WCQ", "BCLA", "LSB"}
 
 _MAX_UPLOAD_BYTES = 5 * 1024 * 1024
 
@@ -472,3 +476,172 @@ async def import_games_excel(
             errors.append({"game": f"{g['team_a']} vs {g['team_b']}", "error": str(e)})
 
     return {"imported": created, "errors": errors}
+
+
+# ── Per-game TD/VGO assignments (WCQ / BCLA / LSB) ──────────────────────────
+
+class AssignmentCreate(BaseModel):
+    game_id: str
+    personnel_id: str
+    role: str  # 'TD' or 'VGO'
+
+
+def _competition_supports_assignments(competition_id: str) -> bool:
+    comp = (
+        supabase.table("competitions")
+        .select("template_key")
+        .eq("id", competition_id)
+        .execute()
+        .data
+    )
+    if not comp:
+        return False
+    return (comp[0].get("template_key") or "").upper() in ASSIGNMENT_TEMPLATES
+
+
+@router.get("/assignments/by-competition")
+def list_assignments_by_competition(competition_id: str = Query(...)):
+    """All assignments for a competition's games, with personnel name/role joined."""
+    games = (
+        supabase.table("game_schedule")
+        .select("id")
+        .eq("competition_id", competition_id)
+        .execute()
+        .data
+    )
+    if not games:
+        return []
+    game_ids = [g["id"] for g in games]
+    result = (
+        supabase.table("game_assignments")
+        .select("*, personnel(id, name, role, email)")
+        .in_("game_id", game_ids)
+        .execute()
+    )
+    return result.data
+
+
+@router.post("/assignments", dependencies=[Depends(require_edit("games"))])
+def create_assignment(data: AssignmentCreate):
+    role = (data.role or "").upper()
+    if role not in ("TD", "VGO"):
+        raise HTTPException(400, "Role must be TD or VGO")
+
+    # Verify the game exists and its competition supports assignments
+    game = supabase.table("game_schedule").select("id, competition_id").eq("id", data.game_id).execute().data
+    if not game:
+        raise HTTPException(404, "Game not found")
+    if not _competition_supports_assignments(game[0]["competition_id"]):
+        raise HTTPException(400, "This competition does not support per-game assignments")
+
+    # Verify personnel role matches
+    person = supabase.table("personnel").select("id, role").eq("id", data.personnel_id).execute().data
+    if not person:
+        raise HTTPException(404, "Personnel not found")
+    if (person[0].get("role") or "").upper() != role:
+        raise HTTPException(400, f"Personnel role does not match (expected {role})")
+
+    # Upsert: one slot per (game_id, role)
+    existing = (
+        supabase.table("game_assignments")
+        .select("id")
+        .eq("game_id", data.game_id)
+        .eq("role", role)
+        .execute()
+        .data
+    )
+    record = {"game_id": data.game_id, "personnel_id": data.personnel_id, "role": role}
+    if existing:
+        result = (
+            supabase.table("game_assignments")
+            .update({"personnel_id": data.personnel_id})
+            .eq("id", existing[0]["id"])
+            .execute()
+        )
+        return result.data[0]
+    result = supabase.table("game_assignments").insert(record).execute()
+    return result.data[0]
+
+
+@router.delete("/assignments/{assignment_id}", dependencies=[Depends(require_edit("games"))])
+def delete_assignment(assignment_id: str):
+    result = supabase.table("game_assignments").delete().eq("id", assignment_id).execute()
+    if not result.data:
+        raise HTTPException(404, "Assignment not found")
+    return {"ok": True}
+
+
+@router.post("/assignments/sync-nominations", dependencies=[Depends(require_edit("nominations"))])
+def sync_assignments_to_nominations(competition_id: str = Query(...)):
+    """Roll up per-game assignments into competition-level nomination drafts.
+
+    For each personnel_id assigned to one or more games in this competition:
+      - collect distinct game dates,
+      - if a nomination already exists (personnel_id × competition_id) → update
+        its `game_dates` to match (preserving everything else),
+      - else create a draft nomination with personnel_id, competition_id and
+        the derived `game_dates`.
+    """
+    if not _competition_supports_assignments(competition_id):
+        raise HTTPException(400, "This competition does not support per-game assignments")
+
+    # Pull all games + their assignments for this competition in one shot.
+    games = (
+        supabase.table("game_schedule")
+        .select("id, date")
+        .eq("competition_id", competition_id)
+        .execute()
+        .data
+    )
+    if not games:
+        return {"created": 0, "updated": 0, "people": 0}
+    game_id_to_date = {g["id"]: g["date"] for g in games}
+
+    assignments = (
+        supabase.table("game_assignments")
+        .select("personnel_id, game_id")
+        .in_("game_id", list(game_id_to_date.keys()))
+        .execute()
+        .data
+    )
+    if not assignments:
+        return {"created": 0, "updated": 0, "people": 0}
+
+    # Group by personnel → sorted unique dates
+    by_person: dict[str, set[str]] = {}
+    for a in assignments:
+        d = game_id_to_date.get(a["game_id"])
+        if not d:
+            continue
+        by_person.setdefault(a["personnel_id"], set()).add(d)
+
+    # Existing nominations for this competition (one query)
+    existing = (
+        supabase.table("nominations")
+        .select("id, personnel_id")
+        .eq("competition_id", competition_id)
+        .execute()
+        .data
+    )
+    existing_by_pid = {n["personnel_id"]: n["id"] for n in existing}
+
+    created = 0
+    updated = 0
+    now_iso = datetime.now(timezone.utc).isoformat()
+    for pid, dates in by_person.items():
+        sorted_dates = sorted(dates)
+        game_dates = [{"label": f"Game {i + 1}", "date": d} for i, d in enumerate(sorted_dates)]
+        if pid in existing_by_pid:
+            supabase.table("nominations").update({"game_dates": game_dates}).eq("id", existing_by_pid[pid]).execute()
+            updated += 1
+        else:
+            supabase.table("nominations").insert({
+                "personnel_id": pid,
+                "competition_id": competition_id,
+                "game_dates": game_dates,
+                "confirmation_status": "nominated",
+                "confirmation_updated_at": now_iso,
+            }).execute()
+            created += 1
+
+    return {"created": created, "updated": updated, "people": len(by_person)}

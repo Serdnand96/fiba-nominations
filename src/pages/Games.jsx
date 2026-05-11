@@ -1,13 +1,16 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
 import {
   getGames, getGameDates, getGameTeams, createGame, updateGame, deleteGame,
-  syncGameResults, importGamesExcel, getCalendarCompetitions
+  syncGameResults, importGamesExcel, getCalendarCompetitions,
+  getPersonnel, getGameAssignments, setGameAssignment, deleteGameAssignment,
+  syncAssignmentsToNominations,
 } from '../api/client'
 import { useLanguage } from '../i18n/LanguageContext'
 import { useAuth } from '../contexts/AuthContext'
 import CompetitionSearch from '../components/CompetitionSearch'
 
 const PHASE_OPTIONS = ['Group Phase', 'Quarterfinals', 'Semifinals', 'Classification', 'Finals']
+const ASSIGNMENT_TEMPLATES = new Set(['WCQ', 'BCLA', 'LSB'])
 
 const EMPTY_FORM = {
   date: '', time: '', team_a: '', team_a_code: '', team_b: '', team_b_code: '',
@@ -26,6 +29,8 @@ export default function Games() {
   const [games, setGames] = useState([])
   const [gameDates, setGameDates] = useState([])
   const [teams, setTeams] = useState([])
+  const [personnel, setPersonnel] = useState([])
+  const [assignments, setAssignments] = useState([]) // per-game TD/VGO assignments
 
   // Filters
   const [filterDate, setFilterDate] = useState('')
@@ -42,8 +47,13 @@ export default function Games() {
   const [importFile, setImportFile] = useState(null)
   const [importing, setImporting] = useState(false)
   const [importMsg, setImportMsg] = useState('')
+  const [syncingNoms, setSyncingNoms] = useState(false)
+  const [nomMsg, setNomMsg] = useState('')
   const fileRef = useRef(null)
   const autoSyncDone = useRef(new Set()) // track which comps we've auto-synced
+
+  const selectedComp = competitions.find(c => c.id === selectedCompId)
+  const supportsAssignments = ASSIGNMENT_TEMPLATES.has((selectedComp?.template_key || '').toUpperCase())
 
   // Load competitions
   useEffect(() => {
@@ -64,17 +74,22 @@ export default function Games() {
     setFilterDate('')
     setFilterGroup('')
     try {
-      const [g, d, te] = await Promise.all([
+      const comp = competitions.find(c => c.id === selectedCompId)
+      const supportsAsg = ASSIGNMENT_TEMPLATES.has((comp?.template_key || '').toUpperCase())
+      const [g, d, te, ppl, asg] = await Promise.all([
         getGames(selectedCompId),
         getGameDates(selectedCompId),
         getGameTeams(selectedCompId),
+        supportsAsg ? getPersonnel() : Promise.resolve([]),
+        supportsAsg ? getGameAssignments(selectedCompId) : Promise.resolve([]),
       ])
       setGames(g)
       setGameDates(d)
       setTeams(te)
+      setPersonnel(ppl)
+      setAssignments(asg)
 
       // Auto-sync from FIBA if competition has URL and no games yet
-      const comp = competitions.find(c => c.id === selectedCompId)
       if (g.length === 0 && comp?.fiba_games_url && !autoSyncDone.current.has(selectedCompId)) {
         autoSyncDone.current.add(selectedCompId)
         setSyncing(true)
@@ -87,14 +102,16 @@ export default function Games() {
             total: result.total_from_fiba,
           }))
           // Reload after sync
-          const [g2, d2, te2] = await Promise.all([
+          const [g2, d2, te2, asg2] = await Promise.all([
             getGames(selectedCompId),
             getGameDates(selectedCompId),
             getGameTeams(selectedCompId),
+            supportsAsg ? getGameAssignments(selectedCompId) : Promise.resolve([]),
           ])
           setGames(g2)
           setGameDates(d2)
           setTeams(te2)
+          setAssignments(asg2)
         } catch (err) {
           setSyncMsg(err.response?.data?.detail || 'Auto-sync failed')
         }
@@ -109,17 +126,60 @@ export default function Games() {
 
   async function loadGames() {
     try {
-      const [g, d, te] = await Promise.all([
+      const [g, d, te, asg] = await Promise.all([
         getGames(selectedCompId),
         getGameDates(selectedCompId),
         getGameTeams(selectedCompId),
+        supportsAssignments ? getGameAssignments(selectedCompId) : Promise.resolve([]),
       ])
       setGames(g)
       setGameDates(d)
       setTeams(te)
+      setAssignments(asg)
     } catch (e) {
       console.error(e)
     }
+  }
+
+  async function reloadAssignments() {
+    if (!supportsAssignments) return
+    try {
+      const asg = await getGameAssignments(selectedCompId)
+      setAssignments(asg)
+    } catch (e) {
+      console.error(e)
+    }
+  }
+
+  async function handleAssign(gameId, personId, role) {
+    try {
+      await setGameAssignment(gameId, personId, role)
+      await reloadAssignments()
+    } catch (err) {
+      alert(err.response?.data?.detail || 'Error')
+    }
+  }
+
+  async function handleUnassign(assignmentId) {
+    try {
+      await deleteGameAssignment(assignmentId)
+      await reloadAssignments()
+    } catch (err) {
+      alert(err.response?.data?.detail || 'Error')
+    }
+  }
+
+  async function handleSyncNominations() {
+    setSyncingNoms(true)
+    setNomMsg('')
+    try {
+      const r = await syncAssignmentsToNominations(selectedCompId)
+      setNomMsg(t('games.nominationsSynced', { created: r.created, updated: r.updated, people: r.people }))
+    } catch (err) {
+      setNomMsg(err.response?.data?.detail || 'Error')
+    }
+    setSyncingNoms(false)
+    setTimeout(() => setNomMsg(''), 6000)
   }
 
   // Filtered + grouped games
@@ -142,6 +202,24 @@ export default function Games() {
 
   // Stats
   const completedCount = games.filter(g => g.status === 'completed').length
+
+  // Build lookup: game_id → { TD: assignment, VGO: assignment }
+  const assignmentsByGame = useMemo(() => {
+    const map = {}
+    for (const a of assignments) {
+      if (!map[a.game_id]) map[a.game_id] = {}
+      map[a.game_id][a.role] = a
+    }
+    return map
+  }, [assignments])
+
+  const tdPersonnel = useMemo(() => personnel.filter(p => p.role === 'TD'), [personnel])
+  const vgoPersonnel = useMemo(() => personnel.filter(p => p.role === 'VGO'), [personnel])
+  const assignedCount = useMemo(() => {
+    const people = new Set()
+    for (const a of assignments) people.add(a.personnel_id)
+    return people.size
+  }, [assignments])
 
   // Handlers
   function openCreate() {
@@ -255,6 +333,13 @@ export default function Games() {
         <div className="flex items-center gap-3">
           {selectedCompId && (
             <>
+              {supportsAssignments && canEdit && (
+                <button onClick={handleSyncNominations} disabled={syncingNoms || assignments.length === 0}
+                  className="btn-fiba-ghost disabled:opacity-40"
+                  title={t('games.syncNominationsHint')}>
+                  {syncingNoms ? t('games.syncing') : t('games.syncNominations')}
+                </button>
+              )}
               <button onClick={() => setShowImport(true)}
                 className="btn-fiba-ghost">
                 {t('games.importExcel')}
@@ -274,6 +359,9 @@ export default function Games() {
 
       {syncMsg && (
         <div className="mb-4 px-4 py-2 bg-blue-500/10 text-blue-400 rounded-lg text-sm">{syncMsg}</div>
+      )}
+      {nomMsg && (
+        <div className="mb-4 px-4 py-2 bg-emerald-500/10 text-emerald-400 rounded-lg text-sm">{nomMsg}</div>
       )}
 
       {/* Competition selector + filters */}
@@ -325,6 +413,12 @@ export default function Games() {
             <div className="text-2xl font-bold text-emerald-400">{completedCount}</div>
             <div className="text-xs text-fiba-muted">{t('games.completed')}</div>
           </div>
+          {supportsAssignments && (
+            <div className="fiba-stat flex-1">
+              <div className="text-2xl font-bold text-fiba-accent">{assignedCount}</div>
+              <div className="text-xs text-fiba-muted">{t('games.assignedPeople')}</div>
+            </div>
+          )}
         </div>
       )}
 
@@ -343,7 +437,11 @@ export default function Games() {
                 <div className="space-y-2">
                   {dateGames.sort((a, b) => (a.time || '').localeCompare(b.time || '')).map(game => (
                     <GameCard key={game.id} game={game} canEdit={canEdit}
-                      onEdit={() => openEdit(game)} onDelete={() => handleDelete(game)} t={t} />
+                      onEdit={() => openEdit(game)} onDelete={() => handleDelete(game)} t={t}
+                      supportsAssignments={supportsAssignments}
+                      assignment={assignmentsByGame[game.id] || {}}
+                      tdPersonnel={tdPersonnel} vgoPersonnel={vgoPersonnel}
+                      onAssign={handleAssign} onUnassign={handleUnassign} />
                   ))}
                 </div>
               </div>
@@ -516,7 +614,12 @@ export default function Games() {
 
 // ── Game Card (FIBA-inspired) ──────────────────────────────────────────────
 
-function GameCard({ game, canEdit, onEdit, onDelete, t }) {
+function GameCard({
+  game, canEdit, onEdit, onDelete, t,
+  supportsAssignments = false, assignment = {},
+  tdPersonnel = [], vgoPersonnel = [],
+  onAssign, onUnassign,
+}) {
   const isCompleted = game.status === 'completed'
   const isLive = game.status === 'live'
   const scoreA = game.score_a ?? '-'
@@ -616,6 +719,120 @@ function GameCard({ game, canEdit, onEdit, onDelete, t }) {
           </div>
         )}
       </div>
+
+      {supportsAssignments && (
+        <div className="border-t border-fiba-border bg-fiba-surface/40 px-4 py-2 flex items-center gap-3">
+          <AssignmentSlot role="TD" game={game} t={t} canEdit={canEdit}
+            assignment={assignment.TD} options={tdPersonnel}
+            onAssign={onAssign} onUnassign={onUnassign} />
+          <AssignmentSlot role="VGO" game={game} t={t} canEdit={canEdit}
+            assignment={assignment.VGO} options={vgoPersonnel}
+            onAssign={onAssign} onUnassign={onUnassign} />
+        </div>
+      )}
+    </div>
+  )
+}
+
+
+// ── Per-game assignment slot (TD or VGO) ───────────────────────────────────
+
+function AssignmentSlot({ role, game, assignment, options, canEdit, onAssign, onUnassign, t }) {
+  const [open, setOpen] = useState(false)
+  const [search, setSearch] = useState('')
+  const ref = useRef(null)
+
+  useEffect(() => {
+    function handleClickOutside(e) {
+      if (ref.current && !ref.current.contains(e.target)) {
+        setOpen(false)
+        setSearch('')
+      }
+    }
+    if (open) document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [open])
+
+  const filtered = options.filter(p => {
+    if (!search) return true
+    const q = search.toLowerCase()
+    return p.name?.toLowerCase().includes(q) || p.email?.toLowerCase().includes(q) || p.country?.toLowerCase().includes(q)
+  })
+
+  const name = assignment?.personnel?.name
+  const roleLabel = role === 'TD' ? t('games.roleTD') : t('games.roleVGO')
+
+  return (
+    <div className="relative flex-1 min-w-0" ref={ref}>
+      <div className="flex items-center gap-2">
+        <span className="text-[10px] font-bold uppercase tracking-wider text-fiba-muted/70 w-8">{role}</span>
+        {name ? (
+          <div className="flex-1 flex items-center gap-1.5 min-w-0">
+            <button
+              type="button"
+              onClick={() => canEdit && setOpen(o => !o)}
+              disabled={!canEdit}
+              className="flex-1 text-left text-xs font-medium text-ink-900 dark:text-white truncate hover:text-fiba-accent disabled:cursor-default disabled:hover:text-ink-900"
+              title={name}
+            >
+              {name}
+            </button>
+            {canEdit && (
+              <button
+                type="button"
+                onClick={() => onUnassign(assignment.id)}
+                className="text-fiba-muted/60 hover:text-red-400 text-xs leading-none"
+                title={t('games.unassign')}
+              >
+                ×
+              </button>
+            )}
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={() => canEdit && setOpen(o => !o)}
+            disabled={!canEdit}
+            className="flex-1 text-left text-xs text-fiba-muted/60 hover:text-fiba-accent disabled:cursor-default disabled:hover:text-fiba-muted/60 italic"
+          >
+            {canEdit ? t('games.assignRole', { role: roleLabel }) : t('games.unassigned')}
+          </button>
+        )}
+      </div>
+
+      {open && canEdit && (
+        <div className="absolute z-20 left-0 right-0 top-full mt-1 bg-fiba-card border border-fiba-border rounded-lg shadow-lg max-h-64 overflow-hidden flex flex-col">
+          <input
+            type="text"
+            autoFocus
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            placeholder={t('games.searchPerson')}
+            className="fiba-input rounded-none border-0 border-b border-fiba-border text-xs"
+          />
+          <div className="overflow-y-auto flex-1">
+            {filtered.length === 0 ? (
+              <div className="px-3 py-2 text-xs text-fiba-muted">{t('games.noResults')}</div>
+            ) : (
+              filtered.map(p => (
+                <button
+                  key={p.id}
+                  type="button"
+                  onClick={() => {
+                    onAssign(game.id, p.id, role)
+                    setOpen(false)
+                    setSearch('')
+                  }}
+                  className="w-full text-left px-3 py-1.5 text-xs hover:bg-fiba-surface text-ink-900 dark:text-white"
+                >
+                  <div className="font-medium truncate">{p.name}</div>
+                  {p.country && <div className="text-[10px] text-fiba-muted/60">{p.country}</div>}
+                </button>
+              ))
+            )}
+          </div>
+        </div>
+      )}
     </div>
   )
 }
