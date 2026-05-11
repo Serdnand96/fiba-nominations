@@ -30,9 +30,9 @@ export function Sidebar({ current, onNav, user = { name:'Ana Calderón', role:'S
   return (
     <aside className="w-[232px] bg-navy-900 text-white flex flex-col flex-shrink-0 border-r border-navy-950">
       <div className="h-14 px-4 flex items-center gap-2.5 border-b border-navy-800">
-        <div className="w-7 h-7 rounded-md bg-basketball-500 text-white flex items-center justify-center font-bold text-[13px] tracking-tight">F</div>
+        <img src="/fiba-logo.png" alt="FIBA" className="h-7 w-auto flex-shrink-0"/>
         <div className="leading-tight">
-          <div className="text-[13px] font-semibold">FIBA Americas</div>
+          <div className="text-[13px] font-semibold">Americas</div>
           <div className="text-2xs text-navy-300 font-medium tracking-wide">Nominations</div>
         </div>
       </div>
