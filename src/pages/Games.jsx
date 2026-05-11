@@ -30,7 +30,6 @@ export default function Games() {
   const [games, setGames] = useState([])
   const [gameDates, setGameDates] = useState([])
   const [teams, setTeams] = useState([])
-  const [personnel, setPersonnel] = useState([])
   const [assignments, setAssignments] = useState([]) // per-game TD/VGO assignments
 
   // Filters
@@ -77,17 +76,15 @@ export default function Games() {
     try {
       const comp = competitions.find(c => c.id === selectedCompId)
       const supportsAsg = ASSIGNMENT_TEMPLATES.has((comp?.template_key || '').toUpperCase())
-      const [g, d, te, ppl, asg] = await Promise.all([
+      const [g, d, te, asg] = await Promise.all([
         getGames(selectedCompId),
         getGameDates(selectedCompId),
         getGameTeams(selectedCompId),
-        supportsAsg ? getPersonnel() : Promise.resolve([]),
         supportsAsg ? getGameAssignments(selectedCompId) : Promise.resolve([]),
       ])
       setGames(g)
       setGameDates(d)
       setTeams(te)
-      setPersonnel(ppl)
       setAssignments(asg)
 
       // Auto-sync from FIBA if competition has URL and no games yet
@@ -112,7 +109,7 @@ export default function Games() {
           setGames(g2)
           setGameDates(d2)
           setTeams(te2)
-          setAssignments(asg2)
+          setAssignments(asg2 || [])
         } catch (err) {
           setSyncMsg(err.response?.data?.detail || 'Auto-sync failed')
         }
@@ -214,8 +211,6 @@ export default function Games() {
     return map
   }, [assignments])
 
-  const tdPersonnel = useMemo(() => personnel.filter(p => p.role === 'TD'), [personnel])
-  const vgoPersonnel = useMemo(() => personnel.filter(p => p.role === 'VGO'), [personnel])
   const assignedCount = useMemo(() => {
     const people = new Set()
     for (const a of assignments) people.add(a.personnel_id)
@@ -441,7 +436,6 @@ export default function Games() {
                       onEdit={() => openEdit(game)} onDelete={() => handleDelete(game)} t={t}
                       supportsAssignments={supportsAssignments}
                       assignment={assignmentsByGame[game.id] || {}}
-                      tdPersonnel={tdPersonnel} vgoPersonnel={vgoPersonnel}
                       onAssign={handleAssign} onUnassign={handleUnassign} />
                   ))}
                 </div>
@@ -618,7 +612,6 @@ export default function Games() {
 function GameCard({
   game, canEdit, onEdit, onDelete, t,
   supportsAssignments = false, assignment = {},
-  tdPersonnel = [], vgoPersonnel = [],
   onAssign, onUnassign,
 }) {
   const isCompleted = game.status === 'completed'
@@ -724,10 +717,10 @@ function GameCard({
       {supportsAssignments && (
         <div className="border-t border-fiba-border bg-fiba-surface/40 px-4 py-2 flex items-center gap-3">
           <AssignmentSlot role="TD" game={game} t={t} canEdit={canEdit}
-            assignment={assignment.TD} options={tdPersonnel}
+            assignment={assignment.TD}
             onAssign={onAssign} onUnassign={onUnassign} />
           <AssignmentSlot role="VGO" game={game} t={t} canEdit={canEdit}
-            assignment={assignment.VGO} options={vgoPersonnel}
+            assignment={assignment.VGO}
             onAssign={onAssign} onUnassign={onUnassign} />
         </div>
       )}
@@ -738,12 +731,31 @@ function GameCard({
 
 // ── Per-game assignment slot (TD or VGO) ───────────────────────────────────
 
-function AssignmentSlot({ role, game, assignment, options, canEdit, onAssign, onUnassign, t }) {
+function AssignmentSlot({ role, game, assignment, canEdit, onAssign, onUnassign, t }) {
   const [open, setOpen] = useState(false)
   const [search, setSearch] = useState('')
   const [coords, setCoords] = useState(null)
+  const [options, setOptions] = useState([])
+  const [loadingOptions, setLoadingOptions] = useState(false)
   const triggerRef = useRef(null)
   const dropdownRef = useRef(null)
+
+  // Lazy-fetch personnel filtered by this slot's role the first time the
+  // picker opens. Keeps assignment slots self-contained instead of relying on
+  // a page-level prefetch that can race with the competition selector.
+  useEffect(() => {
+    if (!open || options.length > 0 || loadingOptions) return
+    let cancelled = false
+    setLoadingOptions(true)
+    getPersonnel({ role }).then(data => {
+      if (!cancelled) setOptions(data || [])
+    }).catch(() => {
+      if (!cancelled) setOptions([])
+    }).finally(() => {
+      if (!cancelled) setLoadingOptions(false)
+    })
+    return () => { cancelled = true }
+  }, [open, role])
 
   // The GameCard wrapper uses overflow-hidden for its rounded corners, which
   // would clip an in-tree dropdown. We render into document.body via a portal
@@ -831,7 +843,7 @@ function AssignmentSlot({ role, game, assignment, options, canEdit, onAssign, on
         <div
           ref={dropdownRef}
           style={{ position: 'fixed', top: coords.top, left: coords.left, width: coords.width, zIndex: 60 }}
-          className="bg-fiba-card border border-fiba-border rounded-lg shadow-lg max-h-64 overflow-hidden flex flex-col"
+          className="bg-fiba-card border border-fiba-border rounded-lg shadow-lg flex flex-col"
         >
           <input
             type="text"
@@ -841,9 +853,15 @@ function AssignmentSlot({ role, game, assignment, options, canEdit, onAssign, on
             placeholder={t('games.searchPerson')}
             className="fiba-input rounded-none border-0 border-b border-fiba-border text-xs"
           />
-          <div className="overflow-y-auto flex-1">
-            {filtered.length === 0 ? (
-              <div className="px-3 py-2 text-xs text-fiba-muted">{t('games.noResults')}</div>
+          <div className="overflow-y-auto" style={{ maxHeight: 240, minHeight: 40 }}>
+            {loadingOptions ? (
+              <div className="px-3 py-3 text-xs text-fiba-muted">{t('common.loading')}</div>
+            ) : options.length === 0 ? (
+              <div className="px-3 py-3 text-xs text-fiba-muted">
+                {t('games.noPersonnelForRole', { role })}
+              </div>
+            ) : filtered.length === 0 ? (
+              <div className="px-3 py-3 text-xs text-fiba-muted">{t('games.noResults')}</div>
             ) : (
               filtered.map(p => (
                 <button
@@ -861,6 +879,10 @@ function AssignmentSlot({ role, game, assignment, options, canEdit, onAssign, on
                 </button>
               ))
             )}
+          </div>
+          <div className="border-t border-fiba-border px-3 py-1 text-[10px] text-fiba-muted/70 flex justify-between">
+            <span>{t('games.optionsCount', { count: options.length })}</span>
+            {search && <span>{filtered.length} match</span>}
           </div>
         </div>,
         document.body,
