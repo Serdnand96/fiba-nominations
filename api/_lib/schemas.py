@@ -34,6 +34,17 @@ class CompetitionUpdate(BaseModel):
     year: Optional[int] = None
     fiba_games_url: Optional[str] = None
     fee_type: Optional[str] = None
+    # Nomination defaults used by the per-game assignment workflow
+    default_letter_date: Optional[str] = None
+    default_location: Optional[str] = None
+    default_venue: Optional[str] = None
+    default_arrival_date: Optional[str] = None
+    default_departure_date: Optional[str] = None
+    default_confirmation_deadline: Optional[str] = None
+    td_window_fee: Optional[float] = None
+    td_incidentals: Optional[float] = None
+    vgo_window_fee: Optional[float] = None
+    vgo_incidentals: Optional[float] = None
 
 
 class GameDate(BaseModel):

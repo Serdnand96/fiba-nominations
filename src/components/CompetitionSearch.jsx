@@ -63,7 +63,7 @@ export default function CompetitionSearch({ competitions, value, onChange, place
         onClick={() => { setOpen(!open); setTimeout(() => inputRef.current?.focus(), 50) }}
         className="w-full flex items-center justify-between px-3 py-2 border border-fiba-border rounded-lg text-sm bg-fiba-surface hover:bg-fiba-surface-2 text-left min-w-[260px]"
       >
-        <span className={selected ? 'text-white font-medium truncate' : 'text-fiba-muted'}>
+        <span className={selected ? 'text-ink-900 dark:text-ink-100 font-medium truncate' : 'text-fiba-muted'}>
           {selected ? selected.name : placeholder}
         </span>
         <svg className={`w-4 h-4 text-fiba-muted transition-transform flex-shrink-0 ml-2 ${open ? 'rotate-180' : ''}`}
@@ -100,7 +100,7 @@ export default function CompetitionSearch({ competitions, value, onChange, place
                   key={c.id}
                   onClick={() => handleSelect(c)}
                   className={`w-full text-left px-4 py-2.5 text-sm hover:bg-fiba-surface flex items-center justify-between transition-colors ${
-                    c.id === value ? 'bg-fiba-accent/10 text-fiba-accent' : 'text-gray-300'
+                    c.id === value ? 'bg-fiba-accent/10 text-fiba-accent' : 'text-ink-700 dark:text-ink-300'
                   }`}
                 >
                   <div className="flex-1 min-w-0">

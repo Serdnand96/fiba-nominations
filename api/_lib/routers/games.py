@@ -571,21 +571,67 @@ def delete_assignment(assignment_id: str):
     return {"ok": True}
 
 
+_SHARED_DEFAULT_FIELDS = (
+    ("default_letter_date",           "letter_date"),
+    ("default_location",              "location"),
+    ("default_venue",                 "venue"),
+    ("default_arrival_date",          "arrival_date"),
+    ("default_departure_date",        "departure_date"),
+    ("default_confirmation_deadline", "confirmation_deadline"),
+)
+
+
+def _build_default_overrides(competition: dict, role: str) -> dict:
+    """Return the subset of competition-level defaults that should be copied to
+    a nomination for a person of the given role. Only writes values that are
+    explicitly set on the competition — never clobbers existing nomination
+    data with NULLs.
+    """
+    overrides: dict = {}
+    for src, dst in _SHARED_DEFAULT_FIELDS:
+        v = competition.get(src)
+        if v is not None and v != "":
+            overrides[dst] = v
+    # Role-aware fees
+    if role == "TD":
+        fee = competition.get("td_window_fee")
+        inc = competition.get("td_incidentals")
+    else:
+        fee = competition.get("vgo_window_fee")
+        inc = competition.get("vgo_incidentals")
+    if fee is not None:
+        overrides["window_fee"] = fee
+    if inc is not None:
+        overrides["incidentals"] = inc
+    return overrides
+
+
 @router.post("/assignments/sync-nominations", dependencies=[Depends(require_edit("nominations"))])
 def sync_assignments_to_nominations(competition_id: str = Query(...)):
     """Roll up per-game assignments into competition-level nomination drafts.
 
     For each personnel_id assigned to one or more games in this competition:
       - collect distinct game dates,
-      - if a nomination already exists (personnel_id × competition_id) → update
-        its `game_dates` to match (preserving everything else),
-      - else create a draft nomination with personnel_id, competition_id and
-        the derived `game_dates`.
+      - apply the competition's shared defaults (letter_date, venue, etc.) and
+        the role-aware fee defaults (TD vs VGO),
+      - if a nomination already exists → update game_dates + any default that
+        the nomination doesn't already have set,
+      - else create a draft nomination with everything filled in.
     """
     if not _competition_supports_assignments(competition_id):
         raise HTTPException(400, "This competition does not support per-game assignments")
 
-    # Pull all games + their assignments for this competition in one shot.
+    comp = (
+        supabase.table("competitions")
+        .select("*")
+        .eq("id", competition_id)
+        .execute()
+        .data
+    )
+    if not comp:
+        raise HTTPException(404, "Competition not found")
+    competition = comp[0]
+
     games = (
         supabase.table("game_schedule")
         .select("id, date")
@@ -599,7 +645,7 @@ def sync_assignments_to_nominations(competition_id: str = Query(...)):
 
     assignments = (
         supabase.table("game_assignments")
-        .select("personnel_id, game_id")
+        .select("personnel_id, game_id, role")
         .in_("game_id", list(game_id_to_date.keys()))
         .execute()
         .data
@@ -607,41 +653,115 @@ def sync_assignments_to_nominations(competition_id: str = Query(...)):
     if not assignments:
         return {"created": 0, "updated": 0, "people": 0}
 
-    # Group by personnel → sorted unique dates
-    by_person: dict[str, set[str]] = {}
+    # Group by personnel → (role from assignments, sorted unique dates)
+    by_person: dict[str, dict] = {}
     for a in assignments:
         d = game_id_to_date.get(a["game_id"])
         if not d:
             continue
-        by_person.setdefault(a["personnel_id"], set()).add(d)
+        entry = by_person.setdefault(a["personnel_id"], {"role": a["role"], "dates": set()})
+        entry["dates"].add(d)
+        # If the same person has both roles across games (rare), prefer TD for
+        # fee defaults since TDs are senior. Deterministic enough.
+        if entry["role"] != "TD" and a["role"] == "TD":
+            entry["role"] = "TD"
 
-    # Existing nominations for this competition (one query)
+    # Existing nominations for this competition
     existing = (
         supabase.table("nominations")
-        .select("id, personnel_id")
+        .select("*")
         .eq("competition_id", competition_id)
         .execute()
         .data
     )
-    existing_by_pid = {n["personnel_id"]: n["id"] for n in existing}
+    existing_by_pid = {n["personnel_id"]: n for n in existing}
 
     created = 0
     updated = 0
     now_iso = datetime.now(timezone.utc).isoformat()
-    for pid, dates in by_person.items():
-        sorted_dates = sorted(dates)
+    for pid, info in by_person.items():
+        sorted_dates = sorted(info["dates"])
         game_dates = [{"label": f"Game {i + 1}", "date": d} for i, d in enumerate(sorted_dates)]
+        defaults = _build_default_overrides(competition, info["role"])
+
         if pid in existing_by_pid:
-            supabase.table("nominations").update({"game_dates": game_dates}).eq("id", existing_by_pid[pid]).execute()
+            existing_nom = existing_by_pid[pid]
+            update_record = {"game_dates": game_dates}
+            # Only fill defaults where the nomination doesn't already have a value,
+            # so manual edits made in Nominations are preserved.
+            for k, v in defaults.items():
+                if existing_nom.get(k) in (None, ""):
+                    update_record[k] = v
+            supabase.table("nominations").update(update_record).eq("id", existing_nom["id"]).execute()
             updated += 1
         else:
-            supabase.table("nominations").insert({
+            insert_record = {
                 "personnel_id": pid,
                 "competition_id": competition_id,
                 "game_dates": game_dates,
                 "confirmation_status": "nominated",
                 "confirmation_updated_at": now_iso,
-            }).execute()
+                **defaults,
+            }
+            supabase.table("nominations").insert(insert_record).execute()
             created += 1
 
     return {"created": created, "updated": updated, "people": len(by_person)}
+
+
+@router.post("/assignments/generate-pdfs", dependencies=[Depends(require_edit("nominations"))])
+def generate_assignment_pdfs(competition_id: str = Query(...)):
+    """Bulk-generate nomination PDFs for everyone with a nomination on this
+    competition. Uses the template_key already on the competition (WCQ/BCLA/LSB).
+    Intended to be called after `/sync-nominations` from the Games page.
+    """
+    from api._lib.services.document_generator import generate_nomination
+
+    if not _competition_supports_assignments(competition_id):
+        raise HTTPException(400, "This competition does not support per-game assignments")
+
+    nominations = (
+        supabase.table("nominations")
+        .select("*, personnel(name, role, email), competitions(name, template_key, year, fee_type)")
+        .eq("competition_id", competition_id)
+        .execute()
+        .data
+    )
+    if not nominations:
+        return {"generated": 0, "errors": [], "total": 0}
+
+    generated = 0
+    errors = []
+    for nom in nominations:
+        try:
+            personnel = nom.get("personnel") or {}
+            competition = nom.get("competitions") or {}
+            nom_data = {
+                "template_key": competition.get("template_key"),
+                "nominee_name": personnel.get("name", ""),
+                "role": personnel.get("role", ""),
+                "letter_date": nom.get("letter_date", ""),
+                "competition_name": competition.get("name", ""),
+                "competition_year": competition.get("year", ""),
+                "location": nom.get("location", ""),
+                "venue": nom.get("venue", ""),
+                "arrival_date": nom.get("arrival_date", ""),
+                "departure_date": nom.get("departure_date", ""),
+                "game_dates": nom.get("game_dates", []),
+                "window_fee": nom.get("window_fee"),
+                "incidentals": nom.get("incidentals"),
+                "total": nom.get("total"),
+                "confirmation_deadline": nom.get("confirmation_deadline", ""),
+                "fee_type": competition.get("fee_type", "per_game"),
+            }
+            local_path, storage_url, _ = generate_nomination(nom_data)
+            saved_path = storage_url if storage_url else local_path
+            supabase.table("nominations").update({
+                "status": "generated",
+                "pdf_path": saved_path,
+            }).eq("id", nom["id"]).execute()
+            generated += 1
+        except Exception as e:
+            errors.append({"id": nom["id"], "name": (nom.get("personnel") or {}).get("name"), "error": str(e)})
+
+    return {"generated": generated, "errors": errors, "total": len(nominations)}

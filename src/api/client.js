@@ -186,6 +186,8 @@ export const deleteGameAssignment = (assignmentId) =>
   api.delete(`/games/assignments/${assignmentId}`).then(r => r.data)
 export const syncAssignmentsToNominations = (competitionId) =>
   api.post('/games/assignments/sync-nominations', null, { params: { competition_id: competitionId } }).then(r => r.data)
+export const generateAssignmentPDFs = (competitionId) =>
+  api.post('/games/assignments/generate-pdfs', null, { params: { competition_id: competitionId }, timeout: 120000 }).then(r => r.data)
 
 // Availability
 export const getPersonnelAvailability = (personnelId) => api.get(`/availability/personnel/${personnelId}`).then(r => r.data)

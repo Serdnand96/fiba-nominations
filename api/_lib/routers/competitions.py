@@ -19,12 +19,28 @@ def create_competition(data: CompetitionCreate):
     return result.data[0]
 
 
+_CLEARABLE_DATE_FIELDS = {
+    "default_letter_date", "default_arrival_date", "default_departure_date",
+    "default_confirmation_deadline",
+}
+_CLEARABLE_TEXT_FIELDS = {"fiba_games_url", "default_location", "default_venue"}
+
+
 @router.put("/{competition_id}")
 def update_competition(competition_id: str, data: CompetitionUpdate):
-    # Allow empty strings (e.g. clearing fiba_games_url) but skip None
-    updates = {k: v for k, v in data.model_dump().items() if v is not None or k == "fiba_games_url"}
-    # Convert empty fiba_games_url to None for clean DB storage
-    if "fiba_games_url" in updates and updates["fiba_games_url"] == "":
+    raw = data.model_dump()
+    updates = {}
+    for k, v in raw.items():
+        if v is None:
+            continue
+        # Empty string on a clearable field → store as NULL
+        if v == "" and (k in _CLEARABLE_TEXT_FIELDS or k in _CLEARABLE_DATE_FIELDS):
+            updates[k] = None
+        else:
+            updates[k] = v
+    # Preserve the previous behavior of allowing the client to clear fiba_games_url
+    # by sending an empty string in the payload.
+    if "fiba_games_url" in raw and raw["fiba_games_url"] == "":
         updates["fiba_games_url"] = None
     result = supabase.table("competitions").update(updates).eq("id", competition_id).execute()
     if not result.data:

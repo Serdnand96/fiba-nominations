@@ -4,7 +4,7 @@ import {
   getGames, getGameDates, getGameTeams, createGame, updateGame, deleteGame,
   syncGameResults, importGamesExcel, getCalendarCompetitions,
   getPersonnel, getGameAssignments, setGameAssignment, deleteGameAssignment,
-  syncAssignmentsToNominations,
+  syncAssignmentsToNominations, generateAssignmentPDFs, updateCompetition,
 } from '../api/client'
 import { useLanguage } from '../i18n/LanguageContext'
 import { useAuth } from '../contexts/AuthContext'
@@ -49,11 +49,37 @@ export default function Games() {
   const [importMsg, setImportMsg] = useState('')
   const [syncingNoms, setSyncingNoms] = useState(false)
   const [nomMsg, setNomMsg] = useState('')
+  const [generatingPdfs, setGeneratingPdfs] = useState(false)
+  const [showDefaults, setShowDefaults] = useState(false)
+  const [defaults, setDefaults] = useState({})
+  const [savingDefaults, setSavingDefaults] = useState(false)
+  const [defaultsMsg, setDefaultsMsg] = useState('')
   const fileRef = useRef(null)
   const autoSyncDone = useRef(new Set()) // track which comps we've auto-synced
 
   const selectedComp = competitions.find(c => c.id === selectedCompId)
   const supportsAssignments = ASSIGNMENT_TEMPLATES.has((selectedComp?.template_key || '').toUpperCase())
+
+  // Pull defaults from the selected competition into the editable form state
+  // whenever the comp changes.
+  useEffect(() => {
+    if (!selectedComp) {
+      setDefaults({})
+      return
+    }
+    setDefaults({
+      default_letter_date: selectedComp.default_letter_date || '',
+      default_location: selectedComp.default_location || '',
+      default_venue: selectedComp.default_venue || '',
+      default_arrival_date: selectedComp.default_arrival_date || '',
+      default_departure_date: selectedComp.default_departure_date || '',
+      default_confirmation_deadline: selectedComp.default_confirmation_deadline || '',
+      td_window_fee: selectedComp.td_window_fee ?? '',
+      td_incidentals: selectedComp.td_incidentals ?? '',
+      vgo_window_fee: selectedComp.vgo_window_fee ?? '',
+      vgo_incidentals: selectedComp.vgo_incidentals ?? '',
+    })
+  }, [selectedCompId, selectedComp?.default_letter_date]) // re-pull when comp data changes
 
   // Load competitions
   useEffect(() => {
@@ -178,6 +204,52 @@ export default function Games() {
     }
     setSyncingNoms(false)
     setTimeout(() => setNomMsg(''), 6000)
+  }
+
+  async function handleGeneratePdfs() {
+    setGeneratingPdfs(true)
+    setNomMsg('')
+    try {
+      // Sync first so any new assignments / default changes are picked up
+      await syncAssignmentsToNominations(selectedCompId)
+      const r = await generateAssignmentPDFs(selectedCompId)
+      const errCount = (r.errors || []).length
+      let msg = t('games.pdfsGenerated', { count: r.generated, total: r.total })
+      if (errCount > 0) msg += ` · ${t('games.pdfsErrors', { count: errCount })}`
+      setNomMsg(msg)
+    } catch (err) {
+      setNomMsg(err.response?.data?.detail || 'Error')
+    }
+    setGeneratingPdfs(false)
+    setTimeout(() => setNomMsg(''), 8000)
+  }
+
+  async function handleSaveDefaults() {
+    setSavingDefaults(true)
+    setDefaultsMsg('')
+    try {
+      // Convert empty strings on numeric fields → null; dates already pass as ''
+      const payload = {}
+      for (const [k, v] of Object.entries(defaults)) {
+        if (k.endsWith('_fee') || k === 'td_incidentals' || k === 'vgo_incidentals') {
+          payload[k] = v === '' || v === null ? null : Number(v)
+        } else {
+          payload[k] = v === '' ? '' : v
+        }
+      }
+      const updated = await updateCompetition(selectedCompId, payload)
+      // Reflect back into the competitions list so subsequent reads are fresh
+      setCompetitions(cs => cs.map(c => (c.id === selectedCompId ? { ...c, ...updated } : c)))
+      setDefaultsMsg(t('games.defaultsSaved'))
+    } catch (err) {
+      setDefaultsMsg(err.response?.data?.detail || 'Error')
+    }
+    setSavingDefaults(false)
+    setTimeout(() => setDefaultsMsg(''), 5000)
+  }
+
+  function setDefaultField(field, value) {
+    setDefaults(d => ({ ...d, [field]: value }))
   }
 
   // Filtered + grouped games
@@ -330,11 +402,23 @@ export default function Games() {
           {selectedCompId && (
             <>
               {supportsAssignments && canEdit && (
-                <button onClick={handleSyncNominations} disabled={syncingNoms || assignments.length === 0}
-                  className="btn-fiba-ghost disabled:opacity-40"
-                  title={t('games.syncNominationsHint')}>
-                  {syncingNoms ? t('games.syncing') : t('games.syncNominations')}
-                </button>
+                <>
+                  <button onClick={() => setShowDefaults(s => !s)}
+                    className="btn-fiba-ghost"
+                    title={t('games.editDefaultsHint')}>
+                    {t('games.editDefaults')}
+                  </button>
+                  <button onClick={handleSyncNominations} disabled={syncingNoms || assignments.length === 0}
+                    className="btn-fiba-ghost disabled:opacity-40"
+                    title={t('games.syncNominationsHint')}>
+                    {syncingNoms ? t('games.syncing') : t('games.syncNominations')}
+                  </button>
+                  <button onClick={handleGeneratePdfs} disabled={generatingPdfs || assignments.length === 0}
+                    className="btn-fiba disabled:opacity-40"
+                    title={t('games.generatePdfsHint')}>
+                    {generatingPdfs ? t('games.generating') : t('games.generatePdfs')}
+                  </button>
+                </>
               )}
               <button onClick={() => setShowImport(true)}
                 className="btn-fiba-ghost">
@@ -415,6 +499,113 @@ export default function Games() {
               <div className="text-xs text-fiba-muted">{t('games.assignedPeople')}</div>
             </div>
           )}
+        </div>
+      )}
+
+      {/* Defaults panel — common nomination values for this competition */}
+      {supportsAssignments && showDefaults && (
+        <div className="mb-6 bg-fiba-card border border-fiba-border rounded-lg p-5">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h3 className="text-sm font-bold text-ink-900 dark:text-white">{t('games.defaultsTitle')}</h3>
+              <p className="text-xs text-fiba-muted mt-0.5">{t('games.defaultsSubtitle')}</p>
+            </div>
+            <button onClick={() => setShowDefaults(false)}
+              className="text-fiba-muted hover:text-ink-900 dark:hover:text-white text-xs">×</button>
+          </div>
+
+          <div className="text-[10px] font-bold uppercase tracking-wider text-fiba-muted/70 mb-2">
+            {t('games.defaultsShared')}
+          </div>
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mb-5">
+            <div>
+              <label className="fiba-label">{t('games.letterDate')}</label>
+              <input type="date" value={defaults.default_letter_date || ''}
+                onChange={e => setDefaultField('default_letter_date', e.target.value)}
+                className="fiba-input" />
+            </div>
+            <div>
+              <label className="fiba-label">{t('games.location')}</label>
+              <input value={defaults.default_location || ''}
+                onChange={e => setDefaultField('default_location', e.target.value)}
+                className="fiba-input" />
+            </div>
+            <div>
+              <label className="fiba-label">{t('games.venue')}</label>
+              <input value={defaults.default_venue || ''}
+                onChange={e => setDefaultField('default_venue', e.target.value)}
+                className="fiba-input" />
+            </div>
+            <div>
+              <label className="fiba-label">{t('games.arrivalDate')}</label>
+              <input type="date" value={defaults.default_arrival_date || ''}
+                onChange={e => setDefaultField('default_arrival_date', e.target.value)}
+                className="fiba-input" />
+            </div>
+            <div>
+              <label className="fiba-label">{t('games.departureDate')}</label>
+              <input type="date" value={defaults.default_departure_date || ''}
+                onChange={e => setDefaultField('default_departure_date', e.target.value)}
+                className="fiba-input" />
+            </div>
+            <div>
+              <label className="fiba-label">{t('games.confirmationDeadline')}</label>
+              <input type="date" value={defaults.default_confirmation_deadline || ''}
+                onChange={e => setDefaultField('default_confirmation_deadline', e.target.value)}
+                className="fiba-input" />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+            <div>
+              <div className="text-[10px] font-bold uppercase tracking-wider text-fiba-accent mb-2">
+                {t('games.defaultsTD')}
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="fiba-label">{t('games.windowFee')}</label>
+                  <input type="number" step="0.01" value={defaults.td_window_fee ?? ''}
+                    onChange={e => setDefaultField('td_window_fee', e.target.value)}
+                    className="fiba-input" />
+                </div>
+                <div>
+                  <label className="fiba-label">{t('games.incidentals')}</label>
+                  <input type="number" step="0.01" value={defaults.td_incidentals ?? ''}
+                    onChange={e => setDefaultField('td_incidentals', e.target.value)}
+                    className="fiba-input" />
+                </div>
+              </div>
+            </div>
+            <div>
+              <div className="text-[10px] font-bold uppercase tracking-wider text-fiba-accent mb-2">
+                {t('games.defaultsVGO')}
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="fiba-label">{t('games.windowFee')}</label>
+                  <input type="number" step="0.01" value={defaults.vgo_window_fee ?? ''}
+                    onChange={e => setDefaultField('vgo_window_fee', e.target.value)}
+                    className="fiba-input" />
+                </div>
+                <div>
+                  <label className="fiba-label">{t('games.incidentals')}</label>
+                  <input type="number" step="0.01" value={defaults.vgo_incidentals ?? ''}
+                    onChange={e => setDefaultField('vgo_incidentals', e.target.value)}
+                    className="fiba-input" />
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between mt-5">
+            <span className="text-xs text-fiba-muted/70">
+              {defaultsMsg || t('games.defaultsApplyHint')}
+            </span>
+            <button onClick={handleSaveDefaults} disabled={savingDefaults}
+              className="btn-fiba disabled:opacity-50">
+              {savingDefaults ? t('games.saving') : t('games.saveDefaults')}
+            </button>
+          </div>
         </div>
       )}
 
