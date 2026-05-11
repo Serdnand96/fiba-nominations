@@ -445,14 +445,13 @@ function ImportView({ onClose }) {
   const [preview, setPreview] = useState(null)
   const [result, setResult] = useState(null)
   const [loading, setLoading] = useState(false)
+  const [importError, setImportError] = useState('')
   const [dragOver, setDragOver] = useState(false)
   const inputRef = useRef(null)
 
   function handleFile(f) {
+    setImportError('')
     setFile(f)
-    const reader = new FileReader()
-    reader.onload = () => { setTab('preview') }
-    reader.readAsArrayBuffer(f)
     setTab('preview')
   }
 
@@ -464,11 +463,22 @@ function ImportView({ onClose }) {
   }
 
   async function handleImport() {
+    if (!file) {
+      setImportError(t('personnel.uploadFirst'))
+      return
+    }
     setLoading(true)
+    setImportError('')
     try {
       const res = await importPersonnel(file)
       setResult(res)
       setTab('result')
+    } catch (err) {
+      const detail = err.response?.data?.detail
+      const status = err.response?.status
+      let msg = detail || err.message || 'Import failed'
+      if (status) msg = `[${status}] ${msg}`
+      setImportError(msg)
     } finally {
       setLoading(false)
     }
@@ -563,6 +573,11 @@ function ImportView({ onClose }) {
             {file ? (
               <>
                 <p className="text-sm text-fiba-muted mb-4">{t('personnel.file')}: <strong className="text-ink-900 dark:text-white">{file.name}</strong> ({(file.size / 1024).toFixed(1)} KB)</p>
+                {importError && (
+                  <div className="mb-4 px-3 py-2 bg-red-500/10 border border-red-500/30 text-red-400 rounded text-sm">
+                    {importError}
+                  </div>
+                )}
                 <div className="flex justify-end">
                   <button onClick={handleImport} disabled={loading}
                     className="btn-fiba disabled:opacity-50">
