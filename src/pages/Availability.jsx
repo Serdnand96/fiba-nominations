@@ -233,7 +233,7 @@ export default function Availability() {
         </div>
         <div className="h-6 w-px bg-ink-200 dark:bg-navy-700 mx-1"/>
         <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)}
-          className="h-7 text-xs px-2 rounded-md border border-ink-200 dark:border-navy-700 bg-white dark:bg-navy-900 text-ink-700 dark:text-ink-200 focus:outline-none focus:ring-2 focus:ring-navy-500/30">
+          className="h-8 text-xs leading-none pl-2.5 pr-7 rounded-md border border-ink-200 dark:border-navy-700 bg-white dark:bg-navy-900 text-ink-700 dark:text-ink-200 focus:outline-none focus:ring-2 focus:ring-navy-500/30">
           <option value="">{t('availability.allStatuses')}</option>
           <option value="available">{t('availability.available')}</option>
           <option value="unavailable">{t('availability.unavailable')}</option>
