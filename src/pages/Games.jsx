@@ -627,6 +627,7 @@ export default function Games() {
                     <GameCard key={game.id} game={game} canEdit={canEdit}
                       onEdit={() => openEdit(game)} onDelete={() => handleDelete(game)} t={t}
                       supportsAssignments={supportsAssignments}
+                      templateKey={(selectedComp?.template_key || '').toUpperCase()}
                       assignment={assignmentsByGame[game.id] || {}}
                       onAssign={handleAssign} onUnassign={handleUnassign} />
                   ))}
@@ -809,9 +810,10 @@ export default function Games() {
 
 function GameCard({
   game, canEdit, onEdit, onDelete, t,
-  supportsAssignments = false, assignment = {},
+  supportsAssignments = false, templateKey = '', assignment = {},
   onAssign, onUnassign,
 }) {
+  const displayCountry = game.country || (templateKey === 'WCQ' ? game.team_a : '') || ''
   const isCompleted = game.status === 'completed'
   const isLive = game.status === 'live'
   const scoreA = game.score_a ?? '-'
@@ -879,14 +881,14 @@ function GameCard({
           </div>
 
           {/* Venue + meta row */}
-          {(game.venue || game.city || game.country || game.game_number) && (
+          {(game.venue || game.city || displayCountry || game.game_number) && (
             <div className="flex items-center justify-center gap-3 mt-1.5">
               {game.venue && (
                 <span className="text-[11px] text-fiba-muted/60">{game.venue}</span>
               )}
-              {(game.city || game.country) && (
+              {(game.city || displayCountry) && (
                 <span className="text-[11px] text-fiba-muted/60">
-                  {[game.city, game.country].filter(Boolean).join(', ')}
+                  {[game.city, displayCountry].filter(Boolean).join(', ')}
                 </span>
               )}
               {game.game_number && (
