@@ -394,6 +394,7 @@ const translations = {
     phase: { en: 'Phase', es: 'Fase' },
     group: { en: 'Group', es: 'Grupo' },
     city: { en: 'City', es: 'Ciudad' },
+    country: { en: 'Country', es: 'País' },
     status: { en: 'Status', es: 'Estado' },
     editGame: { en: 'Edit Game', es: 'Editar Juego' },
     newGame: { en: 'New Game', es: 'Nuevo Juego' },

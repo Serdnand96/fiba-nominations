@@ -321,6 +321,7 @@ def _fiba_json_to_game(g: dict) -> dict:
         "score_b": score_b,
         "venue": g.get("venueName", ""),
         "city": g.get("hostCity", ""),
+        "country": g.get("hostCountry", "") or g.get("country", ""),
         "phase": _detect_phase(g),
         "group_label": g.get("groupPairingCode"),
         "status": status,

@@ -36,6 +36,7 @@ class GameCreate(BaseModel):
     score_b: Optional[int] = None
     venue: Optional[str] = None
     city: Optional[str] = None
+    country: Optional[str] = None
     phase: str = "Group Phase"
     group_label: Optional[str] = None
     status: str = "scheduled"
@@ -54,6 +55,7 @@ class GameUpdate(BaseModel):
     score_b: Optional[int] = None
     venue: Optional[str] = None
     city: Optional[str] = None
+    country: Optional[str] = None
     phase: Optional[str] = None
     group_label: Optional[str] = None
     status: Optional[str] = None
@@ -388,6 +390,7 @@ def _fiba_json_to_game(g: dict) -> dict:
         "score_b": score_b,
         "venue": g.get("venueName", ""),
         "city": g.get("hostCity", ""),
+        "country": g.get("hostCountry", "") or g.get("country", ""),
         "phase": "Group Phase",
         "group_label": g.get("groupPairingCode"),
         "status": status,

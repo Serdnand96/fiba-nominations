@@ -15,7 +15,7 @@ const ASSIGNMENT_TEMPLATES = new Set(['WCQ', 'BCLA', 'LSB'])
 
 const EMPTY_FORM = {
   date: '', time: '', team_a: '', team_a_code: '', team_b: '', team_b_code: '',
-  score_a: '', score_b: '', venue: '', city: '', phase: 'Group Phase',
+  score_a: '', score_b: '', venue: '', city: '', country: '', phase: 'Group Phase',
   group_label: '', status: 'scheduled', sport: 'Basketball',
 }
 
@@ -309,6 +309,7 @@ export default function Games() {
       score_b: game.score_b ?? '',
       venue: game.venue || '',
       city: game.city || '',
+      country: game.country || '',
       phase: game.phase || 'Group Phase',
       group_label: game.group_label || '',
       status: game.status || 'scheduled',
@@ -713,6 +714,12 @@ export default function Games() {
                 </div>
               </div>
 
+              <div>
+                <label className="fiba-label">{t('games.country')}</label>
+                <input value={form.country} onChange={e => setForm(f => ({ ...f, country: e.target.value }))}
+                  className="fiba-input" />
+              </div>
+
               <div className="grid grid-cols-3 gap-3">
                 <div>
                   <label className="fiba-label">{t('games.phase')}</label>
@@ -872,10 +879,15 @@ function GameCard({
           </div>
 
           {/* Venue + meta row */}
-          {(game.venue || game.game_number) && (
+          {(game.venue || game.city || game.country || game.game_number) && (
             <div className="flex items-center justify-center gap-3 mt-1.5">
               {game.venue && (
                 <span className="text-[11px] text-fiba-muted/60">{game.venue}</span>
+              )}
+              {(game.city || game.country) && (
+                <span className="text-[11px] text-fiba-muted/60">
+                  {[game.city, game.country].filter(Boolean).join(', ')}
+                </span>
               )}
               {game.game_number && (
                 <span className="text-[11px] text-fiba-border">{game.game_number}</span>
