@@ -719,6 +719,7 @@ def generate_assignment_pdfs(competition_id: str = Query(...)):
     Intended to be called after `/sync-nominations` from the Games page.
     """
     from api._lib.services.document_generator import generate_nomination
+    from api._lib.routers.nominations import _host_location_for_nomination
 
     if not _competition_supports_assignments(competition_id):
         raise HTTPException(400, "This competition does not support per-game assignments")
@@ -739,6 +740,12 @@ def generate_assignment_pdfs(competition_id: str = Query(...)):
         try:
             personnel = nom.get("personnel") or {}
             competition = nom.get("competitions") or {}
+            host_city, host_country = _host_location_for_nomination(
+                nom["competition_id"],
+                nom.get("personnel_id"),
+                nom.get("game_dates"),
+                competition.get("template_key"),
+            )
             nom_data = {
                 "template_key": competition.get("template_key"),
                 "nominee_name": personnel.get("name", ""),
@@ -756,6 +763,8 @@ def generate_assignment_pdfs(competition_id: str = Query(...)):
                 "total": nom.get("total"),
                 "confirmation_deadline": nom.get("confirmation_deadline", ""),
                 "fee_type": competition.get("fee_type", "per_game"),
+                "host_city": host_city,
+                "host_country": host_country,
             }
             local_path, storage_url, _ = generate_nomination(nom_data)
             saved_path = storage_url if storage_url else local_path

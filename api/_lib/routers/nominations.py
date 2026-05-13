@@ -17,18 +17,30 @@ _SAFE_FILENAME_RE = re.compile(r'[^\w\s\-\.\(\)]')
 _VALID_CONFIRMATION_STATUSES = {"pending", "nominated", "confirmed", "declined"}
 
 
-def _host_location_from_games(competition_id: str, game_dates: list | None) -> tuple[str, str]:
-    """Look up host city + country from game_schedule for a competition.
+def _host_location_for_nomination(
+    competition_id: str,
+    personnel_id: str | None,
+    game_dates: list | None,
+    template_key: str | None = None,
+) -> tuple[str, str]:
+    """Look up host city + country for a nomination from game_schedule.
 
-    If the nomination has specific game_dates, restrict to games on those dates
-    (so a multi-window WCQ comp doesn't leak the next window's host). Falls
-    back to all games for the competition. Picks the most common non-empty
-    value for city and country independently.
+    Preference order for picking which games to look at:
+      1. games where this personnel has a game_assignments row (most precise —
+         disambiguates multi-host days like a WCQ window with 3 countries on
+         the same date),
+      2. games whose date matches the nomination's `game_dates`,
+      3. all games for the competition.
+
+    For WCQ (national-team competitions) the home team (`team_a`) IS the host
+    country, so we fall back to team_a when country is empty.
+
+    Picks the most common non-empty value across the relevant games.
     """
     try:
         games = (
             supabase.table("game_schedule")
-            .select("date, city, country")
+            .select("id, date, city, country, team_a")
             .eq("competition_id", competition_id)
             .execute()
             .data
@@ -39,20 +51,45 @@ def _host_location_from_games(competition_id: str, game_dates: list | None) -> t
     if not games:
         return "", ""
 
-    dates = {gd.get("date") for gd in (game_dates or []) if isinstance(gd, dict) and gd.get("date")}
-    relevant = [g for g in games if g.get("date") in dates] if dates else games
+    relevant: list[dict] = []
+
+    if personnel_id:
+        try:
+            assignments = (
+                supabase.table("game_assignments")
+                .select("game_id")
+                .eq("personnel_id", personnel_id)
+                .in_("game_id", [g["id"] for g in games])
+                .execute()
+                .data
+            ) or []
+            assigned_ids = {a["game_id"] for a in assignments}
+            relevant = [g for g in games if g["id"] in assigned_ids]
+        except Exception:
+            relevant = []
+
+    if not relevant:
+        dates = {gd.get("date") for gd in (game_dates or []) if isinstance(gd, dict) and gd.get("date")}
+        if dates:
+            relevant = [g for g in games if g.get("date") in dates]
+
     if not relevant:
         relevant = games
 
-    def _most_common(key: str) -> str:
+    def _most_common(values: list[str]) -> str:
         counts: dict[str, int] = {}
-        for g in relevant:
-            v = (g.get(key) or "").strip()
+        for v in values:
+            v = (v or "").strip()
             if v:
                 counts[v] = counts.get(v, 0) + 1
         return max(counts, key=counts.get) if counts else ""
 
-    return _most_common("city"), _most_common("country")
+    city = _most_common([g.get("city") for g in relevant])
+    country = _most_common([g.get("country") for g in relevant])
+    if not country and (template_key or "").upper() == "WCQ":
+        country = _most_common([g.get("team_a") for g in relevant])
+
+    return city, country
 
 
 class ConfirmationUpdate(BaseModel):
@@ -137,8 +174,11 @@ def bulk_generate_nominations(nomination_ids: list[str]):
             personnel = nom["personnel"]
             competition = nom["competitions"]
 
-            host_city, host_country = _host_location_from_games(
-                nom["competition_id"], nom.get("game_dates")
+            host_city, host_country = _host_location_for_nomination(
+                nom["competition_id"],
+                nom.get("personnel_id"),
+                nom.get("game_dates"),
+                competition.get("template_key"),
             )
 
             nom_data = {
@@ -292,8 +332,11 @@ def generate_nomination_doc(nomination_id: str):
     personnel = nom["personnel"]
     competition = nom["competitions"]
 
-    host_city, host_country = _host_location_from_games(
-        nom["competition_id"], nom.get("game_dates")
+    host_city, host_country = _host_location_for_nomination(
+        nom["competition_id"],
+        nom.get("personnel_id"),
+        nom.get("game_dates"),
+        competition.get("template_key"),
     )
 
     nom_data = {
