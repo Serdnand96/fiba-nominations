@@ -208,6 +208,15 @@ def _build_wcq_letter(data: dict) -> Document:
             _set_para_text(paras[idx], text, COLOR_RED, bold=True, size=Pt(10),
                           align=WD_ALIGN_PARAGRAPH.CENTER)
 
+    # Host location — line right after the game dates (centered, dark, bold)
+    host_city = (data.get("host_city") or "").strip()
+    host_country = (data.get("host_country") or "").strip()
+    host_line = ", ".join([p for p in (host_city, host_country) if p])
+    location_idx = 6 + max(len(game_dates), 1)
+    if host_line and location_idx < len(paras) - 3:
+        _set_para_text(paras[location_idx], host_line, COLOR_DARK, bold=True,
+                      size=Pt(10), align=WD_ALIGN_PARAGRAPH.CENTER)
+
     # Confirmation paragraph — 2 lines after last game date
     confirm_email = CONFIRMATION_EMAIL.get(role, CONFIRMATION_EMAIL["VGO"])
     confirm_idx = 6 + max(len(game_dates), 1) + 2
@@ -355,6 +364,15 @@ def _build_generic_letter(data: dict) -> Document:
             text = f"{label}: {date_val}" if label else date_val
             _set_para_text_font(paras[idx], text, COLOR_RED, font_name, bold=True, size=Pt(10),
                                 align=WD_ALIGN_PARAGRAPH.CENTER)
+
+    # Host location — line right after the game dates (centered, dark, bold)
+    host_city = (data.get("host_city") or "").strip()
+    host_country = (data.get("host_country") or "").strip()
+    host_line = ", ".join([p for p in (host_city, host_country) if p])
+    location_idx = 6 + max(len(game_dates), 1)
+    if host_line and location_idx < sig_start - 9:
+        _set_para_text_font(paras[location_idx], host_line, COLOR_DARK, font_name,
+                            bold=True, size=Pt(10), align=WD_ALIGN_PARAGRAPH.CENTER)
 
     # Confirmation paragraph
     confirm_email = CONFIRMATION_EMAIL.get(role, CONFIRMATION_EMAIL["VGO"])

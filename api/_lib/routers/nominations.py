@@ -17,6 +17,44 @@ _SAFE_FILENAME_RE = re.compile(r'[^\w\s\-\.\(\)]')
 _VALID_CONFIRMATION_STATUSES = {"pending", "nominated", "confirmed", "declined"}
 
 
+def _host_location_from_games(competition_id: str, game_dates: list | None) -> tuple[str, str]:
+    """Look up host city + country from game_schedule for a competition.
+
+    If the nomination has specific game_dates, restrict to games on those dates
+    (so a multi-window WCQ comp doesn't leak the next window's host). Falls
+    back to all games for the competition. Picks the most common non-empty
+    value for city and country independently.
+    """
+    try:
+        games = (
+            supabase.table("game_schedule")
+            .select("date, city, country")
+            .eq("competition_id", competition_id)
+            .execute()
+            .data
+        ) or []
+    except Exception:
+        return "", ""
+
+    if not games:
+        return "", ""
+
+    dates = {gd.get("date") for gd in (game_dates or []) if isinstance(gd, dict) and gd.get("date")}
+    relevant = [g for g in games if g.get("date") in dates] if dates else games
+    if not relevant:
+        relevant = games
+
+    def _most_common(key: str) -> str:
+        counts: dict[str, int] = {}
+        for g in relevant:
+            v = (g.get(key) or "").strip()
+            if v:
+                counts[v] = counts.get(v, 0) + 1
+        return max(counts, key=counts.get) if counts else ""
+
+    return _most_common("city"), _most_common("country")
+
+
 class ConfirmationUpdate(BaseModel):
     status: str
     notes: Optional[str] = None
@@ -99,6 +137,10 @@ def bulk_generate_nominations(nomination_ids: list[str]):
             personnel = nom["personnel"]
             competition = nom["competitions"]
 
+            host_city, host_country = _host_location_from_games(
+                nom["competition_id"], nom.get("game_dates")
+            )
+
             nom_data = {
                 "template_key": competition["template_key"],
                 "nominee_name": personnel["name"],
@@ -116,6 +158,8 @@ def bulk_generate_nominations(nomination_ids: list[str]):
                 "total": nom.get("total"),
                 "confirmation_deadline": nom.get("confirmation_deadline", ""),
                 "fee_type": competition.get("fee_type", "per_game"),
+                "host_city": host_city,
+                "host_country": host_country,
             }
 
             local_path, storage_url, conversion_error = generate_nomination(nom_data)
@@ -248,6 +292,10 @@ def generate_nomination_doc(nomination_id: str):
     personnel = nom["personnel"]
     competition = nom["competitions"]
 
+    host_city, host_country = _host_location_from_games(
+        nom["competition_id"], nom.get("game_dates")
+    )
+
     nom_data = {
         "template_key": competition["template_key"],
         "nominee_name": personnel["name"],
@@ -265,6 +313,8 @@ def generate_nomination_doc(nomination_id: str):
         "total": nom.get("total"),
         "confirmation_deadline": nom.get("confirmation_deadline", ""),
         "fee_type": competition.get("fee_type", "per_game"),
+        "host_city": host_city,
+        "host_country": host_country,
     }
 
     try:
