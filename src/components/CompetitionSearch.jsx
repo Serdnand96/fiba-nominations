@@ -1,17 +1,24 @@
 import { useState, useEffect, useRef } from 'react'
 import { Icon } from '../lib/icons.jsx'
+import { supabase } from '../lib/supabase'
 
-const PINNED_STORAGE_KEY = 'fiba_pinned_competitions'
+// localStorage is the offline cache; user_pinned_competitions in Supabase is the source of truth.
+// On mount we render the cache instantly, then reconcile against the server.
+const PINNED_CACHE_KEY = 'fiba_pinned_competitions'
 
-function loadPinned() {
+function loadCache() {
   try {
-    const raw = localStorage.getItem(PINNED_STORAGE_KEY)
+    const raw = localStorage.getItem(PINNED_CACHE_KEY)
     if (!raw) return []
     const parsed = JSON.parse(raw)
     return Array.isArray(parsed) ? parsed.filter(x => typeof x === 'string') : []
   } catch {
     return []
   }
+}
+
+function writeCache(ids) {
+  try { localStorage.setItem(PINNED_CACHE_KEY, JSON.stringify(ids)) } catch {}
 }
 
 /**
@@ -27,7 +34,9 @@ function loadPinned() {
 export default function CompetitionSearch({ competitions, value, onChange, placeholder = 'Search competition...', className = '' }) {
   const [open, setOpen] = useState(false)
   const [search, setSearch] = useState('')
-  const [pinnedIds, setPinnedIds] = useState(() => loadPinned())
+  // Seed from cache for instant render; reconcile with Supabase below.
+  const [pinnedIds, setPinnedIds] = useState(() => loadCache())
+  const [userId, setUserId] = useState(null)
   const wrapperRef = useRef(null)
   const inputRef = useRef(null)
 
@@ -45,13 +54,64 @@ export default function CompetitionSearch({ competitions, value, onChange, place
     return () => document.removeEventListener('mousedown', handleClick)
   }, [])
 
-  function togglePin(compId, e) {
+  // Sync with Supabase: fetch the authoritative list and one-time-migrate
+  // any pre-existing cache entries from the localStorage-only version.
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user || cancelled) return
+      setUserId(user.id)
+
+      const { data: rows, error } = await supabase
+        .from('user_pinned_competitions')
+        .select('competition_id')
+        .eq('user_id', user.id)
+      if (error || cancelled) return
+
+      const remoteIds = (rows || []).map(r => r.competition_id)
+      const cachedIds = loadCache()
+      const missingInRemote = cachedIds.filter(id => !remoteIds.includes(id))
+
+      if (missingInRemote.length > 0) {
+        const toInsert = missingInRemote.map(competition_id => ({ user_id: user.id, competition_id }))
+        await supabase.from('user_pinned_competitions').insert(toInsert)
+        if (cancelled) return
+      }
+
+      const merged = Array.from(new Set([...remoteIds, ...missingInRemote]))
+      setPinnedIds(merged)
+      writeCache(merged)
+    })()
+    return () => { cancelled = true }
+  }, [])
+
+  async function togglePin(compId, e) {
     e?.stopPropagation()
-    setPinnedIds(prev => {
-      const next = prev.includes(compId) ? prev.filter(id => id !== compId) : [...prev, compId]
-      try { localStorage.setItem(PINNED_STORAGE_KEY, JSON.stringify(next)) } catch {}
-      return next
-    })
+    const wasPinned = pinnedIds.includes(compId)
+    const next = wasPinned ? pinnedIds.filter(id => id !== compId) : [...pinnedIds, compId]
+    // Optimistic: update UI + cache immediately.
+    const prev = pinnedIds
+    setPinnedIds(next)
+    writeCache(next)
+
+    if (!userId) return // not authenticated yet — cache-only
+
+    const { error } = wasPinned
+      ? await supabase
+          .from('user_pinned_competitions')
+          .delete()
+          .eq('user_id', userId)
+          .eq('competition_id', compId)
+      : await supabase
+          .from('user_pinned_competitions')
+          .insert({ user_id: userId, competition_id: compId })
+
+    if (error) {
+      // Revert on failure.
+      setPinnedIds(prev)
+      writeCache(prev)
+    }
   }
 
   const filtered = competitions.filter(c => {
