@@ -41,12 +41,11 @@ export default function Login() {
       <div className="relative z-10 w-full max-w-sm">
         {/* Brand */}
         <div className="text-center mb-8">
-          <div className="w-16 h-16 bg-basketball-500 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-pop">
-            <svg viewBox="0 0 64 64" className="w-10 h-10">
-              <path d="M18 14 L44 14 L44 22 L26 22 L26 30 L40 30 L40 38 L26 38 L26 50 L18 50 Z" fill="#fff"/>
-              <path d="M14 38 Q32 56 50 38" stroke="#0c2340" strokeWidth="3" fill="none" strokeLinecap="round"/>
-            </svg>
-          </div>
+          <img
+            src="/favicon.png"
+            alt="FIBA"
+            className="w-20 h-20 rounded-2xl mx-auto mb-4 shadow-pop"
+          />
           <h1 className="text-2xl font-semibold text-white tracking-tight">FIBA Americas</h1>
           <p className="text-sm text-navy-300 mt-1">{t('app.subtitle')}</p>
         </div>
