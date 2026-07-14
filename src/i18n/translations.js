@@ -195,6 +195,21 @@ const translations = {
     errorUpdatingConfirmation: { en: 'Error updating confirmation', es: 'Error actualizando confirmación' },
     confirmationUpdatedAt: { en: 'Updated', es: 'Actualizado' },
 
+    // Workload matrix view
+    viewTable: { en: 'Table', es: 'Tabla' },
+    viewMatrix: { en: 'Workload', es: 'Carga' },
+    matrixRolling: { en: 'Rolling 12 months', es: 'Últimos 12 meses' },
+    matrixCalendar: { en: 'Calendar year', es: 'Año calendario' },
+    matrixRoleAll: { en: 'All', es: 'Todos' },
+    matrixNoms: { en: 'Nominations', es: 'Nominaciones' },
+    matrixDays: { en: 'Game days', es: 'Días de juego' },
+    matrixNomsShort: { en: 'Noms', es: 'Noms' },
+    matrixDaysShort: { en: 'Days', es: 'Días' },
+    matrixCellTitle: { en: '{noms} nomination(s) · {days} game days', es: '{noms} nominación(es) · {days} días de juego' },
+    matrixTotalsRow: { en: 'All officials', es: 'Todos los oficiales' },
+    matrixShowInactive: { en: 'Show inactive', es: 'Mostrar inactivos' },
+    matrixEmpty: { en: 'No officials match the current filters.', es: 'Ningún oficial coincide con los filtros.' },
+
     // Form
     newNominationTitle: { en: 'New Nomination', es: 'Nueva Nominación' },
     persons: { en: 'Persons', es: 'Personas' },

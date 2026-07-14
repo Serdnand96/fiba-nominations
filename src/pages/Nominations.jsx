@@ -15,6 +15,7 @@ const CONFIRMATION_BADGES = {
 }
 import { useLanguage } from '../i18n/LanguageContext'
 import { useAuth } from '../contexts/AuthContext'
+import NominationsMatrix from '../components/NominationsMatrix'
 
 const BCLA_F4_ROUNDS = ['Semifinals', '3rd Place', 'Final']
 
@@ -28,6 +29,7 @@ export default function Nominations() {
   const [competitions, setCompetitions] = useState([])
   const [search, setSearch] = useState('')
   const [confirmationFilter, setConfirmationFilter] = useState('')
+  const [view, setView] = useState('table') // 'table' | 'matrix'
   const [showForm, setShowForm] = useState(false)
   const [loading, setLoading] = useState(false)
   const [bulkProgress, setBulkProgress] = useState(null)
@@ -368,8 +370,25 @@ export default function Nominations() {
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
-        <h2 className="text-2xl font-bold text-ink-900 dark:text-white">{t('nominations.title')}</h2>
-        {canEdit && (
+        <div className="flex items-center gap-4">
+          <h2 className="text-2xl font-bold text-ink-900 dark:text-white">{t('nominations.title')}</h2>
+          <div className="inline-flex rounded-lg border border-fiba-border overflow-hidden">
+            {[
+              { key: 'table', label: t('nominations.viewTable') },
+              { key: 'matrix', label: t('nominations.viewMatrix') },
+            ].map(o => (
+              <button key={o.key} onClick={() => setView(o.key)}
+                className={`px-3 py-1.5 text-sm font-medium transition-colors ${
+                  view === o.key
+                    ? 'bg-fiba-accent text-white'
+                    : 'text-fiba-muted hover:text-ink-900 dark:hover:text-white'
+                }`}>
+                {o.label}
+              </button>
+            ))}
+          </div>
+        </div>
+        {canEdit && view === 'table' && (
           <div className="flex gap-2">
             {selectedIds.size > 0 && (
               <>
@@ -393,6 +412,11 @@ export default function Nominations() {
         )}
       </div>
 
+      {view === 'matrix' && (
+        <NominationsMatrix nominations={nominations} personnel={personnel} />
+      )}
+
+      {view === 'table' && (<>
       {/* Stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
         {[
@@ -525,6 +549,7 @@ export default function Nominations() {
         </table>
         </div>
       </div>
+      </>)}
 
       {/* Creation Form Modal */}
       {showForm && (
