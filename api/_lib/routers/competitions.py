@@ -8,7 +8,7 @@ router = APIRouter(prefix="/competitions", tags=["competitions"], dependencies=[
 
 @router.get("")
 def list_competitions():
-    result = supabase.table("competitions").select("*").order("created_at", desc=True).execute()
+    result = supabase.table("competitions").select("*").order("name").execute()
     return result.data
 
 
