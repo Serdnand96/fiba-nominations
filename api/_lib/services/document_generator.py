@@ -46,7 +46,13 @@ def _build_doc(nomination_data: dict):
     if template_key == "WCQ":
         doc = _build_wcq_letter(nomination_data)
     elif template_key == "GENERIC":
-        doc = _build_generic_letter(nomination_data)
+        # Prefer the placeholder template; fall back to the positional builder
+        # if the file isn't deployed yet.
+        if (TEMPLATES_DIR / "GENERIC_TEMPLATE_TPL.docx").exists():
+            doc = _build_from_docx_template(
+                nomination_data, "GENERIC_TEMPLATE_TPL.docx", FONT_GENERIC)
+        else:
+            doc = _build_generic_letter(nomination_data)
     elif template_key == "BCLA":
         # Auto-detect variant: if game_dates have F4 round labels → F4, otherwise RS
         game_dates = nomination_data.get("game_dates") or []
@@ -209,6 +215,77 @@ def _fee_lines(data: dict, *, incidentals_label: str = "Incidentals",
         (f"{incidentals_label}: {_fmt_money(incidentals)}", False),
         (f"{total_label}: {_fmt_money(total)}", True),
     ]
+
+
+# ─── PLACEHOLDER-BASED TEMPLATES (docxtpl) ───────────────────────────────────
+#
+# The older builders below address the template's paragraphs by index
+# (paras[2], paras[4], …), so the .docx is really a positional skeleton: any
+# file with a different paragraph layout produces garbage, and the `if idx <
+# sig_start - N` guards drop content silently. Templates rendered through
+# _build_from_docx_template instead carry {{ placeholders }}, so the letter
+# survives edits to the .docx and an uploaded file can be validated by
+# rendering it.
+#
+# Piloted on GENERIC. WCQ / BCLA / LSB still use the positional builders.
+
+RED_HEX = "ED0000"
+DARK_HEX = "2A2A2A"
+
+
+def _letter_context(data: dict, font: str) -> dict:
+    """Values for a placeholder template, mirroring _build_generic_letter.
+
+    RichText carries its own colour/size, so the .docx only has to place the
+    tag — it does not need to know that the fee total is bold or the nominee
+    name is red.
+    """
+    from docxtpl import RichText
+
+    role = data.get("role", "VGO")
+    role_label = "Video Graphic Operator" if role == "VGO" else "Technical Delegate"
+
+    def rich(text, color=DARK_HEX, bold=False, size=None):
+        rt = RichText()
+        rt.add(text, color=color, bold=bold, font=font,
+               size=(size * 2) if size else None)
+        return rt
+
+    games = []
+    for gd in data.get("game_dates") or []:
+        label = gd.get("label", "")
+        date_val = _fmt_date(gd.get("date", ""))
+        games.append(rich(f"{label}: {date_val}" if label else date_val,
+                          color=RED_HEX, bold=True, size=10))
+
+    host_city = (data.get("host_city") or "").strip()
+    host_country = (data.get("host_country") or "").strip()
+    host_line = ", ".join(p for p in (host_city, host_country) if p)
+
+    return {
+        "letter_date": _fmt_date(data.get("letter_date", "")),
+        "nominee": rich(data.get("nominee_name", ""), color=RED_HEX),
+        "competition_name": data.get("competition_name", ""),
+        "game_dates": games,
+        "host_line": rich(host_line, bold=True, size=10) if host_line else "",
+        "role_label": role_label,
+        "deadline": rich(_fmt_deadline(data.get("confirmation_deadline", "")), color=RED_HEX),
+        "confirm_email": CONFIRMATION_EMAIL.get(role, CONFIRMATION_EMAIL["VGO"]),
+        "fee_lines": [rich(text, color=RED_HEX, bold=bold, size=10)
+                      for text, bold in _fee_lines(data)],
+    }
+
+
+def _build_from_docx_template(data: dict, template_file: str, font: str):
+    """Render a placeholder template. Returns a DocxTemplate, which exposes the
+    same .save(path) as a Document, so the rest of the pipeline is unchanged."""
+    # Imported lazily: if docxtpl is ever missing, only this path breaks and
+    # the positional fallback still serves letters.
+    from docxtpl import DocxTemplate
+
+    tpl = DocxTemplate(str(TEMPLATES_DIR / template_file))
+    tpl.render(_letter_context(data, font))
+    return tpl
 
 
 # ─── WCQ / GENERIC LETTER ────────────────────────────────────────────────────

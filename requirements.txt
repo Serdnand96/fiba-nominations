@@ -5,3 +5,4 @@ httpx
 openpyxl
 python-multipart
 qrcode[pil]
+docxtpl
