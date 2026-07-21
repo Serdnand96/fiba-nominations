@@ -256,6 +256,20 @@ def _letter_context(data: dict, font: str, date_color: str = DARK_HEX) -> dict:
                size=(size * 2) if size else None)
         return rt
 
+    def rich_parts(*parts):
+        """A whole paragraph as one RichText.
+
+        Paragraphs that mix inks (the greeting, the confirmation line) are
+        built here rather than as `text {{r tag }} text` in the .docx: docxtpl
+        splits the run around a RichText insert and the trailing text comes
+        back without an explicit colour, which would otherwise force us to
+        repaint the document default and recolour the signature and footer.
+        """
+        rt = RichText()
+        for text, color in parts:
+            rt.add(text, color=color, font=font)
+        return rt
+
     games = []
     for gd in data.get("game_dates") or []:
         label = gd.get("label", "")
@@ -271,7 +285,19 @@ def _letter_context(data: dict, font: str, date_color: str = DARK_HEX) -> dict:
         # WCQ prints the date in red, GENERIC in ink — hence the parameter.
         "letter_date": rich(_fmt_date(data.get("letter_date", "")),
                             color=date_color, size=10),
-        "nominee": rich(data.get("nominee_name", ""), color=RED_HEX),
+        "dear_line": rich_parts(
+            ("Dear ", DARK_HEX),
+            (data.get("nominee_name", ""), RED_HEX),
+            (",", DARK_HEX),
+        ),
+        "confirm_line": rich_parts(
+            ("As per the FIBA Internal Regulations Book 3, please confirm to us "
+             f"your availability to fulfil your assignment as {role_label} by ", DARK_HEX),
+            (_fmt_deadline(data.get("confirmation_deadline", "")), RED_HEX),
+            (".", DARK_HEX),
+            (" Confirmation shall be sent to ", DARK_HEX),
+            (CONFIRMATION_EMAIL.get(role, CONFIRMATION_EMAIL["VGO"]), DARK_HEX),
+        ),
         "competition_name": data.get("competition_name", ""),
         "game_dates": games,
         "host_line": rich(host_line, bold=True, size=10) if host_line else "",

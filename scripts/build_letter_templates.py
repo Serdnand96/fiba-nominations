@@ -36,7 +36,7 @@ def nomination_body(fee_style=None, blank_after_date=1):
         # (text, align, size_pt, style)
         ("{{r letter_date }}", RIGHT, 10, None),
         *[("", None, None, None)] * blank_after_date,
-        ("Dear {{r nominee }},", None, None, None),
+        ("{{r dear_line }}", None, None, None),
         ("", None, None, None),
         ("We would like to inform that you have been nominated for the following "
          "games of the {{ competition_name }}.", None, None, None),
@@ -46,9 +46,7 @@ def nomination_body(fee_style=None, blank_after_date=1):
         ("{%p endfor %}", None, None, None),
         ("{{r host_line }}", CENTER, 10, None),
         ("", None, None, None),
-        ("As per the FIBA Internal Regulations Book 3, please confirm to us your "
-         "availability to fulfil your assignment as {{ role_label }} by {{r deadline }}. "
-         "Confirmation shall be sent to {{ confirm_email }}", JUSTIFY, None, None),
+        ("{{r confirm_line }}", JUSTIFY, None, None),
         ("", None, None, None),
         ("As soon as we receive your confirmation, we will make arrangements for "
          "international flights to the host country and provide you with relevant "
@@ -104,14 +102,13 @@ def build(name, spec):
     doc = Document(str(src))
     font = spec["font"]
 
-    # docxtpl splits the run holding a tag, and text trailing a {{r }} insert
-    # comes back without an explicit colour. Pin the document default so
-    # inherited text renders in the same ink as the explicit runs.
+    # Match what the positional builders did: set the default font, and only
+    # the font. Pinning the default *colour* here would also repaint the
+    # signature block and the footer, which the originals leave pure black.
+    # Mixed-ink paragraphs are handled as whole RichText values instead.
     for style_name in ("Normal", "Body Text", "Heading 1"):
         try:
-            style = doc.styles[style_name]
-            style.font.name = font
-            style.font.color.rgb = DARK
+            doc.styles[style_name].font.name = font
         except KeyError:
             pass
 
