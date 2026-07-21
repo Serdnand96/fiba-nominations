@@ -69,7 +69,7 @@ def _build_doc(nomination_data: dict):
     elif template_key == "BCLA_RS":
         doc = _build_bcla(nomination_data, "RS")
     elif template_key == "LSB":
-        doc = _build_confirmation_from_scratch(nomination_data)
+        doc = _build_lsb(nomination_data)
     else:
         raise ValueError(f"Unknown template_key: {template_key}")
 
@@ -387,6 +387,59 @@ def _bcla_context(data: dict, variant: str, font: str) -> dict:
             data, incidentals_label="Incidentals Fee",
             total_label="Total Fees to be received")],
     }
+
+
+def _lsb_context(data: dict, font: str) -> dict:
+    """Values for the LSB confirmation template.
+
+    Mirrors _build_confirmation_from_scratch: short date form, detail bullets
+    that vanish when empty, game dates centred in red, and the signature as a
+    single line.
+    """
+    from docxtpl import RichText
+
+    role = data.get("role", "VGO")
+    role_label = "Video Graphic Operator" if role == "VGO" else "Technical Delegate"
+    comp_name = data.get("competition_name", "")
+
+    def rich(text, bold=False, color=DARK_HEX):
+        rt = RichText()
+        rt.add(text, color=color, bold=bold, font=font, size=20)  # 10pt
+        return rt
+
+    games = []
+    for gd in data.get("game_dates") or []:
+        label = gd.get("label", "")
+        date_val = _fmt_date(gd.get("date", ""))
+        games.append(rich(f"{label}: {date_val}" if label else date_val,
+                          bold=True, color=RED_HEX))
+
+    sig_name, sig_title, sig_org = SIGNATORIES.get("LSB", SIGNATORIES["BCLA"])
+
+    return {
+        "lsb_title": f"Confirmation – {comp_name} {data.get('competition_year', '')}",
+        "dear_line": _dear_line(data, font, size=10),
+        "role_label": role_label,
+        "competition_name": comp_name,
+        "location": data.get("location") or "",
+        "venue": data.get("venue") or "",
+        "arrival_date": _fmt_date(data["arrival_date"]) if data.get("arrival_date") else "",
+        "departure_date": _fmt_date(data["departure_date"]) if data.get("departure_date") else "",
+        "game_dates": games,
+        "fee_lines": [rich(text, bold=bold, color=RED_HEX)
+                      for text, bold in _fee_lines(data)],
+        "signature_line": f"{sig_name} {sig_title} {sig_org}",
+    }
+
+
+def _build_lsb(data: dict):
+    """LSB confirmation — placeholder template if deployed, else the
+    from-scratch builder."""
+    if (TEMPLATES_DIR / "LSB_TEMPLATE_TPL.docx").exists():
+        return _build_from_docx_template(
+            data, "LSB_TEMPLATE_TPL.docx", FONT_WCQ,
+            context=_lsb_context(data, FONT_WCQ))
+    return _build_confirmation_from_scratch(data)
 
 
 def _build_bcla(data: dict, variant: str):

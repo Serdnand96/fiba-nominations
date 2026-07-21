@@ -162,7 +162,77 @@ SPECS = {
         "body": BCLA_BODY,
         "bold": BCLA_BOLD,
     },
+    "LSB": {
+        # No source file: the letter was built entirely in code.
+        "scratch": True,
+        "dst": "LSB_TEMPLATE_TPL.docx",
+        "font": "IBM Plex Sans",
+    },
 }
+
+
+def build_lsb(name, spec):
+    """Create the LSB template from nothing.
+
+    LSB has no base .docx — _build_confirmation_from_scratch builds the whole
+    letter in code. To guarantee the template's formatting matches byte for
+    byte, this reuses that builder's own helpers and feeds them Jinja tags
+    instead of values.
+    """
+    import sys
+    sys.path.insert(0, ".")
+    from api._lib.services.document_generator import (
+        _apply_base_style, _add_heading, _add_body, _add_body_text,
+        _add_centered_red, _add_fee_line, _add_empty, COLOR_DARK,
+    )
+
+    doc = Document()
+    _apply_base_style(doc)
+
+    def tag(text):
+        """A Jinja control tag: its formatting is irrelevant, docxtpl drops it."""
+        _add_body_text(doc, text)
+
+    _add_heading(doc, "{{ lsb_title }}")
+    _add_empty(doc)
+    _add_body(doc, [("{{r dear_line }}", COLOR_DARK)])
+    _add_empty(doc)
+    _add_body_text(doc, "This letter confirms your assignment as {{ role_label }} "
+                        "for the {{ competition_name }}.")
+    _add_empty(doc)
+
+    # Detail bullets — each guarded so the line disappears when the value is
+    # absent, exactly like the `if data.get(...)` chain in the builder.
+    for field, label in (("location", "Location"), ("venue", "Venue"),
+                         ("arrival_date", "Arrival Date"),
+                         ("departure_date", "Departure Date")):
+        tag("{%p if " + field + " %}")
+        _add_body_text(doc, f"  •  {label}: {{{{ {field} }}}}")
+        tag("{%p endif %}")
+    _add_empty(doc)
+
+    tag("{%p for game in game_dates %}")
+    _add_centered_red(doc, "{{r game }}")
+    tag("{%p endfor %}")
+    _add_empty(doc)
+
+    _add_body_text(doc, "Below list the details of payment you will receive as "
+                        "{{ role_label }} assigned to the competition listed above:")
+    _add_empty(doc)
+    tag("{%p for fee in fee_lines %}")
+    _add_fee_line(doc, "{{r fee }}")
+    tag("{%p endfor %}")
+    _add_empty(doc)
+
+    _add_body_text(doc, "Thank you for your commitment and professionalism.")
+    _add_empty(doc)
+    _add_empty(doc)
+    _add_body_text(doc, "{{ signature_line }}")
+
+    dst = TEMPLATES / spec["dst"]
+    doc.save(str(dst))
+    print(f"{name}: built from scratch -> {dst.name} "
+          f"({len(Document(str(dst)).paragraphs)} paras)")
 
 
 def write_para(para, text, align, size, style_name, font, doc, bold=False):
@@ -234,6 +304,8 @@ def build_insert(name, spec):
 
 
 def build(name, spec):
+    if spec.get("scratch"):
+        return build_lsb(name, spec)
     if "anchor" in spec:
         return build_insert(name, spec)
 

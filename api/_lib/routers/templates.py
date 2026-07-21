@@ -24,11 +24,15 @@ router = APIRouter(prefix="/templates", tags=["templates"])
 
 # Template keys offered in the UI. BCLA auto-detects its F4/RS variant from the
 # game labels, so BCLA_F4 / BCLA_RS are not listed separately.
+#
+# base_file is the *_TPL.docx that actually drives generation — the placeholder
+# template, not the original positional skeleton it was derived from. That is
+# the file a future upload would replace.
 TEMPLATES = [
-    {"key": "WCQ", "base_file": "WCQ_TEMPLATE.docx", "type": "nomination"},
-    {"key": "BCLA", "base_file": "BCLA_TEMPLATE.docx", "type": "confirmation"},
-    {"key": "LSB", "base_file": None, "type": "confirmation"},
-    {"key": "GENERIC", "base_file": "GENERIC_TEMPLATE.docx", "type": "nomination"},
+    {"key": "WCQ", "base_file": "WCQ_TEMPLATE_TPL.docx", "type": "nomination"},
+    {"key": "BCLA", "base_file": "BCLA_TEMPLATE_TPL.docx", "type": "confirmation"},
+    {"key": "LSB", "base_file": "LSB_TEMPLATE_TPL.docx", "type": "confirmation"},
+    {"key": "GENERIC", "base_file": "GENERIC_TEMPLATE_TPL.docx", "type": "nomination"},
 ]
 
 
