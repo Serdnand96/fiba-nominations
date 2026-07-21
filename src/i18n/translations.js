@@ -450,6 +450,16 @@ const translations = {
     noUsers: { en: 'No registered users', es: 'No hay usuarios registrados' },
     confirmDelete: { en: 'Delete user {email}?', es: '¿Eliminar el usuario {email}?' },
     errorDeleting: { en: 'Error deleting user', es: 'Error eliminando usuario' },
+    changePassword: { en: 'Change password', es: 'Cambiar contraseña' },
+    changePasswordTitle: { en: 'Change password', es: 'Cambiar contraseña' },
+    newPassword: { en: 'New password', es: 'Nueva contraseña' },
+    confirmPassword: { en: 'Confirm password', es: 'Confirmar contraseña' },
+    minChars8: { en: 'Minimum 8 characters', es: 'Mínimo 8 caracteres' },
+    passwordMismatch: { en: 'Passwords do not match', es: 'Las contraseñas no coinciden' },
+    passwordTooShort: { en: 'Minimum 8 characters', es: 'Mínimo 8 caracteres' },
+    passwordUpdated: { en: 'Password updated', es: 'Contraseña actualizada' },
+    savePassword: { en: 'Save password', es: 'Guardar contraseña' },
+    savingPassword: { en: 'Saving...', es: 'Guardando...' },
   },
 
   // ===== Availability =====

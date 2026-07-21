@@ -197,6 +197,12 @@ class _AuthAdmin:
 
         return _Result(data)
 
+    def update_user(self, user_id: str, params: dict):
+        resp = _HTTP.put(f"{self._url}/users/{user_id}", headers=self._headers, json=params)
+        if resp.status_code >= 400:
+            raise Exception(f"Auth error {resp.status_code}: {resp.text}")
+        return resp.json()
+
     def delete_user(self, user_id: str):
         resp = _HTTP.delete(f"{self._url}/users/{user_id}", headers=self._headers)
         if resp.status_code >= 400:

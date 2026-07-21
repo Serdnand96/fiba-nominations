@@ -29,6 +29,10 @@ class UserCreate(BaseModel):
     password: str
 
 
+class PasswordUpdate(BaseModel):
+    password: str
+
+
 @router.get("/")
 def list_users():
     """List all auth users with superadmin flag."""
@@ -92,6 +96,21 @@ def create_user(payload: UserCreate):
         if "already been registered" in msg.lower() or "already exists" in msg.lower():
             raise HTTPException(status_code=409, detail="Este email ya está registrado")
         raise HTTPException(status_code=500, detail="Failed to create user")
+
+
+@router.put("/{user_id}/password")
+def update_user_password(user_id: str, payload: PasswordUpdate):
+    """Set a new password for an auth user (superadmin-only)."""
+    if len(payload.password) < 8:
+        raise HTTPException(status_code=400, detail="La contraseña debe tener al menos 8 caracteres")
+    try:
+        client = _get_admin_client()
+        client.auth.admin.update_user(user_id, {"password": payload.password})
+        return {"ok": True}
+    except HTTPException:
+        raise
+    except Exception:
+        raise HTTPException(status_code=500, detail="Failed to update password")
 
 
 @router.delete("/{user_id}")

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { getUsers, createUser, deleteUser, getUserPermissions, updateUserPermissions } from '../api/client'
+import { getUsers, createUser, deleteUser, updateUserPassword, getUserPermissions, updateUserPermissions } from '../api/client'
 import { useLanguage } from '../i18n/LanguageContext'
 import { useAuth } from '../contexts/AuthContext'
 
@@ -16,6 +16,14 @@ export default function Users() {
   const [password, setPassword] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+
+  // Password editor
+  const [pwdUser, setPwdUser] = useState(null)
+  const [newPwd, setNewPwd] = useState('')
+  const [confirmPwd, setConfirmPwd] = useState('')
+  const [pwdError, setPwdError] = useState('')
+  const [pwdSaving, setPwdSaving] = useState(false)
+  const [pwdSuccess, setPwdSuccess] = useState(false)
 
   // Permission editor
   const [permUser, setPermUser] = useState(null)
@@ -61,6 +69,37 @@ export default function Users() {
       loadUsers()
     } catch (err) {
       alert(t('users.errorDeleting') + ': ' + (err.response?.data?.detail || err.message))
+    }
+  }
+
+  function openPwdEditor(user) {
+    setPwdUser(user)
+    setNewPwd('')
+    setConfirmPwd('')
+    setPwdError('')
+    setPwdSuccess(false)
+  }
+
+  async function handlePasswordSave(e) {
+    e.preventDefault()
+    setPwdError('')
+    if (newPwd.length < 8) {
+      setPwdError(t('users.passwordTooShort'))
+      return
+    }
+    if (newPwd !== confirmPwd) {
+      setPwdError(t('users.passwordMismatch'))
+      return
+    }
+    setPwdSaving(true)
+    try {
+      await updateUserPassword(pwdUser.id, newPwd)
+      setPwdSuccess(true)
+      setTimeout(() => setPwdUser(null), 1500)
+    } catch (err) {
+      setPwdError(err.response?.data?.detail || err.message)
+    } finally {
+      setPwdSaving(false)
     }
   }
 
@@ -183,6 +222,11 @@ export default function Users() {
                   </td>
                   <td className="px-6 py-4 text-right">
                     <div className="flex gap-3 justify-end">
+                      {isSuperadmin && (
+                        <button onClick={() => openPwdEditor(u)} className="text-fiba-accent hover:underline text-sm">
+                          {t('users.changePassword')}
+                        </button>
+                      )}
                       {isSuperadmin && !u.is_superadmin && (
                         <button onClick={() => openPermEditor(u)} className="text-fiba-accent hover:underline text-sm">
                           {t('permissions.editPermissions')}
@@ -207,6 +251,50 @@ export default function Users() {
             </tbody>
           </table>
         </div>
+        </div>
+      )}
+
+      {/* Password Editor Modal */}
+      {pwdUser && (
+        <div className="fiba-modal-overlay">
+          <div className="fiba-modal max-w-md p-6">
+            <div className="flex justify-between items-start mb-4">
+              <div>
+                <h3 className="text-lg font-bold text-ink-900 dark:text-white">{t('users.changePasswordTitle')}</h3>
+                <p className="text-sm text-fiba-muted">{pwdUser.email}</p>
+              </div>
+              <button onClick={() => setPwdUser(null)} className="text-fiba-muted hover:text-ink-900 dark:text-white text-xl">&times;</button>
+            </div>
+
+            <form onSubmit={handlePasswordSave} className="space-y-4">
+              {pwdError && (
+                <div className="bg-red-500/10 text-red-400 text-sm px-4 py-3 rounded-lg">{pwdError}</div>
+              )}
+              {pwdSuccess && (
+                <div className="bg-emerald-500/10 text-emerald-400 text-sm px-4 py-3 rounded-lg">
+                  {t('users.passwordUpdated')}
+                </div>
+              )}
+              <div>
+                <label className="fiba-label">{t('users.newPassword')}</label>
+                <input type="password" required minLength={8} value={newPwd} onChange={e => setNewPwd(e.target.value)}
+                  className="fiba-input" placeholder={t('users.minChars8')} autoComplete="new-password" />
+              </div>
+              <div>
+                <label className="fiba-label">{t('users.confirmPassword')}</label>
+                <input type="password" required minLength={8} value={confirmPwd} onChange={e => setConfirmPwd(e.target.value)}
+                  className="fiba-input" placeholder={t('users.minChars8')} autoComplete="new-password" />
+              </div>
+              <div className="flex justify-end gap-3">
+                <button type="button" onClick={() => setPwdUser(null)} className="px-4 py-2 text-sm text-fiba-muted">
+                  {t('users.cancel')}
+                </button>
+                <button type="submit" disabled={pwdSaving} className="btn-fiba disabled:opacity-50">
+                  {pwdSaving ? t('users.savingPassword') : t('users.savePassword')}
+                </button>
+              </div>
+            </form>
+          </div>
         </div>
       )}
 

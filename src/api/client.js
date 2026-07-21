@@ -104,6 +104,7 @@ export const removeAssignment = (assignmentId) => api.delete(`/calendar/assignme
 export const getUsers = () => api.get('/users').then(r => r.data)
 export const createUser = (data) => api.post('/users', data).then(r => r.data)
 export const deleteUser = (id) => api.delete(`/users/${id}`).then(r => r.data)
+export const updateUserPassword = (id, password) => api.put(`/users/${id}/password`, { password }).then(r => r.data)
 
 // Transport
 export const getTransportEvents = () => api.get('/transport/events').then(r => r.data)
