@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { useLanguage } from '../i18n/LanguageContext'
 import { getTemplates, previewTemplate } from '../api/client'
 import { Icon } from '../lib/icons'
@@ -118,7 +119,10 @@ export default function Templates() {
         </div>
       </div>
 
-      {previewKey && (
+      {/* Portal to body: an AppShell ancestor creates a containing block, so a
+          plain fixed overlay anchors to it instead of the viewport and the
+          modal ends up cut off (same reason as the Games assignment picker). */}
+      {previewKey && createPortal(
         <div className="fiba-modal-overlay z-[60]">
           {/* Don't set a height here: .fiba-modal already caps at max-h-[90vh]
               with its own overflow, and a second height fights that. */}
@@ -152,7 +156,8 @@ export default function Templates() {
               )}
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   )
