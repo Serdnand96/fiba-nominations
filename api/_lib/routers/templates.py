@@ -21,6 +21,8 @@ from api._lib.services.document_generator import (
     TEMPLATES_DIR,
     custom_type,
     generate_preview,
+    placeholders_for,
+    template_path,
     generate_preview_from_bytes,
     validate_template,
 )
@@ -68,6 +70,7 @@ def list_templates():
             "custom": template_store.has_custom(key),
             "staged": template_store.has_staged(key),
             "signatory": ", ".join(p for p in (name, title, org) if p),
+            "placeholders": placeholders_for(key),
         })
 
     # Types created from the UI. They have no file in the repo, so until one is
@@ -95,6 +98,7 @@ def list_templates():
                 row.get("signatory_name") or "",
                 row.get("signatory_title") or "",
                 row.get("signatory_org") or "") if p),
+            "placeholders": placeholders_for(key),
         })
     return out
 
@@ -162,6 +166,42 @@ def delete_template_type(template_key: str):
     template_store.remove_custom(template_key)
     supabase.table("letter_templates").delete().eq("key", template_key).execute()
     return {"deleted": True}
+
+
+# A brand-new type has no file of its own, so its starting point is the
+# built-in template of the same shape: that file already carries the FIBA
+# letterhead, footer, signature image AND the placeholders, so the user can
+# restyle it in Word instead of authoring the tags from scratch.
+STARTER_FOR_KIND = {
+    "nomination": "GENERIC_TEMPLATE_TPL.docx",
+    "confirmation": "LSB_TEMPLATE_TPL.docx",
+}
+
+
+@router.get("/{template_key}/file", dependencies=[Depends(require_view("templates"))])
+def download_template_file(template_key: str):
+    """Download the .docx to edit in Word.
+
+    For a template that has a file (built-in or uploaded) this is that file.
+    For a type created from the UI that hasn't been given one yet, it's the
+    starter for its shape — otherwise there is no way to learn what
+    placeholders the letter needs.
+    """
+    _known_key(template_key)
+
+    path = template_path(template_key)
+    name = f"{template_key}.docx"
+
+    if path is None:
+        row = custom_type(template_key)
+        starter = STARTER_FOR_KIND.get((row or {}).get("kind", "nomination"))
+        candidate = TEMPLATES_DIR / starter if starter else None
+        if not candidate or not candidate.exists():
+            raise HTTPException(status_code=404, detail="No file available for this template")
+        path = candidate
+        name = f"{template_key}_starter.docx"
+
+    return FileResponse(path, media_type=DOCX_MIME, filename=name)
 
 
 @router.post("/{template_key}/upload", dependencies=[Depends(require_edit("templates"))])

@@ -240,6 +240,12 @@ export const uploadTemplate = (key, file) => {
     headers: { 'Content-Type': 'multipart/form-data' },
   }).then(r => r.data)
 }
+// The .docx to open in Word. For a type with no file yet this returns the
+// starter for its shape, so the user has the placeholders to design around.
+export const downloadTemplateFile = async (key) => {
+  const resp = await api.get(`/templates/${key}/file`, { responseType: 'blob' })
+  return resp.data
+}
 export const createTemplateType = (data) => api.post('/templates', data).then(r => r.data)
 export const deleteTemplateType = (key) => api.delete(`/templates/${key}`).then(r => r.data)
 export const activateTemplate = (key) => api.post(`/templates/${key}/activate`).then(r => r.data)

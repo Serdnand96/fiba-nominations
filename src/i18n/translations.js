@@ -331,6 +331,18 @@ const translations = {
       es: '¿Eliminar este tipo de template y su archivo subido?',
     },
     actionFailed: { en: 'Failed: {error}', es: 'Falló: {error}' },
+    download: { en: 'Download .docx', es: 'Descargar .docx' },
+    downloadStarter: { en: 'Download starter', es: 'Descargar base' },
+    howTo: { en: 'How to design a template', es: 'Cómo diseñar un template' },
+    howToBody: {
+      en: 'Download the .docx, open it in Word and change whatever you like — logo, header, footer, fonts, signature image, wording, order. Keep the placeholders below where you want their data to appear, then upload the file back. Anything you delete simply stops appearing; anything you invent renders empty.',
+      es: 'Descargá el .docx, abrilo en Word y cambiá lo que quieras: logo, membrete, footer, tipografías, imagen de firma, redacción, orden. Mantené los placeholders de abajo donde quieras que aparezca cada dato, y volvé a subir el archivo. Lo que borres deja de aparecer; lo que inventes sale vacío.',
+    },
+    placeholders: { en: 'Available placeholders', es: 'Placeholders disponibles' },
+    placeholdersHint: {
+      en: '{{r name }} inserts styled text (colour and bold come from the data). {{ name }} inserts plain text. {%p for x in list %} … {%p endfor %} repeats a paragraph.',
+      es: '{{r nombre }} inserta texto con estilo (el color y la negrita vienen del dato). {{ nombre }} inserta texto plano. {%p for x in lista %} … {%p endfor %} repite un párrafo.',
+    },
   },
 
   // ===== Users =====

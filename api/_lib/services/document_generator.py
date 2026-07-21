@@ -582,6 +582,25 @@ def spec_for(template_key: str) -> dict | None:
     return {"file": None, "context": context, "custom_type": row}
 
 
+def placeholders_for(template_key: str) -> list[str]:
+    """Names a template of this key may use, so the UI can show them.
+
+    Anything not in this list renders empty — that's what the upload
+    validation warns about.
+    """
+    spec = spec_for(template_key)
+    if not spec:
+        return []
+    sample = copy.deepcopy(PREVIEW_SAMPLE)
+    sample["template_key"] = template_key
+    try:
+        return sorted(spec["context"](sample))
+    except Exception:
+        logging.getLogger(__name__).exception(
+            "Could not compute placeholders for %s", template_key)
+        return []
+
+
 def template_path(template_key: str) -> Path | None:
     """Where to read a template from: the uploaded one wins over the repo's.
 

@@ -5,7 +5,7 @@ import { useAuth } from '../contexts/AuthContext'
 import {
   getTemplates, previewTemplate, uploadTemplate,
   activateTemplate, discardStagedTemplate, revertTemplate,
-  createTemplateType, deleteTemplateType,
+  createTemplateType, deleteTemplateType, downloadTemplateFile,
 } from '../api/client'
 import { Icon } from '../lib/icons'
 
@@ -150,6 +150,24 @@ export default function Templates() {
     }
   }
 
+  const doDownload = async (tmpl) => {
+    setNotice(null)
+    try {
+      const blob = await downloadTemplateFile(tmpl.key)
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      // A type with no file of its own gets the starter for its shape.
+      a.download = tmpl.base_file_present || tmpl.custom
+        ? `${tmpl.key}.docx` : `${tmpl.key}_starter.docx`
+      a.click()
+      URL.revokeObjectURL(url)
+    } catch (err) {
+      const detail = err?.response?.data?.detail || String(err)
+      setNotice({ kind: 'error', text: t('templates.actionFailed', { error: detail }) })
+    }
+  }
+
   const doDeleteType = async (key) => {
     if (!window.confirm(t('templates.deleteConfirm'))) return
     setNotice(null)
@@ -181,6 +199,30 @@ export default function Templates() {
           {notice.text}
         </div>
       )}
+
+      {/* Without this, "upload your own design" is impossible: nobody can
+          guess the placeholder names from an empty Word document. */}
+      <details className="mb-4 rounded-xl border border-fiba-border p-4">
+        <summary className="cursor-pointer text-sm font-medium text-ink-900 dark:text-white">
+          {t('templates.howTo')}
+        </summary>
+        <p className="text-sm text-fiba-muted mt-3">{t('templates.howToBody')}</p>
+        <p className="text-xs text-fiba-muted/70 mt-2 font-mono">{t('templates.placeholdersHint')}</p>
+        {templates.map(tmpl => tmpl.placeholders?.length > 0 && (
+          <div key={tmpl.key} className="mt-3">
+            <p className="text-xs text-fiba-muted mb-1">
+              {t('templates.placeholders')} — {tmpl.key}
+            </p>
+            <div className="flex flex-wrap gap-1.5">
+              {tmpl.placeholders.map(p => (
+                <code key={p} className="px-1.5 py-0.5 rounded bg-fiba-surface text-[11px] text-fiba-accent">
+                  {p}
+                </code>
+              ))}
+            </div>
+          </div>
+        ))}
+      </details>
 
       <div className="rounded-xl border border-fiba-border overflow-hidden">
         <div className="overflow-x-auto">
@@ -246,6 +288,12 @@ export default function Templates() {
                         {t('templates.deleteType')}
                       </button>
                     )}
+                    <button onClick={() => doDownload(tmpl)}
+                      className="inline-flex items-center gap-1.5 text-fiba-accent hover:underline text-xs">
+                      <Icon.Download className="w-4 h-4" />
+                      {tmpl.base_file_present || tmpl.custom
+                        ? t('templates.download') : t('templates.downloadStarter')}
+                    </button>
                     {canEdit && (
                       <>
                         <input type="file" accept=".docx" className="hidden"
