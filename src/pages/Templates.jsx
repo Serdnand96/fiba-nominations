@@ -119,8 +119,10 @@ export default function Templates() {
       </div>
 
       {previewKey && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[60] p-4">
-          <div className="fiba-modal w-full max-w-4xl h-[85vh] flex flex-col">
+        <div className="fiba-modal-overlay z-[60]">
+          {/* Don't set a height here: .fiba-modal already caps at max-h-[90vh]
+              with its own overflow, and a second height fights that. */}
+          <div className="fiba-modal max-w-4xl">
             <div className="flex items-start justify-between p-4 border-b border-fiba-border">
               <div>
                 <h3 className="text-lg font-bold text-ink-900 dark:text-white">
@@ -133,20 +135,20 @@ export default function Templates() {
               </button>
             </div>
 
-            <div className="flex-1 min-h-0 p-4">
+            <div className="p-4">
               {previewBusy && (
-                <div className="h-full flex items-center justify-center text-fiba-muted text-sm">
+                <div className="h-[70vh] flex items-center justify-center text-fiba-muted text-sm">
                   {t('templates.generating')}
                 </div>
               )}
               {!previewBusy && previewError && (
-                <div className="h-full flex items-center justify-center text-center text-sm text-fiba-muted px-6">
+                <div className="h-[70vh] flex items-center justify-center text-center text-sm text-fiba-muted px-6">
                   {previewError}
                 </div>
               )}
               {!previewBusy && previewUrl && (
                 <iframe src={previewUrl} title={`${previewKey} preview`}
-                  className="w-full h-full rounded-lg border border-fiba-border bg-white" />
+                  className="w-full h-[70vh] rounded-lg border border-fiba-border bg-white" />
               )}
             </div>
           </div>
