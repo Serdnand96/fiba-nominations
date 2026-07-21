@@ -36,28 +36,28 @@ def nomination_body(fee_style=None, blank_after_date=1):
         # (text, align, size_pt, style)
         ("{{r letter_date }}", RIGHT, 10, None),
         *[("", None, None, None)] * blank_after_date,
-        ("{{r dear_line }}", None, None, None),
+        ("{{r greeting }}", None, None, None),
         ("", None, None, None),
         ("We would like to inform that you have been nominated for the following "
-         "games of the {{ competition_name }}.", None, None, None),
+         "games of the {{ competition }}.", None, None, None),
         ("", None, None, None),
         ("{%p for game in game_dates %}", None, None, None),
         ("{{r game }}", CENTER, 10, None),
         ("{%p endfor %}", None, None, None),
-        ("{{r host_line }}", CENTER, 10, None),
+        ("{{r host }}", CENTER, 10, None),
         ("", None, None, None),
-        ("{{r confirm_line }}", JUSTIFY, None, None),
+        ("{{r confirmation_paragraph }}", JUSTIFY, None, None),
         ("", None, None, None),
         ("As soon as we receive your confirmation, we will make arrangements for "
          "international flights to the host country and provide you with relevant "
          "information in order for you to prepare the game and establish contact "
          "with the Game Director of the Host National Federation.", None, None, None),
         ("", None, None, None),
-        ("Below list the details of payment you will receive as {{ role_label }} "
+        ("Below list the details of payment you will receive as {{ role }} "
          "assigned to the competition listed above:", None, None, None),
         ("", None, None, None),
         ("", None, None, None),
-        ("{%p for fee in fee_lines %}", None, None, None),
+        ("{%p for fee in payment_lines %}", None, None, None),
         ("{{r fee }}", None, 10, fee_style),
         ("{%p endfor %}", None, None, None),
         ("", None, None, None),
@@ -81,12 +81,12 @@ def nomination_body(fee_style=None, blank_after_date=1):
 # variant (resolved in _bcla_context, so the .docx stays a flat sequence).
 # Labelled lines use {%p if %} so the wording stays editable in Word.
 BCLA_BODY = [
-    ("{{r bcla_title }}", None, None, None),
+    ("{{r heading }}", None, None, None),
     ("", None, None, None),
-    ("{{r dear_line }}", None, None, None),
+    ("{{r greeting }}", None, None, None),
     ("", None, None, None),
     ("By way of this letter, we confirm your acceptance for your assignment as "
-     "{{ role_label }} for the {{ competition_name }} {{ competition_year }}.",
+     "{{ role }} for the {{ competition }} {{ year }}.",
      JUSTIFY, 10, None),
     ("", None, None, None),
     ("Game Information", JUSTIFY, 10, None),          # bold applied below
@@ -109,7 +109,7 @@ BCLA_BODY = [
     ("", None, None, None),
     ("Financial Details", JUSTIFY, 10, None),         # bold applied below
     ("{{ payment_intro }}", JUSTIFY, 10, None),
-    ("{%p for fee in fee_lines %}", None, None, None),
+    ("{%p for fee in payment_lines %}", None, None, None),
     ("{{r fee }}", JUSTIFY, None, None),
     ("{%p endfor %}", None, None, None),
     ("", None, None, None),
@@ -119,7 +119,7 @@ BCLA_BODY = [
     ("Payment for this assignment will be made within 21-days of the window "
      "conclusion. ", JUSTIFY, 10, None),
     ("", None, None, None),
-    ("{{ banking_line }}", JUSTIFY, 10, None),
+    ("{{ banking_paragraph }}", JUSTIFY, 10, None),
     ("", None, None, None),
     ("If you have any questions, please do not hesitate to contact.",
      JUSTIFY, 10, None),
@@ -158,7 +158,7 @@ SPECS = {
         # after the anchor and the tail is left untouched.
         "anchor": 4,
         "date_para": 2,
-        "date_tag": "{{r bcla_date }}",
+        "date_tag": "{{r letter_date }}",
         "body": BCLA_BODY,
         "bold": BCLA_BOLD,
     },
@@ -193,12 +193,12 @@ def build_lsb(name, spec):
         """A Jinja control tag: its formatting is irrelevant, docxtpl drops it."""
         _add_body_text(doc, text)
 
-    _add_heading(doc, "{{ lsb_title }}")
+    _add_heading(doc, "{{ heading }}")
     _add_empty(doc)
-    _add_body(doc, [("{{r dear_line }}", COLOR_DARK)])
+    _add_body(doc, [("{{r greeting }}", COLOR_DARK)])
     _add_empty(doc)
-    _add_body_text(doc, "This letter confirms your assignment as {{ role_label }} "
-                        "for the {{ competition_name }}.")
+    _add_body_text(doc, "This letter confirms your assignment as {{ role }} "
+                        "for the {{ competition }}.")
     _add_empty(doc)
 
     # Detail bullets — each guarded so the line disappears when the value is
@@ -217,9 +217,9 @@ def build_lsb(name, spec):
     _add_empty(doc)
 
     _add_body_text(doc, "Below list the details of payment you will receive as "
-                        "{{ role_label }} assigned to the competition listed above:")
+                        "{{ role }} assigned to the competition listed above:")
     _add_empty(doc)
-    tag("{%p for fee in fee_lines %}")
+    tag("{%p for fee in payment_lines %}")
     _add_fee_line(doc, "{{r fee }}")
     tag("{%p endfor %}")
     _add_empty(doc)
@@ -227,7 +227,7 @@ def build_lsb(name, spec):
     _add_body_text(doc, "Thank you for your commitment and professionalism.")
     _add_empty(doc)
     _add_empty(doc)
-    _add_body_text(doc, "{{ signature_line }}")
+    _add_body_text(doc, "{{ signature }}")
 
     dst = TEMPLATES / spec["dst"]
     doc.save(str(dst))

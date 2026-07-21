@@ -105,8 +105,8 @@ PREVIEW_SAMPLE = {
     "nominee_name": "John Doe",
     "role": "TD",
     "letter_date": "2026-01-15",
-    "competition_name": "Sample Competition",
-    "competition_year": 2026,
+    "competition": "Sample Competition",
+    "year": 2026,
     "location": "Buenos Aires, Argentina",
     "venue": "Estadio Obras Sanitarias",
     "arrival_date": "2026-02-10",
@@ -162,12 +162,14 @@ def validate_template(template_key: str, data: bytes) -> dict:
             return {"ok": False, "unknown": [], "unused": [],
                     "error": f"Template failed to render: {exc}"}
 
-        known = set(context)
+        # Legacy names still resolve, so don't flag them as unknown; but only
+        # the current names are advertised as "unused".
+        known = set(with_legacy_aliases(context))
         return {
             "ok": True,
             "error": None,
             "unknown": sorted(used - known),
-            "unused": sorted(known - used),
+            "unused": sorted(set(context) - used),
         }
     finally:
         shutil.rmtree(tmp.parent, ignore_errors=True)
@@ -374,9 +376,9 @@ def _letter_context(data: dict, font: str, date_color: str = DARK_HEX) -> dict:
                             color=date_color, size=10),
         # The built-in nomination templates carry a scanned signature in the
         # .docx and ignore this; an uploaded template can print it instead.
-        "signature_line": f"{sig_name} {sig_title} {sig_org}".strip(),
-        "dear_line": _dear_line(data, font),
-        "confirm_line": rich_parts(
+        "signature": f"{sig_name} {sig_title} {sig_org}".strip(),
+        "greeting": _dear_line(data, font),
+        "confirmation_paragraph": rich_parts(
             ("As per the FIBA Internal Regulations Book 3, please confirm to us "
              f"your availability to fulfil your assignment as {role_label} by ", DARK_HEX),
             (_fmt_deadline(data.get("confirmation_deadline", "")), RED_HEX),
@@ -384,13 +386,13 @@ def _letter_context(data: dict, font: str, date_color: str = DARK_HEX) -> dict:
             (" Confirmation shall be sent to ", DARK_HEX),
             (CONFIRMATION_EMAIL.get(role, CONFIRMATION_EMAIL["VGO"]), DARK_HEX),
         ),
-        "competition_name": data.get("competition_name", ""),
+        "competition": data.get("competition_name", ""),
         "game_dates": games,
-        "host_line": rich(host_line, bold=True, size=10) if host_line else "",
-        "role_label": role_label,
+        "host": rich(host_line, bold=True, size=10) if host_line else "",
+        "role": role_label,
         "deadline": rich(_fmt_deadline(data.get("confirmation_deadline", "")), color=RED_HEX),
-        "confirm_email": CONFIRMATION_EMAIL.get(role, CONFIRMATION_EMAIL["VGO"]),
-        "fee_lines": [rich(text, color=RED_HEX, bold=bold, size=10)
+        "confirmation_email": CONFIRMATION_EMAIL.get(role, CONFIRMATION_EMAIL["VGO"]),
+        "payment_lines": [rich(text, color=RED_HEX, bold=bold, size=10)
                       for text, bold in _fee_lines(data)],
     }
 
@@ -440,21 +442,21 @@ def _bcla_context(data: dict, variant: str, font: str) -> dict:
                         "before the start of the window.")
 
     return {
-        "bcla_date": rich(f"Miami, {_fmt_deadline(letter_date)}" if letter_date else ""),
-        "bcla_title": rich(f"BCL Americas {comp_year} – {role_label.upper()} NOMINATION",
+        "letter_date": rich(f"Miami, {_fmt_deadline(letter_date)}" if letter_date else ""),
+        "heading": rich(f"BCL Americas {comp_year} – {role_label.upper()} NOMINATION",
                            bold=True, size=11),
-        "dear_line": _dear_line(data, font, size=10),
-        "role_label": role_label,
-        "competition_name": comp_name,
-        "competition_year": comp_year,
+        "greeting": _dear_line(data, font, size=10),
+        "role": role_label,
+        "competition": comp_name,
+        "year": comp_year,
         "location": (data.get("location") or "").strip(),
         "venue": (data.get("venue") or "").strip(),
         "arrival_date": _fmt_deadline(data.get("arrival_date", "")) if data.get("arrival_date") else "",
         "departure_date": _fmt_deadline(data.get("departure_date", "")) if data.get("departure_date") else "",
         "game_dates": games,
         "payment_intro": payment_intro,
-        "banking_line": banking_line,
-        "fee_lines": [rich(text, bold=bold) for text, bold in _fee_lines(
+        "banking_paragraph": banking_line,
+        "payment_lines": [rich(text, bold=bold) for text, bold in _fee_lines(
             data, incidentals_label="Incidentals Fee",
             total_label="Total Fees to be received")],
     }
@@ -488,18 +490,18 @@ def _lsb_context(data: dict, font: str) -> dict:
     sig_name, sig_title, sig_org = SIGNATORIES.get("LSB", SIGNATORIES["BCLA"])
 
     return {
-        "lsb_title": f"Confirmation – {comp_name} {data.get('competition_year', '')}",
-        "dear_line": _dear_line(data, font, size=10),
-        "role_label": role_label,
-        "competition_name": comp_name,
+        "heading": f"Confirmation – {comp_name} {data.get('competition_year', '')}",
+        "greeting": _dear_line(data, font, size=10),
+        "role": role_label,
+        "competition": comp_name,
         "location": data.get("location") or "",
         "venue": data.get("venue") or "",
         "arrival_date": _fmt_date(data["arrival_date"]) if data.get("arrival_date") else "",
         "departure_date": _fmt_date(data["departure_date"]) if data.get("departure_date") else "",
         "game_dates": games,
-        "fee_lines": [rich(text, bold=bold, color=RED_HEX)
+        "payment_lines": [rich(text, bold=bold, color=RED_HEX)
                       for text, bold in _fee_lines(data)],
-        "signature_line": f"{sig_name} {sig_title} {sig_org}",
+        "signature": f"{sig_name} {sig_title} {sig_org}",
     }
 
 
@@ -696,6 +698,34 @@ def _build_bcla(data: dict, variant: str):
     return _build_bcla_letter(data, variant=variant)
 
 
+# Field names used before they were renamed to something readable. Kept as
+# aliases so a .docx downloaded under the old names keeps working; the UI only
+# ever lists the new ones.
+LEGACY_FIELD_ALIASES = {
+    "dear_line": "greeting",
+    "confirm_line": "confirmation_paragraph",
+    "confirm_email": "confirmation_email",
+    "host_line": "host",
+    "role_label": "role",
+    "competition_name": "competition",
+    "fee_lines": "payment_lines",
+    "signature_line": "signature",
+    "bcla_date": "letter_date",
+    "bcla_title": "heading",
+    "lsb_title": "heading",
+    "banking_line": "banking_paragraph",
+    "competition_year": "year",
+}
+
+
+def with_legacy_aliases(context: dict) -> dict:
+    out = dict(context)
+    for old, new in LEGACY_FIELD_ALIASES.items():
+        if new in context and old not in out:
+            out[old] = context[new]
+    return out
+
+
 def _render_template(path, context: dict):
     """Render a placeholder template file. Returns a DocxTemplate, which
     exposes the same .save(path) as a Document, so the rest of the pipeline is
@@ -705,7 +735,7 @@ def _render_template(path, context: dict):
     from docxtpl import DocxTemplate
 
     tpl = DocxTemplate(str(path))
-    tpl.render(context)
+    tpl.render(with_legacy_aliases(context))
     return tpl
 
 
