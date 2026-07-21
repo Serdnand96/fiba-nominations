@@ -119,27 +119,32 @@ PREVIEW_SAMPLE = {
 }
 
 
-def generate_preview(template_key: str) -> tuple[str, str | None]:
+def generate_preview(template_key: str) -> tuple[str, str, str | None]:
     """Render a sample letter for `template_key` and convert it to PDF.
 
     Uses the same builders as the real nominations, so the preview reflects what
     a generated letter actually looks like — including LSB, which has no base
     .docx and is built entirely in code. Never uploads to Storage.
 
-    Returns (local_path, conversion_error). If LibreOffice fails, the path is
-    the .docx and the caller should serve it as such.
+    Writes into a fresh temp dir per call rather than a shared fixed filename:
+    two concurrent previews would otherwise fight over the same path, and a
+    leftover file owned by another user makes every later call fail.
+
+    Returns (local_path, temp_dir, conversion_error) — the caller owns temp_dir
+    and must remove it once the response has been sent. If LibreOffice fails,
+    the path is the .docx and the caller should serve it as such.
     """
     data = copy.deepcopy(PREVIEW_SAMPLE)
     data["template_key"] = template_key
 
     doc = _build_doc(data)
 
-    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-    docx_path = OUTPUT_DIR / f"preview_{template_key}.docx"
+    temp_dir = tempfile.mkdtemp(prefix="fiba_preview_")
+    docx_path = Path(temp_dir) / f"{template_key}_preview.docx"
     doc.save(str(docx_path))
 
     pdf_path, conversion_error = _convert_to_pdf(str(docx_path))
-    return (pdf_path if pdf_path else str(docx_path)), conversion_error
+    return (pdf_path if pdf_path else str(docx_path)), temp_dir, conversion_error
 
 
 # ─── DATE FORMATTING ─────────────────────────────────────────────────────────

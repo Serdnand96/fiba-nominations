@@ -5,9 +5,11 @@ from reality (it listed .docx filenames that no longer exist). It now lives
 here, next to the generator that is the actual source of truth.
 """
 import logging
+import shutil
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import FileResponse
+from starlette.background import BackgroundTask
 
 from api._lib.auth import require_view
 from api._lib.services.document_generator import (
@@ -58,11 +60,14 @@ def preview_template(template_key: str):
         raise HTTPException(status_code=404, detail="Unknown template")
 
     try:
-        path, conversion_error = generate_preview(template_key)
+        path, temp_dir, conversion_error = generate_preview(template_key)
     except Exception:
         # Log the cause server-side; the client only gets a generic message.
         logger.exception("Template preview failed for %s", template_key)
         raise HTTPException(status_code=500, detail="Preview generation failed. Please try again.")
+
+    # Drop the temp dir once the file has been streamed out.
+    cleanup = BackgroundTask(shutil.rmtree, temp_dir, ignore_errors=True)
 
     is_pdf = path.endswith(".pdf")
     if conversion_error and not is_pdf:
@@ -73,10 +78,12 @@ def preview_template(template_key: str):
             media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
             filename=f"{template_key}_preview.docx",
             headers={"X-Conversion-Error": conversion_error[:200]},
+            background=cleanup,
         )
 
     return FileResponse(
         path,
         media_type="application/pdf",
         headers={"Content-Disposition": f'inline; filename="{template_key}_preview.pdf"'},
+        background=cleanup,
     )
