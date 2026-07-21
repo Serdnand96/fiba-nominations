@@ -47,10 +47,59 @@ def staging_key(template_key: str) -> str:
 
 
 def _download(key: str) -> bytes | None:
+    """Fetch a private object over the Storage REST API.
+
+    The project's lightweight Supabase client only implements upload/remove,
+    so reads go straight to REST with the service_role key — the same way the
+    nomination download endpoint fetches its PDFs.
+    """
+    import os
+
+    import httpx
+
+    base = os.environ.get("SUPABASE_URL", "")
+    service_key = (os.environ.get("SUPABASE_SERVICE_ROLE_KEY", "")
+                   or os.environ.get("SUPABASE_KEY", ""))
+    if not base or not service_key:
+        return None
+
     try:
-        return _client().storage.from_(BUCKET).download(key)
+        resp = httpx.get(
+            f"{base}/storage/v1/object/{BUCKET}/{key}",
+            headers={"Authorization": f"Bearer {service_key}", "apikey": service_key},
+            timeout=30.0,
+            follow_redirects=True,
+        )
     except Exception:
         return None
+
+    return resp.content if resp.status_code == 200 else None
+
+
+def _exists(key: str) -> bool:
+    """Existence check without pulling the file down — the catalog asks this
+    twice per template on every page load."""
+    import os
+
+    import httpx
+
+    base = os.environ.get("SUPABASE_URL", "")
+    service_key = (os.environ.get("SUPABASE_SERVICE_ROLE_KEY", "")
+                   or os.environ.get("SUPABASE_KEY", ""))
+    if not base or not service_key:
+        return False
+
+    try:
+        resp = httpx.head(
+            f"{base}/storage/v1/object/{BUCKET}/{key}",
+            headers={"Authorization": f"Bearer {service_key}", "apikey": service_key},
+            timeout=15.0,
+            follow_redirects=True,
+        )
+    except Exception:
+        return False
+
+    return resp.status_code == 200
 
 
 def _upload(key: str, data: bytes) -> None:
@@ -129,8 +178,8 @@ def custom_path(template_key: str) -> Path | None:
 
 
 def has_custom(template_key: str) -> bool:
-    return custom_path(template_key) is not None
+    return _exists(active_key(template_key))
 
 
 def has_staged(template_key: str) -> bool:
-    return staged_bytes(template_key) is not None
+    return _exists(staging_key(template_key))
