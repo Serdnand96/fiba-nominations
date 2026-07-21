@@ -6,7 +6,7 @@ from fastapi.responses import JSONResponse
 from api._lib.routers import (
     personnel, competitions, nominations, users, calendar, transport,
     availability, permissions, training, games,
-    assets, loans, public_assets, employees, templates,
+    assets, loans, public_assets, employees, templates, payments,
 )
 
 app = FastAPI(title="FIBA Americas Administration API", docs_url=None, redoc_url=None)
@@ -118,6 +118,7 @@ app.include_router(loans.router, prefix="/api")
 app.include_router(employees.router, prefix="/api")
 app.include_router(public_assets.router, prefix="/api")
 app.include_router(templates.router, prefix="/api")
+app.include_router(payments.router, prefix="/api")
 
 
 @app.get("/api")

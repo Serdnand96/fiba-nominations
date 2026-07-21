@@ -3,6 +3,7 @@ import { getPersonnel, createPersonnel, updatePersonnel, deletePersonnel, import
 import { useLanguage } from '../i18n/LanguageContext'
 import { useAuth } from '../contexts/AuthContext'
 import PersonProfilePanel from '../components/PersonProfilePanel'
+import { ROLES, roleLabel, roleBadgeClass } from '../lib/roles'
 
 function compareValues(a, b, dir) {
   const av = (a ?? '').toString().toLowerCase()
@@ -39,6 +40,7 @@ export default function Personnel() {
     total: people.length,
     vgo: people.filter(p => p.role === 'VGO').length,
     td: people.filter(p => p.role === 'TD').length,
+    referees: people.filter(p => p.role === 'REF' || p.role === 'REF_INSTRUCTOR').length,
     countries: new Set(people.map(p => p.country).filter(Boolean)).size,
   }), [people])
 
@@ -147,11 +149,12 @@ export default function Personnel() {
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
         {[
           { label: t('personnel.total'), value: stats.total },
           { label: 'VGOs', value: stats.vgo },
           { label: 'TDs', value: stats.td },
+          { label: t('personnel.referees'), value: stats.referees },
           { label: t('personnel.countries'), value: stats.countries },
         ].map(s => (
           <div key={s.label} className="fiba-stat">
@@ -167,8 +170,7 @@ export default function Personnel() {
           className="fiba-input w-80" />
         <select value={roleFilter} onChange={e => setRoleFilter(e.target.value)} className="fiba-select">
           <option value="">{t('personnel.allRoles')}</option>
-          <option value="VGO">VGO</option>
-          <option value="TD">TD</option>
+          {ROLES.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
         </select>
       </div>
 
@@ -196,7 +198,7 @@ export default function Personnel() {
                   </button>
                 </td>
                 <td className="px-4 py-3">
-                  <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${p.role === 'VGO' ? 'bg-purple-500/20 text-purple-400' : 'bg-emerald-500/20 text-emerald-400'}`}>{p.role}</span>
+                  <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${roleBadgeClass(p.role)}`}>{roleLabel(p.role)}</span>
                 </td>
                 <td className="px-4 py-3">{p.country || '—'}</td>
                 <td className="px-4 py-3">{p.email}</td>
@@ -234,8 +236,7 @@ export default function Personnel() {
               <input placeholder={t('personnel.phone')} value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))} className="fiba-input" />
               <input placeholder={t('personnel.passport')} value={form.passport} onChange={e => setForm(f => ({ ...f, passport: e.target.value }))} className="fiba-input" />
               <select value={form.role} onChange={e => setForm(f => ({ ...f, role: e.target.value }))} className="fiba-select">
-                <option value="VGO">VGO</option>
-                <option value="TD">TD</option>
+                {ROLES.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
               </select>
               <div className="flex justify-end gap-3 pt-2">
                 <button type="button" onClick={() => setShowModal(false)} className="px-4 py-2 text-sm text-fiba-muted">{t('personnel.cancel')}</button>

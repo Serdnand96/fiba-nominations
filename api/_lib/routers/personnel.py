@@ -12,6 +12,8 @@ router = APIRouter(prefix="/personnel", tags=["personnel"], dependencies=[Depend
 _MAX_UPLOAD_BYTES = 5 * 1024 * 1024
 _SAFE_SEARCH_RE = re.compile(r"^[\w\s\-\.@áéíóúñüÁÉÍÓÚÑÜ]+$")
 _PHOTO_BUCKET = "inventory"
+# Valid personnel roles (matches the CHECK constraint in migration 011).
+_VALID_ROLES = ("VGO", "TD", "REF", "REF_INSTRUCTOR")
 
 
 def _upload_photo_to_storage(path: str, content: bytes, content_type: str) -> str:
@@ -32,8 +34,8 @@ def _upload_photo_to_storage(path: str, content: bytes, content_type: str) -> st
 def list_personnel(role: str = None, search: str = None):
     query = supabase.table("personnel").select("*")
     if role:
-        if role.upper() not in ("VGO", "TD"):
-            raise HTTPException(status_code=400, detail="Role must be VGO or TD")
+        if role.upper() not in _VALID_ROLES:
+            raise HTTPException(status_code=400, detail=f"Role must be one of {', '.join(_VALID_ROLES)}")
         query = query.eq("role", role.upper())
     if search:
         # Sanitize search to prevent PostgREST filter injection
@@ -50,6 +52,8 @@ def create_personnel(data: PersonnelCreate):
     # Drop unset optional fields so column defaults (languages '{}', visas '[]') apply
     record = {k: v for k, v in data.model_dump().items() if v is not None}
     record["role"] = record["role"].upper()
+    if record["role"] not in _VALID_ROLES:
+        raise HTTPException(status_code=400, detail=f"Role must be one of {', '.join(_VALID_ROLES)}")
     result = supabase.table("personnel").insert(record).execute()
     return result.data[0]
 
@@ -143,6 +147,8 @@ def update_personnel(person_id: str, data: PersonnelUpdate):
     updates = {k: v for k, v in data.model_dump().items() if v is not None}
     if "role" in updates:
         updates["role"] = updates["role"].upper()
+        if updates["role"] not in _VALID_ROLES:
+            raise HTTPException(status_code=400, detail=f"Role must be one of {', '.join(_VALID_ROLES)}")
     result = supabase.table("personnel").update(updates).eq("id", person_id).execute()
     if not result.data:
         raise HTTPException(status_code=404, detail="Person not found")

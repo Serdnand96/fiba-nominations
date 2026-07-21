@@ -5,6 +5,7 @@ import {
   updateAvailability, deleteAvailability,
 } from '../api/client'
 import { useLanguage } from '../i18n/LanguageContext'
+import { ROLES, roleLabel, roleBadgeClass } from '../lib/roles'
 
 const STATUS_STYLES = {
   available: 'bg-emerald-500/20 text-emerald-400',
@@ -197,7 +198,7 @@ export default function PersonProfilePanel({ person: initialPerson, onClose, onU
     }
   }
 
-  const roleStyle = person.role === 'VGO' ? 'bg-purple-500/20 text-purple-400' : 'bg-emerald-500/20 text-emerald-400'
+  const roleStyle = roleBadgeClass(person.role)
 
   return (
     <>
@@ -232,7 +233,7 @@ export default function PersonProfilePanel({ person: initialPerson, onClose, onU
             </div>
             <div className="min-w-0">
               <div className="flex items-center gap-2 mb-1">
-                <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${roleStyle}`}>{person.role}</span>
+                <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${roleStyle}`}>{roleLabel(person.role)}</span>
                 {person.country && <span className="text-xs text-fiba-muted/60">{person.country}</span>}
               </div>
               <h3 className="text-lg font-bold text-ink-900 dark:text-white truncate">{person.name}</h3>
@@ -413,8 +414,7 @@ export default function PersonProfilePanel({ person: initialPerson, onClose, onU
               <input placeholder={t('personnel.phone')} value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))} className="fiba-input" />
               <input placeholder={t('personnel.passport')} value={form.passport} onChange={e => setForm(f => ({ ...f, passport: e.target.value }))} className="fiba-input" />
               <select value={form.role} onChange={e => setForm(f => ({ ...f, role: e.target.value }))} className="fiba-select">
-                <option value="VGO">VGO</option>
-                <option value="TD">TD</option>
+                {ROLES.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
               </select>
 
               {/* Languages */}

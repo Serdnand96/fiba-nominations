@@ -159,3 +159,26 @@ class EmployeeUpdate(BaseModel):
     phone: Optional[str] = None
     active: Optional[bool] = None
     notes: Optional[str] = None
+
+
+# ─── PAYMENTS ─────────────────────────────────────────────────────────────
+
+class PaymentCreate(BaseModel):
+    nomination_id: str
+    budget_code: str
+    amount: Optional[float] = None  # None → prefilled from nomination.total
+    extra: Optional[float] = 0
+    comments: Optional[str] = None
+    status: Optional[str] = "new"
+    payment_date: Optional[str] = None
+    bank_confirmation: Optional[str] = None
+
+
+class PaymentUpdate(BaseModel):
+    budget_code: Optional[str] = None
+    amount: Optional[float] = None
+    extra: Optional[float] = None
+    comments: Optional[str] = None
+    status: Optional[str] = None
+    payment_date: Optional[str] = None
+    bank_confirmation: Optional[str] = None

@@ -63,6 +63,34 @@ export const downloadNominationBlob = async (id, filename) => {
   return resp.data
 }
 
+// Payments
+export const getPaymentBudgets = () => api.get('/payments/budgets').then(r => r.data)
+export const getPaymentNominees = (competitionId) =>
+  api.get('/payments/nominees', { params: { competition_id: competitionId } }).then(r => r.data)
+export const getPayments = (params) => api.get('/payments', { params }).then(r => r.data)
+export const getPaymentsSummary = (competitionId) =>
+  api.get('/payments/summary', { params: { competition_id: competitionId } }).then(r => r.data)
+export const createPayment = (data) => api.post('/payments', data).then(r => r.data)
+export const updatePayment = (id, data) => api.put(`/payments/${id}`, data).then(r => r.data)
+export const deletePayment = (id) => api.delete(`/payments/${id}`).then(r => r.data)
+export const getPaymentAttachments = (paymentId) => api.get(`/payments/${paymentId}/attachments`).then(r => r.data)
+export const uploadPaymentAttachment = (paymentId, file, kind) => {
+  const fd = new FormData()
+  fd.append('file', file)
+  if (kind) fd.append('kind', kind)
+  return api.post(`/payments/${paymentId}/attachments`, fd, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  }).then(r => r.data)
+}
+export const deletePaymentAttachment = (attId) => api.delete(`/payments/attachments/${attId}`).then(r => r.data)
+// Authenticated download — private bucket, returns a Blob (same pattern as
+// downloadNominationBlob). Never build a public URL for these files.
+export const downloadPaymentAttachment = async (attId, filename) => {
+  const params = filename ? `?filename=${encodeURIComponent(filename)}` : ''
+  const resp = await api.get(`/payments/attachments/${attId}/download${params}`, { responseType: 'blob' })
+  return resp.data
+}
+
 // Calendar
 export const getCalendarCompetitions = (params) => api.get('/calendar/competitions', { params }).then(r => r.data)
 export const getCalendarCompetition = (id) => api.get(`/calendar/competitions/${id}`).then(r => r.data)

@@ -24,11 +24,13 @@ const AssetDetail  = lazy(() => import('./pages/AssetDetail'))
 const Loans        = lazy(() => import('./pages/Loans'))
 const Scan         = lazy(() => import('./pages/Scan'))
 const Employees    = lazy(() => import('./pages/Employees'))
+const Payments     = lazy(() => import('./pages/Payments'))
 
 /* ── Module → icon map (uses Tabler-style icons from lib/icons) ──── */
 const moduleIcon = {
   calendar:     Icon.Calendar,
   nominations:  Icon.Trophy,
+  payments:     Icon.Doc,
   personnel:    Icon.Users,
   competitions: Icon.Trophy,
   templates:    Icon.Doc,
@@ -107,6 +109,7 @@ export default function App() {
   const allNavItems = [
     { to: '/calendar',     label: t('nav.calendar'),     module: 'calendar' },
     { to: '/nominations',  label: t('nav.nominations'),  module: 'nominations' },
+    { to: '/payments',     label: t('nav.payments'),     module: 'payments' },
     { to: '/personnel',    label: t('nav.personnel'),    module: 'personnel' },
     { to: '/competitions', label: t('nav.competitions'), module: 'competitions' },
     { to: '/templates',    label: t('nav.templates'),    module: 'templates' },
@@ -257,6 +260,7 @@ export default function App() {
                 <Route path="/" element={<Navigate to={defaultRoute} replace />} />
                 <Route path="/calendar"        element={<PermissionGuard module="calendar"><Calendar /></PermissionGuard>} />
                 <Route path="/nominations"     element={<PermissionGuard module="nominations"><Nominations /></PermissionGuard>} />
+                <Route path="/payments"        element={<PermissionGuard module="payments"><Payments /></PermissionGuard>} />
                 <Route path="/personnel"       element={<PermissionGuard module="personnel"><Personnel /></PermissionGuard>} />
                 <Route path="/competitions"    element={<PermissionGuard module="competitions"><Competitions /></PermissionGuard>} />
                 <Route path="/templates"       element={<PermissionGuard module="templates"><Templates /></PermissionGuard>} />

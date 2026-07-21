@@ -6,6 +6,7 @@ import {
   bulkGenerateNominations, deleteNomination, bulkDeleteNominations,
   downloadNominationBlob, updateNominationConfirmation,
 } from '../api/client'
+import { roleLabel, roleBadgeClass } from '../lib/roles'
 
 const CONFIRMATION_BADGES = {
   pending: 'bg-gray-500/20 text-ink-700 dark:text-gray-300 border border-gray-500/40',
@@ -522,8 +523,8 @@ export default function Nominations() {
                   ) : n.personnel?.name}
                 </td>
                 <td className="px-4 py-3">
-                  <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${n.personnel?.role === 'VGO' ? 'bg-purple-500/20 text-purple-400' : 'bg-emerald-500/20 text-emerald-400'}`}>
-                    {n.personnel?.role}
+                  <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${roleBadgeClass(n.personnel?.role)}`}>
+                    {roleLabel(n.personnel?.role)}
                   </span>
                 </td>
                 <td className="px-4 py-3">{n.competitions?.name}</td>
@@ -630,7 +631,7 @@ export default function Nominations() {
                       className={`flex items-center gap-2 px-3 py-2 hover:bg-fiba-surface cursor-pointer text-sm ${form.personnel_ids.includes(p.id) ? 'bg-fiba-accent/10' : ''}`}>
                       <input type="checkbox" checked={form.personnel_ids.includes(p.id)} onChange={() => togglePerson(p.id)} className="rounded" />
                       <span>{p.name}</span>
-                      <span className={`ml-auto text-xs px-1.5 py-0.5 rounded ${p.role === 'VGO' ? 'bg-purple-500/20 text-purple-400' : 'bg-emerald-500/20 text-emerald-400'}`}>{p.role}</span>
+                      <span className={`ml-auto text-xs px-1.5 py-0.5 rounded ${roleBadgeClass(p.role)}`}>{roleLabel(p.role)}</span>
                     </label>
                   ))}
                   {filteredPersonnel.length === 0 && (
