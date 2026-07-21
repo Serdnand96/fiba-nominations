@@ -264,6 +264,20 @@ const translations = {
     signatory: { en: 'Signatory', es: 'Firmante' },
     nomination: { en: 'Nomination', es: 'Nominación' },
     confirmation: { en: 'Confirmation', es: 'Confirmación' },
+    preview: { en: 'Preview', es: 'Vista previa' },
+    previewTitle: { en: 'Sample letter — {key}', es: 'Carta de muestra — {key}' },
+    sampleNote: {
+      en: 'Sample letter with fictional data. Real letters use the nomination’s own data.',
+      es: 'Carta de muestra con datos ficticios. Las cartas reales usan los datos de la nominación.',
+    },
+    builtFromCode: { en: 'Built in code', es: 'Generado por código' },
+    generating: { en: 'Generating preview…', es: 'Generando vista previa…' },
+    previewError: { en: 'Could not generate the preview.', es: 'No se pudo generar la vista previa.' },
+    previewDocx: {
+      en: 'PDF conversion is unavailable — the .docx was downloaded instead.',
+      es: 'La conversión a PDF no está disponible — se descargó el .docx.',
+    },
+    missingFile: { en: 'Base file missing on the server', es: 'Falta el archivo base en el servidor' },
   },
 
   // ===== Users =====

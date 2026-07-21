@@ -39,10 +39,8 @@ SIGNATORIES = {
 }
 
 
-def generate_nomination(nomination_data: dict) -> tuple[str, str | None, str | None]:
-    """Generate a nomination/confirmation .docx letter, convert to PDF, upload.
-    Returns (local_path, storage_url, conversion_error).
-    """
+def _build_doc(nomination_data: dict):
+    """Dispatch to the letter builder that matches the competition's template_key."""
     template_key = nomination_data["template_key"]
 
     if template_key == "WCQ":
@@ -65,6 +63,15 @@ def generate_nomination(nomination_data: dict) -> tuple[str, str | None, str | N
     else:
         raise ValueError(f"Unknown template_key: {template_key}")
 
+    return doc
+
+
+def generate_nomination(nomination_data: dict) -> tuple[str, str | None, str | None]:
+    """Generate a nomination/confirmation .docx letter, convert to PDF, upload.
+    Returns (local_path, storage_url, conversion_error).
+    """
+    doc = _build_doc(nomination_data)
+
     # Build output filename: "Nombre Apellido Competencia Nomination"
     name_clean = re.sub(r"[^\w\s-]", "", nomination_data["nominee_name"]).strip()
     comp_clean = re.sub(r"[^\w\s-]", "", nomination_data["competition_name"]).strip()
@@ -81,6 +88,58 @@ def generate_nomination(nomination_data: dict) -> tuple[str, str | None, str | N
     # Upload to Supabase Storage
     storage_url = _upload_to_storage(final_path, base_name)
     return final_path, storage_url, conversion_error
+
+
+# ─── PREVIEW ─────────────────────────────────────────────────────────────────
+
+# Fictional nominee/competition used to render a sample letter per template.
+# Nothing here touches the DB or Storage — the preview is generated on the fly.
+PREVIEW_SAMPLE = {
+    "nominee_name": "John Doe",
+    "role": "TD",
+    "letter_date": "2026-01-15",
+    "competition_name": "Sample Competition",
+    "competition_year": 2026,
+    "location": "Buenos Aires, Argentina",
+    "venue": "Estadio Obras Sanitarias",
+    "arrival_date": "2026-02-10",
+    "departure_date": "2026-02-16",
+    "game_dates": [
+        {"date": "2026-02-11", "label": "Game 1"},
+        {"date": "2026-02-13", "label": "Game 2"},
+        {"date": "2026-02-15", "label": "Game 3"},
+    ],
+    "window_fee": 500,
+    "incidentals": 300,
+    "total": 1800,
+    "confirmation_deadline": "2026-01-25",
+    "fee_type": "per_game",
+    "host_city": "Buenos Aires",
+    "host_country": "Argentina",
+}
+
+
+def generate_preview(template_key: str) -> tuple[str, str | None]:
+    """Render a sample letter for `template_key` and convert it to PDF.
+
+    Uses the same builders as the real nominations, so the preview reflects what
+    a generated letter actually looks like — including LSB, which has no base
+    .docx and is built entirely in code. Never uploads to Storage.
+
+    Returns (local_path, conversion_error). If LibreOffice fails, the path is
+    the .docx and the caller should serve it as such.
+    """
+    data = copy.deepcopy(PREVIEW_SAMPLE)
+    data["template_key"] = template_key
+
+    doc = _build_doc(data)
+
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    docx_path = OUTPUT_DIR / f"preview_{template_key}.docx"
+    doc.save(str(docx_path))
+
+    pdf_path, conversion_error = _convert_to_pdf(str(docx_path))
+    return (pdf_path if pdf_path else str(docx_path)), conversion_error
 
 
 # ─── DATE FORMATTING ─────────────────────────────────────────────────────────

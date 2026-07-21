@@ -221,6 +221,15 @@ export const createLoan = (data) => api.post('/loans', data).then(r => r.data)
 export const returnLoan = (id) => api.put(`/loans/${id}/return`).then(r => r.data)
 export const deleteLoan = (id) => api.delete(`/loans/${id}`).then(r => r.data)
 
+// Letter templates
+export const getTemplates = () => api.get('/templates').then(r => r.data)
+// Returns { blob, isPdf } — the server falls back to .docx if LibreOffice is down.
+export const previewTemplate = async (key) => {
+  const resp = await api.get(`/templates/${key}/preview`, { responseType: 'blob' })
+  const type = resp.headers['content-type'] || ''
+  return { blob: resp.data, isPdf: type.includes('pdf') }
+}
+
 // Public asset (no auth)
 export const getPublicAsset = (id) => api.get(`/public/asset/${id}`).then(r => r.data)
 
