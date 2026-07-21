@@ -76,6 +76,60 @@ def nomination_body(fee_style=None, blank_after_date=1):
     ]
 
 
+# BCLA is a confirmation letter, not a nomination: different wording, fees in
+# ink instead of red, and two paragraphs whose text depends on the F4/RS
+# variant (resolved in _bcla_context, so the .docx stays a flat sequence).
+# Labelled lines use {%p if %} so the wording stays editable in Word.
+BCLA_BODY = [
+    ("{{r bcla_title }}", None, None, None),
+    ("", None, None, None),
+    ("{{r dear_line }}", None, None, None),
+    ("", None, None, None),
+    ("By way of this letter, we confirm your acceptance for your assignment as "
+     "{{ role_label }} for the {{ competition_name }} {{ competition_year }}.",
+     JUSTIFY, 10, None),
+    ("", None, None, None),
+    ("Game Information", JUSTIFY, 10, None),          # bold applied below
+    ("{%p if location %}", None, None, None),
+    ("Location: {{ location }}.", JUSTIFY, 10, None),
+    ("{%p endif %}", None, None, None),
+    ("{%p if venue %}", None, None, None),
+    ("Venue: {{ venue }}", JUSTIFY, 10, None),
+    ("{%p endif %}", None, None, None),
+    ("", None, None, None),
+    ("{%p if arrival_date %}", None, None, None),
+    ("Arrival Date: {{ arrival_date }}", JUSTIFY, 10, None),
+    ("{%p endif %}", None, None, None),
+    ("{%p for game in game_dates %}", None, None, None),
+    ("{{ game }}", JUSTIFY, 10, None),
+    ("{%p endfor %}", None, None, None),
+    ("{%p if departure_date %}", None, None, None),
+    ("Departure Date: {{ departure_date }}", JUSTIFY, 10, None),
+    ("{%p endif %}", None, None, None),
+    ("", None, None, None),
+    ("Financial Details", JUSTIFY, 10, None),         # bold applied below
+    ("{{ payment_intro }}", JUSTIFY, 10, None),
+    ("{%p for fee in fee_lines %}", None, None, None),
+    ("{{r fee }}", JUSTIFY, None, None),
+    ("{%p endfor %}", None, None, None),
+    ("", None, None, None),
+    ("Additionally, breakfast, lunch and dinner will be provided by the club at "
+     "your hotel as per the dates of your assigned games.", JUSTIFY, 10, None),
+    ("", None, None, None),
+    ("Payment for this assignment will be made within 21-days of the window "
+     "conclusion. ", JUSTIFY, 10, None),
+    ("", None, None, None),
+    ("{{ banking_line }}", JUSTIFY, 10, None),
+    ("", None, None, None),
+    ("If you have any questions, please do not hesitate to contact.",
+     JUSTIFY, 10, None),
+    ("", None, None, None),
+]
+
+# Headings the original builder emitted in bold.
+BCLA_BOLD = {"Game Information", "Financial Details"}
+
+
 SPECS = {
     "GENERIC": {
         "src": "GENERIC_TEMPLATE.docx",
@@ -94,10 +148,95 @@ SPECS = {
         "body_start": 1,
         "body": nomination_body(fee_style="List Paragraph", blank_after_date=0),
     },
+    "BCLA": {
+        "src": "BCLA_TEMPLATE.docx",
+        "dst": "BCLA_TEMPLATE_TPL.docx",
+        "font": "Univers",
+        # BCLA's source has only 15 paragraphs — [0][1] logos, [2] the date,
+        # [4] the single content paragraph, then "Respectfully," and the
+        # signature. There is nothing to overwrite, so the body is inserted
+        # after the anchor and the tail is left untouched.
+        "anchor": 4,
+        "date_para": 2,
+        "date_tag": "{{r bcla_date }}",
+        "body": BCLA_BODY,
+        "bold": BCLA_BOLD,
+    },
 }
 
 
+def write_para(para, text, align, size, style_name, font, doc, bold=False):
+    """Replace a paragraph's runs with a single formatted run."""
+    for run in list(para.runs):
+        run._element.getparent().remove(run._element)
+    if align is not None:
+        para.alignment = align
+    if style_name:
+        try:
+            para.style = doc.styles[style_name]
+        except KeyError:
+            pass
+    if text:
+        run = para.add_run(text)
+        run.font.name = font
+        run.font.color.rgb = DARK
+        run.bold = bold
+        if size:
+            run.font.size = Pt(size)
+
+
+def build_insert(name, spec):
+    """Build a template whose body has to be inserted, not overwritten.
+
+    Mirrors what _build_bcla_letter does at render time: the first line goes
+    into the anchor paragraph and the rest are inserted after it, so the
+    letterhead above and the signature below stay exactly where they are.
+    """
+    from docx.oxml.ns import qn
+    from docx.text.paragraph import Paragraph
+
+    src = TEMPLATES / spec["src"]
+    doc = Document(str(src))
+    font = spec["font"]
+    bold_set = spec.get("bold", set())
+
+    for style_name in ("Normal", "Body Text", "Cuerpo"):
+        try:
+            doc.styles[style_name].font.name = font
+        except KeyError:
+            pass
+
+    paras = doc.paragraphs
+
+    if "date_para" in spec:
+        write_para(paras[spec["date_para"]], spec["date_tag"], RIGHT, 10, None, font, doc)
+
+    body = spec["body"]
+    anchor = paras[spec["anchor"]]
+    first_text, first_align, first_size, first_style = body[0]
+    write_para(anchor, first_text, first_align, first_size, first_style, font, doc,
+               bold=first_text in bold_set)
+
+    insert_after = anchor._element
+    for text, align, size, style_name in body[1:]:
+        new_p = doc.element.makeelement(qn("w:p"), {})
+        insert_after.addnext(new_p)
+        insert_after = new_p
+        write_para(Paragraph(new_p, doc), text, align, size, style_name, font, doc,
+                   bold=text in bold_set)
+
+    dst = TEMPLATES / spec["dst"]
+    doc.save(str(dst))
+    out = Document(str(dst))
+    imgs = [i for i, p in enumerate(out.paragraphs) if "graphic" in p._p.xml]
+    print(f"{name}: {src.name} ({len(paras)} paras) -> {dst.name} "
+          f"({len(out.paragraphs)} paras, inserted), images at {imgs}")
+
+
 def build(name, spec):
+    if "anchor" in spec:
+        return build_insert(name, spec)
+
     src = TEMPLATES / spec["src"]
     doc = Document(str(src))
     font = spec["font"]

@@ -63,12 +63,11 @@ def _build_doc(nomination_data: dict):
         game_dates = nomination_data.get("game_dates") or []
         f4_labels = {"Semifinals", "3rd Place", "Final"}
         has_f4 = any(gd.get("label") in f4_labels for gd in game_dates)
-        variant = "F4" if has_f4 else "RS"
-        doc = _build_bcla_letter(nomination_data, variant=variant)
+        doc = _build_bcla(nomination_data, "F4" if has_f4 else "RS")
     elif template_key == "BCLA_F4":
-        doc = _build_bcla_letter(nomination_data, variant="F4")
+        doc = _build_bcla(nomination_data, "F4")
     elif template_key == "BCLA_RS":
-        doc = _build_bcla_letter(nomination_data, variant="RS")
+        doc = _build_bcla(nomination_data, "RS")
     elif template_key == "LSB":
         doc = _build_confirmation_from_scratch(nomination_data)
     else:
@@ -232,10 +231,26 @@ def _fee_lines(data: dict, *, incidentals_label: str = "Incidentals",
 # survives edits to the .docx and an uploaded file can be validated by
 # rendering it.
 #
-# Piloted on GENERIC. WCQ / BCLA / LSB still use the positional builders.
+# Migrated: GENERIC, WCQ, BCLA. LSB still uses its from-scratch builder.
 
 RED_HEX = "ED0000"
 DARK_HEX = "2A2A2A"
+
+
+def _dear_line(data: dict, font: str):
+    """"Dear <name>," as one RichText — the name in red, the rest in ink.
+
+    Mixed-ink paragraphs are assembled here rather than as
+    `Dear {{r nominee }},` in the .docx: docxtpl splits the run around a
+    RichText insert and the trailing text loses its explicit colour.
+    """
+    from docxtpl import RichText
+
+    rt = RichText()
+    rt.add("Dear ", color=DARK_HEX, font=font)
+    rt.add(data.get("nominee_name", ""), color=RED_HEX, font=font)
+    rt.add(",", color=DARK_HEX, font=font)
+    return rt
 
 
 def _letter_context(data: dict, font: str, date_color: str = DARK_HEX) -> dict:
@@ -285,11 +300,7 @@ def _letter_context(data: dict, font: str, date_color: str = DARK_HEX) -> dict:
         # WCQ prints the date in red, GENERIC in ink — hence the parameter.
         "letter_date": rich(_fmt_date(data.get("letter_date", "")),
                             color=date_color, size=10),
-        "dear_line": rich_parts(
-            ("Dear ", DARK_HEX),
-            (data.get("nominee_name", ""), RED_HEX),
-            (",", DARK_HEX),
-        ),
+        "dear_line": _dear_line(data, font),
         "confirm_line": rich_parts(
             ("As per the FIBA Internal Regulations Book 3, please confirm to us "
              f"your availability to fulfil your assignment as {role_label} by ", DARK_HEX),
@@ -309,8 +320,83 @@ def _letter_context(data: dict, font: str, date_color: str = DARK_HEX) -> dict:
     }
 
 
+def _bcla_context(data: dict, variant: str, font: str) -> dict:
+    """Values for the BCLA confirmation template.
+
+    BCLA differs from the nomination letters: fees print in ink rather than
+    red, dates use the "January 15th, 2026" long form, and two paragraphs are
+    worded differently for the Final Four (F4) and regular season (RS)
+    variants. The variant wording lives here so the .docx stays a flat
+    sequence the user can edit.
+    """
+    from docxtpl import RichText
+
+    role = data.get("role", "VGO")
+    role_label = "Video Graphic Operator" if role == "VGO" else "Technical Delegate"
+    comp_name = data.get("competition_name", "")
+    comp_year = data.get("competition_year", "")
+
+    def rich(text, bold=False, size=10, color=DARK_HEX):
+        rt = RichText()
+        rt.add(text, color=color, bold=bold, font=font, size=size * 2)
+        return rt
+
+    letter_date = data.get("letter_date", "")
+
+    # F4 letters list the individual game dates; RS letters do not.
+    games = []
+    if variant == "F4":
+        for gd in data.get("game_dates") or []:
+            label = gd.get("label", "")
+            date_val = _fmt_deadline(gd.get("date", ""))
+            games.append(f"{label}: {date_val}" if label else date_val)
+
+    if variant == "RS":
+        payment_intro = (f"Below lists the details of payment you will receive as a BCL "
+                         f"Americas {role_label} assigned to the games listed above. The "
+                         f"distribution of this payment is as follows:")
+        banking_line = ("If your banking information has recently changed, please be sure "
+                        "to send this information to payments.americas@fiba.basketball.")
+    else:
+        payment_intro = (f"Below lists the details of payment you will receive as a BCL "
+                         f"Americas {role_label} assigned to the games listed above:")
+        banking_line = ("If your banking information has recently changed, please be sure "
+                        "to send this information to payments.americas@fiba.basketball "
+                        "before the start of the window.")
+
+    return {
+        "bcla_date": rich(f"Miami, {_fmt_deadline(letter_date)}" if letter_date else ""),
+        "bcla_title": rich(f"BCL Americas {comp_year} – {role_label.upper()} NOMINATION",
+                           bold=True, size=11),
+        "dear_line": _dear_line(data, font),
+        "role_label": role_label,
+        "competition_name": comp_name,
+        "competition_year": comp_year,
+        "location": (data.get("location") or "").strip(),
+        "venue": (data.get("venue") or "").strip(),
+        "arrival_date": _fmt_deadline(data.get("arrival_date", "")) if data.get("arrival_date") else "",
+        "departure_date": _fmt_deadline(data.get("departure_date", "")) if data.get("departure_date") else "",
+        "game_dates": games,
+        "payment_intro": payment_intro,
+        "banking_line": banking_line,
+        "fee_lines": [rich(text, bold=bold) for text, bold in _fee_lines(
+            data, incidentals_label="Incidentals Fee",
+            total_label="Total Fees to be received")],
+    }
+
+
+def _build_bcla(data: dict, variant: str):
+    """BCLA confirmation — placeholder template if deployed, else the
+    positional builder."""
+    if (TEMPLATES_DIR / "BCLA_TEMPLATE_TPL.docx").exists():
+        return _build_from_docx_template(
+            data, "BCLA_TEMPLATE_TPL.docx", "Univers",
+            context=_bcla_context(data, variant, "Univers"))
+    return _build_bcla_letter(data, variant=variant)
+
+
 def _build_from_docx_template(data: dict, template_file: str, font: str,
-                              date_color: str = DARK_HEX):
+                              date_color: str = DARK_HEX, context: dict | None = None):
     """Render a placeholder template. Returns a DocxTemplate, which exposes the
     same .save(path) as a Document, so the rest of the pipeline is unchanged."""
     # Imported lazily: if docxtpl is ever missing, only this path breaks and
@@ -318,7 +404,7 @@ def _build_from_docx_template(data: dict, template_file: str, font: str,
     from docxtpl import DocxTemplate
 
     tpl = DocxTemplate(str(TEMPLATES_DIR / template_file))
-    tpl.render(_letter_context(data, font, date_color))
+    tpl.render(context if context is not None else _letter_context(data, font, date_color))
     return tpl
 
 
