@@ -16,9 +16,13 @@ preview the user confirms before activating.
 """
 from __future__ import annotations
 
+import logging
+import os
 import tempfile
 import time
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 BUCKET = "nominations"
 PREFIX = "letter-templates"
@@ -27,7 +31,10 @@ PREFIX = "letter-templates"
 # doesn't fetch the same file 50 times. Each gunicorn worker has its own cache,
 # so an activation can take up to CACHE_TTL to be picked up by every worker.
 CACHE_TTL = 60
-CACHE_DIR = Path(tempfile.gettempdir()) / "fiba_templates"
+# Namespaced by uid: the API runs as `fiba`, but anyone poking at the droplet
+# over SSH runs as root, and a root-owned cache file makes every later write
+# from the service fail with PermissionError.
+CACHE_DIR = Path(tempfile.gettempdir()) / f"fiba_templates_{os.getuid()}"
 
 _cache: dict[str, tuple[float, Path | None]] = {}
 
@@ -169,9 +176,16 @@ def custom_path(template_key: str) -> Path | None:
     data = _download(active_key(template_key))
     path = None
     if data:
-        CACHE_DIR.mkdir(parents=True, exist_ok=True)
-        path = CACHE_DIR / f"{template_key}.docx"
-        path.write_bytes(data)
+        try:
+            CACHE_DIR.mkdir(parents=True, exist_ok=True)
+            path = CACHE_DIR / f"{template_key}.docx"
+            path.write_bytes(data)
+        except OSError:
+            # Can't cache (read-only or someone else owns the file): fall back
+            # to a throwaway copy rather than dropping the uploaded template.
+            logger.warning("Template cache unwritable at %s", CACHE_DIR, exc_info=True)
+            path = Path(tempfile.mkdtemp(prefix="fiba_tpl_")) / f"{template_key}.docx"
+            path.write_bytes(data)
 
     _cache[template_key] = (time.time() + CACHE_TTL, path)
     return path

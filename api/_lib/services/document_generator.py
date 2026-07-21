@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import os
 import re
 import copy
@@ -534,7 +535,11 @@ def template_path(template_key: str) -> Path | None:
     try:
         uploaded = template_store.custom_path(template_key)
     except Exception:
-        # Storage being unreachable must not stop letters going out.
+        # Storage being unreachable must not stop letters going out — but log
+        # it, or an uploaded template silently stops being used.
+        logging.getLogger(__name__).exception(
+            "Could not read uploaded template for %s; using the built-in one",
+            template_key)
         uploaded = None
     if uploaded:
         return uploaded
