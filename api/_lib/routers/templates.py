@@ -4,7 +4,7 @@ The catalog used to live hardcoded in src/pages/Templates.jsx and had drifted
 from reality (it listed .docx filenames that no longer exist). It now lives
 here, next to the generator that is the actual source of truth.
 """
-from pathlib import Path
+import logging
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import FileResponse
@@ -15,6 +15,8 @@ from api._lib.services.document_generator import (
     TEMPLATES_DIR,
     generate_preview,
 )
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/templates", tags=["templates"])
 
@@ -58,6 +60,8 @@ def preview_template(template_key: str):
     try:
         path, conversion_error = generate_preview(template_key)
     except Exception:
+        # Log the cause server-side; the client only gets a generic message.
+        logger.exception("Template preview failed for %s", template_key)
         raise HTTPException(status_code=500, detail="Preview generation failed. Please try again.")
 
     is_pdf = path.endswith(".pdf")
