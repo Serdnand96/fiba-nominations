@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import re
 import copy
+import shutil
 import tempfile
 import httpx
 from datetime import datetime
@@ -44,26 +45,15 @@ def _build_doc(nomination_data: dict):
     template_key = nomination_data["template_key"]
 
     if template_key == "WCQ":
-        if (TEMPLATES_DIR / "WCQ_TEMPLATE_TPL.docx").exists():
-            doc = _build_from_docx_template(
-                nomination_data, "WCQ_TEMPLATE_TPL.docx", FONT_WCQ,
-                date_color=RED_HEX)
-        else:
-            doc = _build_wcq_letter(nomination_data)
+        path = template_path("WCQ")
+        doc = (_render_template(path, _letter_context(nomination_data, FONT_WCQ, RED_HEX))
+               if path else _build_wcq_letter(nomination_data))
     elif template_key == "GENERIC":
-        # Prefer the placeholder template; fall back to the positional builder
-        # if the file isn't deployed yet.
-        if (TEMPLATES_DIR / "GENERIC_TEMPLATE_TPL.docx").exists():
-            doc = _build_from_docx_template(
-                nomination_data, "GENERIC_TEMPLATE_TPL.docx", FONT_GENERIC)
-        else:
-            doc = _build_generic_letter(nomination_data)
+        path = template_path("GENERIC")
+        doc = (_render_template(path, _letter_context(nomination_data, FONT_GENERIC))
+               if path else _build_generic_letter(nomination_data))
     elif template_key == "BCLA":
-        # Auto-detect variant: if game_dates have F4 round labels → F4, otherwise RS
-        game_dates = nomination_data.get("game_dates") or []
-        f4_labels = {"Semifinals", "3rd Place", "Final"}
-        has_f4 = any(gd.get("label") in f4_labels for gd in game_dates)
-        doc = _build_bcla(nomination_data, "F4" if has_f4 else "RS")
+        doc = _build_bcla(nomination_data, bcla_variant(nomination_data))
     elif template_key == "BCLA_F4":
         doc = _build_bcla(nomination_data, "F4")
     elif template_key == "BCLA_RS":
@@ -127,6 +117,74 @@ PREVIEW_SAMPLE = {
     "host_city": "Buenos Aires",
     "host_country": "Argentina",
 }
+
+
+def validate_template(template_key: str, data: bytes) -> dict:
+    """Check that an uploaded .docx can actually produce this letter.
+
+    Returns {"ok": bool, "error": str|None, "unknown": [...], "unused": [...]}.
+    `unknown` are placeholders the letter's data can't fill — they would render
+    empty, so they are reported but not fatal. The real test is whether the
+    template renders at all, which is what the caller then shows as a preview.
+    """
+    from docxtpl import DocxTemplate
+
+    spec = TEMPLATE_SPECS.get(template_key)
+    if not spec:
+        return {"ok": False, "error": f"Unknown template: {template_key}",
+                "unknown": [], "unused": []}
+
+    sample = copy.deepcopy(PREVIEW_SAMPLE)
+    sample["template_key"] = template_key
+    context = spec["context"](sample)
+
+    tmp = Path(tempfile.mkdtemp(prefix="fiba_tplcheck_")) / "candidate.docx"
+    try:
+        tmp.write_bytes(data)
+        try:
+            tpl = DocxTemplate(str(tmp))
+            used = tpl.get_undeclared_template_variables()
+        except Exception as exc:
+            return {"ok": False, "unknown": [], "unused": [],
+                    "error": f"Not a readable .docx template: {type(exc).__name__}"}
+
+        try:
+            tpl.render(context)
+        except Exception as exc:
+            # Jinja syntax errors and bad expressions land here.
+            return {"ok": False, "unknown": [], "unused": [],
+                    "error": f"Template failed to render: {exc}"}
+
+        known = set(context)
+        return {
+            "ok": True,
+            "error": None,
+            "unknown": sorted(used - known),
+            "unused": sorted(known - used),
+        }
+    finally:
+        shutil.rmtree(tmp.parent, ignore_errors=True)
+
+
+def generate_preview_from_bytes(template_key: str, data: bytes) -> tuple[str, str, str | None]:
+    """Render a preview of an uploaded template that is not active yet."""
+    spec = TEMPLATE_SPECS.get(template_key)
+    if not spec:
+        raise ValueError(f"Unknown template_key: {template_key}")
+
+    sample = copy.deepcopy(PREVIEW_SAMPLE)
+    sample["template_key"] = template_key
+
+    temp_dir = tempfile.mkdtemp(prefix="fiba_preview_")
+    src = Path(temp_dir) / "candidate.docx"
+    src.write_bytes(data)
+
+    doc = _render_template(src, spec["context"](sample))
+    docx_path = Path(temp_dir) / f"{template_key}_preview.docx"
+    doc.save(str(docx_path))
+
+    pdf_path, conversion_error = _convert_to_pdf(str(docx_path))
+    return (pdf_path if pdf_path else str(docx_path)), temp_dir, conversion_error
 
 
 def generate_preview(template_key: str) -> tuple[str, str, str | None]:
@@ -432,37 +490,96 @@ def _lsb_context(data: dict, font: str) -> dict:
     }
 
 
+def bcla_variant(data: dict) -> str:
+    """F4 when the game labels are Final Four rounds, RS otherwise."""
+    f4_labels = {"Semifinals", "3rd Place", "Final"}
+    game_dates = data.get("game_dates") or []
+    return "F4" if any(gd.get("label") in f4_labels for gd in game_dates) else "RS"
+
+
+# One place that maps a template key to its file and its context builder, so
+# generation, preview and upload validation can never drift apart.
+TEMPLATE_SPECS = {
+    "WCQ": {
+        "file": "WCQ_TEMPLATE_TPL.docx",
+        "context": lambda d: _letter_context(d, FONT_WCQ, RED_HEX),
+    },
+    "GENERIC": {
+        "file": "GENERIC_TEMPLATE_TPL.docx",
+        "context": lambda d: _letter_context(d, FONT_GENERIC, DARK_HEX),
+    },
+    "BCLA": {
+        "file": "BCLA_TEMPLATE_TPL.docx",
+        "context": lambda d: _bcla_context(d, bcla_variant(d), "Univers"),
+    },
+    "LSB": {
+        "file": "LSB_TEMPLATE_TPL.docx",
+        "context": lambda d: _lsb_context(d, FONT_WCQ),
+    },
+}
+
+
+def template_path(template_key: str) -> Path | None:
+    """Where to read a template from: the uploaded one wins over the repo's.
+
+    Returns None when the key has no placeholder template at all, which sends
+    the caller back to the legacy positional builder.
+    """
+    spec = TEMPLATE_SPECS.get(template_key)
+    if not spec:
+        return None
+
+    from api._lib.services import template_store
+
+    try:
+        uploaded = template_store.custom_path(template_key)
+    except Exception:
+        # Storage being unreachable must not stop letters going out.
+        uploaded = None
+    if uploaded:
+        return uploaded
+
+    built_in = TEMPLATES_DIR / spec["file"]
+    return built_in if built_in.exists() else None
+
+
 def _build_lsb(data: dict):
-    """LSB confirmation — placeholder template if deployed, else the
+    """LSB confirmation — placeholder template if available, else the
     from-scratch builder."""
-    if (TEMPLATES_DIR / "LSB_TEMPLATE_TPL.docx").exists():
-        return _build_from_docx_template(
-            data, "LSB_TEMPLATE_TPL.docx", FONT_WCQ,
-            context=_lsb_context(data, FONT_WCQ))
+    path = template_path("LSB")
+    if path:
+        return _render_template(path, _lsb_context(data, FONT_WCQ))
     return _build_confirmation_from_scratch(data)
 
 
 def _build_bcla(data: dict, variant: str):
-    """BCLA confirmation — placeholder template if deployed, else the
+    """BCLA confirmation — placeholder template if available, else the
     positional builder."""
-    if (TEMPLATES_DIR / "BCLA_TEMPLATE_TPL.docx").exists():
-        return _build_from_docx_template(
-            data, "BCLA_TEMPLATE_TPL.docx", "Univers",
-            context=_bcla_context(data, variant, "Univers"))
+    path = template_path("BCLA")
+    if path:
+        return _render_template(path, _bcla_context(data, variant, "Univers"))
     return _build_bcla_letter(data, variant=variant)
+
+
+def _render_template(path, context: dict):
+    """Render a placeholder template file. Returns a DocxTemplate, which
+    exposes the same .save(path) as a Document, so the rest of the pipeline is
+    unchanged."""
+    # Imported lazily: if docxtpl is ever missing, only this path breaks and
+    # the positional fallbacks still serve letters.
+    from docxtpl import DocxTemplate
+
+    tpl = DocxTemplate(str(path))
+    tpl.render(context)
+    return tpl
 
 
 def _build_from_docx_template(data: dict, template_file: str, font: str,
                               date_color: str = DARK_HEX, context: dict | None = None):
-    """Render a placeholder template. Returns a DocxTemplate, which exposes the
-    same .save(path) as a Document, so the rest of the pipeline is unchanged."""
-    # Imported lazily: if docxtpl is ever missing, only this path breaks and
-    # the positional fallback still serves letters.
-    from docxtpl import DocxTemplate
-
-    tpl = DocxTemplate(str(TEMPLATES_DIR / template_file))
-    tpl.render(context if context is not None else _letter_context(data, font, date_color))
-    return tpl
+    """Back-compat wrapper used by the build/verification scripts."""
+    return _render_template(
+        TEMPLATES_DIR / template_file,
+        context if context is not None else _letter_context(data, font, date_color))
 
 
 # ─── WCQ / GENERIC LETTER ────────────────────────────────────────────────────

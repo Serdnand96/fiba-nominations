@@ -278,6 +278,30 @@ const translations = {
       es: 'La conversión a PDF no está disponible — se descargó el .docx.',
     },
     missingFile: { en: 'Base file missing on the server', es: 'Falta el archivo base en el servidor' },
+    upload: { en: 'Upload', es: 'Subir' },
+    uploading: { en: 'Validating…', es: 'Validando…' },
+    custom: { en: 'Uploaded', es: 'Subido' },
+    builtIn: { en: 'Built-in', es: 'Original' },
+    revert: { en: 'Revert to built-in', es: 'Volver al original' },
+    revertConfirm: {
+      en: 'Discard the uploaded template and go back to the built-in one?',
+      es: '¿Descartar el template subido y volver al original?',
+    },
+    review: { en: 'Review', es: 'Revisar' },
+    reviewTitle: { en: 'Review before activating — {key}', es: 'Revisar antes de activar — {key}' },
+    reviewNote: {
+      en: 'This is the uploaded template rendered with sample data. It is not in use yet.',
+      es: 'Este es el template subido renderizado con datos de muestra. Todavía no está en uso.',
+    },
+    activate: { en: 'Activate', es: 'Activar' },
+    discard: { en: 'Discard', es: 'Descartar' },
+    activated: { en: 'Template activated.', es: 'Template activado.' },
+    unknownPlaceholders: {
+      en: 'Placeholders with no matching data (they will render empty): {list}',
+      es: 'Placeholders sin dato correspondiente (van a salir vacíos): {list}',
+    },
+    uploadFailed: { en: 'Upload rejected: {error}', es: 'Subida rechazada: {error}' },
+    stagedPending: { en: 'Upload pending review', es: 'Subida pendiente de revisión' },
   },
 
   // ===== Users =====

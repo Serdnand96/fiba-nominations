@@ -1,7 +1,11 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useLanguage } from '../i18n/LanguageContext'
-import { getTemplates, previewTemplate } from '../api/client'
+import { useAuth } from '../contexts/AuthContext'
+import {
+  getTemplates, previewTemplate, uploadTemplate,
+  activateTemplate, discardStagedTemplate, revertTemplate,
+} from '../api/client'
 import { Icon } from '../lib/icons'
 
 const BADGE_COLORS = {
@@ -13,32 +17,37 @@ const BADGE_COLORS = {
 
 export default function Templates() {
   const { t } = useLanguage()
+  const { hasEdit } = useAuth()
+  const canEdit = hasEdit('templates')
+
   const [templates, setTemplates] = useState([])
   const [loading, setLoading] = useState(true)
+  const [notice, setNotice] = useState(null)
 
-  // Preview modal state
-  const [previewKey, setPreviewKey] = useState(null)
+  // Preview modal. `review` marks the preview of a staged upload, which is the
+  // one that offers Activate / Discard.
+  const [preview, setPreview] = useState(null)   // { key, review }
   const [previewUrl, setPreviewUrl] = useState(null)
   const [previewBusy, setPreviewBusy] = useState(false)
   const [previewError, setPreviewError] = useState(null)
+  const [acting, setActing] = useState(false)
 
-  useEffect(() => {
-    getTemplates()
-      .then(setTemplates)
-      .catch(() => setTemplates([]))
-      .finally(() => setLoading(false))
-  }, [])
+  const [uploadingKey, setUploadingKey] = useState(null)
+  const fileInputs = useRef({})
 
-  // Release the object URL when the modal closes or the preview is replaced.
+  const load = () => getTemplates().then(setTemplates).catch(() => setTemplates([]))
+
+  useEffect(() => { load().finally(() => setLoading(false)) }, [])
+
   useEffect(() => () => { if (previewUrl) URL.revokeObjectURL(previewUrl) }, [previewUrl])
 
-  const openPreview = async (key) => {
-    setPreviewKey(key)
+  const openPreview = async (key, review = false) => {
+    setPreview({ key, review })
     setPreviewError(null)
     setPreviewUrl(null)
     setPreviewBusy(true)
     try {
-      const { blob, isPdf } = await previewTemplate(key)
+      const { blob, isPdf } = await previewTemplate(key, review)
       if (isPdf) {
         setPreviewUrl(URL.createObjectURL(blob))
       } else {
@@ -59,14 +68,78 @@ export default function Templates() {
   }
 
   const closePreview = () => {
-    setPreviewKey(null)
+    setPreview(null)
     setPreviewError(null)
     setPreviewUrl(null)
+  }
+
+  const handleFile = async (key, file) => {
+    if (!file) return
+    setNotice(null)
+    setUploadingKey(key)
+    try {
+      const res = await uploadTemplate(key, file)
+      await load()
+      if (res.unknown_placeholders?.length) {
+        setNotice({
+          kind: 'warn',
+          text: t('templates.unknownPlaceholders', { list: res.unknown_placeholders.join(', ') }),
+        })
+      }
+      // Straight into the review preview: the upload is worthless until seen.
+      openPreview(key, true)
+    } catch (err) {
+      const detail = err?.response?.data?.detail || String(err)
+      setNotice({ kind: 'error', text: t('templates.uploadFailed', { error: detail }) })
+    } finally {
+      setUploadingKey(null)
+      if (fileInputs.current[key]) fileInputs.current[key].value = ''
+    }
+  }
+
+  const doActivate = async () => {
+    setActing(true)
+    try {
+      await activateTemplate(preview.key)
+      await load()
+      setNotice({ kind: 'ok', text: t('templates.activated') })
+      closePreview()
+    } catch {
+      setPreviewError(t('templates.previewError'))
+    } finally {
+      setActing(false)
+    }
+  }
+
+  const doDiscard = async () => {
+    setActing(true)
+    try {
+      await discardStagedTemplate(preview.key)
+      await load()
+      closePreview()
+    } finally {
+      setActing(false)
+    }
+  }
+
+  const doRevert = async (key) => {
+    if (!window.confirm(t('templates.revertConfirm'))) return
+    await revertTemplate(key)
+    await load()
   }
 
   return (
     <div>
       <h2 className="text-2xl font-bold text-ink-900 dark:text-white mb-6">{t('templates.title')}</h2>
+
+      {notice && (
+        <div className={`mb-4 rounded-lg px-4 py-3 text-sm border ${
+          notice.kind === 'error' ? 'border-red-500/40 text-red-400'
+            : notice.kind === 'warn' ? 'border-amber-500/40 text-amber-400'
+            : 'border-green-500/40 text-green-400'}`}>
+          {notice.text}
+        </div>
+      )}
 
       <div className="rounded-xl border border-fiba-border overflow-hidden">
         <div className="overflow-x-auto">
@@ -92,25 +165,55 @@ export default function Templates() {
                   </span>
                 </td>
                 <td className="px-4 py-3 font-mono text-xs">
-                  {tmpl.built_from_code
-                    ? <span className="font-sans italic text-fiba-muted">{t('templates.builtFromCode')}</span>
-                    : (
-                      <>
-                        {tmpl.base_file}
-                        {!tmpl.base_file_present && (
-                          <span className="ml-2 font-sans text-red-400">{t('templates.missingFile')}</span>
-                        )}
-                      </>
-                    )}
+                  {tmpl.base_file}
+                  {!tmpl.base_file_present && !tmpl.custom && (
+                    <span className="ml-2 font-sans text-red-400">{t('templates.missingFile')}</span>
+                  )}
+                  <span className={`ml-2 font-sans px-1.5 py-0.5 rounded text-[11px] ${
+                    tmpl.custom ? 'bg-fiba-accent/15 text-fiba-accent' : 'text-fiba-muted/70'}`}>
+                    {tmpl.custom ? t('templates.custom') : t('templates.builtIn')}
+                  </span>
+                  {tmpl.staged && (
+                    <span className="ml-2 font-sans text-amber-400 text-[11px]">
+                      {t('templates.stagedPending')}
+                    </span>
+                  )}
                 </td>
                 <td className="px-4 py-3">{t(`templates.${tmpl.type}`)}</td>
                 <td className="px-4 py-3 text-xs">{tmpl.signatory}</td>
-                <td className="px-4 py-3 text-right">
-                  <button onClick={() => openPreview(tmpl.key)}
-                    className="inline-flex items-center gap-1.5 text-fiba-accent hover:underline text-xs">
-                    <Icon.Eye className="w-4 h-4" />
-                    {t('templates.preview')}
-                  </button>
+                <td className="px-4 py-3">
+                  <div className="flex items-center justify-end gap-3 whitespace-nowrap">
+                    {tmpl.staged && canEdit && (
+                      <button onClick={() => openPreview(tmpl.key, true)}
+                        className="text-amber-400 hover:underline text-xs">
+                        {t('templates.review')}
+                      </button>
+                    )}
+                    {tmpl.custom && canEdit && (
+                      <button onClick={() => doRevert(tmpl.key)}
+                        className="text-fiba-muted hover:underline text-xs">
+                        {t('templates.revert')}
+                      </button>
+                    )}
+                    {canEdit && (
+                      <>
+                        <input type="file" accept=".docx" className="hidden"
+                          ref={el => { fileInputs.current[tmpl.key] = el }}
+                          onChange={e => handleFile(tmpl.key, e.target.files?.[0])} />
+                        <button onClick={() => fileInputs.current[tmpl.key]?.click()}
+                          disabled={uploadingKey === tmpl.key}
+                          className="inline-flex items-center gap-1.5 text-fiba-accent hover:underline text-xs disabled:opacity-50">
+                          <Icon.Upload className="w-4 h-4" />
+                          {uploadingKey === tmpl.key ? t('templates.uploading') : t('templates.upload')}
+                        </button>
+                      </>
+                    )}
+                    <button onClick={() => openPreview(tmpl.key)}
+                      className="inline-flex items-center gap-1.5 text-fiba-accent hover:underline text-xs">
+                      <Icon.Eye className="w-4 h-4" />
+                      {t('templates.preview')}
+                    </button>
+                  </div>
                 </td>
               </tr>
             ))}
@@ -122,7 +225,7 @@ export default function Templates() {
       {/* Portal to body: an AppShell ancestor creates a containing block, so a
           plain fixed overlay anchors to it instead of the viewport and the
           modal ends up cut off (same reason as the Games assignment picker). */}
-      {previewKey && createPortal(
+      {preview && createPortal(
         <div className="fiba-modal-overlay z-[60]">
           {/* Don't set a height here: .fiba-modal already caps at max-h-[90vh]
               with its own overflow, and a second height fights that. */}
@@ -130,9 +233,13 @@ export default function Templates() {
             <div className="flex items-start justify-between p-4 border-b border-fiba-border">
               <div>
                 <h3 className="text-lg font-bold text-ink-900 dark:text-white">
-                  {t('templates.previewTitle', { key: previewKey })}
+                  {preview.review
+                    ? t('templates.reviewTitle', { key: preview.key })
+                    : t('templates.previewTitle', { key: preview.key })}
                 </h3>
-                <p className="text-xs text-fiba-muted mt-0.5">{t('templates.sampleNote')}</p>
+                <p className="text-xs text-fiba-muted mt-0.5">
+                  {preview.review ? t('templates.reviewNote') : t('templates.sampleNote')}
+                </p>
               </div>
               <button onClick={closePreview} className="text-fiba-muted hover:text-ink-900 dark:hover:text-white">
                 <Icon.X className="w-5 h-5" />
@@ -151,10 +258,23 @@ export default function Templates() {
                 </div>
               )}
               {!previewBusy && previewUrl && (
-                <iframe src={previewUrl} title={`${previewKey} preview`}
+                <iframe src={previewUrl} title={`${preview.key} preview`}
                   className="w-full h-[70vh] rounded-lg border border-fiba-border bg-white" />
               )}
             </div>
+
+            {preview.review && canEdit && (
+              <div className="flex items-center justify-end gap-2 px-4 pb-4">
+                <button onClick={doDiscard} disabled={acting}
+                  className="px-4 py-2 text-sm text-fiba-muted disabled:opacity-50">
+                  {t('templates.discard')}
+                </button>
+                <button onClick={doActivate} disabled={acting || !previewUrl}
+                  className="btn-fiba disabled:opacity-50">
+                  {t('templates.activate')}
+                </button>
+              </div>
+            )}
           </div>
         </div>,
         document.body

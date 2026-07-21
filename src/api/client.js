@@ -224,11 +224,25 @@ export const deleteLoan = (id) => api.delete(`/loans/${id}`).then(r => r.data)
 // Letter templates
 export const getTemplates = () => api.get('/templates').then(r => r.data)
 // Returns { blob, isPdf } — the server falls back to .docx if LibreOffice is down.
-export const previewTemplate = async (key) => {
-  const resp = await api.get(`/templates/${key}/preview`, { responseType: 'blob' })
+// `staged` renders the pending upload instead of the active template.
+export const previewTemplate = async (key, staged = false) => {
+  const resp = await api.get(`/templates/${key}/preview`, {
+    params: staged ? { staged: true } : undefined,
+    responseType: 'blob',
+  })
   const type = resp.headers['content-type'] || ''
   return { blob: resp.data, isPdf: type.includes('pdf') }
 }
+export const uploadTemplate = (key, file) => {
+  const fd = new FormData()
+  fd.append('file', file)
+  return api.post(`/templates/${key}/upload`, fd, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  }).then(r => r.data)
+}
+export const activateTemplate = (key) => api.post(`/templates/${key}/activate`).then(r => r.data)
+export const discardStagedTemplate = (key) => api.delete(`/templates/${key}/staged`).then(r => r.data)
+export const revertTemplate = (key) => api.delete(`/templates/${key}/custom`).then(r => r.data)
 
 // Public asset (no auth)
 export const getPublicAsset = (id) => api.get(`/public/asset/${id}`).then(r => r.data)
