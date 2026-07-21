@@ -583,8 +583,12 @@ def spec_for(template_key: str) -> dict | None:
 
 
 def _richtext_text(value) -> str:
-    """Plain text of a RichText, for showing an example in the UI."""
-    return " ".join(re.findall(r"<w:t[^>]*>([^<]*)</w:t>", getattr(value, "xml", "")))
+    """Plain text of a RichText, for showing an example in the UI.
+
+    Joined without a separator: the runs are consecutive pieces of one line
+    ("Dear " + name + ","), so anything between them invents spacing.
+    """
+    return "".join(re.findall(r"<w:t[^>]*>([^<]*)</w:t>", getattr(value, "xml", "")))
 
 
 def placeholders_for(template_key: str) -> list[dict]:
