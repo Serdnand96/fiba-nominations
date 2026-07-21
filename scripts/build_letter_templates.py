@@ -26,11 +26,16 @@ JUSTIFY = WD_ALIGN_PARAGRAPH.JUSTIFY
 # body starts at and the fee style differ between WCQ and GENERIC.
 #   {{ x }}   plain value        {{r x }}  RichText (carries colour/bold)
 #   {%p %}    paragraph-level Jinja tag, removed on render
-def nomination_body(fee_style=None):
+def nomination_body(fee_style=None, blank_after_date=1):
+    # Blank-line counts mirror the positional builders exactly; they are the
+    # part a text-only diff cannot see, so they are spelled out here:
+    #   date -> Dear      : GENERIC 1, WCQ 0 (its date sits at paras[1], Dear at [2])
+    #   payment -> fees   : 2  (old: fee_idx = payment_idx + 3)
+    #   last fee -> closing: 2 (old: closing_idx = fee_idx + len(fees) + 2)
     return [
         # (text, align, size_pt, style)
         ("{{r letter_date }}", RIGHT, 10, None),
-        ("", None, None, None),
+        *[("", None, None, None)] * blank_after_date,
         ("Dear {{r nominee }},", None, None, None),
         ("", None, None, None),
         ("We would like to inform that you have been nominated for the following "
@@ -53,9 +58,11 @@ def nomination_body(fee_style=None):
         ("Below list the details of payment you will receive as {{ role_label }} "
          "assigned to the competition listed above:", None, None, None),
         ("", None, None, None),
+        ("", None, None, None),
         ("{%p for fee in fee_lines %}", None, None, None),
         ("{{r fee }}", None, 10, fee_style),
         ("{%p endfor %}", None, None, None),
+        ("", None, None, None),
         ("", None, None, None),
         ("We wish you the best in your preparation and accomplishment of your "
          "assignment.", None, None, None),
@@ -87,7 +94,7 @@ SPECS = {
         "font": "IBM Plex Sans",
         # [0] is the title + competition logo — preserved as-is.
         "body_start": 1,
-        "body": nomination_body(fee_style="List Paragraph"),
+        "body": nomination_body(fee_style="List Paragraph", blank_after_date=0),
     },
 }
 
