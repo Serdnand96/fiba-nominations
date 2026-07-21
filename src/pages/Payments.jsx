@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
-  getCompetitions, getPaymentBudgets, getPaymentNominees, getPaymentsSummary,
+  getCalendarCompetitions, getPaymentBudgets, getPaymentNominees, getPaymentsSummary,
   createPayment, updatePayment, deletePayment,
   getPaymentAttachments, uploadPaymentAttachment, deletePaymentAttachment,
   downloadPaymentAttachment,
@@ -8,6 +8,7 @@ import {
 import { useLanguage } from '../i18n/LanguageContext'
 import { useAuth } from '../contexts/AuthContext'
 import { roleLabel, roleBadgeClass } from '../lib/roles'
+import CompetitionSearch from '../components/CompetitionSearch'
 
 const STATUS_BADGES = {
   new:        'bg-yellow-500/20 text-yellow-500',
@@ -42,7 +43,7 @@ export default function Payments() {
   const [saving, setSaving] = useState(false)
 
   useEffect(() => {
-    Promise.all([getCompetitions(), getPaymentBudgets()]).then(([comps, buds]) => {
+    Promise.all([getCalendarCompetitions(), getPaymentBudgets()]).then(([comps, buds]) => {
       setCompetitions(comps)
       setBudgets(buds)
     }).catch(e => console.error(e))
@@ -187,14 +188,14 @@ export default function Payments() {
         <h1 className="text-2xl font-bold text-ink-900 dark:text-white">{t('nav.payments')}</h1>
       </div>
 
-      {/* Event selector */}
-      <div className="flex flex-wrap gap-3 mb-6">
-        <select value={selectedCompId} onChange={e => setSelectedCompId(e.target.value)} className="fiba-select w-96 max-w-full">
-          <option value="">{t('payments.selectEvent')}</option>
-          {competitions.map(c => (
-            <option key={c.id} value={c.id}>{c.name}{c.year ? ` — ${c.year}` : ''}</option>
-          ))}
-        </select>
+      {/* Event selector — same searchable + pinnable component as Games/Training/Transport */}
+      <div className="flex flex-wrap gap-3 mb-6 items-start">
+        <CompetitionSearch
+          competitions={competitions}
+          value={selectedCompId}
+          onChange={setSelectedCompId}
+          placeholder={t('payments.selectEvent')}
+        />
       </div>
 
       {!selectedCompId ? (
