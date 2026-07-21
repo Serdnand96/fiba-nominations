@@ -5,6 +5,7 @@ from reality (it listed .docx filenames that no longer exist). It now lives
 here, next to the generator that is the actual source of truth.
 """
 import logging
+import re
 import shutil
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
@@ -12,14 +13,20 @@ from fastapi.responses import FileResponse
 from starlette.background import BackgroundTask
 
 from api._lib.auth import require_edit, require_view
+from api._lib.database import supabase
+from api._lib.schemas import LetterTemplateCreate
 from api._lib.services import template_store
 from api._lib.services.document_generator import (
     SIGNATORIES,
     TEMPLATES_DIR,
+    custom_type,
     generate_preview,
     generate_preview_from_bytes,
     validate_template,
 )
+
+# Keys the generator dispatches on directly, beyond the four listed below.
+RESERVED_KEYS = {"BCLA_F4", "BCLA_RS"}
 
 DOCX_MIME = ("application/vnd.openxmlformats-officedocument"
              ".wordprocessingml.document")
@@ -53,6 +60,7 @@ def list_templates():
         base_file = tmpl["base_file"]
         out.append({
             **tmpl,
+            "built_in": True,
             "base_file_present": bool(base_file) and (TEMPLATES_DIR / base_file).exists(),
             # Whether this key is currently served by an uploaded file rather
             # than the one shipped in the repo, and whether an upload is
@@ -61,12 +69,99 @@ def list_templates():
             "staged": template_store.has_staged(key),
             "signatory": ", ".join(p for p in (name, title, org) if p),
         })
+
+    # Types created from the UI. They have no file in the repo, so until one is
+    # uploaded and activated they can't generate anything — base_file_present
+    # is False and the page shows that.
+    try:
+        rows = supabase.table("letter_templates").select("*").execute().data or []
+    except Exception:
+        logger.exception("Could not list letter_templates")
+        rows = []
+
+    for row in sorted(rows, key=lambda r: r["key"]):
+        key = row["key"]
+        out.append({
+            "key": key,
+            "label": row.get("label") or key,
+            "base_file": None,
+            "type": "nomination" if row["kind"] == "nomination" else "confirmation",
+            "kind": row["kind"],
+            "built_in": False,
+            "base_file_present": False,
+            "custom": template_store.has_custom(key),
+            "staged": template_store.has_staged(key),
+            "signatory": ", ".join(p for p in (
+                row.get("signatory_name") or "",
+                row.get("signatory_title") or "",
+                row.get("signatory_org") or "") if p),
+        })
     return out
 
 
 def _known_key(template_key: str) -> None:
-    if not any(t["key"] == template_key for t in TEMPLATES):
+    """Built-in keys and types created from the UI are both valid."""
+    if any(t["key"] == template_key for t in TEMPLATES):
+        return
+    if custom_type(template_key):
+        return
+    raise HTTPException(status_code=404, detail="Unknown template")
+
+
+@router.post("", dependencies=[Depends(require_edit("templates"))])
+def create_template_type(payload: LetterTemplateCreate):
+    """Register a template type for an event the built-ins don't cover.
+
+    This only creates the entry — the .docx still has to be uploaded and
+    activated before the type can generate anything.
+    """
+    key = payload.key.strip().upper()
+    if not re.fullmatch(r"[A-Z][A-Z0-9_]{1,31}", key):
+        raise HTTPException(
+            status_code=400,
+            detail="Key must be 2-32 chars: A-Z, 0-9 and _, starting with a letter")
+    if any(t["key"] == key for t in TEMPLATES) or key in RESERVED_KEYS:
+        raise HTTPException(status_code=400, detail=f"{key} is a built-in template")
+    if custom_type(key):
+        raise HTTPException(status_code=400, detail=f"{key} already exists")
+    if payload.kind not in ("nomination", "confirmation"):
+        # The DB has the same CHECK; catching it here gives a usable message
+        # instead of a 500 from the constraint violation.
+        raise HTTPException(status_code=400,
+                            detail="kind must be 'nomination' or 'confirmation'")
+
+    row = {
+        "key": key,
+        "label": payload.label.strip() or key,
+        "kind": payload.kind,
+        "signatory_name": (payload.signatory_name or "").strip(),
+        "signatory_title": (payload.signatory_title or "").strip(),
+        "signatory_org": (payload.signatory_org or "").strip(),
+    }
+    supabase.table("letter_templates").insert(row).execute()
+    return row
+
+
+@router.delete("/{template_key}", dependencies=[Depends(require_edit("templates"))])
+def delete_template_type(template_key: str):
+    """Remove a UI-created type and the files it had in Storage."""
+    if any(t["key"] == template_key for t in TEMPLATES):
+        raise HTTPException(status_code=400, detail="Built-in templates cannot be deleted")
+    if not custom_type(template_key):
         raise HTTPException(status_code=404, detail="Unknown template")
+
+    in_use = (supabase.table("competitions")
+              .select("id, name").eq("template_key", template_key).execute().data)
+    if in_use:
+        names = ", ".join(c["name"] for c in in_use[:3])
+        raise HTTPException(
+            status_code=400,
+            detail=f"In use by {len(in_use)} competition(s): {names}")
+
+    template_store.discard_staged(template_key)
+    template_store.remove_custom(template_key)
+    supabase.table("letter_templates").delete().eq("key", template_key).execute()
+    return {"deleted": True}
 
 
 @router.post("/{template_key}/upload", dependencies=[Depends(require_edit("templates"))])

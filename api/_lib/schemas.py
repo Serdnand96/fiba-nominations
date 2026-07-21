@@ -2,6 +2,15 @@ from pydantic import BaseModel
 from typing import Optional
 
 
+class LetterTemplateCreate(BaseModel):
+    key: str
+    label: str
+    kind: str  # 'nomination' | 'confirmation'
+    signatory_name: Optional[str] = None
+    signatory_title: Optional[str] = None
+    signatory_org: Optional[str] = None
+
+
 class VisaEntry(BaseModel):
     country: str
     expires: Optional[str] = None  # YYYY-MM-DD

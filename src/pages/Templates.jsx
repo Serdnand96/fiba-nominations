@@ -5,6 +5,7 @@ import { useAuth } from '../contexts/AuthContext'
 import {
   getTemplates, previewTemplate, uploadTemplate,
   activateTemplate, discardStagedTemplate, revertTemplate,
+  createTemplateType, deleteTemplateType,
 } from '../api/client'
 import { Icon } from '../lib/icons'
 
@@ -34,6 +35,10 @@ export default function Templates() {
 
   const [uploadingKey, setUploadingKey] = useState(null)
   const fileInputs = useRef({})
+
+  const emptyType = { key: '', label: '', kind: 'nomination', signatory_name: '', signatory_title: '', signatory_org: '' }
+  const [newType, setNewType] = useState(null)
+  const [creating, setCreating] = useState(false)
 
   const load = () => getTemplates().then(setTemplates).catch(() => setTemplates([]))
 
@@ -128,9 +133,45 @@ export default function Templates() {
     await load()
   }
 
+  const doCreateType = async (e) => {
+    e.preventDefault()
+    setCreating(true)
+    setNotice(null)
+    try {
+      await createTemplateType(newType)
+      await load()
+      setNewType(null)
+      setNotice({ kind: 'ok', text: t('templates.createdNeedsUpload') })
+    } catch (err) {
+      const detail = err?.response?.data?.detail || String(err)
+      setNotice({ kind: 'error', text: t('templates.actionFailed', { error: detail }) })
+    } finally {
+      setCreating(false)
+    }
+  }
+
+  const doDeleteType = async (key) => {
+    if (!window.confirm(t('templates.deleteConfirm'))) return
+    setNotice(null)
+    try {
+      await deleteTemplateType(key)
+      await load()
+    } catch (err) {
+      const detail = err?.response?.data?.detail || String(err)
+      setNotice({ kind: 'error', text: t('templates.actionFailed', { error: detail }) })
+    }
+  }
+
   return (
     <div>
-      <h2 className="text-2xl font-bold text-ink-900 dark:text-white mb-6">{t('templates.title')}</h2>
+      <div className="flex items-center justify-between mb-6">
+        <h2 className="text-2xl font-bold text-ink-900 dark:text-white">{t('templates.title')}</h2>
+        {canEdit && (
+          <button onClick={() => setNewType(emptyType)} className="btn-fiba text-sm">
+            + {t('templates.newType')}
+          </button>
+        )}
+      </div>
 
       {notice && (
         <div className={`mb-4 rounded-lg px-4 py-3 text-sm border ${
@@ -165,14 +206,18 @@ export default function Templates() {
                   </span>
                 </td>
                 <td className="px-4 py-3 font-mono text-xs">
-                  {tmpl.base_file}
+                  {tmpl.base_file || <span className="font-sans italic text-fiba-muted">{tmpl.label}</span>}
                   {!tmpl.base_file_present && !tmpl.custom && (
-                    <span className="ml-2 font-sans text-red-400">{t('templates.missingFile')}</span>
+                    <span className="ml-2 font-sans text-red-400">
+                      {tmpl.built_in ? t('templates.missingFile') : t('templates.noFileYet')}
+                    </span>
                   )}
-                  <span className={`ml-2 font-sans px-1.5 py-0.5 rounded text-[11px] ${
-                    tmpl.custom ? 'bg-fiba-accent/15 text-fiba-accent' : 'text-fiba-muted/70'}`}>
-                    {tmpl.custom ? t('templates.custom') : t('templates.builtIn')}
-                  </span>
+                  {(tmpl.custom || tmpl.built_in) && (
+                    <span className={`ml-2 font-sans px-1.5 py-0.5 rounded text-[11px] ${
+                      tmpl.custom ? 'bg-fiba-accent/15 text-fiba-accent' : 'text-fiba-muted/70'}`}>
+                      {tmpl.custom ? t('templates.custom') : t('templates.builtIn')}
+                    </span>
+                  )}
                   {tmpl.staged && (
                     <span className="ml-2 font-sans text-amber-400 text-[11px]">
                       {t('templates.stagedPending')}
@@ -189,10 +234,16 @@ export default function Templates() {
                         {t('templates.review')}
                       </button>
                     )}
-                    {tmpl.custom && canEdit && (
+                    {tmpl.custom && canEdit && tmpl.built_in && (
                       <button onClick={() => doRevert(tmpl.key)}
                         className="text-fiba-muted hover:underline text-xs">
                         {t('templates.revert')}
+                      </button>
+                    )}
+                    {!tmpl.built_in && canEdit && (
+                      <button onClick={() => doDeleteType(tmpl.key)}
+                        className="text-fiba-muted hover:underline text-xs">
+                        {t('templates.deleteType')}
                       </button>
                     )}
                     {canEdit && (
@@ -208,8 +259,11 @@ export default function Templates() {
                         </button>
                       </>
                     )}
+                    {/* A UI-created type has nothing to render until its
+                        .docx is uploaded and activated. */}
                     <button onClick={() => openPreview(tmpl.key)}
-                      className="inline-flex items-center gap-1.5 text-fiba-accent hover:underline text-xs">
+                      disabled={!tmpl.custom && !tmpl.base_file_present}
+                      className="inline-flex items-center gap-1.5 text-fiba-accent hover:underline text-xs disabled:opacity-40 disabled:no-underline disabled:cursor-not-allowed">
                       <Icon.Eye className="w-4 h-4" />
                       {t('templates.preview')}
                     </button>
@@ -221,6 +275,53 @@ export default function Templates() {
         </table>
         </div>
       </div>
+
+      {newType && createPortal(
+        <div className="fiba-modal-overlay z-[60]">
+          <div className="fiba-modal max-w-lg p-6">
+            <h3 className="text-lg font-bold text-ink-900 dark:text-white mb-4">
+              {t('templates.newTypeTitle')}
+            </h3>
+            <form onSubmit={doCreateType} className="space-y-3">
+              <div>
+                <label className="fiba-label">{t('templates.key')}</label>
+                <input required value={newType.key} className="fiba-input font-mono"
+                  onChange={e => setNewType(n => ({ ...n, key: e.target.value.toUpperCase() }))} />
+                <p className="text-xs text-fiba-muted/60 mt-1">{t('templates.keyHint')}</p>
+              </div>
+              <div>
+                <label className="fiba-label">{t('templates.label')}</label>
+                <input required value={newType.label} className="fiba-input"
+                  onChange={e => setNewType(n => ({ ...n, label: e.target.value }))} />
+              </div>
+              <div>
+                <label className="fiba-label">{t('templates.kind')}</label>
+                <select value={newType.kind} className="fiba-select"
+                  onChange={e => setNewType(n => ({ ...n, kind: e.target.value }))}>
+                  <option value="nomination">{t('templates.nomination')}</option>
+                  <option value="confirmation">{t('templates.confirmation')}</option>
+                </select>
+                <p className="text-xs text-fiba-muted/60 mt-1">{t('templates.kindHint')}</p>
+              </div>
+              <input placeholder={t('templates.signatoryName')} value={newType.signatory_name} className="fiba-input"
+                onChange={e => setNewType(n => ({ ...n, signatory_name: e.target.value }))} />
+              <input placeholder={t('templates.signatoryTitle')} value={newType.signatory_title} className="fiba-input"
+                onChange={e => setNewType(n => ({ ...n, signatory_title: e.target.value }))} />
+              <input placeholder={t('templates.signatoryOrg')} value={newType.signatory_org} className="fiba-input"
+                onChange={e => setNewType(n => ({ ...n, signatory_org: e.target.value }))} />
+
+              <div className="flex justify-end gap-2 pt-2">
+                <button type="button" onClick={() => setNewType(null)}
+                  className="px-4 py-2 text-sm text-fiba-muted">{t('templates.cancel')}</button>
+                <button type="submit" disabled={creating} className="btn-fiba disabled:opacity-50">
+                  {t('templates.create')}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>,
+        document.body
+      )}
 
       {/* Portal to body: an AppShell ancestor creates a containing block, so a
           plain fixed overlay anchors to it instead of the viewport and the

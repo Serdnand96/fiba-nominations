@@ -240,6 +240,8 @@ export const uploadTemplate = (key, file) => {
     headers: { 'Content-Type': 'multipart/form-data' },
   }).then(r => r.data)
 }
+export const createTemplateType = (data) => api.post('/templates', data).then(r => r.data)
+export const deleteTemplateType = (key) => api.delete(`/templates/${key}`).then(r => r.data)
 export const activateTemplate = (key) => api.post(`/templates/${key}/activate`).then(r => r.data)
 export const discardStagedTemplate = (key) => api.delete(`/templates/${key}/staged`).then(r => r.data)
 export const revertTemplate = (key) => api.delete(`/templates/${key}/custom`).then(r => r.data)

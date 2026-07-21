@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
-import { getCompetitions, createCompetition, updateCompetition, deleteCompetition, getNominations } from '../api/client'
+import { getCompetitions, createCompetition, updateCompetition, deleteCompetition, getNominations, getTemplates } from '../api/client'
 import { useLanguage } from '../i18n/LanguageContext'
 import { useAuth } from '../contexts/AuthContext'
 
@@ -24,6 +24,15 @@ export default function Competitions() {
   // Search & filter
   const [search, setSearch] = useState('')
   const [filterTemplate, setFilterTemplate] = useState('')
+
+  // Template types created on the Templates page — the built-ins are listed
+  // statically in the select below.
+  const [customTemplates, setCustomTemplates] = useState([])
+  useEffect(() => {
+    getTemplates()
+      .then(list => setCustomTemplates(list.filter(x => !x.built_in)))
+      .catch(() => setCustomTemplates([]))
+  }, [])
 
   useEffect(() => { load() }, [])
 
@@ -206,6 +215,11 @@ export default function Competitions() {
                 <option value="BCLA_RS">BCLA Regular Season</option>
                 <option value="LSB">LSB</option>
                 <option value="GENERIC">GENERIC</option>
+                {/* Types created on the Templates page, so a new event can be
+                    wired to its own letter without a code change. */}
+                {customTemplates.map(tmpl => (
+                  <option key={tmpl.key} value={tmpl.key}>{tmpl.label || tmpl.key}</option>
+                ))}
               </select>
               <input type="number" placeholder={t('competitions.year')} value={form.year} onChange={e => setForm(f => ({ ...f, year: e.target.value }))} className="fiba-input" />
               <div>

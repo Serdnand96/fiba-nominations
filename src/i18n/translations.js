@@ -302,6 +302,35 @@ const translations = {
     },
     uploadFailed: { en: 'Upload rejected: {error}', es: 'Subida rechazada: {error}' },
     stagedPending: { en: 'Upload pending review', es: 'Subida pendiente de revisión' },
+    newType: { en: 'New template', es: 'Nuevo template' },
+    newTypeTitle: { en: 'New template for another event', es: 'Nuevo template para otro evento' },
+    key: { en: 'Key', es: 'Clave' },
+    keyHint: {
+      en: '2-32 chars: A-Z, 0-9 and _, starting with a letter. Used to link competitions to this template.',
+      es: '2-32 caracteres: A-Z, 0-9 y _, empezando con letra. Es lo que vincula las competencias con este template.',
+    },
+    label: { en: 'Name', es: 'Nombre' },
+    kind: { en: 'Letter shape', es: 'Forma de la carta' },
+    kindHint: {
+      en: 'Nomination follows the WCQ/GENERIC layout, Confirmation the LSB one. It decides which data the template can use.',
+      es: 'Nominación sigue el formato WCQ/GENERIC, Confirmación el de LSB. Define qué datos puede usar el template.',
+    },
+    signatoryName: { en: 'Signatory', es: 'Firmante' },
+    signatoryTitle: { en: 'Title', es: 'Cargo' },
+    signatoryOrg: { en: 'Organization', es: 'Organización' },
+    create: { en: 'Create', es: 'Crear' },
+    cancel: { en: 'Cancel', es: 'Cancelar' },
+    noFileYet: { en: 'No file uploaded yet', es: 'Todavía no se subió archivo' },
+    createdNeedsUpload: {
+      en: 'Template created. Now upload its .docx to start using it.',
+      es: 'Template creado. Ahora subí su .docx para poder usarlo.',
+    },
+    deleteType: { en: 'Delete', es: 'Eliminar' },
+    deleteConfirm: {
+      en: 'Delete this template type and its uploaded file?',
+      es: '¿Eliminar este tipo de template y su archivo subido?',
+    },
+    actionFailed: { en: 'Failed: {error}', es: 'Falló: {error}' },
   },
 
   // ===== Users =====

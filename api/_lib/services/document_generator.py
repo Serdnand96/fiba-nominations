@@ -62,7 +62,13 @@ def _build_doc(nomination_data: dict):
     elif template_key == "LSB":
         doc = _build_lsb(nomination_data)
     else:
-        raise ValueError(f"Unknown template_key: {template_key}")
+        # A template type created from the UI: no bespoke code, just an
+        # uploaded .docx plus one of the two letter shapes.
+        spec = spec_for(template_key)
+        path = template_path(template_key) if spec else None
+        if not path:
+            raise ValueError(f"Unknown template_key: {template_key}")
+        doc = _render_template(path, spec["context"](nomination_data))
 
     return doc
 
@@ -130,7 +136,7 @@ def validate_template(template_key: str, data: bytes) -> dict:
     """
     from docxtpl import DocxTemplate
 
-    spec = TEMPLATE_SPECS.get(template_key)
+    spec = spec_for(template_key)
     if not spec:
         return {"ok": False, "error": f"Unknown template: {template_key}",
                 "unknown": [], "unused": []}
@@ -169,7 +175,7 @@ def validate_template(template_key: str, data: bytes) -> dict:
 
 def generate_preview_from_bytes(template_key: str, data: bytes) -> tuple[str, str, str | None]:
     """Render a preview of an uploaded template that is not active yet."""
-    spec = TEMPLATE_SPECS.get(template_key)
+    spec = spec_for(template_key)
     if not spec:
         raise ValueError(f"Unknown template_key: {template_key}")
 
@@ -359,10 +365,16 @@ def _letter_context(data: dict, font: str, date_color: str = DARK_HEX) -> dict:
     host_country = (data.get("host_country") or "").strip()
     host_line = ", ".join(p for p in (host_city, host_country) if p)
 
+    sig_name, sig_title, sig_org = SIGNATORIES.get(
+        data.get("template_key", ""), SIGNATORIES["GENERIC"])
+
     return {
         # WCQ prints the date in red, GENERIC in ink — hence the parameter.
         "letter_date": rich(_fmt_date(data.get("letter_date", "")),
                             color=date_color, size=10),
+        # The built-in nomination templates carry a scanned signature in the
+        # .docx and ignore this; an uploaded template can print it instead.
+        "signature_line": f"{sig_name} {sig_title} {sig_org}".strip(),
         "dear_line": _dear_line(data, font),
         "confirm_line": rich_parts(
             ("As per the FIBA Internal Regulations Book 3, please confirm to us "
@@ -520,13 +532,63 @@ TEMPLATE_SPECS = {
 }
 
 
+def custom_type(template_key: str) -> dict | None:
+    """Look up a template type created from the UI, if any."""
+    from api._lib.database import supabase
+
+    try:
+        rows = (supabase.table("letter_templates")
+                .select("*").eq("key", template_key).execute().data)
+    except Exception:
+        logging.getLogger(__name__).exception(
+            "Could not read letter_templates for %s", template_key)
+        return None
+    return rows[0] if rows else None
+
+
+def spec_for(template_key: str) -> dict | None:
+    """Resolve a key to {file, context} — built-in first, then a custom type.
+
+    A custom type has no bespoke Python: it picks one of the two letter shapes
+    and supplies its own signatory, so the generator can render a key it has
+    never seen before.
+    """
+    built_in = TEMPLATE_SPECS.get(template_key)
+    if built_in:
+        return built_in
+
+    row = custom_type(template_key)
+    if not row:
+        return None
+
+    signature = " ".join(p for p in (
+        row.get("signatory_name") or "",
+        row.get("signatory_title") or "",
+        row.get("signatory_org") or "",
+    ) if p)
+
+    if row["kind"] == "confirmation":
+        def context(d, _sig=signature):
+            ctx = _lsb_context(d, FONT_WCQ)
+            ctx["signature_line"] = _sig
+            return ctx
+    else:
+        def context(d, _sig=signature):
+            ctx = _letter_context(d, FONT_GENERIC)
+            ctx["signature_line"] = _sig
+            return ctx
+
+    # Custom types have no file in the repo — theirs is always uploaded.
+    return {"file": None, "context": context, "custom_type": row}
+
+
 def template_path(template_key: str) -> Path | None:
     """Where to read a template from: the uploaded one wins over the repo's.
 
     Returns None when the key has no placeholder template at all, which sends
     the caller back to the legacy positional builder.
     """
-    spec = TEMPLATE_SPECS.get(template_key)
+    spec = spec_for(template_key)
     if not spec:
         return None
 
