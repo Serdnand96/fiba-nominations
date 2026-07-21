@@ -582,11 +582,20 @@ def spec_for(template_key: str) -> dict | None:
     return {"file": None, "context": context, "custom_type": row}
 
 
-def placeholders_for(template_key: str) -> list[str]:
-    """Names a template of this key may use, so the UI can show them.
+def _richtext_text(value) -> str:
+    """Plain text of a RichText, for showing an example in the UI."""
+    return " ".join(re.findall(r"<w:t[^>]*>([^<]*)</w:t>", getattr(value, "xml", "")))
 
-    Anything not in this list renders empty — that's what the upload
-    validation warns about.
+
+def placeholders_for(template_key: str) -> list[dict]:
+    """What a template of this key can use, ready to show in the UI.
+
+    Each entry carries the exact snippet to paste into Word — the bare name is
+    not enough, since styled values need `{{r x }}` and lists need a loop — plus
+    an example of what it prints, rendered from the sample letter.
+
+    Anything not listed here renders empty; that's what upload validation warns
+    about.
     """
     spec = spec_for(template_key)
     if not spec:
@@ -594,11 +603,42 @@ def placeholders_for(template_key: str) -> list[str]:
     sample = copy.deepcopy(PREVIEW_SAMPLE)
     sample["template_key"] = template_key
     try:
-        return sorted(spec["context"](sample))
+        context = spec["context"](sample)
     except Exception:
         logging.getLogger(__name__).exception(
             "Could not compute placeholders for %s", template_key)
         return []
+
+    out = []
+    for name, value in sorted(context.items()):
+        if isinstance(value, list):
+            first = value[0] if value else ""
+            example = _richtext_text(first) if type(first).__name__ == "RichText" else str(first)
+            out.append({
+                "name": name,
+                "kind": "list",
+                # One paragraph per item: the for/endfor lines disappear on render.
+                "tag": "{%p for item in " + name + " %}",
+                "tag_extra": ["{{r item }}", "{%p endfor %}"],
+                "example": example,
+            })
+        elif type(value).__name__ == "RichText":
+            out.append({
+                "name": name,
+                "kind": "styled",
+                "tag": "{{r " + name + " }}",
+                "tag_extra": [],
+                "example": _richtext_text(value),
+            })
+        else:
+            out.append({
+                "name": name,
+                "kind": "plain",
+                "tag": "{{ " + name + " }}",
+                "tag_extra": [],
+                "example": str(value),
+            })
+    return out
 
 
 def template_path(template_key: str) -> Path | None:

@@ -36,6 +36,20 @@ export default function Templates() {
   const [uploadingKey, setUploadingKey] = useState(null)
   const fileInputs = useRef({})
 
+  // Field reference: one template at a time, so it reads as a short list
+  // instead of four walls of names.
+  const [fieldsKey, setFieldsKey] = useState(null)
+  const [copied, setCopied] = useState(null)
+  const withFields = templates.filter(x => x.placeholders?.length)
+  const fieldsTemplate = withFields.find(x => x.key === fieldsKey) || withFields[0] || null
+
+  const copyTag = (p) => {
+    const text = [p.tag, ...(p.tag_extra || [])].join('\n')
+    navigator.clipboard?.writeText(text)
+    setCopied(p.name)
+    setTimeout(() => setCopied(c => (c === p.name ? null : c)), 1500)
+  }
+
   const emptyType = { key: '', label: '', kind: 'nomination', signatory_name: '', signatory_title: '', signatory_org: '' }
   const [newType, setNewType] = useState(null)
   const [creating, setCreating] = useState(false)
@@ -200,28 +214,79 @@ export default function Templates() {
         </div>
       )}
 
-      {/* Without this, "upload your own design" is impossible: nobody can
-          guess the placeholder names from an empty Word document. */}
+      {/* Without this, "upload your own design" is impossible: nobody can guess
+          the field names from an empty Word document — and the bare name isn't
+          enough either, since styled fields need {{r }} and lists need a loop. */}
       <details className="mb-4 rounded-xl border border-fiba-border p-4">
         <summary className="cursor-pointer text-sm font-medium text-ink-900 dark:text-white">
           {t('templates.howTo')}
         </summary>
-        <p className="text-sm text-fiba-muted mt-3">{t('templates.howToBody')}</p>
-        <p className="text-xs text-fiba-muted/70 mt-2 font-mono">{t('templates.placeholdersHint')}</p>
-        {templates.map(tmpl => tmpl.placeholders?.length > 0 && (
-          <div key={tmpl.key} className="mt-3">
-            <p className="text-xs text-fiba-muted mb-1">
-              {t('templates.placeholders')} — {tmpl.key}
-            </p>
-            <div className="flex flex-wrap gap-1.5">
-              {tmpl.placeholders.map(p => (
-                <code key={p} className="px-1.5 py-0.5 rounded bg-fiba-surface text-[11px] text-fiba-accent">
-                  {p}
-                </code>
+
+        <ol className="mt-4 space-y-2">
+          {[1, 2, 3, 4].map(n => (
+            <li key={n} className="flex gap-3 text-sm text-fiba-muted">
+              <span className="flex-shrink-0 w-5 h-5 rounded-full bg-fiba-accent/15 text-fiba-accent
+                               text-xs font-semibold flex items-center justify-center">{n}</span>
+              <span>{t(`templates.step${n}`)}</span>
+            </li>
+          ))}
+        </ol>
+
+        {fieldsTemplate && (
+          <div className="mt-5">
+            <div className="flex items-center gap-2 flex-wrap mb-2">
+              <span className="text-xs text-fiba-muted">{t('templates.fieldsFor')}</span>
+              {templates.filter(x => x.placeholders?.length).map(x => (
+                <button key={x.key} onClick={() => setFieldsKey(x.key)}
+                  className={`px-2 py-0.5 rounded text-xs ${x.key === fieldsTemplate.key
+                    ? 'bg-fiba-accent/15 text-fiba-accent font-medium'
+                    : 'text-fiba-muted hover:text-ink-900 dark:hover:text-white'}`}>
+                  {x.key}
+                </button>
               ))}
             </div>
+
+            <div className="overflow-x-auto rounded-lg border border-fiba-border">
+              <table className="fiba-table">
+                <thead>
+                  <tr>
+                    <th>{t('templates.colWhat')}</th>
+                    <th>{t('templates.colCopy')}</th>
+                    <th>{t('templates.colExample')}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {fieldsTemplate.placeholders.map(p => {
+                    const described = t(`templates.ph.${p.name}`)
+                    return (
+                      <tr key={p.name}>
+                        <td className="px-4 py-2 text-sm">
+                          {described === `templates.ph.${p.name}` ? p.name : described}
+                          {p.kind === 'list' && (
+                            <span className="block text-[11px] text-fiba-muted/60">{t('templates.repeats')}</span>
+                          )}
+                        </td>
+                        <td className="px-4 py-2">
+                          <button onClick={() => copyTag(p)} title={t('templates.copyHint')}
+                            className="text-left font-mono text-xs text-fiba-accent hover:underline">
+                            <span className="block">{p.tag}</span>
+                            {p.tag_extra?.map(x => <span key={x} className="block">{x}</span>)}
+                          </button>
+                          {copied === p.name && (
+                            <span className="ml-2 text-[11px] text-green-400">{t('templates.copied')}</span>
+                          )}
+                        </td>
+                        <td className="px-4 py-2 text-xs text-fiba-muted">{p.example}</td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            <p className="text-xs text-fiba-muted/60 mt-2">{t('templates.deleteFieldNote')}</p>
           </div>
-        ))}
+        )}
       </details>
 
       <div className="rounded-xl border border-fiba-border overflow-hidden">
