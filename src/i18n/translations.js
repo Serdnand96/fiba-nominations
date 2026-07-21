@@ -105,6 +105,7 @@ const translations = {
     importCsv: { en: 'Import CSV/Excel', es: 'Importar CSV/Excel' },
     addPerson: { en: '+ Add person', es: '+ Agregar persona' },
     total: { en: 'Total', es: 'Total' },
+    referees: { en: 'Referees', es: 'Árbitros' },
     countries: { en: 'Countries', es: 'Países' },
     search: { en: 'Search...', es: 'Buscar...' },
     allRoles: { en: 'All roles', es: 'Todos los roles' },
@@ -323,7 +324,7 @@ const translations = {
     noFileYet: { en: 'No file uploaded yet', es: 'Todavía no se subió archivo' },
     createdNeedsUpload: {
       en: 'Template created. Now upload its .docx to start using it.',
-      es: 'Template creado. Ahora subí su .docx para poder usarlo.',
+      es: 'Template creado. Ahora sube su .docx para poder usarlo.',
     },
     deleteType: { en: 'Delete', es: 'Eliminar' },
     deleteConfirm: {
@@ -336,30 +337,30 @@ const translations = {
     howTo: { en: 'How to design your own letter', es: 'Cómo diseñar tu propia carta' },
     step1: {
       en: 'Download the .docx of the template you want to start from.',
-      es: 'Descargá el .docx del template del que querés partir.',
+      es: 'Descarga el .docx del template del que quieres partir.',
     },
     step2: {
       en: 'Open it in Word and design it freely: logo, letterhead, footer, fonts, colours, signature image, wording and order are all yours.',
-      es: 'Abrilo en Word y diseñá con libertad: logo, membrete, footer, tipografías, colores, imagen de firma, redacción y orden son tuyos.',
+      es: 'Ábrelo en Word y diséñalo con libertad: logo, membrete, footer, tipografías, colores, imagen de firma, redacción y orden son tuyos.',
     },
     step3: {
       en: 'Leave the fields below wherever you want each piece of data to appear. Copy them exactly as shown.',
-      es: 'Dejá los campos de abajo donde quieras que aparezca cada dato. Copialos tal cual figuran.',
+      es: 'Deja los campos de abajo donde quieras que aparezca cada dato. Cópialos tal cual figuran.',
     },
     step4: {
       en: 'Upload it. You will see the letter it produces before anything changes — you decide whether to activate it.',
-      es: 'Subilo. Vas a ver la carta que produce antes de que cambie nada — vos decidís si activarlo.',
+      es: 'Súbelo. Vas a ver la carta que produce antes de que cambie nada — tú decides si activarlo.',
     },
     fieldsFor: { en: 'Fields available in', es: 'Campos disponibles en' },
     colWhat: { en: 'What it prints', es: 'Qué imprime' },
-    colCopy: { en: 'Write this in Word', es: 'Escribí esto en Word' },
+    colCopy: { en: 'Write this in Word', es: 'Escribe esto en Word' },
     colExample: { en: 'Example', es: 'Ejemplo' },
     copied: { en: 'Copied', es: 'Copiado' },
     copyHint: { en: 'Click to copy', es: 'Clic para copiar' },
     repeats: { en: 'Repeats one paragraph per item', es: 'Repite un párrafo por cada ítem' },
     deleteFieldNote: {
       en: 'Delete a field and it simply stops appearing. Invent one and it renders empty — the upload check warns you first.',
-      es: 'Si borrás un campo, simplemente deja de aparecer. Si inventás uno, sale vacío — la validación te avisa antes.',
+      es: 'Si borras un campo, simplemente deja de aparecer. Si inventas uno, sale vacío — la validación te avisa antes.',
     },
     // Plain-language names for each field the letters expose.
     ph: {
