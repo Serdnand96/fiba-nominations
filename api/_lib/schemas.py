@@ -2,6 +2,11 @@ from pydantic import BaseModel
 from typing import Optional
 
 
+class VisaEntry(BaseModel):
+    country: str
+    expires: Optional[str] = None  # YYYY-MM-DD
+
+
 class PersonnelCreate(BaseModel):
     name: str
     email: str
@@ -9,6 +14,8 @@ class PersonnelCreate(BaseModel):
     phone: Optional[str] = None
     passport: Optional[str] = None
     role: str
+    languages: Optional[list[str]] = None
+    visas: Optional[list[VisaEntry]] = None
 
 
 class PersonnelUpdate(BaseModel):
@@ -18,6 +25,8 @@ class PersonnelUpdate(BaseModel):
     phone: Optional[str] = None
     passport: Optional[str] = None
     role: Optional[str] = None
+    languages: Optional[list[str]] = None
+    visas: Optional[list[VisaEntry]] = None
 
 
 class CompetitionCreate(BaseModel):

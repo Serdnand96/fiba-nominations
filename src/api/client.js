@@ -18,6 +18,12 @@ api.interceptors.request.use(async (config) => {
 export const getPersonnel = (params) => api.get('/personnel', { params }).then(r => r.data)
 export const createPersonnel = (data) => api.post('/personnel', data).then(r => r.data)
 export const getPersonnelById = (id) => api.get(`/personnel/${id}`).then(r => r.data)
+export const getPersonnelWorkload = (id, months = 12) => api.get(`/personnel/${id}/workload`, { params: { months } }).then(r => r.data)
+export const uploadPersonnelPhoto = (id, file) => {
+  const fd = new FormData()
+  fd.append('photo', file)
+  return api.post(`/personnel/${id}/photo`, fd, { headers: { 'Content-Type': 'multipart/form-data' } }).then(r => r.data)
+}
 export const updatePersonnel = (id, data) => api.put(`/personnel/${id}`, data).then(r => r.data)
 export const deletePersonnel = (id, force = false) => api.delete(`/personnel/${id}`, { params: { force } }).then(r => r.data)
 export const importPersonnel = (file) => {

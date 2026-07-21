@@ -16,8 +16,16 @@ const CONFIRMATION_BADGES = {
 import { useLanguage } from '../i18n/LanguageContext'
 import { useAuth } from '../contexts/AuthContext'
 import NominationsMatrix from '../components/NominationsMatrix'
+import PersonProfilePanel from '../components/PersonProfilePanel'
 
 const BCLA_F4_ROUNDS = ['Semifinals', '3rd Place', 'Final']
+
+function compareValues(a, b, dir) {
+  const av = (a ?? '').toString().toLowerCase()
+  const bv = (b ?? '').toString().toLowerCase()
+  const cmp = av.localeCompare(bv, undefined, { numeric: true })
+  return dir === 'asc' ? cmp : -cmp
+}
 
 export default function Nominations() {
   const { t } = useLanguage()
@@ -29,6 +37,8 @@ export default function Nominations() {
   const [competitions, setCompetitions] = useState([])
   const [search, setSearch] = useState('')
   const [confirmationFilter, setConfirmationFilter] = useState('')
+  const [sort, setSort] = useState({ key: null, dir: 'asc' })
+  const [profilePerson, setProfilePerson] = useState(null)
   const [view, setView] = useState('table') // 'table' | 'matrix'
   const [showForm, setShowForm] = useState(false)
   const [loading, setLoading] = useState(false)
@@ -92,7 +102,7 @@ export default function Nominations() {
 
   const filtered = useMemo(() => {
     const q = search.toLowerCase()
-    return nominations.filter(n => {
+    const rows = nominations.filter(n => {
       if (confirmationFilter && (n.confirmation_status || 'pending') !== confirmationFilter) return false
       if (!q) return true
       return (
@@ -100,7 +110,23 @@ export default function Nominations() {
         n.competitions?.name?.toLowerCase().includes(q)
       )
     })
-  }, [nominations, search, confirmationFilter])
+    if (!sort.key) return rows
+    const accessors = {
+      name: n => n.personnel?.name,
+      role: n => n.personnel?.role,
+      competition: n => n.competitions?.name,
+      letter_date: n => n.letter_date,
+      status: n => n.status,
+    }
+    const get = accessors[sort.key]
+    return [...rows].sort((a, b) => compareValues(get(a), get(b), sort.dir))
+  }, [nominations, search, confirmationFilter, sort])
+
+  function toggleSort(key) {
+    setSort(s => s.key === key
+      ? { key, dir: s.dir === 'asc' ? 'desc' : 'asc' }
+      : { key, dir: 'asc' })
+  }
 
   async function handleConfirmationChange(nom, newStatus) {
     if (newStatus === (nom.confirmation_status || 'pending')) return
@@ -367,6 +393,22 @@ export default function Nominations() {
     p.name.toLowerCase().includes(personSearch.toLowerCase())
   )
 
+  function SortHeader({ label, sortKey }) {
+    const active = sort.key === sortKey
+    return (
+      <th onClick={() => toggleSort(sortKey)}
+        className="cursor-pointer select-none hover:text-ink-900 dark:hover:text-white"
+        title={t('common.sort') || 'Sort'}>
+        <span className="inline-flex items-center gap-1">
+          {label}
+          <span className={`text-fiba-accent transition-opacity ${active ? 'opacity-100' : 'opacity-0'}`}>
+            {sort.dir === 'asc' ? '▲' : '▼'}
+          </span>
+        </span>
+      </th>
+    )
+  }
+
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
@@ -456,11 +498,11 @@ export default function Nominations() {
                 <input type="checkbox" checked={filtered.length > 0 && selectedIds.size === filtered.length}
                   onChange={toggleSelectAll} className="rounded" />
               </th>
-              <th>{t('nominations.name')}</th>
-              <th>{t('nominations.role')}</th>
-              <th>{t('nominations.competition')}</th>
-              <th>{t('nominations.letterDate')}</th>
-              <th>{t('nominations.status')}</th>
+              <SortHeader label={t('nominations.name')} sortKey="name" />
+              <SortHeader label={t('nominations.role')} sortKey="role" />
+              <SortHeader label={t('nominations.competition')} sortKey="competition" />
+              <SortHeader label={t('nominations.letterDate')} sortKey="letter_date" />
+              <SortHeader label={t('nominations.status')} sortKey="status" />
               <th>{t('nominations.confirmation')}</th>
               <th>{t('nominations.action')}</th>
             </tr>
@@ -471,7 +513,14 @@ export default function Nominations() {
                 <td className="px-4 py-3">
                   <input type="checkbox" checked={selectedIds.has(n.id)} onChange={() => toggleTableSelect(n.id)} className="rounded" />
                 </td>
-                <td className="px-4 py-3">{n.personnel?.name}</td>
+                <td className="px-4 py-3">
+                  {n.personnel_id ? (
+                    <button onClick={() => setProfilePerson({ id: n.personnel_id, ...n.personnel })}
+                      className="text-left text-fiba-accent hover:underline font-medium">
+                      {n.personnel?.name}
+                    </button>
+                  ) : n.personnel?.name}
+                </td>
                 <td className="px-4 py-3">
                   <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${n.personnel?.role === 'VGO' ? 'bg-purple-500/20 text-purple-400' : 'bg-emerald-500/20 text-emerald-400'}`}>
                     {n.personnel?.role}
@@ -714,6 +763,17 @@ export default function Nominations() {
             </form>
           </div>
         </div>
+      )}
+
+      {/* Person profile panel */}
+      {profilePerson && (
+        <PersonProfilePanel
+          person={profilePerson}
+          onClose={() => setProfilePerson(null)}
+          onUpdated={load}
+          canEdit={hasEdit('personnel')}
+          canEditAvail={hasEdit('availability')}
+        />
       )}
     </div>
   )

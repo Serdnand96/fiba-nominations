@@ -1,13 +1,14 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
-import { getPersonnel, createPersonnel, updatePersonnel, deletePersonnel, importPersonnel,
-  getPersonnelAvailability, getCompetitions, createAvailability, updateAvailability, deleteAvailability } from '../api/client'
+import { getPersonnel, createPersonnel, updatePersonnel, deletePersonnel, importPersonnel } from '../api/client'
 import { useLanguage } from '../i18n/LanguageContext'
 import { useAuth } from '../contexts/AuthContext'
+import PersonProfilePanel from '../components/PersonProfilePanel'
 
-const STATUS_STYLES = {
-  available: 'bg-emerald-500/20 text-emerald-400',
-  unavailable: 'bg-red-500/20 text-red-400',
-  restricted: 'bg-yellow-500/20 text-yellow-400',
+function compareValues(a, b, dir) {
+  const av = (a ?? '').toString().toLowerCase()
+  const bv = (b ?? '').toString().toLowerCase()
+  const cmp = av.localeCompare(bv, undefined, { numeric: true })
+  return dir === 'asc' ? cmp : -cmp
 }
 
 export default function Personnel() {
@@ -18,22 +19,14 @@ export default function Personnel() {
   const [people, setPeople] = useState([])
   const [search, setSearch] = useState('')
   const [roleFilter, setRoleFilter] = useState('')
+  const [sort, setSort] = useState({ key: null, dir: 'asc' })
   const [showModal, setShowModal] = useState(false)
   const [editing, setEditing] = useState(null)
   const [showImport, setShowImport] = useState(false)
   const [form, setForm] = useState({ name: '', email: '', country: '', phone: '', passport: '', role: 'VGO' })
 
-  // Availability panel
-  const [availPerson, setAvailPerson] = useState(null)
-  const [availRecords, setAvailRecords] = useState([])
-  const [availLoading, setAvailLoading] = useState(false)
-  const [competitions, setCompetitions] = useState([])
-  const [showAvailModal, setShowAvailModal] = useState(false)
-  const [editingAvail, setEditingAvail] = useState(null)
-  const [availForm, setAvailForm] = useState({
-    type: 'event_specific', competition_id: '', start_date: '', end_date: '',
-    status: 'available', notes: '',
-  })
+  // Profile panel — the shared PersonProfilePanel owns its own data/modals
+  const [profilePerson, setProfilePerson] = useState(null)
 
   useEffect(() => { load() }, [])
 
@@ -50,7 +43,7 @@ export default function Personnel() {
   }), [people])
 
   const filtered = useMemo(() => {
-    return people.filter(p => {
+    const rows = people.filter(p => {
       if (roleFilter && p.role !== roleFilter) return false
       if (search) {
         const q = search.toLowerCase()
@@ -58,7 +51,38 @@ export default function Personnel() {
       }
       return true
     })
-  }, [people, search, roleFilter])
+    if (!sort.key) return rows
+    const accessors = {
+      name: p => p.name,
+      role: p => p.role,
+      country: p => p.country,
+      email: p => p.email,
+    }
+    const get = accessors[sort.key]
+    return [...rows].sort((a, b) => compareValues(get(a), get(b), sort.dir))
+  }, [people, search, roleFilter, sort])
+
+  function toggleSort(key) {
+    setSort(s => s.key === key
+      ? { key, dir: s.dir === 'asc' ? 'desc' : 'asc' }
+      : { key, dir: 'asc' })
+  }
+
+  function SortHeader({ label, sortKey }) {
+    const active = sort.key === sortKey
+    return (
+      <th onClick={() => toggleSort(sortKey)}
+        className="cursor-pointer select-none hover:text-ink-900 dark:hover:text-white"
+        title={t('common.sort') || 'Sort'}>
+        <span className="inline-flex items-center gap-1">
+          {label}
+          <span className={`text-fiba-accent transition-opacity ${active ? 'opacity-100' : 'opacity-0'}`}>
+            {sort.dir === 'asc' ? '▲' : '▼'}
+          </span>
+        </span>
+      </th>
+    )
+  }
 
   function openEdit(person) {
     setEditing(person)
@@ -76,13 +100,13 @@ export default function Personnel() {
     if (!confirm(t('personnel.confirmDelete', { name: person.name }))) return
     try {
       await deletePersonnel(person.id)
-      if (availPerson?.id === person.id) setAvailPerson(null)
+      if (profilePerson?.id === person.id) setProfilePerson(null)
       await load()
     } catch (err) {
       if (err.response?.status === 409) {
         if (confirm(t('personnel.confirmForceDelete', { detail: err.response.data.detail }))) {
           await deletePersonnel(person.id, true)
-          if (availPerson?.id === person.id) setAvailPerson(null)
+          if (profilePerson?.id === person.id) setProfilePerson(null)
           await load()
         }
       } else {
@@ -102,71 +126,8 @@ export default function Personnel() {
     await load()
   }
 
-  // --- Availability panel ---
-  async function openAvailPanel(person) {
-    setAvailPerson(person)
-    setAvailLoading(true)
-    try {
-      const [records, comps] = await Promise.all([
-        getPersonnelAvailability(person.id),
-        competitions.length ? Promise.resolve(competitions) : getCompetitions(),
-      ])
-      setAvailRecords(records)
-      if (!competitions.length) setCompetitions(comps)
-    } catch { setAvailRecords([]) }
-    setAvailLoading(false)
-  }
-
-  function openCreateAvail() {
-    setEditingAvail(null)
-    setAvailForm({ type: 'event_specific', competition_id: '', start_date: '', end_date: '', status: 'available', notes: '' })
-    setShowAvailModal(true)
-  }
-
-  function openEditAvail(rec) {
-    setEditingAvail(rec)
-    setAvailForm({
-      type: rec.type,
-      competition_id: rec.competition_id || '',
-      start_date: rec.start_date || '',
-      end_date: rec.end_date || '',
-      status: rec.status,
-      notes: rec.notes || '',
-    })
-    setShowAvailModal(true)
-  }
-
-  async function handleAvailSubmit(e) {
-    e.preventDefault()
-    const payload = { ...availForm, personnel_id: availPerson.id }
-    if (payload.type === 'event_specific') {
-      payload.start_date = null; payload.end_date = null
-    } else {
-      payload.competition_id = null
-    }
-    try {
-      if (editingAvail) {
-        await updateAvailability(editingAvail.id, availForm)
-      } else {
-        await createAvailability(payload)
-      }
-      setShowAvailModal(false)
-      const records = await getPersonnelAvailability(availPerson.id)
-      setAvailRecords(records)
-    } catch (err) {
-      alert(err.response?.data?.detail || t('availability.errorSaving'))
-    }
-  }
-
-  async function handleDeleteAvail(rec) {
-    if (!confirm(t('availability.confirmDelete'))) return
-    try {
-      await deleteAvailability(rec.id)
-      const records = await getPersonnelAvailability(availPerson.id)
-      setAvailRecords(records)
-    } catch (err) {
-      alert(err.response?.data?.detail || t('availability.errorDeleting'))
-    }
+  function openProfile(person) {
+    setProfilePerson(person)
   }
 
   return (
@@ -217,18 +178,23 @@ export default function Personnel() {
         <table className="fiba-table">
           <thead>
             <tr>
-              <th>{t('personnel.name')}</th>
-              <th>{t('personnel.role')}</th>
-              <th>{t('personnel.country')}</th>
-              <th>{t('personnel.email')}</th>
+              <SortHeader label={t('personnel.name')} sortKey="name" />
+              <SortHeader label={t('personnel.role')} sortKey="role" />
+              <SortHeader label={t('personnel.country')} sortKey="country" />
+              <SortHeader label={t('personnel.email')} sortKey="email" />
               <th>{t('personnel.passport')}</th>
               <th></th>
             </tr>
           </thead>
           <tbody>
             {filtered.map(p => (
-              <tr key={p.id} className={availPerson?.id === p.id ? 'bg-fiba-accent/10' : ''}>
-                <td className="px-4 py-3 font-medium">{p.name}</td>
+              <tr key={p.id} className={profilePerson?.id === p.id ? 'bg-fiba-accent/10' : ''}>
+                <td className="px-4 py-3 font-medium">
+                  <button onClick={() => openProfile(p)}
+                    className="text-left text-fiba-accent hover:underline font-medium">
+                    {p.name}
+                  </button>
+                </td>
                 <td className="px-4 py-3">
                   <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${p.role === 'VGO' ? 'bg-purple-500/20 text-purple-400' : 'bg-emerald-500/20 text-emerald-400'}`}>{p.role}</span>
                 </td>
@@ -237,9 +203,7 @@ export default function Personnel() {
                 <td className="px-4 py-3">{p.passport || '—'}</td>
                 <td className="px-4 py-3">
                   <div className="flex gap-3">
-                    {p.role === 'TD' && (
-                      <button onClick={() => openAvailPanel(p)} className="text-emerald-400 hover:underline text-sm">{t('availability.tab')}</button>
-                    )}
+                    <button onClick={() => openProfile(p)} className="text-emerald-400 hover:underline text-sm">{t('profile.view')}</button>
                     {canEdit && (
                       <>
                         <button onClick={() => openEdit(p)} className="text-fiba-accent hover:underline text-sm">{t('personnel.edit')}</button>
@@ -284,156 +248,19 @@ export default function Personnel() {
         </div>
       )}
 
-      {/* Availability Side Panel */}
-      {availPerson && (
-        <>
-          <div className="fixed inset-0 bg-black/40 z-40" onClick={() => setAvailPerson(null)} />
-          <div className="fixed top-0 right-0 h-full w-full max-w-lg bg-fiba-card border-l border-fiba-border z-50 flex flex-col animate-slide-in">
-            <div className="flex items-start justify-between p-6 border-b border-fiba-border">
-              <div>
-                <div className="flex items-center gap-2 mb-1">
-                  <span className="inline-block px-2 py-0.5 rounded text-xs font-medium bg-emerald-500/20 text-emerald-400">TD</span>
-                  {availPerson.country && <span className="text-xs text-fiba-muted/60">{availPerson.country}</span>}
-                </div>
-                <h3 className="text-lg font-bold text-ink-900 dark:text-white">{availPerson.name}</h3>
-                <p className="text-sm text-fiba-muted">{availPerson.email}</p>
-              </div>
-              <button onClick={() => setAvailPerson(null)} className="p-1.5 rounded hover:bg-fiba-surface text-fiba-muted hover:text-ink-900 dark:text-white">
-                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
-              </button>
-            </div>
-
-            <div className="flex items-center justify-between px-6 py-3 border-b border-fiba-border bg-fiba-surface/50">
-              <h4 className="text-sm font-semibold text-ink-700 dark:text-gray-300">{t('availability.tab')}</h4>
-              {canEditAvail && (
-                <button onClick={openCreateAvail} className="btn-fiba text-xs px-3 py-1.5">
-                  {t('availability.addAvailability')}
-                </button>
-              )}
-            </div>
-
-            <div className="flex-1 overflow-auto p-6">
-              {availLoading ? (
-                <div className="text-center py-8 text-fiba-muted/60 text-sm">{t('common.loading')}</div>
-              ) : availRecords.length === 0 ? (
-                <div className="text-center py-8 text-fiba-muted/60 text-sm">{t('availability.noRecords')}</div>
-              ) : (
-                <div className="space-y-3">
-                  {availRecords.map(rec => (
-                    <div key={rec.id} className="border border-fiba-border rounded-lg p-3">
-                      <div className="flex items-center justify-between mb-2">
-                        <div className="flex items-center gap-2">
-                          <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${rec.type === 'event_specific' ? 'bg-blue-500/20 text-blue-400' : 'bg-fiba-surface text-fiba-muted'}`}>
-                            {rec.type === 'event_specific' ? t('availability.eventSpecific') : t('availability.dateRange')}
-                          </span>
-                          <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${STATUS_STYLES[rec.status]}`}>
-                            {t(`availability.${rec.status}`)}
-                          </span>
-                        </div>
-                        {canEditAvail && (
-                          <div className="flex gap-2">
-                            <button onClick={() => openEditAvail(rec)} className="text-fiba-accent hover:underline text-xs">{t('availability.edit')}</button>
-                            <button onClick={() => handleDeleteAvail(rec)} className="text-red-400 hover:underline text-xs">{t('availability.delete')}</button>
-                          </div>
-                        )}
-                      </div>
-                      <div className="text-sm text-ink-700 dark:text-gray-300">
-                        {rec.type === 'event_specific' ? (
-                          <span>{rec.competition?.name || rec.competition_id}</span>
-                        ) : (
-                          <span>{rec.start_date} — {rec.end_date}</span>
-                        )}
-                      </div>
-                      {rec.notes && <p className="text-xs text-fiba-muted mt-1">{rec.notes}</p>}
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-        </>
-      )}
-
-      {/* Availability Modal */}
-      {showAvailModal && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[60]">
-          <div className="fiba-modal max-w-md p-6">
-            <h3 className="text-lg font-bold text-ink-900 dark:text-white mb-4">
-              {editingAvail ? t('availability.editAvailability') : t('availability.newAvailability')}
-            </h3>
-            <form onSubmit={handleAvailSubmit} className="space-y-3">
-              {/* Type toggle */}
-              <div className="flex bg-fiba-surface rounded-lg p-0.5">
-                <button type="button" onClick={() => setAvailForm(f => ({ ...f, type: 'event_specific' }))}
-                  className={`flex-1 px-3 py-2 rounded-md text-xs font-medium transition-colors ${availForm.type === 'event_specific' ? 'bg-fiba-accent text-white' : 'text-fiba-muted'}`}>
-                  {t('availability.eventSpecific')}
-                </button>
-                <button type="button" onClick={() => setAvailForm(f => ({ ...f, type: 'date_range' }))}
-                  className={`flex-1 px-3 py-2 rounded-md text-xs font-medium transition-colors ${availForm.type === 'date_range' ? 'bg-fiba-accent text-white' : 'text-fiba-muted'}`}>
-                  {t('availability.dateRange')}
-                </button>
-              </div>
-
-              {/* Conditional fields */}
-              {availForm.type === 'event_specific' ? (
-                <select required value={availForm.competition_id} onChange={e => setAvailForm(f => ({ ...f, competition_id: e.target.value }))}
-                  className="fiba-select">
-                  <option value="">{t('availability.selectCompetition')}</option>
-                  {competitions
-                    .sort((a, b) => (a.start_date || '').localeCompare(b.start_date || ''))
-                    .map(c => <option key={c.id} value={c.id}>{c.name} {c.year ? `(${c.year})` : ''}</option>)}
-                </select>
-              ) : (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div>
-                    <label className="fiba-label">{t('availability.startDate')}</label>
-                    <input required type="date" value={availForm.start_date}
-                      onChange={e => setAvailForm(f => ({ ...f, start_date: e.target.value }))}
-                      className="fiba-input" />
-                  </div>
-                  <div>
-                    <label className="fiba-label">{t('availability.endDate')}</label>
-                    <input required type="date" value={availForm.end_date}
-                      onChange={e => setAvailForm(f => ({ ...f, end_date: e.target.value }))}
-                      className="fiba-input" />
-                  </div>
-                </div>
-              )}
-
-              {/* Status */}
-              <div>
-                <label className="fiba-label">{t('availability.status')}</label>
-                <select value={availForm.status} onChange={e => setAvailForm(f => ({ ...f, status: e.target.value }))}
-                  className="fiba-select">
-                  <option value="available">{t('availability.available')}</option>
-                  <option value="unavailable">{t('availability.unavailable')}</option>
-                  <option value="restricted">{t('availability.restricted')}</option>
-                </select>
-              </div>
-
-              {/* Notes */}
-              <textarea placeholder={t('availability.notesPlaceholder')} value={availForm.notes}
-                onChange={e => setAvailForm(f => ({ ...f, notes: e.target.value }))}
-                className="fiba-input" rows={2} />
-
-              <div className="flex justify-end gap-3 pt-2">
-                <button type="button" onClick={() => setShowAvailModal(false)} className="px-4 py-2 text-sm text-fiba-muted">{t('availability.cancel')}</button>
-                <button type="submit" className="btn-fiba">
-                  {t('availability.save')}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
+      {/* Profile Side Panel (shared component) */}
+      {profilePerson && (
+        <PersonProfilePanel
+          person={profilePerson}
+          onClose={() => setProfilePerson(null)}
+          onUpdated={load}
+          canEdit={canEdit}
+          canEditAvail={canEditAvail}
+        />
       )}
 
       {/* Import View */}
       {showImport && <ImportView onClose={() => { setShowImport(false); load() }} />}
-
-      <style>{`
-        @keyframes slideIn { from { transform: translateX(100%); } to { transform: translateX(0); } }
-        .animate-slide-in { animation: slideIn 0.25s ease-out; }
-      `}</style>
     </div>
   )
 }
