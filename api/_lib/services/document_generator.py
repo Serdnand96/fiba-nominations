@@ -237,19 +237,23 @@ RED_HEX = "ED0000"
 DARK_HEX = "2A2A2A"
 
 
-def _dear_line(data: dict, font: str):
+def _dear_line(data: dict, font: str, size: int | None = None):
     """"Dear <name>," as one RichText — the name in red, the rest in ink.
 
     Mixed-ink paragraphs are assembled here rather than as
     `Dear {{r nominee }},` in the .docx: docxtpl splits the run around a
     RichText insert and the trailing text loses its explicit colour.
+
+    `size` is in points. The nomination letters leave it unset so the run
+    inherits the template default; BCLA pins its mixed runs to 10pt.
     """
     from docxtpl import RichText
 
+    half = (size * 2) if size else None
     rt = RichText()
-    rt.add("Dear ", color=DARK_HEX, font=font)
-    rt.add(data.get("nominee_name", ""), color=RED_HEX, font=font)
-    rt.add(",", color=DARK_HEX, font=font)
+    rt.add("Dear ", color=DARK_HEX, font=font, size=half)
+    rt.add(data.get("nominee_name", ""), color=RED_HEX, font=font, size=half)
+    rt.add(",", color=DARK_HEX, font=font, size=half)
     return rt
 
 
@@ -368,7 +372,7 @@ def _bcla_context(data: dict, variant: str, font: str) -> dict:
         "bcla_date": rich(f"Miami, {_fmt_deadline(letter_date)}" if letter_date else ""),
         "bcla_title": rich(f"BCL Americas {comp_year} – {role_label.upper()} NOMINATION",
                            bold=True, size=11),
-        "dear_line": _dear_line(data, font),
+        "dear_line": _dear_line(data, font, size=10),
         "role_label": role_label,
         "competition_name": comp_name,
         "competition_year": comp_year,
