@@ -52,6 +52,14 @@ BODY = [
     ("", None, None, False),
     ("We wish you the best in your preparation and accomplishment of your "
      "assignment.", None, None, False),
+    # Gap before the signature. The positional builder computed this
+    # dynamically (`keep_empty = max(0, 30 - closing_idx - 2)`) to pin the
+    # signature near paragraph 30, which worked out to 5-7 blank lines for a
+    # typical 1-3 game letter. A declarative template can't do that
+    # arithmetic, so it uses a fixed 5 — matching the common 3-game case.
+    ("", None, None, False),
+    ("", None, None, False),
+    ("", None, None, False),
     ("", None, None, False),
     ("", None, None, False),
 ]
