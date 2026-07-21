@@ -44,7 +44,12 @@ def _build_doc(nomination_data: dict):
     template_key = nomination_data["template_key"]
 
     if template_key == "WCQ":
-        doc = _build_wcq_letter(nomination_data)
+        if (TEMPLATES_DIR / "WCQ_TEMPLATE_TPL.docx").exists():
+            doc = _build_from_docx_template(
+                nomination_data, "WCQ_TEMPLATE_TPL.docx", FONT_WCQ,
+                date_color=RED_HEX)
+        else:
+            doc = _build_wcq_letter(nomination_data)
     elif template_key == "GENERIC":
         # Prefer the placeholder template; fall back to the positional builder
         # if the file isn't deployed yet.
@@ -233,7 +238,7 @@ RED_HEX = "ED0000"
 DARK_HEX = "2A2A2A"
 
 
-def _letter_context(data: dict, font: str) -> dict:
+def _letter_context(data: dict, font: str, date_color: str = DARK_HEX) -> dict:
     """Values for a placeholder template, mirroring _build_generic_letter.
 
     RichText carries its own colour/size, so the .docx only has to place the
@@ -263,7 +268,9 @@ def _letter_context(data: dict, font: str) -> dict:
     host_line = ", ".join(p for p in (host_city, host_country) if p)
 
     return {
-        "letter_date": _fmt_date(data.get("letter_date", "")),
+        # WCQ prints the date in red, GENERIC in ink — hence the parameter.
+        "letter_date": rich(_fmt_date(data.get("letter_date", "")),
+                            color=date_color, size=10),
         "nominee": rich(data.get("nominee_name", ""), color=RED_HEX),
         "competition_name": data.get("competition_name", ""),
         "game_dates": games,
@@ -276,7 +283,8 @@ def _letter_context(data: dict, font: str) -> dict:
     }
 
 
-def _build_from_docx_template(data: dict, template_file: str, font: str):
+def _build_from_docx_template(data: dict, template_file: str, font: str,
+                              date_color: str = DARK_HEX):
     """Render a placeholder template. Returns a DocxTemplate, which exposes the
     same .save(path) as a Document, so the rest of the pipeline is unchanged."""
     # Imported lazily: if docxtpl is ever missing, only this path breaks and
@@ -284,7 +292,7 @@ def _build_from_docx_template(data: dict, template_file: str, font: str):
     from docxtpl import DocxTemplate
 
     tpl = DocxTemplate(str(TEMPLATES_DIR / template_file))
-    tpl.render(_letter_context(data, font))
+    tpl.render(_letter_context(data, font, date_color))
     return tpl
 
 
