@@ -625,6 +625,11 @@ def template_path(template_key: str) -> Path | None:
     if uploaded:
         return uploaded
 
+    # Types created from the UI have no file in the repo (spec["file"] is
+    # None): without an upload there is nothing to render.
+    if not spec.get("file"):
+        return None
+
     built_in = TEMPLATES_DIR / spec["file"]
     return built_in if built_in.exists() else None
 
