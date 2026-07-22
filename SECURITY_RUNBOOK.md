@@ -12,11 +12,12 @@ Los fixes de código de esta auditoría ya están en el repo. Estos ítems
 **requieren acción manual** (paneles externos / droplet) y no se pueden
 resolver en código:
 
-- [ ] **Rotar la FIBA API key** — la anterior (`898cd5e7…`) estaba hardcodeada
-  y quedó en el historial git → está comprometida. Regenerarla en el portal
-  de desarrollador de FIBA y setear la nueva en `FIBA_API_KEY` en el `.env`
-  del droplet. **Sin esto, la sincronización de partidos deja de funcionar**
-  (ahora el código lee la key de env, no hay fallback hardcodeado).
+- [ ] **Setear `FIBA_API_KEY` en el `.env` del droplet** — el código ya no
+  tiene la key hardcodeada (leía `898cd5e7…` de un literal). **Sin la env var
+  la sincronización de partidos no funciona.** Es una subscription key pública
+  de solo-lectura (datos de partidos) que FIBA no rota, así que **reusar la
+  misma key vieja está bien** — no hace falta rotarla. Riesgo residual: nulo/
+  bajo (a lo sumo consumo de cuota si el tier tuviera límites por key).
 - [ ] **Rotar los secretos del `.env`** si ese archivo pudo verse alguna vez
   (SUPABASE_SERVICE_ROLE_KEY, CLOUDCONVERT_API_KEY) y verificar permisos del
   archivo en el droplet (`chmod 600`, owner `fiba`).
