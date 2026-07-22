@@ -32,8 +32,10 @@ class GameCreate(BaseModel):
     time: Optional[str] = None
     team_a: str
     team_a_code: Optional[str] = None
+    team_a_country: Optional[str] = None  # club's country (FIBA code) — club comps
     team_b: str
     team_b_code: Optional[str] = None
+    team_b_country: Optional[str] = None
     score_a: Optional[int] = None
     score_b: Optional[int] = None
     venue: Optional[str] = None
@@ -51,8 +53,10 @@ class GameUpdate(BaseModel):
     time: Optional[str] = None
     team_a: Optional[str] = None
     team_a_code: Optional[str] = None
+    team_a_country: Optional[str] = None
     team_b: Optional[str] = None
     team_b_code: Optional[str] = None
+    team_b_country: Optional[str] = None
     score_a: Optional[int] = None
     score_b: Optional[int] = None
     venue: Optional[str] = None
@@ -512,16 +516,25 @@ def _competition_supports_assignments(competition_id: str) -> bool:
 
 
 def _referee_conflict(game: dict, person: dict) -> dict | None:
-    """Neutrality check for national-team events (see migration 014).
+    """Neutrality check (see migrations 014/015).
 
-    A referee cannot work a game their own country plays, nor any game of the
-    group their country plays in. Returns a conflict payload, or None when the
-    assignment is allowed. Competitions without is_national_team are exempt,
-    as are people whose country we cannot resolve to a FIBA code.
+    - National-team competitions (is_national_team): a referee cannot work a
+      game their own country plays, nor any game of the group their country
+      plays in.
+    - Club competitions: a referee only cannot work games where a club from
+      their country plays (team_a_country / team_b_country). No group rule.
+
+    Returns a conflict payload, or None when the assignment is allowed.
+    People whose country we cannot resolve to a FIBA code are never blocked,
+    and neither are club games whose team countries haven't been filled in.
     """
     from api._lib.countries import (
         person_country_code, game_country_codes, country_display_name,
     )
+
+    person_code = person_country_code(person)
+    if not person_code:
+        return None
 
     comp = (
         supabase.table("competitions")
@@ -530,12 +543,9 @@ def _referee_conflict(game: dict, person: dict) -> dict | None:
         .execute()
         .data
     )
-    if not comp or not comp[0].get("is_national_team"):
+    if not comp:
         return None
-
-    person_code = person_country_code(person)
-    if not person_code:
-        return None
+    is_national_team = bool(comp[0].get("is_national_team"))
 
     base = {
         "code": "referee_neutrality",
@@ -543,6 +553,15 @@ def _referee_conflict(game: dict, person: dict) -> dict | None:
         "country": country_display_name(person_code),
         "person_name": person.get("name") or "",
     }
+
+    if not is_national_team:
+        # Club rule: only the club's own-country match blocks.
+        for side in ("a", "b"):
+            club_country = (game.get(f"team_{side}_country") or "").strip().upper()
+            if club_country and club_country == person_code:
+                return {**base, "reason": "own_club", "team": game.get(f"team_{side}") or ""}
+        return None
+
     if person_code in game_country_codes(game):
         return {**base, "reason": "own_country"}
 
@@ -593,7 +612,8 @@ def create_assignment(data: AssignmentCreate):
     # Verify the game exists and its competition supports assignments
     game = (
         supabase.table("game_schedule")
-        .select("id, competition_id, team_a, team_a_code, team_b, team_b_code, group_label")
+        .select("id, competition_id, team_a, team_a_code, team_a_country, "
+                "team_b, team_b_code, team_b_country, group_label")
         .eq("id", data.game_id)
         .execute()
         .data
@@ -643,6 +663,43 @@ def create_assignment(data: AssignmentCreate):
         return result.data[0]
     result = supabase.table("game_assignments").insert(record).execute()
     return result.data[0]
+
+
+class TeamCountriesUpdate(BaseModel):
+    competition_id: str
+    # team name → FIBA country code ('' or null clears it)
+    countries: dict[str, Optional[str]]
+
+
+@router.post("/team-countries", dependencies=[Depends(require_edit("games"))])
+def set_team_countries(data: TeamCountriesUpdate):
+    """Set the club country for every game of a competition, keyed by team
+    name. Used by the Games page panel so the mapping is done once per
+    competition instead of game by game."""
+    from api._lib.countries import COUNTRIES
+
+    if len(data.countries) > 200:
+        raise HTTPException(400, "Too many teams")
+
+    cleaned: dict[str, str | None] = {}
+    for team, code in data.countries.items():
+        code = (code or "").strip().upper()
+        if code and code not in COUNTRIES:
+            raise HTTPException(400, f"Unknown country code '{code}' for team '{team}'")
+        cleaned[team] = code or None
+
+    updated = 0
+    for team, code in cleaned.items():
+        for side in ("a", "b"):
+            r = (
+                supabase.table("game_schedule")
+                .update({f"team_{side}_country": code})
+                .eq("competition_id", data.competition_id)
+                .eq(f"team_{side}", team)
+                .execute()
+            )
+            updated += len(r.data or [])
+    return {"updated_sides": updated, "teams": len(cleaned)}
 
 
 @router.delete("/assignments/{assignment_id}", dependencies=[Depends(require_edit("games"))])

@@ -212,9 +212,12 @@ export const importGamesExcel = (file, competitionId) => {
   }).then(r => r.data)
 }
 
-// Per-game TD/VGO assignments (WCQ / BCLA / LSB)
+// Per-game TD/VGO/referee assignments (WCQ / BCLA / LSB)
 export const getGameAssignments = (competitionId) =>
   api.get('/games/assignments/by-competition', { params: { competition_id: competitionId } }).then(r => r.data)
+// Club country per team (referee neutrality on club competitions)
+export const setTeamCountries = (competitionId, countries) =>
+  api.post('/games/team-countries', { competition_id: competitionId, countries }).then(r => r.data)
 export const setGameAssignment = (gameId, personnelId, role) =>
   api.post('/games/assignments', { game_id: gameId, personnel_id: personnelId, role }).then(r => r.data)
 export const deleteGameAssignment = (assignmentId) =>

@@ -293,7 +293,6 @@ function ImportView({ onClose }) {
   const { t } = useLanguage()
   const [tab, setTab] = useState('upload')
   const [file, setFile] = useState(null)
-  const [preview, setPreview] = useState(null)
   const [result, setResult] = useState(null)
   const [loading, setLoading] = useState(false)
   const [importError, setImportError] = useState('')

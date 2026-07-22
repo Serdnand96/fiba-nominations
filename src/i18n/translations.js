@@ -1,9 +1,7 @@
 const translations = {
   // ===== App / Sidebar =====
   app: {
-    title: { en: 'FIBA Americas', es: 'FIBA Americas' },
     subtitle: { en: 'Administration System', es: 'Sistema de Administración' },
-    logout: { en: 'Sign out', es: 'Cerrar sesión' },
     loading: { en: 'Loading...', es: 'Cargando...' },
   },
 
@@ -240,6 +238,10 @@ const translations = {
     refWarningPlays: {
       en: '{name} ({country}): their country plays in this tournament.',
       es: '{name} ({country}): su país participa en este torneo.',
+    },
+    refWarningClubs: {
+      en: '{name} ({country}): clubs from their country play in this tournament ({clubs}) — they cannot officiate those games.',
+      es: '{name} ({country}): en este torneo juegan clubes de su país ({clubs}); no podrá dirigir esos partidos.',
     },
     refWarningHint: {
       en: 'The nomination is allowed — on-site game assignments must respect the restriction.',
@@ -681,7 +683,31 @@ const translations = {
       en: 'FIBA neutrality rule for national-team competitions: referees cannot officiate games involving their own country nor games of the group where their country plays.',
       es: 'Regla de neutralidad FIBA para competencias de selecciones: un árbitro no puede dirigir partidos donde juega su país ni partidos del grupo donde su país compite.',
     },
+    refConflictOwnClub: {
+      en: '{name} is from {country} and cannot officiate this game: {team} is a club from {country}.',
+      es: '{name} es de {country} y no puede dirigir este partido: {team} es un club de {country}.',
+    },
+    refConflictRuleClub: {
+      en: 'Neutrality rule for club competitions: a referee cannot officiate games where a club from their country plays. Other games of the same group are allowed.',
+      es: 'Regla de neutralidad para competencias de clubes: un árbitro no puede dirigir partidos donde juega un club de su país. Sí puede dirigir los demás partidos del grupo.',
+    },
     refConflictOk: { en: 'Got it', es: 'Entendido' },
+    // Club country mapping panel
+    teamCountries: { en: 'Club countries', es: 'Países de clubes' },
+    teamCountriesHint: {
+      en: 'Set each club’s country — required for referee eligibility checks',
+      es: 'Definir el país de cada club — necesario para los chequeos de elegibilidad de árbitros',
+    },
+    teamCountriesTitle: { en: 'Club countries', es: 'Países de clubes' },
+    teamCountriesSubtitle: {
+      en: 'Assign each club its country. Referees cannot officiate games where a club from their country plays.',
+      es: 'Asigna a cada club su país. Un árbitro no puede dirigir partidos donde juega un club de su país.',
+    },
+    teamCountriesMissing: { en: '{count} club(s) without country', es: '{count} club(es) sin país' },
+    teamCountriesComplete: { en: 'All clubs have a country', es: 'Todos los clubes tienen país' },
+    teamCountriesSaved: { en: 'Club countries saved', es: 'Países de clubes guardados' },
+    clubCountryA: { en: 'Club A country', es: 'País del club A' },
+    clubCountryB: { en: 'Club B country', es: 'País del club B' },
     assignRole: { en: 'Assign {role}', es: 'Asignar {role}' },
     unassign: { en: 'Remove assignment', es: 'Quitar asignación' },
     unassigned: { en: 'Unassigned', es: 'Sin asignar' },
@@ -721,13 +747,11 @@ const translations = {
 
   // ===== Permissions =====
   permissions: {
-    title: { en: 'Permissions', es: 'Permisos' },
     canView: { en: 'Can View', es: 'Puede ver' },
     canEdit: { en: 'Can Edit', es: 'Puede editar' },
     savePermissions: { en: 'Save Permissions', es: 'Guardar permisos' },
     saving: { en: 'Saving...', es: 'Guardando...' },
     permissionsUpdated: { en: 'Permissions updated', es: 'Permisos actualizados' },
-    cannotEditSuperadmin: { en: 'Cannot edit superadmin permissions', es: 'No se pueden editar permisos de superadmin' },
     accessDenied: { en: 'Access denied', es: 'Acceso denegado' },
     superadmin: { en: 'Superadmin', es: 'Superadmin' },
     module: { en: 'Module', es: 'Módulo' },
@@ -857,12 +881,6 @@ const translations = {
     instructions: { en: 'Point your camera at a FIBA asset QR code to view its details.', es: 'Apunta tu cámara al código QR de un activo FIBA para ver sus detalles.' },
     noCamera: { en: 'No camera available', es: 'No hay cámara disponible' },
     invalidQr: { en: 'Invalid QR', es: 'QR inválido' },
-  },
-
-  // ===== Permissions =====
-  permissionsModules: {
-    assets: { en: 'Inventory', es: 'Inventario' },
-    loans: { en: 'Loans', es: 'Préstamos' },
   },
 }
 

@@ -50,7 +50,6 @@ export default function Training() {
   const [assignSlot, setAssignSlot] = useState(null)
   const [assignTdId, setAssignTdId] = useState('')
   const [assignSaving, setAssignSaving] = useState(false)
-  const [tdConflicts, setTdConflicts] = useState({}) // { personnel_id: conflict_detail | null }
 
   // Import modal
   const [showImport, setShowImport] = useState(false)

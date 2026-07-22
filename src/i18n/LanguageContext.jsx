@@ -10,14 +10,6 @@ function getNestedValue(obj, path) {
 export function LanguageProvider({ children }) {
   const [lang, setLang] = useState(() => localStorage.getItem('fiba-lang') || 'es')
 
-  const toggleLang = useCallback(() => {
-    setLang(prev => {
-      const next = prev === 'es' ? 'en' : 'es'
-      localStorage.setItem('fiba-lang', next)
-      return next
-    })
-  }, [])
-
   const setLanguage = useCallback((l) => {
     localStorage.setItem('fiba-lang', l)
     setLang(l)
@@ -42,7 +34,7 @@ export function LanguageProvider({ children }) {
   }, [lang])
 
   return (
-    <LanguageContext.Provider value={{ lang, setLang: setLanguage, toggleLang, t }}>
+    <LanguageContext.Provider value={{ lang, setLang: setLanguage, t }}>
       {children}
     </LanguageContext.Provider>
   )

@@ -5,11 +5,12 @@ import {
   syncGameResults, importGamesExcel, getCalendarCompetitions,
   getPersonnel, getGameAssignments, setGameAssignment, deleteGameAssignment,
   syncAssignmentsToNominations, generateAssignmentPDFs, updateCompetition,
+  setTeamCountries,
 } from '../api/client'
 import { useLanguage } from '../i18n/LanguageContext'
 import { useAuth } from '../contexts/AuthContext'
 import CompetitionSearch from '../components/CompetitionSearch'
-import { countryName } from '../lib/countries'
+import { COUNTRIES, countryName } from '../lib/countries'
 import { findRefereeGameConflict } from '../lib/refereeNeutrality'
 
 const PHASE_OPTIONS = ['Group Phase', 'Quarterfinals', 'Semifinals', 'Classification', 'Finals']
@@ -19,7 +20,8 @@ const REF_SLOTS = ['CC', 'U1', 'U2']
 const REF_SLOT_SET = new Set(REF_SLOTS)
 
 const EMPTY_FORM = {
-  date: '', time: '', team_a: '', team_a_code: '', team_b: '', team_b_code: '',
+  date: '', time: '', team_a: '', team_a_code: '', team_a_country: '',
+  team_b: '', team_b_code: '', team_b_country: '',
   score_a: '', score_b: '', venue: '', city: '', country: '', phase: 'Group Phase',
   group_label: '', status: 'scheduled', sport: 'Basketball',
 }
@@ -59,6 +61,11 @@ export default function Games() {
   const [defaults, setDefaults] = useState({})
   const [savingDefaults, setSavingDefaults] = useState(false)
   const [defaultsMsg, setDefaultsMsg] = useState('')
+  // Club country mapping panel (club competitions only)
+  const [showTeamCountries, setShowTeamCountries] = useState(false)
+  const [teamCountryDraft, setTeamCountryDraft] = useState({}) // team name → code
+  const [savingTeamCountries, setSavingTeamCountries] = useState(false)
+  const [teamCountriesMsg, setTeamCountriesMsg] = useState('')
   const fileRef = useRef(null)
   const autoSyncDone = useRef(new Set()) // track which comps we've auto-synced
   // Blocking pop-up when a referee with a country conflict is selected
@@ -66,9 +73,13 @@ export default function Games() {
 
   const selectedComp = competitions.find(c => c.id === selectedCompId)
   const supportsAssignments = ASSIGNMENT_TEMPLATES.has((selectedComp?.template_key || '').toUpperCase())
-  // Referee crew slots only make sense on national-team events, where the
-  // neutrality restriction applies.
-  const supportsRefSlots = supportsAssignments && !!selectedComp?.is_national_team
+  const isNationalTeam = !!selectedComp?.is_national_team
+  // Referee crew slots on every assignment-capable competition. The
+  // neutrality rule differs: selections → country + group; clubs → only
+  // games where a club from the referee's country plays.
+  const supportsRefSlots = supportsAssignments
+  // Club comps need the per-team country mapping for the referee checks.
+  const isClubComp = !!selectedCompId && !isNationalTeam
 
   // Pull defaults from the selected competition into the editable form state
   // whenever the comp changes.
@@ -188,8 +199,7 @@ export default function Games() {
   // Conflict check used both before assigning (pop-up) and to mark
   // non-eligible referees inside the picker dropdown.
   function refConflictFor(game, person) {
-    if (!selectedComp?.is_national_team) return null
-    return findRefereeGameConflict(person, game, games)
+    return findRefereeGameConflict(person, game, games, isNationalTeam)
   }
 
   async function handleAssign(gameId, person, role) {
@@ -213,6 +223,7 @@ export default function Games() {
           reason: detail.reason,
           countryCode: detail.country_code,
           group: detail.group,
+          team: detail.team,
           person,
           game: games.find(g => g.id === gameId),
         })
@@ -290,6 +301,48 @@ export default function Games() {
     setDefaults(d => ({ ...d, [field]: value }))
   }
 
+  // Unique clubs of a club competition with their current country (from the
+  // games rows). Drives the "team countries" panel.
+  const clubTeams = useMemo(() => {
+    if (!isClubComp) return []
+    const map = new Map()
+    for (const g of games) {
+      if (g.team_a && !map.has(g.team_a)) map.set(g.team_a, g.team_a_country || '')
+      if (g.team_b && !map.has(g.team_b)) map.set(g.team_b, g.team_b_country || '')
+    }
+    return [...map.entries()]
+      .map(([name, country]) => ({ name, country }))
+      .sort((a, b) => a.name.localeCompare(b.name))
+  }, [games, isClubComp])
+
+  const missingClubCountries = useMemo(
+    () => clubTeams.filter(tm => !(teamCountryDraft[tm.name] ?? tm.country)).length,
+    [clubTeams, teamCountryDraft],
+  )
+
+  // Reset the draft whenever the competition (or its games) changes
+  useEffect(() => { setTeamCountryDraft({}) }, [selectedCompId])
+
+  async function handleSaveTeamCountries() {
+    setSavingTeamCountries(true)
+    setTeamCountriesMsg('')
+    try {
+      const payload = {}
+      for (const tm of clubTeams) {
+        payload[tm.name] = teamCountryDraft[tm.name] ?? tm.country ?? ''
+      }
+      await setTeamCountries(selectedCompId, payload)
+      setTeamCountriesMsg(t('games.teamCountriesSaved'))
+      await loadGames()
+      setTeamCountryDraft({})
+    } catch (err) {
+      const detail = err.response?.data?.detail
+      setTeamCountriesMsg(typeof detail === 'string' ? detail : 'Error')
+    }
+    setSavingTeamCountries(false)
+    setTimeout(() => setTeamCountriesMsg(''), 5000)
+  }
+
   // Filtered + grouped games
   const filtered = games.filter(g => {
     if (filterDates.length > 0 && !filterDates.includes(g.date)) return false
@@ -341,8 +394,10 @@ export default function Games() {
       time: game.time || '',
       team_a: game.team_a || '',
       team_a_code: game.team_a_code || '',
+      team_a_country: game.team_a_country || '',
       team_b: game.team_b || '',
       team_b_code: game.team_b_code || '',
+      team_b_country: game.team_b_country || '',
       score_a: game.score_a ?? '',
       score_b: game.score_b ?? '',
       venue: game.venue || '',
@@ -458,6 +513,18 @@ export default function Games() {
                     {generatingPdfs ? t('games.generating') : t('games.generatePdfs')}
                   </button>
                 </>
+              )}
+              {isClubComp && canEdit && games.length > 0 && (
+                <button onClick={() => setShowTeamCountries(s => !s)}
+                  className="btn-fiba-ghost relative"
+                  title={t('games.teamCountriesHint')}>
+                  {t('games.teamCountries')}
+                  {missingClubCountries > 0 && (
+                    <span className="ml-1.5 inline-flex items-center justify-center min-w-[1.1rem] h-[1.1rem] px-1 rounded-full bg-amber-500/20 text-amber-500 text-[10px] font-bold">
+                      {missingClubCountries}
+                    </span>
+                  )}
+                </button>
               )}
               <button onClick={() => setShowImport(true)}
                 className="btn-fiba-ghost">
@@ -648,6 +715,58 @@ export default function Games() {
         </div>
       )}
 
+      {/* Club country mapping — feeds the referee neutrality check */}
+      {isClubComp && showTeamCountries && (
+        <div className="mb-6 bg-fiba-card border border-fiba-border rounded-lg p-5">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h3 className="text-sm font-bold text-ink-900 dark:text-white">{t('games.teamCountriesTitle')}</h3>
+              <p className="text-xs text-fiba-muted mt-0.5">{t('games.teamCountriesSubtitle')}</p>
+            </div>
+            <button onClick={() => setShowTeamCountries(false)}
+              className="text-fiba-muted hover:text-ink-900 dark:hover:text-white text-xs">×</button>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-5 gap-y-2.5">
+            {clubTeams.map(tm => {
+              const value = teamCountryDraft[tm.name] ?? tm.country ?? ''
+              return (
+                <div key={tm.name} className="flex items-center gap-2 min-w-0">
+                  <span className="flex-1 text-xs text-ink-900 dark:text-white truncate" title={tm.name}>
+                    {tm.name}
+                  </span>
+                  <select
+                    value={value}
+                    onChange={e => setTeamCountryDraft(d => ({ ...d, [tm.name]: e.target.value }))}
+                    disabled={!canEdit}
+                    className={`fiba-select !w-auto text-xs ${!value ? 'border-amber-500/50' : ''}`}
+                  >
+                    <option value="">—</option>
+                    {COUNTRIES.map(c => (
+                      <option key={c.code} value={c.code}>{c.code}</option>
+                    ))}
+                  </select>
+                </div>
+              )
+            })}
+          </div>
+
+          <div className="flex items-center justify-between mt-5">
+            <span className="text-xs text-fiba-muted/70">
+              {teamCountriesMsg || (missingClubCountries > 0
+                ? t('games.teamCountriesMissing', { count: missingClubCountries })
+                : t('games.teamCountriesComplete'))}
+            </span>
+            {canEdit && (
+              <button onClick={handleSaveTeamCountries} disabled={savingTeamCountries}
+                className="btn-fiba disabled:opacity-50">
+                {savingTeamCountries ? t('games.saving') : t('games.saveDefaults')}
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Game cards - FIBA style */}
       {loading || syncing ? (
         <div className="text-center py-12 text-fiba-muted text-sm">{syncing ? t('games.syncing') : t('common.loading')}</div>
@@ -726,6 +845,30 @@ export default function Games() {
                     className="fiba-input" maxLength={3} />
                 </div>
               </div>
+
+              {/* Club countries — referee neutrality on club competitions */}
+              {isClubComp && (
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="fiba-label">{t('games.clubCountryA')}</label>
+                    <select value={form.team_a_country}
+                      onChange={e => setForm(f => ({ ...f, team_a_country: e.target.value }))}
+                      className="fiba-select">
+                      <option value="">—</option>
+                      {COUNTRIES.map(c => <option key={c.code} value={c.code}>{c.code}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="fiba-label">{t('games.clubCountryB')}</label>
+                    <select value={form.team_b_country}
+                      onChange={e => setForm(f => ({ ...f, team_b_country: e.target.value }))}
+                      className="fiba-select">
+                      <option value="">—</option>
+                      {COUNTRIES.map(c => <option key={c.code} value={c.code}>{c.code}</option>)}
+                    </select>
+                  </div>
+                </div>
+              )}
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
@@ -817,19 +960,27 @@ export default function Games() {
                   {t('games.refConflictTitle')}
                 </h3>
                 <p className="text-sm text-ink-700 dark:text-gray-300 mt-2">
-                  {refConflict.reason === 'own_country'
-                    ? t('games.refConflictOwnCountry', {
+                  {refConflict.reason === 'own_club'
+                    ? t('games.refConflictOwnClub', {
                         name: refConflict.person?.name || '',
                         country: countryName(refConflict.countryCode),
-                        teams: `${refConflict.game?.team_a || ''} vs ${refConflict.game?.team_b || ''}`,
+                        team: refConflict.team || '',
                       })
-                    : t('games.refConflictOwnGroup', {
-                        name: refConflict.person?.name || '',
-                        country: countryName(refConflict.countryCode),
-                        group: refConflict.group || refConflict.game?.group_label || '',
-                      })}
+                    : refConflict.reason === 'own_country'
+                      ? t('games.refConflictOwnCountry', {
+                          name: refConflict.person?.name || '',
+                          country: countryName(refConflict.countryCode),
+                          teams: `${refConflict.game?.team_a || ''} vs ${refConflict.game?.team_b || ''}`,
+                        })
+                      : t('games.refConflictOwnGroup', {
+                          name: refConflict.person?.name || '',
+                          country: countryName(refConflict.countryCode),
+                          group: refConflict.group || refConflict.game?.group_label || '',
+                        })}
                 </p>
-                <p className="text-xs text-fiba-muted mt-2">{t('games.refConflictRule')}</p>
+                <p className="text-xs text-fiba-muted mt-2">
+                  {refConflict.reason === 'own_club' ? t('games.refConflictRuleClub') : t('games.refConflictRule')}
+                </p>
               </div>
             </div>
             <div className="flex justify-end mt-5">
@@ -1215,7 +1366,9 @@ function AssignmentSlot({ role, game, assignment, canEdit, onAssign, onUnassign,
                         {t('games.refNotEligible', {
                           detail: conflict.reason === 'own_group'
                             ? `${t('games.group')} ${conflict.group}`
-                            : `${game.team_a_code || game.team_a} vs ${game.team_b_code || game.team_b}`,
+                            : conflict.reason === 'own_club'
+                              ? conflict.team
+                              : `${game.team_a_code || game.team_a} vs ${game.team_b_code || game.team_b}`,
                         })}
                       </div>
                     ) : (

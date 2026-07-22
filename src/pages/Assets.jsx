@@ -5,6 +5,7 @@ import {
 } from '../api/client'
 import { useLanguage } from '../i18n/LanguageContext'
 import { useAuth } from '../contexts/AuthContext'
+import { camel } from '../lib/utils'
 
 const STATUS_BADGES = {
   available:   'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40',
@@ -305,8 +306,4 @@ export default function Assets() {
       )}
     </div>
   )
-}
-
-function camel(s) {
-  return s.replace(/_([a-z])/g, (_, c) => c.toUpperCase())
 }

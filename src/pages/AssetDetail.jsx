@@ -6,6 +6,7 @@ import {
 } from '../api/client'
 import { useLanguage } from '../i18n/LanguageContext'
 import { useAuth } from '../contexts/AuthContext'
+import { camel, fmtDate } from '../lib/utils'
 
 const STATUS_BADGES = {
   available:   'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40',
@@ -319,13 +320,4 @@ function Row({ k, v, full }) {
       <dd className="text-ink-900 dark:text-white">{v || '—'}</dd>
     </div>
   )
-}
-
-function fmtDate(d) {
-  if (!d) return ''
-  try { return new Date(d).toLocaleDateString() } catch { return d }
-}
-
-function camel(s) {
-  return s.replace(/_([a-z])/g, (_, c) => c.toUpperCase())
 }

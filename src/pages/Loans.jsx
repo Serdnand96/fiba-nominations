@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { getLoans, returnLoan, deleteLoan } from '../api/client'
 import { useLanguage } from '../i18n/LanguageContext'
 import { useAuth } from '../contexts/AuthContext'
+import { fmtDate } from '../lib/utils'
 
 export default function Loans() {
   const { t } = useLanguage()
@@ -140,9 +141,4 @@ export default function Loans() {
       </div>
     </div>
   )
-}
-
-function fmtDate(d) {
-  if (!d) return ''
-  try { return new Date(d).toLocaleDateString() } catch { return d }
 }

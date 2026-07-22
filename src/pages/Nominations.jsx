@@ -90,11 +90,12 @@ export default function Nominations() {
   const showLocationFields = ['BCLA', 'BCLA_F4', 'BCLA_RS', 'LSB'].includes(templateKey)
   const showDeadline = ['WCQ', 'GENERIC'].includes(templateKey)
 
-  // Games of the selected national-team competition, for the informative
-  // referee-neutrality notice (competition-level nominations don't block).
+  // Games of the selected competition, for the informative referee-neutrality
+  // notice (competition-level nominations never block). National teams →
+  // groups off-limits; clubs → clubs from the referee's country.
   const [compGames, setCompGames] = useState([])
   useEffect(() => {
-    if (!form.competition_id || !selectedComp?.is_national_team) {
+    if (!form.competition_id) {
       setCompGames([])
       return
     }
@@ -103,16 +104,16 @@ export default function Nominations() {
       .then(g => { if (!cancelled) setCompGames(g || []) })
       .catch(() => { if (!cancelled) setCompGames([]) })
     return () => { cancelled = true }
-  }, [form.competition_id, selectedComp?.is_national_team])
+  }, [form.competition_id])
 
-  // One entry per selected referee whose country plays in this tournament.
   const refereeNotices = useMemo(() => {
-    if (!selectedComp?.is_national_team || compGames.length === 0) return []
+    if (compGames.length === 0) return []
+    const isNationalTeam = !!selectedComp?.is_national_team
     const notices = []
     for (const pid of form.personnel_ids) {
       const person = personnel.find(p => p.id === pid)
       if (!person || (person.role !== 'REF' && person.role !== 'REF_INSTRUCTOR')) continue
-      const conflict = refereeCompetitionConflicts(person, compGames)
+      const conflict = refereeCompetitionConflicts(person, compGames, isNationalTeam)
       if (conflict) notices.push({ person, ...conflict })
     }
     return notices
@@ -688,16 +689,22 @@ export default function Nominations() {
                   <p className="text-xs font-bold text-amber-500">{t('nominations.refWarningTitle')}</p>
                   {refereeNotices.map(n => (
                     <p key={n.person.id} className="text-xs text-amber-500/90">
-                      {n.groups.length > 0
-                        ? t('nominations.refWarningGroups', {
+                      {n.clubs
+                        ? t('nominations.refWarningClubs', {
                             name: n.person.name,
                             country: countryName(n.countryCode),
-                            groups: n.groups.join(', '),
+                            clubs: n.clubs.join(', '),
                           })
-                        : t('nominations.refWarningPlays', {
-                            name: n.person.name,
-                            country: countryName(n.countryCode),
-                          })}
+                        : n.groups.length > 0
+                          ? t('nominations.refWarningGroups', {
+                              name: n.person.name,
+                              country: countryName(n.countryCode),
+                              groups: n.groups.join(', '),
+                            })
+                          : t('nominations.refWarningPlays', {
+                              name: n.person.name,
+                              country: countryName(n.countryCode),
+                            })}
                     </p>
                   ))}
                   <p className="text-[11px] text-amber-500/70">{t('nominations.refWarningHint')}</p>

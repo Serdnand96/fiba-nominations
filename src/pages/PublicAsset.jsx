@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { getPublicAsset } from '../api/client'
 import { useLanguage } from '../i18n/LanguageContext'
+import { camel } from '../lib/utils'
 
 const STATUS_LABEL = {
   available:   { color: 'text-emerald-400', icon: '✓' },
@@ -89,8 +90,4 @@ function Row({ k, v, mono }) {
       <dd className={`text-ink-900 dark:text-white text-right ${mono ? 'font-mono text-xs' : ''}`}>{v}</dd>
     </div>
   )
-}
-
-function camel(s) {
-  return s.replace(/_([a-z])/g, (_, c) => c.toUpperCase())
 }
