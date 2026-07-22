@@ -33,7 +33,7 @@ export default function Games() {
   const [assignments, setAssignments] = useState([]) // per-game TD/VGO assignments
 
   // Filters
-  const [filterDate, setFilterDate] = useState('')
+  const [filterDates, setFilterDates] = useState([]) // empty = all dates
   const [filterGroup, setFilterGroup] = useState('')
 
   // UI state
@@ -97,7 +97,7 @@ export default function Games() {
 
   async function loadGamesAndAutoSync() {
     setLoading(true)
-    setFilterDate('')
+    setFilterDates([])
     setFilterGroup('')
     try {
       const comp = competitions.find(c => c.id === selectedCompId)
@@ -254,7 +254,7 @@ export default function Games() {
 
   // Filtered + grouped games
   const filtered = games.filter(g => {
-    if (filterDate && g.date !== filterDate) return false
+    if (filterDates.length > 0 && !filterDates.includes(g.date)) return false
     if (filterGroup && g.group_label !== filterGroup) return false
     return true
   })
@@ -455,13 +455,13 @@ export default function Games() {
         />
 
         {gameDates.length > 0 && (
-          <select value={filterDate} onChange={e => setFilterDate(e.target.value)}
-            className="fiba-select">
-            <option value="">{t('games.allDates')}</option>
-            {gameDates.map(d => (
-              <option key={d} value={d}>{formatDate(d)}</option>
-            ))}
-          </select>
+          <DateMultiFilter
+            dates={gameDates}
+            selected={filterDates}
+            onChange={setFilterDates}
+            formatDate={formatDate}
+            t={t}
+          />
         )}
 
         {groups.length > 0 && (
@@ -799,6 +799,70 @@ export default function Games() {
               </button>
             </div>
           </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+
+// ── Multi-select date filter ───────────────────────────────────────────────
+
+function DateMultiFilter({ dates, selected, onChange, formatDate, t }) {
+  const [open, setOpen] = useState(false)
+  const wrapperRef = useRef(null)
+
+  useEffect(() => {
+    function handleClickOutside(e) {
+      if (wrapperRef.current && !wrapperRef.current.contains(e.target)) setOpen(false)
+    }
+    if (open) document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [open])
+
+  function toggle(date) {
+    onChange(selected.includes(date) ? selected.filter(d => d !== date) : [...selected, date])
+  }
+
+  const label = selected.length === 0
+    ? t('games.allDates')
+    : selected.length === 1
+      ? formatDate(selected[0])
+      : t('games.datesSelected', { count: selected.length })
+
+  return (
+    <div className="relative" ref={wrapperRef}>
+      <button type="button" onClick={() => setOpen(o => !o)}
+        className={`fiba-select flex items-center gap-2 ${selected.length > 0 ? 'text-fiba-accent' : ''}`}>
+        <span>{label}</span>
+        <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+        </svg>
+      </button>
+
+      {open && (
+        <div className="absolute z-40 mt-1 min-w-[13rem] bg-fiba-card border border-fiba-border rounded-lg shadow-lg flex flex-col">
+          <div className="overflow-y-auto py-1" style={{ maxHeight: 280 }}>
+            {dates.map(d => (
+              <label key={d}
+                className="flex items-center gap-2.5 px-3 py-1.5 text-xs cursor-pointer hover:bg-fiba-surface text-ink-900 dark:text-white">
+                <input type="checkbox" checked={selected.includes(d)} onChange={() => toggle(d)}
+                  className="accent-fiba-accent" />
+                <span>{formatDate(d)}</span>
+              </label>
+            ))}
+          </div>
+          {selected.length > 0 && (
+            <div className="border-t border-fiba-border px-3 py-1.5 flex justify-between items-center">
+              <span className="text-[10px] text-fiba-muted/70">
+                {t('games.datesSelected', { count: selected.length })}
+              </span>
+              <button type="button" onClick={() => onChange([])}
+                className="text-[11px] text-fiba-muted hover:text-fiba-accent">
+                {t('games.clearDates')}
+              </button>
+            </div>
+          )}
         </div>
       )}
     </div>

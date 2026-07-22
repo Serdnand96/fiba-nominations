@@ -593,6 +593,8 @@ const translations = {
     syncSuccess: { en: '{synced} updated, {created} created from {total} FIBA games', es: '{synced} actualizados, {created} creados de {total} juegos FIBA' },
     syncNoUrl: { en: 'No FIBA URL configured for this competition', es: 'No hay URL de FIBA configurada para esta competencia' },
     allDates: { en: 'All dates', es: 'Todas las fechas' },
+    datesSelected: { en: '{count} dates', es: '{count} fechas' },
+    clearDates: { en: 'Clear', es: 'Limpiar' },
     allGroups: { en: 'All groups', es: 'Todos los grupos' },
     scheduled: { en: 'Scheduled', es: 'Programado' },
     completed: { en: 'Completed', es: 'Finalizado' },
