@@ -14,14 +14,14 @@ router = APIRouter(prefix="/personnel", tags=["personnel"], dependencies=[Depend
 _MAX_UPLOAD_BYTES = 5 * 1024 * 1024
 _SAFE_SEARCH_RE = re.compile(r"^[\w\s\-\.@áéíóúñüÁÉÍÓÚÑÜ]+$")
 _PHOTO_BUCKET = "inventory"
-# Valid personnel roles (matches the CHECK constraint in migration 011).
-_VALID_ROLES = ("VGO", "TD", "REF", "REF_INSTRUCTOR")
+# Valid personnel roles (matches the CHECK constraint in migration 016).
+_VALID_ROLES = ("VGO", "TD", "REF", "REF_INSTRUCTOR", "VIDEO_OPERATOR")
 
 
 def _normalize_country(record: dict) -> None:
-    """Keep country_code consistent: uppercase it, or derive it from the
-    free-text country when the client didn't send a code. Empty string → None
-    (clears the code)."""
+    """Keep country fields consistent: uppercase codes, derive country_code
+    from the free-text country when the client didn't send one, and validate
+    the nationalities array. Empty string → None (clears the code)."""
     if "country_code" in record:
         code = (record.get("country_code") or "").strip().upper()
         record["country_code"] = code or None
@@ -29,6 +29,18 @@ def _normalize_country(record: dict) -> None:
         derived = name_to_code(record["country"])
         if derived:
             record["country_code"] = derived
+    if "nationalities" in record and record["nationalities"] is not None:
+        from api._lib.countries import COUNTRIES
+        cleaned = []
+        for nat in record["nationalities"]:
+            nat = (nat or "").strip().upper()
+            if not nat:
+                continue
+            if nat not in COUNTRIES:
+                raise HTTPException(status_code=400, detail=f"Unknown nationality code '{nat}'")
+            if nat not in cleaned:
+                cleaned.append(nat)
+        record["nationalities"] = cleaned
 
 
 def _upload_photo_to_storage(path: str, content: bytes, content_type: str) -> str:

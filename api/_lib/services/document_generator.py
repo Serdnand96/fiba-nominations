@@ -26,6 +26,19 @@ FONT_WCQ = "IBM Plex Sans"
 FONT_GENERIC = "Univers"
 FONT_NAME = FONT_WCQ  # default
 
+ROLE_LABELS = {
+    "TD": "Technical Delegate",
+    "VGO": "Video Graphic Operator",
+    "REF": "Referee",
+    "REF_INSTRUCTOR": "Referee Instructor",
+    "VIDEO_OPERATOR": "Video Operator",
+}
+
+
+def _role_label(role: str) -> str:
+    return ROLE_LABELS.get((role or "").upper(), "Technical Delegate")
+
+
 CONFIRMATION_EMAIL = {
     "VGO": "vgo.americas@fiba.basketball",
     "TD": "competitions-americas@fiba.basketball",
@@ -334,7 +347,7 @@ def _letter_context(data: dict, font: str, date_color: str = DARK_HEX) -> dict:
     from docxtpl import RichText
 
     role = data.get("role", "VGO")
-    role_label = "Video Graphic Operator" if role == "VGO" else "Technical Delegate"
+    role_label = _role_label(role)
 
     def rich(text, color=DARK_HEX, bold=False, size=None):
         rt = RichText()
@@ -409,7 +422,7 @@ def _bcla_context(data: dict, variant: str, font: str) -> dict:
     from docxtpl import RichText
 
     role = data.get("role", "VGO")
-    role_label = "Video Graphic Operator" if role == "VGO" else "Technical Delegate"
+    role_label = _role_label(role)
     comp_name = data.get("competition_name", "")
     comp_year = data.get("competition_year", "")
 
@@ -472,7 +485,7 @@ def _lsb_context(data: dict, font: str) -> dict:
     from docxtpl import RichText
 
     role = data.get("role", "VGO")
-    role_label = "Video Graphic Operator" if role == "VGO" else "Technical Delegate"
+    role_label = _role_label(role)
     comp_name = data.get("competition_name", "")
 
     def rich(text, bold=False, color=DARK_HEX):
@@ -760,7 +773,7 @@ def _build_wcq_letter(data: dict) -> Document:
     nominee = data.get("nominee_name", "")
     comp_name = data.get("competition_name", "")
     role = data.get("role", "VGO")
-    role_label = "Video Graphic Operator" if role == "VGO" else "Technical Delegate"
+    role_label = _role_label(role)
     game_dates = data.get("game_dates") or []
     deadline = _fmt_deadline(data.get("confirmation_deadline", ""))
     letter_date = _fmt_date(data.get("letter_date", ""))
@@ -912,7 +925,7 @@ def _build_generic_letter(data: dict) -> Document:
     nominee = data.get("nominee_name", "")
     comp_name = data.get("competition_name", "")
     role = data.get("role", "VGO")
-    role_label = "Video Graphic Operator" if role == "VGO" else "Technical Delegate"
+    role_label = _role_label(role)
     game_dates = data.get("game_dates") or []
     deadline = _fmt_deadline(data.get("confirmation_deadline", ""))
     letter_date = _fmt_date(data.get("letter_date", ""))
@@ -1038,7 +1051,7 @@ def _build_bcla_letter(data: dict, variant: str = "F4") -> Document:
     comp_name = data.get("competition_name", "")
     comp_year = data.get("competition_year", "")
     role = data.get("role", "VGO")
-    role_label = "Video Graphic Operator" if role == "VGO" else "Technical Delegate"
+    role_label = _role_label(role)
     game_dates = data.get("game_dates") or []
     location = data.get("location", "")
     venue = data.get("venue", "")
@@ -1225,7 +1238,7 @@ def _build_confirmation_from_scratch(data: dict) -> Document:
     nominee = data.get("nominee_name", "")
     comp_name = data.get("competition_name", "")
     role = data.get("role", "VGO")
-    role_label = "Video Graphic Operator" if role == "VGO" else "Technical Delegate"
+    role_label = _role_label(role)
     tk = data.get("template_key", "BCLA")
     game_dates = data.get("game_dates") or []
 
@@ -1285,7 +1298,7 @@ def _build_wcq_from_scratch(data: dict) -> Document:
     nominee = data.get("nominee_name", "")
     comp_name = data.get("competition_name", "")
     role = data.get("role", "VGO")
-    role_label = "Video Graphic Operator" if role == "VGO" else "Technical Delegate"
+    role_label = _role_label(role)
     game_dates = data.get("game_dates") or []
     deadline = _fmt_deadline(data.get("confirmation_deadline", ""))
 

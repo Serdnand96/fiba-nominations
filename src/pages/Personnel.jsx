@@ -25,7 +25,7 @@ export default function Personnel() {
   const [showModal, setShowModal] = useState(false)
   const [editing, setEditing] = useState(null)
   const [showImport, setShowImport] = useState(false)
-  const [form, setForm] = useState({ name: '', email: '', country: '', country_code: '', phone: '', passport: '', role: 'VGO' })
+  const [form, setForm] = useState({ name: '', email: '', country: '', country_code: '', nationalities: [], phone: '', passport: '', role: 'VGO' })
 
   // Profile panel — the shared PersonProfilePanel owns its own data/modals
   const [profilePerson, setProfilePerson] = useState(null)
@@ -94,6 +94,7 @@ export default function Personnel() {
       country: person.country || '',
       // Legacy rows have free-text country only — map it to a code when possible
       country_code: person.country_code || countryNameToCode(person.country) || '',
+      nationalities: person.nationalities || [],
       phone: person.phone || '', passport: person.passport || '', role: person.role,
     })
     setShowModal(true)
@@ -101,7 +102,7 @@ export default function Personnel() {
 
   function openCreate() {
     setEditing(null)
-    setForm({ name: '', email: '', country: '', country_code: '', phone: '', passport: '', role: 'VGO' })
+    setForm({ name: '', email: '', country: '', country_code: '', nationalities: [], phone: '', passport: '', role: 'VGO' })
     setShowModal(true)
   }
 
@@ -256,6 +257,37 @@ export default function Personnel() {
                   <p className="text-xs text-fiba-muted/60 mt-1">{t('personnel.unmappedCountry', { country: form.country })}</p>
                 )}
               </div>
+              {form.role === 'REF' && (
+                <div>
+                  <label className="fiba-label">{t('personnel.nationalities')}</label>
+                  {form.nationalities.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5 mb-1.5">
+                      {form.nationalities.map(code => (
+                        <span key={code}
+                          className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-fiba-surface border border-fiba-border text-xs text-ink-900 dark:text-white">
+                          {countryName(code, lang)} ({code})
+                          <button type="button"
+                            onClick={() => setForm(f => ({ ...f, nationalities: f.nationalities.filter(c => c !== code) }))}
+                            className="text-fiba-muted hover:text-red-400 leading-none">×</button>
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                  <select value=""
+                    onChange={e => {
+                      const code = e.target.value
+                      if (!code) return
+                      setForm(f => f.nationalities.includes(code) ? f : ({ ...f, nationalities: [...f.nationalities, code] }))
+                    }}
+                    className="fiba-select">
+                    <option value="">{t('personnel.addNationality')}</option>
+                    {COUNTRIES.filter(c => c.code !== form.country_code && !form.nationalities.includes(c.code)).map(c => (
+                      <option key={c.code} value={c.code}>{lang === 'en' ? c.en : c.es} ({c.code})</option>
+                    ))}
+                  </select>
+                  <p className="text-xs text-fiba-muted/60 mt-1">{t('personnel.nationalitiesHint')}</p>
+                </div>
+              )}
               <input placeholder={t('personnel.phone')} value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))} className="fiba-input" />
               <input placeholder={t('personnel.passport')} value={form.passport} onChange={e => setForm(f => ({ ...f, passport: e.target.value }))} className="fiba-input" />
               <select value={form.role} onChange={e => setForm(f => ({ ...f, role: e.target.value }))} className="fiba-select">

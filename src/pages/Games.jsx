@@ -15,9 +15,11 @@ import { findRefereeGameConflict } from '../lib/refereeNeutrality'
 
 const PHASE_OPTIONS = ['Group Phase', 'Quarterfinals', 'Semifinals', 'Classification', 'Finals']
 const ASSIGNMENT_TEMPLATES = new Set(['WCQ', 'BCLA', 'LSB'])
-// Referee crew slots (national-team events only): Crew Chief + Umpires.
+// Referee crew slots (neutrality-checked): Crew Chief + Umpires.
 const REF_SLOTS = ['CC', 'U1', 'U2']
 const REF_SLOT_SET = new Set(REF_SLOTS)
+// Instructor + Video Operator: nominated per game, no neutrality check.
+const CREW_SLOTS = ['INSTR', 'VO']
 
 const EMPTY_FORM = {
   date: '', time: '', team_a: '', team_a_code: '', team_a_country: '',
@@ -99,6 +101,12 @@ export default function Games() {
       td_incidentals: selectedComp.td_incidentals ?? '',
       vgo_window_fee: selectedComp.vgo_window_fee ?? '',
       vgo_incidentals: selectedComp.vgo_incidentals ?? '',
+      ref_window_fee: selectedComp.ref_window_fee ?? '',
+      ref_incidentals: selectedComp.ref_incidentals ?? '',
+      ref_instructor_window_fee: selectedComp.ref_instructor_window_fee ?? '',
+      ref_instructor_incidentals: selectedComp.ref_instructor_incidentals ?? '',
+      video_operator_window_fee: selectedComp.video_operator_window_fee ?? '',
+      video_operator_incidentals: selectedComp.video_operator_incidentals ?? '',
     })
   }, [selectedCompId, selectedComp?.default_letter_date]) // re-pull when comp data changes
 
@@ -224,6 +232,7 @@ export default function Games() {
           countryCode: detail.country_code,
           group: detail.group,
           team: detail.team,
+          origin: detail.origin,
           person,
           game: games.find(g => g.id === gameId),
         })
@@ -280,7 +289,7 @@ export default function Games() {
       // Convert empty strings on numeric fields → null; dates already pass as ''
       const payload = {}
       for (const [k, v] of Object.entries(defaults)) {
-        if (k.endsWith('_fee') || k === 'td_incidentals' || k === 'vgo_incidentals') {
+        if (k.endsWith('_fee') || k.endsWith('_incidentals')) {
           payload[k] = v === '' || v === null ? null : Number(v)
         } else {
           payload[k] = v === '' ? '' : v
@@ -662,45 +671,34 @@ export default function Games() {
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-            <div>
-              <div className="text-[10px] font-bold uppercase tracking-wider text-fiba-accent mb-2">
-                {t('games.defaultsTD')}
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="fiba-label">{t('games.windowFee')}</label>
-                  <input type="number" step="0.01" value={defaults.td_window_fee ?? ''}
-                    onChange={e => setDefaultField('td_window_fee', e.target.value)}
-                    className="fiba-input" />
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
+            {[
+              { prefix: 'td', label: t('games.defaultsTD') },
+              { prefix: 'vgo', label: t('games.defaultsVGO') },
+              { prefix: 'ref', label: t('games.defaultsREF') },
+              { prefix: 'ref_instructor', label: t('games.defaultsINSTR') },
+              { prefix: 'video_operator', label: t('games.defaultsVO') },
+            ].map(({ prefix, label }) => (
+              <div key={prefix}>
+                <div className="text-[10px] font-bold uppercase tracking-wider text-fiba-accent mb-2">
+                  {label}
                 </div>
-                <div>
-                  <label className="fiba-label">{t('games.incidentals')}</label>
-                  <input type="number" step="0.01" value={defaults.td_incidentals ?? ''}
-                    onChange={e => setDefaultField('td_incidentals', e.target.value)}
-                    className="fiba-input" />
-                </div>
-              </div>
-            </div>
-            <div>
-              <div className="text-[10px] font-bold uppercase tracking-wider text-fiba-accent mb-2">
-                {t('games.defaultsVGO')}
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="fiba-label">{t('games.windowFee')}</label>
-                  <input type="number" step="0.01" value={defaults.vgo_window_fee ?? ''}
-                    onChange={e => setDefaultField('vgo_window_fee', e.target.value)}
-                    className="fiba-input" />
-                </div>
-                <div>
-                  <label className="fiba-label">{t('games.incidentals')}</label>
-                  <input type="number" step="0.01" value={defaults.vgo_incidentals ?? ''}
-                    onChange={e => setDefaultField('vgo_incidentals', e.target.value)}
-                    className="fiba-input" />
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="fiba-label">{t('games.windowFee')}</label>
+                    <input type="number" step="0.01" value={defaults[`${prefix}_window_fee`] ?? ''}
+                      onChange={e => setDefaultField(`${prefix}_window_fee`, e.target.value)}
+                      className="fiba-input" />
+                  </div>
+                  <div>
+                    <label className="fiba-label">{t('games.incidentals')}</label>
+                    <input type="number" step="0.01" value={defaults[`${prefix}_incidentals`] ?? ''}
+                      onChange={e => setDefaultField(`${prefix}_incidentals`, e.target.value)}
+                      className="fiba-input" />
+                  </div>
                 </div>
               </div>
-            </div>
+            ))}
           </div>
 
           <div className="flex items-center justify-between mt-5">
@@ -960,26 +958,37 @@ export default function Games() {
                   {t('games.refConflictTitle')}
                 </h3>
                 <p className="text-sm text-ink-700 dark:text-gray-300 mt-2">
-                  {refConflict.reason === 'own_club'
-                    ? t('games.refConflictOwnClub', {
+                  {refConflict.reason === 'special_pair'
+                    ? t('games.refConflictSpecialPair', {
                         name: refConflict.person?.name || '',
-                        country: countryName(refConflict.countryCode),
-                        team: refConflict.team || '',
+                        origin: countryName(refConflict.origin),
+                        blocked: countryName(refConflict.countryCode),
+                        target: refConflict.team || countryName(refConflict.countryCode),
                       })
-                    : refConflict.reason === 'own_country'
-                      ? t('games.refConflictOwnCountry', {
+                    : refConflict.reason === 'own_club'
+                      ? t('games.refConflictOwnClub', {
                           name: refConflict.person?.name || '',
                           country: countryName(refConflict.countryCode),
-                          teams: `${refConflict.game?.team_a || ''} vs ${refConflict.game?.team_b || ''}`,
+                          team: refConflict.team || '',
                         })
-                      : t('games.refConflictOwnGroup', {
-                          name: refConflict.person?.name || '',
-                          country: countryName(refConflict.countryCode),
-                          group: refConflict.group || refConflict.game?.group_label || '',
-                        })}
+                      : refConflict.reason === 'own_country'
+                        ? t('games.refConflictOwnCountry', {
+                            name: refConflict.person?.name || '',
+                            country: countryName(refConflict.countryCode),
+                            teams: `${refConflict.game?.team_a || ''} vs ${refConflict.game?.team_b || ''}`,
+                          })
+                        : t('games.refConflictOwnGroup', {
+                            name: refConflict.person?.name || '',
+                            country: countryName(refConflict.countryCode),
+                            group: refConflict.group || refConflict.game?.group_label || '',
+                          })}
                 </p>
                 <p className="text-xs text-fiba-muted mt-2">
-                  {refConflict.reason === 'own_club' ? t('games.refConflictRuleClub') : t('games.refConflictRule')}
+                  {refConflict.reason === 'special_pair'
+                    ? t('games.refConflictRuleSpecial')
+                    : refConflict.reason === 'own_club'
+                      ? t('games.refConflictRuleClub')
+                      : t('games.refConflictRule')}
                 </p>
               </div>
             </div>
@@ -1197,6 +1206,11 @@ function GameCard({
               onAssign={onAssign} onUnassign={onUnassign}
               refConflictFor={refConflictFor} />
           ))}
+          {supportsRefSlots && CREW_SLOTS.map(slot => (
+            <AssignmentSlot key={slot} role={slot} game={game} t={t} canEdit={canEdit}
+              assignment={assignment[slot]}
+              onAssign={onAssign} onUnassign={onUnassign} />
+          ))}
         </div>
       )}
     </div>
@@ -1208,7 +1222,11 @@ function GameCard({
 
 // Assignment slot → personnel role to list in the picker. The referee crew
 // slots (CC/U1/U2) all draw from REF personnel.
-const SLOT_PERSONNEL_ROLE = { TD: 'TD', VGO: 'VGO', CC: 'REF', U1: 'REF', U2: 'REF' }
+const SLOT_PERSONNEL_ROLE = {
+  TD: 'TD', VGO: 'VGO',
+  CC: 'REF', U1: 'REF', U2: 'REF',
+  INSTR: 'REF_INSTRUCTOR', VO: 'VIDEO_OPERATOR',
+}
 
 function AssignmentSlot({ role, game, assignment, canEdit, onAssign, onUnassign, refConflictFor, t }) {
   const [open, setOpen] = useState(false)
@@ -1284,7 +1302,7 @@ function AssignmentSlot({ role, game, assignment, canEdit, onAssign, onUnassign,
   return (
     <div className="flex-1 min-w-0" ref={triggerRef}>
       <div className="flex items-center gap-2">
-        <span className="text-[10px] font-bold uppercase tracking-wider text-fiba-muted/70 w-8">{role}</span>
+        <span className="text-[10px] font-bold uppercase tracking-wider text-fiba-muted/70 w-10">{role}</span>
         {name ? (
           <div className="flex-1 flex items-center gap-1.5 min-w-0">
             <button
@@ -1366,8 +1384,8 @@ function AssignmentSlot({ role, game, assignment, canEdit, onAssign, onUnassign,
                         {t('games.refNotEligible', {
                           detail: conflict.reason === 'own_group'
                             ? `${t('games.group')} ${conflict.group}`
-                            : conflict.reason === 'own_club'
-                              ? conflict.team
+                            : conflict.reason === 'own_club' || conflict.reason === 'special_pair'
+                              ? (conflict.team || conflict.countryCode)
                               : `${game.team_a_code || game.team_a} vs ${game.team_b_code || game.team_b}`,
                         })}
                       </div>

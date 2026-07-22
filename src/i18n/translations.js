@@ -112,6 +112,12 @@ const translations = {
     role: { en: 'Role', es: 'Rol' },
     country: { en: 'Country', es: 'País' },
     selectCountry: { en: 'Select country…', es: 'Seleccionar país…' },
+    nationalities: { en: 'Other nationalities', es: 'Otras nacionalidades' },
+    addNationality: { en: 'Add nationality…', es: 'Agregar nacionalidad…' },
+    nationalitiesHint: {
+      en: 'Referees with several nationalities are restricted by all of them.',
+      es: 'Un árbitro con varias nacionalidades queda restringido por todas ellas.',
+    },
     unmappedCountry: {
       en: 'Current value "{country}" is not a recognized country — pick one to enable referee eligibility checks.',
       es: 'El valor actual "{country}" no es un país reconocido; selecciona uno para habilitar los chequeos de elegibilidad de árbitros.',
@@ -242,6 +248,10 @@ const translations = {
     refWarningClubs: {
       en: '{name} ({country}): clubs from their country play in this tournament ({clubs}) — they cannot officiate those games.',
       es: '{name} ({country}): en este torneo juegan clubes de su país ({clubs}); no podrá dirigir esos partidos.',
+    },
+    refWarningSpecial: {
+      en: '{name}: due to their nationality they also cannot officiate games involving {blocked}.',
+      es: '{name}: por su nacionalidad, tampoco podrá dirigir los partidos donde juegue {blocked}.',
     },
     refWarningHint: {
       en: 'The nomination is allowed — on-site game assignments must respect the restriction.',
@@ -668,6 +678,8 @@ const translations = {
     roleCC: { en: 'Crew Chief', es: 'Crew Chief' },
     roleU1: { en: 'Umpire 1', es: 'Umpire 1' },
     roleU2: { en: 'Umpire 2', es: 'Umpire 2' },
+    roleINSTR: { en: 'Referee Instructor', es: 'Instructor de árbitros' },
+    roleVO: { en: 'Video Operator', es: 'Video Operator' },
     // Referee neutrality (national-team competitions)
     refNotEligible: { en: 'Not eligible — {detail}', es: 'No elegible — {detail}' },
     refConflictTitle: { en: 'Assignment not allowed', es: 'Asignación no permitida' },
@@ -690,6 +702,14 @@ const translations = {
     refConflictRuleClub: {
       en: 'Neutrality rule for club competitions: a referee cannot officiate games where a club from their country plays. Other games of the same group are allowed.',
       es: 'Regla de neutralidad para competencias de clubes: un árbitro no puede dirigir partidos donde juega un club de su país. Sí puede dirigir los demás partidos del grupo.',
+    },
+    refConflictSpecialPair: {
+      en: '{name} is from {origin}: referees from {origin} cannot officiate games involving {target}.',
+      es: '{name} es de {origin}: los árbitros de {origin} no pueden dirigir partidos donde juega {target}.',
+    },
+    refConflictRuleSpecial: {
+      en: 'Special restriction confirmed by FIBA Americas (e.g. Puerto Rico → USA). Only that country\'s games are blocked — the rest of its group is allowed.',
+      es: 'Restricción especial confirmada por FIBA Americas (ej. Puerto Rico → USA). Solo se bloquean los partidos de ese país; el resto de su grupo sí está permitido.',
     },
     refConflictOk: { en: 'Got it', es: 'Entendido' },
     // Club country mapping panel
@@ -729,9 +749,12 @@ const translations = {
     editDefaultsHint: { en: 'Set the common nomination values used when generating PDFs', es: 'Definir los valores comunes que se usan al generar las nominaciones' },
     defaultsTitle: { en: 'Common nomination values', es: 'Datos comunes de la nominación' },
     defaultsSubtitle: { en: 'These values are applied to every nomination generated from per-game assignments. Per-person edits in the Nominations page are kept.', es: 'Estos valores se aplican a cada nominación generada desde las asignaciones por juego. Los cambios manuales hechos en Nominations se respetan.' },
-    defaultsShared: { en: 'Shared (TD & VGO)', es: 'Compartidos (TD y VGO)' },
+    defaultsShared: { en: 'Shared (all roles)', es: 'Compartidos (todos los roles)' },
     defaultsTD: { en: 'TD fees', es: 'Honorarios TD' },
     defaultsVGO: { en: 'VGO fees', es: 'Honorarios VGO' },
+    defaultsREF: { en: 'Referee fees', es: 'Honorarios árbitros' },
+    defaultsINSTR: { en: 'Referee Instructor fees', es: 'Honorarios instructor' },
+    defaultsVO: { en: 'Video Operator fees', es: 'Honorarios Video Operator' },
     letterDate: { en: 'Letter date', es: 'Fecha de carta' },
     location: { en: 'Location', es: 'Ubicación' },
     arrivalDate: { en: 'Arrival date', es: 'Fecha de llegada' },

@@ -1,7 +1,7 @@
 // Personnel roles — single source of truth for labels + badge styling.
 //
 // Kept in sync with the CHECK constraint in
-// supabase/migrations/011_personnel_referee_roles.sql and the
+// supabase/migrations/016_referee_nationalities_and_crew_roles.sql and the
 // _VALID_ROLES tuple in api/_lib/routers/personnel.py.
 
 export const ROLES = [
@@ -9,6 +9,7 @@ export const ROLES = [
   { value: 'TD',             label: 'TD',                 badge: 'bg-emerald-500/20 text-emerald-400' },
   { value: 'REF',            label: 'Referee',            badge: 'bg-orange-500/20 text-orange-400' },
   { value: 'REF_INSTRUCTOR', label: 'Referee Instructor', badge: 'bg-sky-500/20 text-sky-400' },
+  { value: 'VIDEO_OPERATOR', label: 'Video Operator',     badge: 'bg-rose-500/20 text-rose-400' },
 ]
 
 const _BY_VALUE = Object.fromEntries(ROLES.map(r => [r.value, r]))

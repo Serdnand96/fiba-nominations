@@ -87,6 +87,44 @@ export function personCountryCode(person) {
   return person.country_code || countryNameToCode(person.country)
 }
 
+// All nationalities of a person (Set of FIBA codes): primary country plus
+// the `nationalities` array. Referees with several nationalities are
+// restricted by all of them.
+export function personCountryCodes(person) {
+  const codes = new Set()
+  const primary = personCountryCode(person)
+  if (primary) codes.add(primary)
+  for (const nat of person?.nationalities || []) {
+    const c = (nat || '').trim().toUpperCase()
+    if (c) codes.add(c)
+  }
+  return codes
+}
+
+// Special neutrality pairs: referees from `origin` also cannot work games
+// where `blocked` plays — but blocked's GROUP stays allowed. Confirmed by
+// FIBA Americas for PUR → USA (2026-07). Mirrors api/_lib/countries.py.
+export const SPECIAL_DIRECT_BLOCKS = { PUR: ['USA'] }
+
+// Extra game-level-only blocked countries derived from the special pairs.
+export function specialBlockedCodes(personCodes) {
+  const blocked = new Set()
+  for (const origin of personCodes) {
+    for (const b of SPECIAL_DIRECT_BLOCKS[origin] || []) blocked.add(b)
+  }
+  for (const own of personCodes) blocked.delete(own)
+  return blocked
+}
+
+// Which of the person's nationalities triggers the special pair for a
+// blocked country (e.g. matched USA → origin PUR).
+export function specialPairOrigin(personCodes, blockedCode) {
+  for (const origin of personCodes) {
+    if ((SPECIAL_DIRECT_BLOCKS[origin] || []).includes(blockedCode)) return origin
+  }
+  return null
+}
+
 // Country keys (codes) present in one game: team codes when available,
 // otherwise mapped from the team names.
 export function gameCountryCodes(game) {

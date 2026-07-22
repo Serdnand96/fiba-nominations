@@ -21,6 +21,7 @@ class PersonnelCreate(BaseModel):
     email: str
     country: Optional[str] = None
     country_code: Optional[str] = None  # FIBA code (COL, ARG…) — see api/_lib/countries.py
+    nationalities: Optional[list[str]] = None  # additional nationalities (FIBA codes)
     phone: Optional[str] = None
     passport: Optional[str] = None
     role: str
@@ -33,6 +34,7 @@ class PersonnelUpdate(BaseModel):
     email: Optional[str] = None
     country: Optional[str] = None
     country_code: Optional[str] = None
+    nationalities: Optional[list[str]] = None
     phone: Optional[str] = None
     passport: Optional[str] = None
     role: Optional[str] = None
@@ -69,6 +71,12 @@ class CompetitionUpdate(BaseModel):
     td_incidentals: Optional[float] = None
     vgo_window_fee: Optional[float] = None
     vgo_incidentals: Optional[float] = None
+    ref_window_fee: Optional[float] = None
+    ref_incidentals: Optional[float] = None
+    ref_instructor_window_fee: Optional[float] = None
+    ref_instructor_incidentals: Optional[float] = None
+    video_operator_window_fee: Optional[float] = None
+    video_operator_incidentals: Optional[float] = None
 
 
 class GameDate(BaseModel):

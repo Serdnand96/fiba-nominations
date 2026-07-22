@@ -688,24 +688,39 @@ export default function Nominations() {
                 <div className="px-3 py-2.5 bg-amber-500/10 border border-amber-500/30 rounded-lg space-y-1">
                   <p className="text-xs font-bold text-amber-500">{t('nominations.refWarningTitle')}</p>
                   {refereeNotices.map(n => (
-                    <p key={n.person.id} className="text-xs text-amber-500/90">
-                      {n.clubs
-                        ? t('nominations.refWarningClubs', {
+                    <div key={n.person.id} className="space-y-0.5">
+                      {n.clubs && (
+                        <p className="text-xs text-amber-500/90">
+                          {t('nominations.refWarningClubs', {
                             name: n.person.name,
                             country: countryName(n.countryCode),
                             clubs: n.clubs.join(', '),
-                          })
-                        : n.groups.length > 0
-                          ? t('nominations.refWarningGroups', {
-                              name: n.person.name,
-                              country: countryName(n.countryCode),
-                              groups: n.groups.join(', '),
-                            })
-                          : t('nominations.refWarningPlays', {
-                              name: n.person.name,
-                              country: countryName(n.countryCode),
-                            })}
-                    </p>
+                          })}
+                        </p>
+                      )}
+                      {!n.clubs && n.playsInTournament && (
+                        <p className="text-xs text-amber-500/90">
+                          {n.groups.length > 0
+                            ? t('nominations.refWarningGroups', {
+                                name: n.person.name,
+                                country: countryName(n.countryCode),
+                                groups: n.groups.join(', '),
+                              })
+                            : t('nominations.refWarningPlays', {
+                                name: n.person.name,
+                                country: countryName(n.countryCode),
+                              })}
+                        </p>
+                      )}
+                      {!n.clubs && n.specialBlocked?.length > 0 && (
+                        <p className="text-xs text-amber-500/90">
+                          {t('nominations.refWarningSpecial', {
+                            name: n.person.name,
+                            blocked: n.specialBlocked.map(c => countryName(c)).join(', '),
+                          })}
+                        </p>
+                      )}
+                    </div>
                   ))}
                   <p className="text-[11px] text-amber-500/70">{t('nominations.refWarningHint')}</p>
                 </div>

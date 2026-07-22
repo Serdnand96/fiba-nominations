@@ -56,7 +56,7 @@ export default function PersonProfilePanel({ person: initialPerson, onClose, onU
 
   // Edit-info modal
   const [showEdit, setShowEdit] = useState(false)
-  const [form, setForm] = useState({ name: '', email: '', country: '', country_code: '', phone: '', passport: '', role: 'VGO', languagesText: '', visas: [] })
+  const [form, setForm] = useState({ name: '', email: '', country: '', country_code: '', nationalities: [], phone: '', passport: '', role: 'VGO', languagesText: '', visas: [] })
 
   // Availability modal
   const [showAvailModal, setShowAvailModal] = useState(false)
@@ -111,6 +111,7 @@ export default function PersonProfilePanel({ person: initialPerson, onClose, onU
     setForm({
       name: person.name, email: person.email, country: person.country || '',
       country_code: person.country_code || countryNameToCode(person.country) || '',
+      nationalities: person.nationalities || [],
       phone: person.phone || '', passport: person.passport || '', role: person.role,
       languagesText: (person.languages || []).join(', '),
       visas: (person.visas || []).map(v => ({ country: v.country || '', expires: v.expires || '' })),
@@ -136,6 +137,7 @@ export default function PersonProfilePanel({ person: initialPerson, onClose, onU
     e.preventDefault()
     const payload = {
       name: form.name, email: form.email, country: form.country, country_code: form.country_code,
+      nationalities: form.nationalities,
       phone: form.phone, passport: form.passport, role: form.role,
       languages: (form.languagesText || '').split(',').map(s => s.trim()).filter(Boolean),
       visas: form.visas
@@ -423,6 +425,36 @@ export default function PersonProfilePanel({ person: initialPerson, onClose, onU
                   <option key={c.code} value={c.code}>{lang === 'en' ? c.en : c.es} ({c.code})</option>
                 ))}
               </select>
+              {form.role === 'REF' && (
+                <div>
+                  <label className="fiba-label">{t('personnel.nationalities')}</label>
+                  {form.nationalities.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5 mb-1.5">
+                      {form.nationalities.map(code => (
+                        <span key={code}
+                          className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-fiba-surface border border-fiba-border text-xs text-ink-900 dark:text-white">
+                          {countryName(code, lang)} ({code})
+                          <button type="button"
+                            onClick={() => setForm(f => ({ ...f, nationalities: f.nationalities.filter(c => c !== code) }))}
+                            className="text-fiba-muted hover:text-red-400 leading-none">×</button>
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                  <select value=""
+                    onChange={e => {
+                      const code = e.target.value
+                      if (!code) return
+                      setForm(f => f.nationalities.includes(code) ? f : ({ ...f, nationalities: [...f.nationalities, code] }))
+                    }}
+                    className="fiba-select">
+                    <option value="">{t('personnel.addNationality')}</option>
+                    {COUNTRIES.filter(c => c.code !== form.country_code && !form.nationalities.includes(c.code)).map(c => (
+                      <option key={c.code} value={c.code}>{lang === 'en' ? c.en : c.es} ({c.code})</option>
+                    ))}
+                  </select>
+                </div>
+              )}
               <input placeholder={t('personnel.phone')} value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))} className="fiba-input" />
               <input placeholder={t('personnel.passport')} value={form.passport} onChange={e => setForm(f => ({ ...f, passport: e.target.value }))} className="fiba-input" />
               <select value={form.role} onChange={e => setForm(f => ({ ...f, role: e.target.value }))} className="fiba-select">

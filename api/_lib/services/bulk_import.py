@@ -117,8 +117,8 @@ def process_bulk_import(file_bytes: bytes, filename: str) -> dict:
         if not EMAIL_REGEX.match(email):
             errors.append({"row": row_num, "email": email, "reason": "Invalid email format"})
             continue
-        if role not in ("VGO", "TD", "REF", "REF_INSTRUCTOR"):
-            errors.append({"row": row_num, "email": email, "reason": f"Role must be VGO, TD, REF or REF_INSTRUCTOR, got '{role}'"})
+        if role not in ("VGO", "TD", "REF", "REF_INSTRUCTOR", "VIDEO_OPERATOR"):
+            errors.append({"row": row_num, "email": email, "reason": f"Role must be VGO, TD, REF, REF_INSTRUCTOR or VIDEO_OPERATOR, got '{role}'"})
             continue
         if email.lower() in existing_emails:
             skipped += 1

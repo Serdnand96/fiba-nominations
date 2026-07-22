@@ -512,10 +512,20 @@ async def import_games_excel(
 
 # ── Per-game TD/VGO/referee assignments (WCQ / BCLA / LSB) ──────────────────
 
-# Referee crew slots for national-team events: Crew Chief + Umpire 1 + Umpire 2.
+# Referee crew slots (neutrality-checked): Crew Chief + Umpire 1 + Umpire 2.
 REF_SLOTS = ("CC", "U1", "U2")
-# personnel.role expected for each assignment slot.
-_SLOT_EXPECTED_ROLE = {"TD": "TD", "VGO": "VGO", "CC": "REF", "U1": "REF", "U2": "REF"}
+# personnel.role expected for each assignment slot. INSTR (Referee
+# Instructor) and VO (Video Operator) are nominated per game like TD/VGO but
+# are NOT subject to the neutrality restriction.
+_SLOT_EXPECTED_ROLE = {
+    "TD": "TD",
+    "VGO": "VGO",
+    "CC": "REF",
+    "U1": "REF",
+    "U2": "REF",
+    "INSTR": "REF_INSTRUCTOR",
+    "VO": "VIDEO_OPERATOR",
+}
 
 
 class AssignmentCreate(BaseModel):
@@ -551,12 +561,16 @@ def _referee_conflict(game: dict, person: dict) -> dict | None:
     and neither are club games whose team countries haven't been filled in.
     """
     from api._lib.countries import (
-        person_country_code, game_country_codes, country_display_name,
+        person_country_codes, special_blocked_codes, game_country_codes,
+        country_display_name, SPECIAL_DIRECT_BLOCKS,
     )
 
-    person_code = person_country_code(person)
-    if not person_code:
+    person_codes = person_country_codes(person)
+    if not person_codes:
         return None
+    # Game-level-only extra blocks (e.g. PUR referees cannot work USA games,
+    # though USA's group stays allowed).
+    special_codes = special_blocked_codes(person_codes)
 
     comp = (
         supabase.table("competitions")
@@ -569,23 +583,48 @@ def _referee_conflict(game: dict, person: dict) -> dict | None:
         return None
     is_national_team = bool(comp[0].get("is_national_team"))
 
-    base = {
-        "code": "referee_neutrality",
-        "country_code": person_code,
-        "country": country_display_name(person_code),
-        "person_name": person.get("name") or "",
-    }
+    def _base(matched: str) -> dict:
+        return {
+            "code": "referee_neutrality",
+            "country_code": matched,
+            "country": country_display_name(matched),
+            "person_name": person.get("name") or "",
+        }
+
+    def _special_payload(matched: str, **extra) -> dict:
+        origin = next(
+            (o for o in person_codes if matched in SPECIAL_DIRECT_BLOCKS.get(o, ())),
+            "",
+        )
+        return {
+            **_base(matched),
+            "reason": "special_pair",
+            "origin": origin,
+            "origin_country": country_display_name(origin),
+            **extra,
+        }
 
     if not is_national_team:
-        # Club rule: only the club's own-country match blocks.
+        # Club rule: blocks only the games where a club from one of the
+        # referee's countries (or a special-pair country) plays.
         for side in ("a", "b"):
             club_country = (game.get(f"team_{side}_country") or "").strip().upper()
-            if club_country and club_country == person_code:
-                return {**base, "reason": "own_club", "team": game.get(f"team_{side}") or ""}
+            if not club_country:
+                continue
+            team_name = game.get(f"team_{side}") or ""
+            if club_country in person_codes:
+                return {**_base(club_country), "reason": "own_club", "team": team_name}
+            if club_country in special_codes:
+                return _special_payload(club_country, team=team_name)
         return None
 
-    if person_code in game_country_codes(game):
-        return {**base, "reason": "own_country"}
+    game_codes = game_country_codes(game)
+    own_direct = game_codes & person_codes
+    if own_direct:
+        return {**_base(sorted(own_direct)[0]), "reason": "own_country"}
+    special_direct = game_codes & special_codes
+    if special_direct:
+        return _special_payload(sorted(special_direct)[0])
 
     group = game.get("group_label")
     if group:
@@ -598,8 +637,9 @@ def _referee_conflict(game: dict, person: dict) -> dict | None:
             .data
         )
         for g in group_games:
-            if person_code in game_country_codes(g):
-                return {**base, "reason": "own_group", "group": group}
+            matched = game_country_codes(g) & person_codes
+            if matched:
+                return {**_base(sorted(matched)[0]), "reason": "own_group", "group": group}
     return None
 
 
@@ -648,7 +688,7 @@ def create_assignment(data: AssignmentCreate):
     # Verify personnel role matches the slot (CC/U1/U2 → REF)
     person = (
         supabase.table("personnel")
-        .select("id, name, role, country, country_code")
+        .select("id, name, role, country, country_code, nationalities")
         .eq("id", data.personnel_id)
         .execute()
         .data
@@ -732,6 +772,17 @@ def delete_assignment(assignment_id: str):
     return {"ok": True}
 
 
+# Assignment slot role → competition fee-column prefix
+_FEE_PREFIX_BY_SLOT = {
+    "TD": "td",
+    "VGO": "vgo",
+    "CC": "ref",
+    "U1": "ref",
+    "U2": "ref",
+    "INSTR": "ref_instructor",
+    "VO": "video_operator",
+}
+
 _SHARED_DEFAULT_FIELDS = (
     ("default_letter_date",           "letter_date"),
     ("default_location",              "location"),
@@ -753,17 +804,11 @@ def _build_default_overrides(competition: dict, role: str) -> dict:
         v = competition.get(src)
         if v is not None and v != "":
             overrides[dst] = v
-    # Role-aware fees. Referee slots (CC/U1/U2) have no fee defaults yet —
-    # their nominations are created with fees left for manual entry.
-    if role == "TD":
-        fee = competition.get("td_window_fee")
-        inc = competition.get("td_incidentals")
-    elif role == "VGO":
-        fee = competition.get("vgo_window_fee")
-        inc = competition.get("vgo_incidentals")
-    else:
-        fee = None
-        inc = None
+    # Role-aware fees. `role` is the assignment slot role; referee crew
+    # slots share the REF fee defaults.
+    prefix = _FEE_PREFIX_BY_SLOT.get(role)
+    fee = competition.get(f"{prefix}_window_fee") if prefix else None
+    inc = competition.get(f"{prefix}_incidentals") if prefix else None
     if fee is not None:
         overrides["window_fee"] = fee
     if inc is not None:

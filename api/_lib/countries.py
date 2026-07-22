@@ -85,6 +85,37 @@ def person_country_code(person: dict) -> str | None:
     return name_to_code(person.get("country"))
 
 
+def person_country_codes(person: dict) -> set[str]:
+    """All nationalities of a person: primary country_code (or legacy country
+    text) plus the `nationalities` array. Referees with several nationalities
+    are restricted by all of them."""
+    codes: set[str] = set()
+    primary = person_country_code(person)
+    if primary:
+        codes.add(primary)
+    for extra in person.get("nationalities") or []:
+        extra = (extra or "").strip().upper()
+        if extra:
+            codes.add(extra)
+    return codes
+
+
+# Special neutrality pairs: referees from `origin` also cannot work games
+# where `blocked` plays — but blocked's GROUP stays allowed (unlike their own
+# country's group). Confirmed by FIBA Americas for PUR → USA (2026-07).
+SPECIAL_DIRECT_BLOCKS: dict[str, tuple[str, ...]] = {
+    "PUR": ("USA",),
+}
+
+
+def special_blocked_codes(person_codes: set[str]) -> set[str]:
+    """Extra game-level-only blocked countries derived from special pairs."""
+    blocked: set[str] = set()
+    for origin in person_codes:
+        blocked.update(SPECIAL_DIRECT_BLOCKS.get(origin, ()))
+    return blocked - person_codes
+
+
 def game_country_codes(game: dict) -> set[str]:
     """FIBA codes of the two teams: explicit codes, else mapped from names."""
     codes: set[str] = set()
