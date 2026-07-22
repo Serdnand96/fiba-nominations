@@ -37,7 +37,7 @@ export default function Payments() {
   // Payment editor
   const [editorNominee, setEditorNominee] = useState(null)   // the nominee row being edited
   const [payment, setPayment] = useState(null)               // existing payment (or null = new)
-  const [form, setForm] = useState({ budget_code: '', amount: '', extra: '0', comments: '', status: 'new' })
+  const [form, setForm] = useState({ budget_code: '', amount: '', extra: '0', airfare: '0', comments: '', status: 'new' })
   const [attachments, setAttachments] = useState([])
   const [attKind, setAttKind] = useState('')
   const [saving, setSaving] = useState(false)
@@ -73,6 +73,7 @@ export default function Payments() {
         budget_code: p.budget_code || '',
         amount: p.amount ?? '',
         extra: p.extra ?? '0',
+        airfare: p.airfare ?? '0',
         comments: p.comments || '',
         status: p.status || 'new',
       })
@@ -82,6 +83,7 @@ export default function Payments() {
         budget_code: budgets[0]?.code || '',
         amount: nominee.nomination_total ?? '',
         extra: '0',
+        airfare: '0',
         comments: '',
         status: 'new',
       })
@@ -110,6 +112,7 @@ export default function Payments() {
         budget_code: form.budget_code,
         amount: Number(form.amount || 0),
         extra: Number(form.extra || 0),
+        airfare: Number(form.airfare || 0),
         comments: form.comments || null,
         status: form.status,
       }
@@ -203,13 +206,14 @@ export default function Payments() {
       ) : (
         <>
           {/* Stats */}
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
+          <div className="grid grid-cols-2 md:grid-cols-6 gap-4 mb-6">
             {[
               { label: t('payments.nominated'), value: nominees.length },
               { label: t('payments.withPayment'), value: paidCount },
               { label: t('payments.amount'), value: `$${fmt(summary.amount)}` },
               { label: t('payments.extra'), value: `$${fmt(summary.extra)}` },
               { label: t('payments.total'), value: `$${fmt(summary.total)}` },
+              { label: t('payments.airfare'), value: `$${fmt(summary.airfare)}` },
             ].map(s => (
               <div key={s.label} className="fiba-stat">
                 <p className="text-xs text-fiba-muted">{s.label}</p>
@@ -230,6 +234,7 @@ export default function Payments() {
                     <th>{t('payments.budget')}</th>
                     <th className="text-right">{t('payments.amount')}</th>
                     <th className="text-right">{t('payments.extra')}</th>
+                    <th className="text-right">{t('payments.airfare')}</th>
                     <th>{t('payments.status')}</th>
                     <th>{t('payments.record')}</th>
                     <th></th>
@@ -237,7 +242,7 @@ export default function Payments() {
                 </thead>
                 <tbody>
                   {loading && (
-                    <tr><td colSpan={9} className="px-4 py-8 text-center text-fiba-muted/60">{t('app.loading')}</td></tr>
+                    <tr><td colSpan={10} className="px-4 py-8 text-center text-fiba-muted/60">{t('app.loading')}</td></tr>
                   )}
                   {!loading && nominees.map(n => {
                     const p = n.payment
@@ -252,6 +257,7 @@ export default function Payments() {
                         <td className="px-4 py-3">{budgetLabel}</td>
                         <td className="px-4 py-3 text-right tabular-nums">{p ? fmt(p.amount) : '—'}</td>
                         <td className="px-4 py-3 text-right tabular-nums">{p ? fmt(p.extra) : '—'}</td>
+                        <td className="px-4 py-3 text-right tabular-nums">{p ? fmt(p.airfare) : '—'}</td>
                         <td className="px-4 py-3">
                           {p
                             ? <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${STATUS_BADGES[p.status] || ''}`}>{t(`payments.statusLabel.${p.status}`)}</span>
@@ -267,7 +273,7 @@ export default function Payments() {
                     )
                   })}
                   {!loading && nominees.length === 0 && (
-                    <tr><td colSpan={9} className="px-4 py-8 text-center text-fiba-muted/60">{t('payments.noNominees')}</td></tr>
+                    <tr><td colSpan={10} className="px-4 py-8 text-center text-fiba-muted/60">{t('payments.noNominees')}</td></tr>
                   )}
                 </tbody>
                 {nominees.length > 0 && (
@@ -276,6 +282,7 @@ export default function Payments() {
                       <td className="px-4 py-3" colSpan={4}>{t('payments.total')}</td>
                       <td className="px-4 py-3 text-right tabular-nums">${fmt(summary.amount)}</td>
                       <td className="px-4 py-3 text-right tabular-nums">${fmt(summary.extra)}</td>
+                      <td className="px-4 py-3 text-right tabular-nums">${fmt(summary.airfare)}</td>
                       <td className="px-4 py-3" colSpan={3}>
                         <span className="text-fiba-accent">{t('payments.grandTotal')}: ${fmt(summary.total)}</span>
                       </td>
@@ -326,6 +333,14 @@ export default function Payments() {
                     <input type="number" step="0.01" value={form.extra} disabled={!canEdit}
                       onChange={e => setForm(f => ({ ...f, extra: e.target.value }))} className="fiba-input w-full" />
                   </div>
+                </div>
+
+                {/* Airfare — tracked apart, does not add to the payment total */}
+                <div className="rounded-lg border border-fiba-border p-3">
+                  <label className="block text-xs font-semibold text-ink-900 dark:text-white mb-1">{t('payments.airfare')}</label>
+                  <input type="number" step="0.01" value={form.airfare} disabled={!canEdit}
+                    onChange={e => setForm(f => ({ ...f, airfare: e.target.value }))} className="fiba-input w-full" />
+                  <p className="text-[11px] text-fiba-muted/70 mt-1">{t('payments.airfareHint')}</p>
                 </div>
 
                 <div>

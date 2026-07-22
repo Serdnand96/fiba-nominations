@@ -168,6 +168,7 @@ class PaymentCreate(BaseModel):
     budget_code: str
     amount: Optional[float] = None  # None → prefilled from nomination.total
     extra: Optional[float] = 0
+    airfare: Optional[float] = 0    # flight cost — tracked apart, not in total
     comments: Optional[str] = None
     status: Optional[str] = "new"
     payment_date: Optional[str] = None
@@ -178,6 +179,7 @@ class PaymentUpdate(BaseModel):
     budget_code: Optional[str] = None
     amount: Optional[float] = None
     extra: Optional[float] = None
+    airfare: Optional[float] = None
     comments: Optional[str] = None
     status: Optional[str] = None
     payment_date: Optional[str] = None

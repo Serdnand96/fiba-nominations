@@ -170,6 +170,8 @@ const translations = {
     budgetRequired: { en: 'Please select a budget', es: 'Selecciona un presupuesto' },
     amount: { en: 'Amount', es: 'Monto' },
     extra: { en: 'Extra', es: 'Extra' },
+    airfare: { en: 'Airfare', es: 'Airfare' },
+    airfareHint: { en: 'Flight cost — tracked apart, not added to the payment total.', es: 'Costo del pasaje — se registra aparte, no suma al total del pago.' },
     total: { en: 'Total', es: 'Total' },
     grandTotal: { en: 'Grand total', es: 'Total general' },
     comments: { en: 'Comments', es: 'Comentarios' },

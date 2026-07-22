@@ -167,6 +167,7 @@ def payments_summary(competition_id: Optional[str] = Query(None)):
         "count": len(rows),
         "amount": round(sum(float(r.get("amount") or 0) for r in rows), 2),
         "extra": round(sum(float(r.get("extra") or 0) for r in rows), 2),
+        "airfare": round(sum(float(r.get("airfare") or 0) for r in rows), 2),
         "total": round(sum(float(r.get("total") or 0) for r in rows), 2),
     }
 
@@ -198,6 +199,7 @@ def create_payment(data: PaymentCreate, request: Request):
         "budget_code": data.budget_code,
         "amount": amount,
         "extra": data.extra or 0,
+        "airfare": data.airfare or 0,
         "comments": data.comments,
         "status": data.status or "new",
         "payment_date": data.payment_date,
