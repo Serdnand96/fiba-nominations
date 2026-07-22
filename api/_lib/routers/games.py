@@ -4,6 +4,7 @@ FIBA website scraping for auto-import, results sync, and per-game
 TD/VGO assignments (WCQ, BCLA, LSB).
 """
 import io
+import os
 import re
 from fastapi import APIRouter, HTTPException, Query, UploadFile, File, Form, Depends
 from pydantic import BaseModel
@@ -12,6 +13,7 @@ from datetime import datetime, timezone
 
 from api._lib.database import supabase
 from api._lib.auth import require_view, require_edit
+from api._lib.net import safe_get
 
 router = APIRouter(prefix="/games", tags=["games"], dependencies=[Depends(require_view("games"))])
 
@@ -143,14 +145,14 @@ def get_game(game_id: str):
 
 # ── CRUD ─────────────────────────────────────────────────────────────────────
 
-@router.post("")
+@router.post("", dependencies=[Depends(require_edit("games"))])
 def create_game(data: GameCreate):
     record = data.model_dump()
     result = supabase.table("game_schedule").insert(record).execute()
     return result.data[0]
 
 
-@router.post("/bulk")
+@router.post("/bulk", dependencies=[Depends(require_edit("games"))])
 def bulk_create_games(data: BulkGameCreate):
     """Bulk create games with dedup by (competition_id, date, time, team_a, team_b)."""
     if len(data.games) > 200:
@@ -195,7 +197,7 @@ def bulk_create_games(data: BulkGameCreate):
     return {"created": created, "updated": updated, "errors": errors}
 
 
-@router.put("/{game_id}")
+@router.put("/{game_id}", dependencies=[Depends(require_edit("games"))])
 def update_game(game_id: str, data: GameUpdate):
     updates = {k: v for k, v in data.model_dump().items() if v is not None}
     if not updates:
@@ -207,7 +209,7 @@ def update_game(game_id: str, data: GameUpdate):
     return r.data[0]
 
 
-@router.delete("/{game_id}")
+@router.delete("/{game_id}", dependencies=[Depends(require_edit("games"))])
 def delete_game(game_id: str):
     supabase.table("game_schedule").delete().eq("id", game_id).execute()
     return {"ok": True}
@@ -215,7 +217,7 @@ def delete_game(game_id: str):
 
 # ── Sync results (update scores from FIBA) ───────────────────────────────────
 
-@router.post("/sync-results")
+@router.post("/sync-results", dependencies=[Depends(require_edit("games"))])
 def sync_results(competition_id: str = Query(...)):
     """Fetch latest results from FIBA website and update scores."""
     # Get competition to find the FIBA URL
@@ -285,7 +287,9 @@ def sync_results(competition_id: str = Query(...)):
 # ── FIBA API integration ────────────────────────────────────────────────────
 
 _FIBA_API_BASE = "https://digital-api.fiba.basketball/hapi"
-_FIBA_API_KEY = "898cd5e7389140028ecb42943c47eb74"
+# Subscription key for FIBA's GDAP API. Read from the environment — never
+# hardcode it (the previous literal was committed and must be rotated).
+_FIBA_API_KEY = os.environ.get("FIBA_API_KEY", "")
 
 
 def _scrape_fiba_games(fiba_url: str) -> list:
@@ -326,20 +330,19 @@ def _scrape_fiba_games(fiba_url: str) -> list:
 
 def _extract_fiba_competition_id(fiba_url: str) -> str | None:
     """Extract the GDAP competitionId from a FIBA URL or RSC payload."""
-    import httpx
-
     # If it's already a numeric ID, return it
     stripped = fiba_url.strip()
     if stripped.isdigit():
         return stripped
 
-    # Fetch the page and look for competitionId in the RSC payload
+    # Fetch the page and look for competitionId in the RSC payload.
+    # safe_get is an SSRF guard: it rejects non-http(s) URLs and any host that
+    # resolves to a private/internal address, re-checking each redirect hop.
     try:
-        with httpx.Client(timeout=20.0, follow_redirects=True) as client:
-            resp = client.get(stripped, headers={
-                "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
-                "Accept-Encoding": "gzip, deflate",
-            })
+        resp = safe_get(stripped, headers={
+            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
+            "Accept-Encoding": "gzip, deflate",
+        })
         if resp.status_code != 200:
             return None
 
@@ -400,7 +403,7 @@ def _fiba_json_to_game(g: dict) -> dict:
 
 # ── Excel import ─────────────────────────────────────────────────────────────
 
-@router.post("/import/excel")
+@router.post("/import/excel", dependencies=[Depends(require_edit("games"))])
 async def import_games_excel(
     file: UploadFile = File(...),
     competition_id: str = Form(...),

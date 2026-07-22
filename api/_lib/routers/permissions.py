@@ -110,6 +110,10 @@ def update_permissions(user_id: str, payload: PermissionsUpdate):
 # GET /permissions/check-superadmin/{user_id}
 # ---------------------------------------------------------------------------
 @router.get("/check-superadmin/{user_id}")
-def check_superadmin(user_id: str):
-    """Check if a user is superadmin."""
+def check_superadmin(user_id: str, request: Request):
+    """Check if a user is superadmin. Caller must be a superadmin OR asking
+    about themselves — otherwise it leaks who the admins are to any user."""
+    caller_id = _user_id(request)
+    if user_id != caller_id and not _is_superadmin_cached(request, caller_id):
+        raise HTTPException(status_code=403, detail="Forbidden")
     return {"is_superadmin": is_superadmin(user_id)}

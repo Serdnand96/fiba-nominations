@@ -1,6 +1,7 @@
 """Inventory: assets router."""
 import io
 import os
+import uuid
 from datetime import datetime, timezone
 from typing import Optional
 
@@ -131,7 +132,7 @@ def get_asset(asset_id: str):
 
 
 # ─── POST /assets ───────────────────────────────────────────────────────────
-@router.post("", status_code=201)
+@router.post("", status_code=201, dependencies=[Depends(require_edit("assets"))])
 def create_asset(data: AssetCreate, request: Request):
     record = data.model_dump(exclude_none=True)
     record.setdefault("status", "available")
@@ -159,7 +160,7 @@ def create_asset(data: AssetCreate, request: Request):
 
 
 # ─── PUT /assets/{id} ───────────────────────────────────────────────────────
-@router.put("/{asset_id}")
+@router.put("/{asset_id}", dependencies=[Depends(require_edit("assets"))])
 def update_asset(asset_id: str, data: AssetUpdate):
     updates = {k: v for k, v in data.model_dump().items() if v is not None}
     if not updates:
@@ -176,7 +177,7 @@ def update_asset(asset_id: str, data: AssetUpdate):
 
 
 # ─── DELETE /assets/{id} (soft delete: status=retired) ──────────────────────
-@router.delete("/{asset_id}")
+@router.delete("/{asset_id}", dependencies=[Depends(require_edit("assets"))])
 def retire_asset(asset_id: str):
     result = (
         supabase.table("assets")
@@ -207,8 +208,12 @@ def get_asset_qr(asset_id: str):
 
 
 # ─── POST /assets/{id}/photo ────────────────────────────────────────────────
-@router.post("/{asset_id}/photo")
+@router.post("/{asset_id}/photo", dependencies=[Depends(require_edit("assets"))])
 async def upload_asset_photo(asset_id: str, photo: UploadFile = File(...)):
+    try:
+        uuid.UUID(asset_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid asset id")
     if not (photo.content_type or "").startswith("image/"):
         raise HTTPException(status_code=400, detail="Only image files are allowed")
     content = await photo.read()

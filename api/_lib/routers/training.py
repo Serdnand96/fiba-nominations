@@ -218,7 +218,7 @@ def list_slots_by_personnel(personnel_id: str = Query(...), competition_id: str 
     return _enrich_slots(slots)
 
 
-@router.post("/slots")
+@router.post("/slots", dependencies=[Depends(require_edit("training"))])
 def create_slot(data: SlotCreate):
     record = data.model_dump()
     record["start_time"] = _format_time(record["start_time"])
@@ -227,7 +227,7 @@ def create_slot(data: SlotCreate):
     return result.data[0]
 
 
-@router.put("/slots/{slot_id}")
+@router.put("/slots/{slot_id}", dependencies=[Depends(require_edit("training"))])
 def update_slot(slot_id: str, data: SlotUpdate):
     updates = {k: v for k, v in data.model_dump().items() if v is not None}
     if not updates:
@@ -243,13 +243,13 @@ def update_slot(slot_id: str, data: SlotUpdate):
     return r.data[0]
 
 
-@router.delete("/slots/{slot_id}")
+@router.delete("/slots/{slot_id}", dependencies=[Depends(require_edit("training"))])
 def delete_slot(slot_id: str):
     supabase.table("training_slots").delete().eq("id", slot_id).execute()
     return {"ok": True}
 
 
-@router.post("/slots/bulk")
+@router.post("/slots/bulk", dependencies=[Depends(require_edit("training"))])
 def bulk_create_slots(data: BulkSlotCreate):
     """Bulk create/upsert slots. Dedup by (competition_id, date, start_time, team_label)."""
     created = 0
@@ -296,7 +296,7 @@ def bulk_create_slots(data: BulkSlotCreate):
 
 # ── Assignments ──────────────────────────────────────────────────────────────
 
-@router.post("/assignments")
+@router.post("/assignments", dependencies=[Depends(require_edit("training"))])
 def create_assignment(data: AssignmentCreate):
     """Assign a TD to a training slot. Returns conflict warning if any."""
     # Get the slot details for conflict check
@@ -334,7 +334,7 @@ def create_assignment(data: AssignmentCreate):
     }
 
 
-@router.delete("/assignments/{assignment_id}")
+@router.delete("/assignments/{assignment_id}", dependencies=[Depends(require_edit("training"))])
 def delete_assignment(assignment_id: str):
     supabase.table("training_slot_assignments").delete().eq("id", assignment_id).execute()
     return {"ok": True}
@@ -355,7 +355,7 @@ def check_conflicts(personnel_id: str = Query(...), slot_id: str = Query(...)):
 
 # ── Excel import ─────────────────────────────────────────────────────────────
 
-@router.post("/import/excel")
+@router.post("/import/excel", dependencies=[Depends(require_edit("training"))])
 async def import_excel(
     file: UploadFile = File(...),
     competition_id: str = Form(...),

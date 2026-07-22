@@ -12,10 +12,13 @@ import io
 import httpx
 from datetime import datetime
 from typing import Optional, List
-from fastapi import FastAPI, HTTPException, Query, UploadFile, File, Form
+from fastapi import FastAPI, HTTPException, Query, UploadFile, File, Form, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from dotenv import load_dotenv
+
+from api._lib.net import safe_get
 
 # Load .env from project root
 load_dotenv(os.path.join(os.path.dirname(__file__), "..", ".env"))
@@ -103,7 +106,7 @@ supabase = _SupabaseClient()
 
 # ── FastAPI app ─────────────────────────────────────────────────────────────
 
-app = FastAPI(title="FIBA Sync Service", docs_url="/docs")
+app = FastAPI(title="FIBA Sync Service", docs_url=None, redoc_url=None)
 
 # CORS — allow frontend origins
 _allowed_origins = [
@@ -121,6 +124,31 @@ app.add_middleware(
 )
 
 
+# ── Auth: every endpoint except the health check requires a valid Supabase JWT.
+# This service holds the service_role key, so it must never be reachable
+# unauthenticated (it also binds to 127.0.0.1 — see __main__).
+@app.middleware("http")
+async def _require_jwt(request: Request, call_next):
+    path = request.url.path.rstrip("/")
+    if request.method == "OPTIONS" or path == "":
+        return await call_next(request)
+    auth = request.headers.get("Authorization", "")
+    if not auth.startswith("Bearer "):
+        return JSONResponse(status_code=401, content={"detail": "Missing authorization token"})
+    token = auth[7:]
+    try:
+        resp = httpx.get(
+            f"{SUPABASE_URL}/auth/v1/user",
+            headers={"Authorization": f"Bearer {token}", "apikey": SUPABASE_KEY},
+            timeout=10.0,
+        )
+        if resp.status_code != 200:
+            return JSONResponse(status_code=401, content={"detail": "Invalid or expired token"})
+    except Exception:
+        return JSONResponse(status_code=401, content={"detail": "Authentication failed"})
+    return await call_next(request)
+
+
 @app.get("/")
 def health():
     return {"service": "fiba-sync", "status": "ok"}
@@ -129,7 +157,9 @@ def health():
 # ── FIBA API config ────────────────────────────────────────────────────────
 
 _FIBA_API_BASE = "https://digital-api.fiba.basketball/hapi"
-_FIBA_API_KEY = "898cd5e7389140028ecb42943c47eb74"
+# Read from the environment — never hardcode (the old literal was committed
+# and must be rotated).
+_FIBA_API_KEY = os.environ.get("FIBA_API_KEY", "")
 
 
 # ── Sync endpoint ──────────────────────────────────────────────────────────
@@ -259,12 +289,13 @@ def _extract_fiba_competition_id(fiba_url: str) -> Optional[str]:
     if stripped.isdigit():
         return stripped
 
+    # safe_get is an SSRF guard: rejects non-http(s) URLs and any host that
+    # resolves to a private/internal address, re-checking each redirect hop.
     try:
-        with httpx.Client(timeout=20.0, follow_redirects=True) as client:
-            resp = client.get(stripped, headers={
-                "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
-                "Accept-Encoding": "gzip, deflate",
-            })
+        resp = safe_get(stripped, headers={
+            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
+            "Accept-Encoding": "gzip, deflate",
+        })
         if resp.status_code != 200:
             return None
 
@@ -413,4 +444,6 @@ async def import_games_excel(
 # ── Run with: uvicorn services.fiba_sync:app --port 3002 --reload ───────────
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=3002)
+    # Bind to loopback only — this service is an internal helper reached via the
+    # droplet's own reverse proxy / the backend, never exposed to the internet.
+    uvicorn.run(app, host="127.0.0.1", port=3002)

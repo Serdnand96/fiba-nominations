@@ -35,6 +35,13 @@ async def add_security_headers(request: Request, call_next):
     response.headers["X-Frame-Options"] = "DENY"
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
     response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
+    # This API only ever returns JSON and file downloads (never HTML that runs
+    # in a browsing context), so a locked-down CSP is safe and defends against
+    # any response being framed or used to load active content.
+    response.headers["Content-Security-Policy"] = "default-src 'none'; frame-ancestors 'none'"
+    # HSTS — the app is HTTPS-only in prod behind nginx; tell browsers to never
+    # downgrade. Browsers ignore this header over plain HTTP (e.g. local dev).
+    response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
     return response
 
 

@@ -42,14 +42,14 @@ def get_employee(employee_id: str):
     return res.data[0]
 
 
-@router.post("", status_code=201)
+@router.post("", status_code=201, dependencies=[Depends(require_edit("employees"))])
 def create_employee(data: EmployeeCreate):
     record = data.model_dump(exclude_none=True)
     result = supabase.table("employees").insert(record).execute()
     return result.data[0]
 
 
-@router.put("/{employee_id}")
+@router.put("/{employee_id}", dependencies=[Depends(require_edit("employees"))])
 def update_employee(employee_id: str, data: EmployeeUpdate):
     updates = {k: v for k, v in data.model_dump().items() if v is not None}
     if not updates:
@@ -65,7 +65,7 @@ def update_employee(employee_id: str, data: EmployeeUpdate):
     return result.data[0]
 
 
-@router.delete("/{employee_id}")
+@router.delete("/{employee_id}", dependencies=[Depends(require_edit("employees"))])
 def delete_employee(employee_id: str):
     # Soft-delete: just mark inactive (loans referencing this stay valid)
     result = (

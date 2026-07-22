@@ -43,7 +43,7 @@ def list_loans(
 
 
 # ─── POST /loans ────────────────────────────────────────────────────────────
-@router.post("", status_code=201)
+@router.post("", status_code=201, dependencies=[Depends(require_edit("loans"))])
 def create_loan(data: LoanCreate, request: Request):
     # Verify asset exists and is loanable
     asset = (
@@ -97,7 +97,7 @@ def create_loan(data: LoanCreate, request: Request):
 
 
 # ─── PUT /loans/{id}/return ─────────────────────────────────────────────────
-@router.put("/{loan_id}/return")
+@router.put("/{loan_id}/return", dependencies=[Depends(require_edit("loans"))])
 def return_loan(loan_id: str):
     loan = (
         supabase.table("loans")
@@ -127,7 +127,7 @@ def return_loan(loan_id: str):
 
 
 # ─── DELETE /loans/{id} (cancel a loan record) ──────────────────────────────
-@router.delete("/{loan_id}")
+@router.delete("/{loan_id}", dependencies=[Depends(require_edit("loans"))])
 def delete_loan(loan_id: str):
     loan = supabase.table("loans").select("asset_id,status").eq("id", loan_id).execute().data
     if not loan:

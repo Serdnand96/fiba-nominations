@@ -12,7 +12,7 @@ def list_competitions():
     return result.data
 
 
-@router.post("")
+@router.post("", dependencies=[Depends(require_edit("competitions"))])
 def create_competition(data: CompetitionCreate):
     record = data.model_dump()
     result = supabase.table("competitions").insert(record).execute()
@@ -26,7 +26,7 @@ _CLEARABLE_DATE_FIELDS = {
 _CLEARABLE_TEXT_FIELDS = {"fiba_games_url", "default_location", "default_venue"}
 
 
-@router.put("/{competition_id}")
+@router.put("/{competition_id}", dependencies=[Depends(require_edit("competitions"))])
 def update_competition(competition_id: str, data: CompetitionUpdate):
     raw = data.model_dump()
     updates = {}
@@ -48,7 +48,7 @@ def update_competition(competition_id: str, data: CompetitionUpdate):
     return result.data[0]
 
 
-@router.delete("/{competition_id}")
+@router.delete("/{competition_id}", dependencies=[Depends(require_edit("competitions"))])
 def delete_competition(competition_id: str, force: bool = False):
     noms = supabase.table("nominations").select("id").eq("competition_id", competition_id).execute()
     if noms.data:

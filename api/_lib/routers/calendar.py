@@ -118,7 +118,7 @@ def get_competition_detail(competition_id: str):
 # ---------------------------------------------------------------------------
 # POST /calendar/competitions — create new event
 # ---------------------------------------------------------------------------
-@router.post("/competitions")
+@router.post("/competitions", dependencies=[Depends(require_edit("calendar"))])
 def create_event(data: CalendarEventCreate):
     record = data.model_dump()
     result = supabase.table("competitions").insert(record).execute()
@@ -128,7 +128,7 @@ def create_event(data: CalendarEventCreate):
 # ---------------------------------------------------------------------------
 # PUT /calendar/competitions/{id} — update event
 # ---------------------------------------------------------------------------
-@router.put("/competitions/{competition_id}")
+@router.put("/competitions/{competition_id}", dependencies=[Depends(require_edit("calendar"))])
 def update_event(competition_id: str, data: CalendarEventUpdate):
     updates = {k: v for k, v in data.model_dump().items() if v is not None}
     if not updates:
@@ -142,7 +142,7 @@ def update_event(competition_id: str, data: CalendarEventUpdate):
 # ---------------------------------------------------------------------------
 # DELETE /calendar/competitions/{id} — delete event
 # ---------------------------------------------------------------------------
-@router.delete("/competitions/{competition_id}")
+@router.delete("/competitions/{competition_id}", dependencies=[Depends(require_edit("calendar"))])
 def delete_event(competition_id: str):
     # Assignments cascade delete via FK
     result = supabase.table("competitions").delete().eq("id", competition_id).execute()
@@ -154,7 +154,7 @@ def delete_event(competition_id: str):
 # ---------------------------------------------------------------------------
 # POST /calendar/competitions/{id}/assign — assign staff to competition
 # ---------------------------------------------------------------------------
-@router.post("/competitions/{competition_id}/assign")
+@router.post("/competitions/{competition_id}/assign", dependencies=[Depends(require_edit("calendar"))])
 def assign_staff(competition_id: str, data: AssignmentCreate):
     # Verify competition exists
     comp = (
@@ -193,7 +193,7 @@ def assign_staff(competition_id: str, data: AssignmentCreate):
 # ---------------------------------------------------------------------------
 # DELETE /calendar/assignments/{assignment_id} — remove assignment
 # ---------------------------------------------------------------------------
-@router.delete("/assignments/{assignment_id}")
+@router.delete("/assignments/{assignment_id}", dependencies=[Depends(require_edit("calendar"))])
 def remove_assignment(assignment_id: str):
     result = (
         supabase.table("competition_assignments")

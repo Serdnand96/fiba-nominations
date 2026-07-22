@@ -1,0 +1,69 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# nginx security baseline for fiba-nominations — REFERENCE / VERSION-CONTROLLED
+#
+# The live config lives on the droplet at
+#   /etc/nginx/sites-available/fiba-nominations
+# and was previously NOT tracked here, so its rate limits and security headers
+# could drift silently. This file is the source of truth for the *security*
+# pieces — reconcile the live config against it, then keep them in sync.
+#
+# It addresses two open items:
+#   • N8  — no rate limiting (Supabase Free / origin has no throttling)
+#   • M2  — CSP / HSTS were only asserted, never version-controlled
+#
+# Apply: copy the relevant blocks into the live server{} / http{} context,
+#   `sudo nginx -t` to validate, then `sudo systemctl reload nginx`.
+# ─────────────────────────────────────────────────────────────────────────────
+
+# ── http{} context: define rate-limit zones ─────────────────────────────────
+# Put these in /etc/nginx/nginx.conf inside the http{} block (or a conf.d file).
+#
+#   # 10 r/s per IP for the API in general, small burst to absorb page loads
+#   limit_req_zone $binary_remote_addr zone=api:10m rate=10r/s;
+#   # Tighter bucket for auth-adjacent / expensive endpoints
+#   limit_req_zone $binary_remote_addr zone=auth:10m rate=1r/s;
+#   limit_req_status 429;
+
+server {
+    listen 443 ssl http2;
+    server_name www.fibaapp.com;
+
+    # ── TLS (managed by certbot / Let's Encrypt) ────────────────────────────
+    # ssl_certificate     /etc/letsencrypt/live/www.fibaapp.com/fullchain.pem;
+    # ssl_certificate_key /etc/letsencrypt/live/www.fibaapp.com/privkey.pem;
+
+    # ── Security headers (apply to every response) ──────────────────────────
+    # HSTS: HTTPS-only, remembered for a year, includes subdomains.
+    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header X-Frame-Options "DENY" always;
+    add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+    add_header Permissions-Policy "camera=(), microphone=(), geolocation=()" always;
+    # CSP for the SPA. 'self' for scripts/styles; connect-src also allows the
+    # Supabase project origin the browser talks to directly. Tighten as needed.
+    add_header Content-Security-Policy "default-src 'self'; img-src 'self' data: https://mckaplalscnvaanukrmz.supabase.co; connect-src 'self' https://mckaplalscnvaanukrmz.supabase.co; style-src 'self' 'unsafe-inline'; font-src 'self' data:; object-src 'none'; frame-ancestors 'none'; base-uri 'self'" always;
+
+    # Don't advertise the nginx version.
+    server_tokens off;
+
+    # ── SPA static files ────────────────────────────────────────────────────
+    root /opt/fiba-nominations/dist;
+    index index.html;
+
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+
+    # ── API → gunicorn, with rate limiting ──────────────────────────────────
+    location /api/ {
+        limit_req zone=api burst=20 nodelay;
+        proxy_pass http://127.0.0.1:8000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    # NOTE: the fiba_sync micro-service (127.0.0.1:3002) is intentionally NOT
+    # proxied here — it is an internal helper and must not be exposed publicly.
+}

@@ -27,6 +27,14 @@ class DriverCreate(BaseModel):
     name: str
     phone: Optional[str] = None
 
+class VehicleUpdate(BaseModel):
+    name: Optional[str] = None
+    vehicle_type: Optional[str] = None
+
+class DriverUpdate(BaseModel):
+    name: Optional[str] = None
+    phone: Optional[str] = None
+
 class VehicleDriverAssign(BaseModel):
     vehicle_id: str
     driver_id: str
@@ -72,7 +80,7 @@ class VenueCreate(BaseModel):
 def list_events():
     return supabase.table("transport_events").select("*").order("created_at").execute().data
 
-@router.post("/events")
+@router.post("/events", dependencies=[Depends(require_edit("transport"))])
 def create_event(data: EventCreate):
     result = supabase.table("transport_events").insert(data.model_dump()).execute()
     return result.data[0]
@@ -99,19 +107,22 @@ def get_event(event_id: str):
 def list_vehicles(event_id: str = Query(...)):
     return supabase.table("transport_vehicles").select("*").eq("event_id", event_id).order("name").execute().data
 
-@router.post("/vehicles")
+@router.post("/vehicles", dependencies=[Depends(require_edit("transport"))])
 def create_vehicle(data: VehicleCreate):
     result = supabase.table("transport_vehicles").insert(data.model_dump()).execute()
     return result.data[0]
 
-@router.put("/vehicles/{vehicle_id}")
-def update_vehicle(vehicle_id: str, data: dict):
-    r = supabase.table("transport_vehicles").update(data).eq("id", vehicle_id).execute()
+@router.put("/vehicles/{vehicle_id}", dependencies=[Depends(require_edit("transport"))])
+def update_vehicle(vehicle_id: str, data: VehicleUpdate):
+    updates = data.model_dump(exclude_none=True)
+    if not updates:
+        raise HTTPException(400, "No fields to update")
+    r = supabase.table("transport_vehicles").update(updates).eq("id", vehicle_id).execute()
     if not r.data:
         raise HTTPException(404, "Vehicle not found")
     return r.data[0]
 
-@router.delete("/vehicles/{vehicle_id}")
+@router.delete("/vehicles/{vehicle_id}", dependencies=[Depends(require_edit("transport"))])
 def delete_vehicle(vehicle_id: str):
     supabase.table("transport_vehicles").delete().eq("id", vehicle_id).execute()
     return {"ok": True}
@@ -123,19 +134,22 @@ def delete_vehicle(vehicle_id: str):
 def list_drivers(event_id: str = Query(...)):
     return supabase.table("transport_drivers").select("*").eq("event_id", event_id).order("name").execute().data
 
-@router.post("/drivers")
+@router.post("/drivers", dependencies=[Depends(require_edit("transport"))])
 def create_driver(data: DriverCreate):
     result = supabase.table("transport_drivers").insert(data.model_dump()).execute()
     return result.data[0]
 
-@router.put("/drivers/{driver_id}")
-def update_driver(driver_id: str, data: dict):
-    r = supabase.table("transport_drivers").update(data).eq("id", driver_id).execute()
+@router.put("/drivers/{driver_id}", dependencies=[Depends(require_edit("transport"))])
+def update_driver(driver_id: str, data: DriverUpdate):
+    updates = data.model_dump(exclude_none=True)
+    if not updates:
+        raise HTTPException(400, "No fields to update")
+    r = supabase.table("transport_drivers").update(updates).eq("id", driver_id).execute()
     if not r.data:
         raise HTTPException(404, "Driver not found")
     return r.data[0]
 
-@router.delete("/drivers/{driver_id}")
+@router.delete("/drivers/{driver_id}", dependencies=[Depends(require_edit("transport"))])
 def delete_driver(driver_id: str):
     supabase.table("transport_drivers").delete().eq("id", driver_id).execute()
     return {"ok": True}
@@ -158,7 +172,7 @@ def list_vehicle_drivers(event_id: str = Query(...), date: Optional[str] = Query
     # Filter to only vehicles in this event
     return [a for a in assignments if a["vehicle_id"] in vids]
 
-@router.post("/vehicle-drivers")
+@router.post("/vehicle-drivers", dependencies=[Depends(require_edit("transport"))])
 def assign_vehicle_driver(data: VehicleDriverAssign):
     record = data.model_dump()
     # Upsert: remove existing assignment for vehicle+date, then insert
@@ -166,7 +180,7 @@ def assign_vehicle_driver(data: VehicleDriverAssign):
     result = supabase.table("transport_vehicle_drivers").insert(record).execute()
     return result.data[0]
 
-@router.delete("/vehicle-drivers/{assignment_id}")
+@router.delete("/vehicle-drivers/{assignment_id}", dependencies=[Depends(require_edit("transport"))])
 def remove_vehicle_driver(assignment_id: str):
     supabase.table("transport_vehicle_drivers").delete().eq("id", assignment_id).execute()
     return {"ok": True}
@@ -208,13 +222,13 @@ def list_trips(event_id: str = Query(...), date: Optional[str] = Query(None)):
 
     return {"vehicles": vehicles, "trips": trips, "vehicle_drivers": vd}
 
-@router.post("/trips")
+@router.post("/trips", dependencies=[Depends(require_edit("transport"))])
 def create_trip(data: TripCreate):
     record = data.model_dump()
     result = supabase.table("transport_trips").insert(record).execute()
     return result.data[0]
 
-@router.put("/trips/{trip_id}")
+@router.put("/trips/{trip_id}", dependencies=[Depends(require_edit("transport"))])
 def update_trip(trip_id: str, data: TripUpdate):
     updates = {k: v for k, v in data.model_dump().items() if v is not None}
     if not updates:
@@ -224,7 +238,7 @@ def update_trip(trip_id: str, data: TripUpdate):
         raise HTTPException(404, "Trip not found")
     return r.data[0]
 
-@router.delete("/trips/{trip_id}")
+@router.delete("/trips/{trip_id}", dependencies=[Depends(require_edit("transport"))])
 def delete_trip(trip_id: str):
     supabase.table("transport_trips").delete().eq("id", trip_id).execute()
     return {"ok": True}
@@ -351,12 +365,12 @@ def _trips_overlap(a, b):
 def list_venues(event_id: str = Query(...)):
     return supabase.table("transport_venues").select("*").eq("event_id", event_id).order("type", desc=True).execute().data
 
-@router.post("/venues")
+@router.post("/venues", dependencies=[Depends(require_edit("transport"))])
 def create_venue(data: VenueCreate):
     result = supabase.table("transport_venues").insert(data.model_dump()).execute()
     return result.data[0]
 
-@router.delete("/venues/{venue_id}")
+@router.delete("/venues/{venue_id}", dependencies=[Depends(require_edit("transport"))])
 def delete_venue(venue_id: str):
     supabase.table("transport_venues").delete().eq("id", venue_id).execute()
     return {"ok": True}
@@ -368,18 +382,18 @@ def delete_venue(venue_id: str):
 def list_passengers(event_id: str = Query(...)):
     return supabase.table("transport_passengers").select("*").eq("event_id", event_id).order("category").execute().data
 
-@router.post("/passengers")
+@router.post("/passengers", dependencies=[Depends(require_edit("transport"))])
 def create_passenger(data: PassengerCreate):
     result = supabase.table("transport_passengers").insert(data.model_dump()).execute()
     return result.data[0]
 
-@router.post("/passengers/bulk")
+@router.post("/passengers/bulk", dependencies=[Depends(require_edit("transport"))])
 def bulk_create_passengers(passengers: List[PassengerCreate]):
     records = [p.model_dump() for p in passengers]
     result = supabase.table("transport_passengers").insert(records).execute()
     return {"created": len(result.data)}
 
-@router.delete("/passengers/{passenger_id}")
+@router.delete("/passengers/{passenger_id}", dependencies=[Depends(require_edit("transport"))])
 def delete_passenger(passenger_id: str):
     supabase.table("transport_passengers").delete().eq("id", passenger_id).execute()
     return {"ok": True}

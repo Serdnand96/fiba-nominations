@@ -1,8 +1,16 @@
-fastapi
-python-docx
-python-dotenv
-httpx
-openpyxl
-python-multipart
-qrcode[pil]
-docxtpl
+# Pinned with upper bounds so a surprise major release can't silently break or
+# compromise a deploy's `pip install`. For fully reproducible builds, capture
+# exact versions from the running droplet with `pip freeze > requirements.txt`.
+fastapi>=0.100,<1.0
+python-docx>=1.0,<2.0
+python-dotenv>=1.0,<2.0
+httpx>=0.24,<1.0
+openpyxl>=3.1,<4.0
+python-multipart>=0.0.6,<0.1
+qrcode[pil]>=7.4,<9.0
+docxtpl>=0.16,<1.0
+
+# Runtime server (previously installed unpinned in the deploy workflow)
+gunicorn>=21.0,<24.0
+uvicorn[standard]>=0.23,<1.0
+supabase>=2.0,<3.0

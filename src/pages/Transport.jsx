@@ -269,28 +269,35 @@ export default function Transport() {
   }
 
   function exportPDF() {
+    // Escape any value that ends up inside the raw HTML string below. These are
+    // free-text fields (vehicle/driver/passenger names, origins, hotels, event
+    // name) that would otherwise allow HTML/script injection into the printed
+    // document — which has access to this origin's session.
+    const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => (
+      { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
+    ))
     const dateLabel = new Date(date + 'T12:00:00').toLocaleDateString(lang === 'es' ? 'es' : 'en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })
     const eventTitle = selectedComp?.name || 'Transport'
-    let html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Transporte - ${eventTitle} - ${dateLabel}</title><style>* { margin: 0; padding: 0; box-sizing: border-box; } body { font-family: Arial, sans-serif; font-size: 10px; padding: 15px; } .header { text-align: center; margin-bottom: 12px; } .header h1 { font-size: 16px; } .header h2 { font-size: 12px; font-weight: normal; color: #555; } .container { display: flex; gap: 15px; } .main { flex: 1; } .sidebar { width: 220px; } .vehicle-block { margin-bottom: 10px; } .vehicle-header { background: #1e3a5f; color: white; padding: 4px 8px; font-weight: bold; font-size: 11px; } .trip-table { width: 100%; border-collapse: collapse; } .trip-table th { background: #e5e7eb; padding: 3px 6px; text-align: left; font-size: 9px; border: 1px solid #ccc; } .trip-table td { padding: 3px 6px; border: 1px solid #ccc; font-size: 9px; } .conflict { background: #fee2e2 !important; } .sidebar-block { margin-bottom: 8px; border: 1px solid #ccc; } .sidebar-header { background: #374151; color: white; padding: 3px 6px; font-size: 9px; font-weight: bold; } .sidebar-cat { background: #f3f4f6; padding: 2px 6px; font-size: 8px; font-weight: bold; border-bottom: 1px solid #e5e7eb; } .sidebar-item { padding: 2px 6px; font-size: 8px; border-bottom: 1px solid #f3f4f6; } @media print { body { padding: 5px; } }</style></head><body><div class="header"><h1>TRANSPORTE - ${eventTitle.toUpperCase()}</h1><h2>${dateLabel}</h2></div><div class="container"><div class="main">`
+    let html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Transporte - ${esc(eventTitle)} - ${dateLabel}</title><style>* { margin: 0; padding: 0; box-sizing: border-box; } body { font-family: Arial, sans-serif; font-size: 10px; padding: 15px; } .header { text-align: center; margin-bottom: 12px; } .header h1 { font-size: 16px; } .header h2 { font-size: 12px; font-weight: normal; color: #555; } .container { display: flex; gap: 15px; } .main { flex: 1; } .sidebar { width: 220px; } .vehicle-block { margin-bottom: 10px; } .vehicle-header { background: #1e3a5f; color: white; padding: 4px 8px; font-weight: bold; font-size: 11px; } .trip-table { width: 100%; border-collapse: collapse; } .trip-table th { background: #e5e7eb; padding: 3px 6px; text-align: left; font-size: 9px; border: 1px solid #ccc; } .trip-table td { padding: 3px 6px; border: 1px solid #ccc; font-size: 9px; } .conflict { background: #fee2e2 !important; } .sidebar-block { margin-bottom: 8px; border: 1px solid #ccc; } .sidebar-header { background: #374151; color: white; padding: 3px 6px; font-size: 9px; font-weight: bold; } .sidebar-cat { background: #f3f4f6; padding: 2px 6px; font-size: 8px; font-weight: bold; border-bottom: 1px solid #e5e7eb; } .sidebar-item { padding: 2px 6px; font-size: 8px; border-bottom: 1px solid #f3f4f6; } @media print { body { padding: 5px; } }</style></head><body><div class="header"><h1>TRANSPORTE - ${esc(eventTitle.toUpperCase())}</h1><h2>${dateLabel}</h2></div><div class="container"><div class="main">`
     const orderedVehicles = Object.values(tripsByVehicle)
     for (const group of orderedVehicles) {
       const { vehicle, trips, driver } = group
       const driverName = driver?.name || ''
-      html += `<div class="vehicle-block"><div class="vehicle-header">${vehicle.name}${driverName ? ` — ${driverName}` : ''}</div><table class="trip-table"><thead><tr><th>${lang === 'es' ? 'Viaje' : 'Trip'}</th><th>${lang === 'es' ? 'Hora' : 'Time'}</th><th>${lang === 'es' ? 'Partida' : 'Origin'}</th><th>${lang === 'es' ? 'Destino' : 'Destination'}</th><th>${lang === 'es' ? 'Equipo' : 'Equipment'}</th><th>${lang === 'es' ? 'Contacto' : 'Contact'}</th></tr></thead><tbody>`
+      html += `<div class="vehicle-block"><div class="vehicle-header">${esc(vehicle.name)}${driverName ? ` — ${esc(driverName)}` : ''}</div><table class="trip-table"><thead><tr><th>${lang === 'es' ? 'Viaje' : 'Trip'}</th><th>${lang === 'es' ? 'Hora' : 'Time'}</th><th>${lang === 'es' ? 'Partida' : 'Origin'}</th><th>${lang === 'es' ? 'Destino' : 'Destination'}</th><th>${lang === 'es' ? 'Equipo' : 'Equipment'}</th><th>${lang === 'es' ? 'Contacto' : 'Contact'}</th></tr></thead><tbody>`
       if (trips.length === 0) html += `<tr><td colspan="6" style="text-align:center;color:#999;">${lang === 'es' ? 'Sin viajes' : 'No trips'}</td></tr>`
       for (const trip of trips) {
         const cls = conflictTripIds.has(trip.id) ? ' class="conflict"' : ''
-        html += `<tr${cls}><td>${lang === 'es' ? 'Viaje' : 'Trip'} ${trip.trip_number}</td><td>${formatTime(trip.departure_time)}</td><td>${trip.origin}</td><td>${trip.destination}</td><td>${trip.equipment || ''}</td><td>${trip.contact || ''}</td></tr>`
+        html += `<tr${cls}><td>${lang === 'es' ? 'Viaje' : 'Trip'} ${trip.trip_number}</td><td>${formatTime(trip.departure_time)}</td><td>${esc(trip.origin)}</td><td>${esc(trip.destination)}</td><td>${esc(trip.equipment || '')}</td><td>${esc(trip.contact || '')}</td></tr>`
       }
       html += `</tbody></table></div>`
     }
     html += `</div><div class="sidebar">`
     for (const hotel of hotels) {
       const cats = passengersByHotel[hotel] || {}
-      html += `<div class="sidebar-block"><div class="sidebar-header">${hotel}</div>`
+      html += `<div class="sidebar-block"><div class="sidebar-header">${esc(hotel)}</div>`
       for (const [cat, people] of Object.entries(cats)) {
-        html += `<div class="sidebar-cat">${cat}</div>`
-        for (const p of people) html += `<div class="sidebar-item">${p.name}</div>`
+        html += `<div class="sidebar-cat">${esc(cat)}</div>`
+        for (const p of people) html += `<div class="sidebar-item">${esc(p.name)}</div>`
       }
       if (Object.keys(cats).length === 0) html += `<div class="sidebar-item" style="color:#999;">${lang === 'es' ? 'Sin pasajeros' : 'No passengers'}</div>`
       html += `</div>`

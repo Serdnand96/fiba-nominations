@@ -5,6 +5,9 @@ on:
     branches: [main]
   workflow_dispatch:  # Permite disparar manualmente desde GitHub UI
 
+# Deploy is over SSH and never uses the GITHUB_TOKEN — drop all of its scopes.
+permissions: {}
+
 jobs:
   deploy:
     name: Deploy to droplet
@@ -30,8 +33,9 @@ jobs:
           git reset --hard origin/main
 
           echo "=== Python deps ==="
+          # requirements.txt now pins the server deps (gunicorn/uvicorn/supabase)
+          # too, so a single install keeps every version within its bounds.
           ./venv/bin/pip install -r requirements.txt -q
-          ./venv/bin/pip install gunicorn "uvicorn[standard]" supabase -q
 
           echo "=== Frontend build ==="
           set -a && . ./.env && set +a

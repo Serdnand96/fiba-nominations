@@ -105,7 +105,7 @@ def list_nominations():
     return result.data
 
 
-@router.post("")
+@router.post("", dependencies=[Depends(require_edit("nominations"))])
 def create_nomination(data: NominationCreate):
     record = data.model_dump()
     if record.get("game_dates"):
@@ -120,7 +120,7 @@ def create_nomination(data: NominationCreate):
     return result.data[0]
 
 
-@router.post("/bulk")
+@router.post("/bulk", dependencies=[Depends(require_edit("nominations"))])
 def create_bulk_nominations(data: BulkNominationCreate):
     """Create nominations for multiple people with the same competition/settings."""
     if len(data.personnel_ids) > _MAX_BULK:
@@ -153,7 +153,7 @@ def create_bulk_nominations(data: BulkNominationCreate):
     return {"created": len(created), "errors": errors, "nominations": created}
 
 
-@router.post("/bulk-generate")
+@router.post("/bulk-generate", dependencies=[Depends(require_edit("nominations"))])
 def bulk_generate_nominations(nomination_ids: list[str]):
     """Generate PDF documents for multiple nominations."""
     if len(nomination_ids) > _MAX_BULK:
@@ -227,7 +227,7 @@ def bulk_generate_nominations(nomination_ids: list[str]):
     return {"results": results, "total": len(results), "success": sum(1 for r in results if r["status"] == "generated")}
 
 
-@router.patch("/{nomination_id}/confirmation")
+@router.patch("/{nomination_id}/confirmation", dependencies=[Depends(require_edit("nominations"))])
 def update_confirmation(nomination_id: str, payload: ConfirmationUpdate):
     """Update the confirmation workflow state for a nomination."""
     if payload.status not in _VALID_CONFIRMATION_STATUSES:
@@ -319,7 +319,7 @@ def get_nomination(nomination_id: str):
     return result.data[0]
 
 
-@router.post("/{nomination_id}/generate")
+@router.post("/{nomination_id}/generate", dependencies=[Depends(require_edit("nominations"))])
 def generate_nomination_doc(nomination_id: str):
     result = supabase.table("nominations").select(
         "*, personnel(name, role, email), competitions(name, template_key, year, fee_type)"

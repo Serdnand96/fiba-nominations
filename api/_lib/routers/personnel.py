@@ -1,4 +1,5 @@
 import re
+import uuid
 from datetime import date, timedelta
 from fastapi import APIRouter, HTTPException, UploadFile, File, Depends
 from api._lib.database import supabase
@@ -47,7 +48,7 @@ def list_personnel(role: str = None, search: str = None):
     return result.data
 
 
-@router.post("")
+@router.post("", dependencies=[Depends(require_edit("personnel"))])
 def create_personnel(data: PersonnelCreate):
     # Drop unset optional fields so column defaults (languages '{}', visas '[]') apply
     record = {k: v for k, v in data.model_dump().items() if v is not None}
@@ -142,7 +143,7 @@ def get_personnel_workload(person_id: str, months: int = 12):
     }
 
 
-@router.put("/{person_id}")
+@router.put("/{person_id}", dependencies=[Depends(require_edit("personnel"))])
 def update_personnel(person_id: str, data: PersonnelUpdate):
     updates = {k: v for k, v in data.model_dump().items() if v is not None}
     if "role" in updates:
@@ -155,7 +156,7 @@ def update_personnel(person_id: str, data: PersonnelUpdate):
     return result.data[0]
 
 
-@router.delete("/{person_id}")
+@router.delete("/{person_id}", dependencies=[Depends(require_edit("personnel"))])
 def delete_personnel(person_id: str, force: bool = False):
     # Check if person has nominations
     noms = supabase.table("nominations").select("id").eq("personnel_id", person_id).execute()
@@ -176,6 +177,10 @@ def delete_personnel(person_id: str, force: bool = False):
 
 @router.post("/{person_id}/photo", dependencies=[Depends(require_edit("personnel"))])
 async def upload_personnel_photo(person_id: str, photo: UploadFile = File(...)):
+    try:
+        uuid.UUID(person_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid person id")
     if not (photo.content_type or "").startswith("image/"):
         raise HTTPException(status_code=400, detail="Only image files are allowed")
     content = await photo.read()
@@ -199,7 +204,7 @@ async def upload_personnel_photo(person_id: str, photo: UploadFile = File(...)):
     return result.data[0]
 
 
-@router.post("/import")
+@router.post("/import", dependencies=[Depends(require_edit("personnel"))])
 async def import_personnel(file: UploadFile = File(...)):
     # Validate file type
     fname = (file.filename or "").lower()

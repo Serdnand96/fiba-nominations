@@ -6,6 +6,38 @@ Supabase, GoDaddy, Cloudflare). Status interno se trackea en
 
 ---
 
+## 🚨 Pendiente de la pasada de seguridad 2026-07-22
+
+Los fixes de código de esta auditoría ya están en el repo. Estos ítems
+**requieren acción manual** (paneles externos / droplet) y no se pueden
+resolver en código:
+
+- [ ] **Rotar la FIBA API key** — la anterior (`898cd5e7…`) estaba hardcodeada
+  y quedó en el historial git → está comprometida. Regenerarla en el portal
+  de desarrollador de FIBA y setear la nueva en `FIBA_API_KEY` en el `.env`
+  del droplet. **Sin esto, la sincronización de partidos deja de funcionar**
+  (ahora el código lee la key de env, no hay fallback hardcodeado).
+- [ ] **Rotar los secretos del `.env`** si ese archivo pudo verse alguna vez
+  (SUPABASE_SERVICE_ROLE_KEY, CLOUDCONVERT_API_KEY) y verificar permisos del
+  archivo en el droplet (`chmod 600`, owner `fiba`).
+- [ ] **Aplicar la config nginx** de `deploy/nginx/security.conf.example`
+  (rate limiting + CSP/HSTS) en `/etc/nginx/sites-available/fiba-nominations`,
+  `sudo nginx -t` y reload. Reconciliar con la config viva. (Cierra M2 + N8 a
+  nivel origen, complementa el rate limit de Supabase/Cloudflare.)
+- [ ] **Confirmar que el puerto 3002 (fiba_sync) no esté abierto** al exterior
+  por firewall (ahora bindea a `127.0.0.1`, pero revisar el systemd unit y
+  `ufw status`).
+- [ ] **Evaluar retirar `fiba_sync`** — su lógica está duplicada en
+  `games.py` y el frontend no lo llama; es candidato a eliminarse por completo.
+
+**Recomendaciones opcionales (no bloqueantes):** recortar PII (`passport`/
+`phone`) en respuestas de `personnel` a usuarios view-tier; decidir si
+`public_assets` debe exponer `assigned_to` sin auth; verificar el JWT
+localmente o cachearlo con TTL corto en vez de pegarle a Supabase en cada
+request; fijar el host key en `ssh-keyscan` del CI.
+
+---
+
 ## ⚡ Quick wins (15 min total)
 
 ### 1. Supabase Auth Rate Limits (cierra pen-test N8)

@@ -166,7 +166,7 @@ def _most_restrictive(records):
 # ---------------------------------------------------------------------------
 # POST /availability
 # ---------------------------------------------------------------------------
-@router.post("")
+@router.post("", dependencies=[Depends(require_edit("availability"))])
 def create_availability(data: AvailabilityCreate):
     # Validate constraints
     if data.type == "event_specific":
@@ -196,7 +196,7 @@ def create_availability(data: AvailabilityCreate):
 # ---------------------------------------------------------------------------
 # PUT /availability/{id}
 # ---------------------------------------------------------------------------
-@router.put("/{availability_id}")
+@router.put("/{availability_id}", dependencies=[Depends(require_edit("availability"))])
 def update_availability(availability_id: str, data: AvailabilityUpdate):
     updates = {k: v for k, v in data.model_dump().items() if v is not None}
     if not updates:
@@ -226,7 +226,7 @@ def update_availability(availability_id: str, data: AvailabilityUpdate):
 # ---------------------------------------------------------------------------
 # DELETE /availability/{id}
 # ---------------------------------------------------------------------------
-@router.delete("/{availability_id}")
+@router.delete("/{availability_id}", dependencies=[Depends(require_edit("availability"))])
 def delete_availability(availability_id: str):
     result = supabase.table("td_availability").delete().eq("id", availability_id).execute()
     if not result.data:
