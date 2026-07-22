@@ -4,9 +4,8 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "dev": "concurrently -n vite,fiba -c blue,green \"vite\" \"python3 -m uvicorn services.fiba_sync:app --port 3002 --reload\"",
+    "dev": "vite",
     "dev:frontend": "vite",
-    "dev:fiba": "python3 -m uvicorn services.fiba_sync:app --port 3002 --reload",
     "build": "vite build",
     "preview": "vite preview"
   },
@@ -23,7 +22,6 @@
     "@types/react": "^18.3.3",
     "@vitejs/plugin-react": "^4.3.0",
     "autoprefixer": "^10.4.19",
-    "concurrently": "^9.1.0",
     "postcss": "^8.4.38",
     "tailwindcss": "^3.4.4",
     "vite": "^5.3.0"

@@ -239,7 +239,7 @@ Resumen — detalles en `SECURITY_RUNBOOK.md`.
 | Servicio       | Para qué                                              |
 |----------------|-------------------------------------------------------|
 | Supabase       | DB + Auth + Storage                                   |
-| FIBA Sync      | Microservicio en `services/fiba_sync.py` que sincroniza datos upstream desde FIBA |
+| FIBA GDAP API  | Sync de partidos y resultados (desde `games.py`)      |
 | Let's Encrypt  | TLS para fibaapp.com + fibaamericascloud.com (4 SAN)  |
 
 CloudConvert **NO** se usa en prod (reemplazado por LibreOffice local).

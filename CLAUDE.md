@@ -87,8 +87,6 @@ fiba-nominations/
 ├── public/favicon.svg         ← monograma F + basketball seam
 ├── scripts/
 │   └── fiba-security-scan.sh  ← scanner horario de nginx logs (corre en droplet)
-├── services/
-│   └── fiba_sync.py           ← microservicio aparte (sync con FIBA upstream)
 ├── supabase/migrations/       ← schema SQL
 ├── verify_security.sh         ← smoke test post-deploy
 ├── .github/workflows/deploy.yml  ← CI/CD
@@ -139,8 +137,8 @@ ssh fiba sudo tail -f /var/log/fiba-security-alerts.log
 ssh fiba sudo systemctl restart fiba-api && sleep 2 && \
   ssh fiba sudo systemctl is-active fiba-api
 
-# ── Dev local (frontend + backend + fiba-sync): ──
-npm run dev                 # vite + fiba-sync en paralelo
+# ── Dev local (frontend + backend): ──
+npm run dev                 # vite
 # y aparte:
 ./venv/bin/uvicorn api.index:app --reload --port 8000
 ```

@@ -53,7 +53,6 @@ VITE_SUPABASE_ANON_KEY=<anon key>
 VITE_API_URL=/api
 
 CORS_ORIGINS=http://localhost:5173,http://localhost:3000
-VITE_FIBA_SERVICE_URL=http://localhost:3002
 ```
 
 > **No commitees `.env`** (ya está en `.gitignore`).
@@ -66,33 +65,12 @@ VITE_FIBA_SERVICE_URL=http://localhost:3002
 
 ## Correr el stack
 
-### Opción 1 — los 3 procesos en una sola terminal
-
-```bash
-npm run dev
-```
-
-Eso lanza concurrentemente:
-- **vite** (frontend) → http://localhost:5173
-- **fiba_sync** (micro-service) → http://localhost:3002
-
-Pero **no incluye el FastAPI principal**. Para ese, abrir otra terminal:
-
-```bash
-./venv/bin/uvicorn api.index:app --reload --port 8000
-```
-
-### Opción 2 — los 3 separados
-
 ```bash
 # terminal 1
-npm run dev:frontend                 # vite
+npm run dev                          # vite (frontend) → http://localhost:5173
 
 # terminal 2
 ./venv/bin/uvicorn api.index:app --reload --port 8000
-
-# terminal 3 (solo si tocás fiba_sync)
-npm run dev:fiba                     # uvicorn services.fiba_sync:app
 ```
 
 ### Proxy
@@ -109,7 +87,6 @@ FastAPI local sin CORS.
 |------------------------------|------------------------------------------|
 | http://localhost:5173        | Frontend Vite (HMR)                      |
 | http://localhost:8000/api    | FastAPI raw (no proxy, útil para curl)   |
-| http://localhost:3002        | fiba_sync micro-service                  |
 | http://localhost:5173/api/X  | Frontend con proxy al backend            |
 
 ---

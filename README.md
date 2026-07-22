@@ -60,8 +60,6 @@ fiba-nominations/
 ├── public/                   # estáticos (favicon, logos)
 ├── scripts/
 │   └── fiba-security-scan.sh # scanner horario de logs (corre en droplet)
-├── services/
-│   └── fiba_sync.py          # microservicio aparte
 ├── supabase/migrations/      # schema SQL
 ├── templates/                # .docx templates
 ├── verify_security.sh        # smoke test post-deploy
@@ -89,9 +87,9 @@ bash verify_security.sh
 ### Local
 
 ```bash
-# 1) Frontend + fiba-sync micro-service (concurrently)
+# 1) Frontend
 npm install
-npm run dev                  # vite:5173 + fiba-sync:3002
+npm run dev                  # vite:5173
 
 # 2) Backend FastAPI (otra terminal)
 pip install -r requirements.txt

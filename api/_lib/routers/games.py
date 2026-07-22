@@ -379,7 +379,13 @@ def _fiba_json_to_game(g: dict) -> dict:
 
     score_a = g.get("teamAScore")
     score_b = g.get("teamBScore")
-    status = "completed" if score_a is not None and score_b is not None else "scheduled"
+
+    if g.get("isLive", False):
+        status = "live"
+    elif score_a is not None and score_b is not None:
+        status = "completed"
+    else:
+        status = "scheduled"
 
     team_a = g.get("teamA") or {}
     team_b = g.get("teamB") or {}
@@ -398,11 +404,27 @@ def _fiba_json_to_game(g: dict) -> dict:
         "venue": g.get("venueName", ""),
         "city": g.get("hostCity", ""),
         "country": g.get("hostCountry", "") or g.get("country", ""),
-        "phase": "Group Phase",
+        "phase": _detect_phase(g),
         "group_label": g.get("groupPairingCode"),
         "status": status,
         "sport": "Basketball",
     }
+
+
+def _detect_phase(g: dict) -> str:
+    """Detect game phase from the FIBA game name / pairing code."""
+    name = (g.get("gameName") or "").lower()
+    pairing = (g.get("groupPairingCode") or "").lower()
+
+    if "final" in name or "final" in pairing:
+        return "Finals"
+    if "semi" in name or "semi" in pairing:
+        return "Semifinals"
+    if "quarter" in name or "qf" in pairing:
+        return "Quarterfinals"
+    if "class" in name or "class" in pairing:
+        return "Classification"
+    return "Group Phase"
 
 
 # ── Excel import ─────────────────────────────────────────────────────────────

@@ -25,11 +25,10 @@ resolver en código:
   (rate limiting + CSP/HSTS) en `/etc/nginx/sites-available/fiba-nominations`,
   `sudo nginx -t` y reload. Reconciliar con la config viva. (Cierra M2 + N8 a
   nivel origen, complementa el rate limit de Supabase/Cloudflare.)
-- [ ] **Confirmar que el puerto 3002 (fiba_sync) no esté abierto** al exterior
-  por firewall (ahora bindea a `127.0.0.1`, pero revisar el systemd unit y
-  `ufw status`).
-- [ ] **Evaluar retirar `fiba_sync`** — su lógica está duplicada en
-  `games.py` y el frontend no lo llama; es candidato a eliminarse por completo.
+- [x] **Retirar `fiba_sync`** — eliminado del repo (2026-07-22): su lógica
+  vivía duplicada en `games.py` (que ahora incluye también la detección de
+  fase y estado `live`) y el frontend nunca lo llamó. Verificado en el
+  droplet: no hay unit de systemd ni nada escuchando en el puerto 3002.
 
 **Recomendaciones opcionales (no bloqueantes):** recortar PII (`passport`/
 `phone`) en respuestas de `personnel` a usuarios view-tier; decidir si

@@ -208,9 +208,6 @@ VITE_API_URL=/api
 # CORS
 CORS_ORIGINS=https://www.fibaapp.com,https://fibaapp.com
 
-# FIBA Sync micro-service URL (corre en port 3002 en el droplet)
-VITE_FIBA_SERVICE_URL=http://localhost:3002
-
 # CloudConvert (NO se usa en prod, deshabilitado)
 # CLOUDCONVERT_API_KEY=
 ```

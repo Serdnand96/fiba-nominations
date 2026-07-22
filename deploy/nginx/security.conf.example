@@ -63,7 +63,4 @@ server {
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
     }
-
-    # NOTE: the fiba_sync micro-service (127.0.0.1:3002) is intentionally NOT
-    # proxied here — it is an internal helper and must not be exposed publicly.
 }
