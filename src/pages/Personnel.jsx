@@ -4,6 +4,7 @@ import { useLanguage } from '../i18n/LanguageContext'
 import { useAuth } from '../contexts/AuthContext'
 import PersonProfilePanel from '../components/PersonProfilePanel'
 import { ROLES, roleLabel, roleBadgeClass } from '../lib/roles'
+import { COUNTRIES, countryName, countryNameToCode } from '../lib/countries'
 
 function compareValues(a, b, dir) {
   const av = (a ?? '').toString().toLowerCase()
@@ -13,7 +14,7 @@ function compareValues(a, b, dir) {
 }
 
 export default function Personnel() {
-  const { t } = useLanguage()
+  const { t, lang } = useLanguage()
   const { hasEdit } = useAuth()
   const canEdit = hasEdit('personnel')
   const canEditAvail = hasEdit('availability')
@@ -24,7 +25,7 @@ export default function Personnel() {
   const [showModal, setShowModal] = useState(false)
   const [editing, setEditing] = useState(null)
   const [showImport, setShowImport] = useState(false)
-  const [form, setForm] = useState({ name: '', email: '', country: '', phone: '', passport: '', role: 'VGO' })
+  const [form, setForm] = useState({ name: '', email: '', country: '', country_code: '', phone: '', passport: '', role: 'VGO' })
 
   // Profile panel — the shared PersonProfilePanel owns its own data/modals
   const [profilePerson, setProfilePerson] = useState(null)
@@ -88,14 +89,25 @@ export default function Personnel() {
 
   function openEdit(person) {
     setEditing(person)
-    setForm({ name: person.name, email: person.email, country: person.country || '', phone: person.phone || '', passport: person.passport || '', role: person.role })
+    setForm({
+      name: person.name, email: person.email,
+      country: person.country || '',
+      // Legacy rows have free-text country only — map it to a code when possible
+      country_code: person.country_code || countryNameToCode(person.country) || '',
+      phone: person.phone || '', passport: person.passport || '', role: person.role,
+    })
     setShowModal(true)
   }
 
   function openCreate() {
     setEditing(null)
-    setForm({ name: '', email: '', country: '', phone: '', passport: '', role: 'VGO' })
+    setForm({ name: '', email: '', country: '', country_code: '', phone: '', passport: '', role: 'VGO' })
     setShowModal(true)
+  }
+
+  function handleCountryChange(code) {
+    // Keep the legacy display field in sync with the selected code
+    setForm(f => ({ ...f, country_code: code, country: code ? countryName(code, lang) : '' }))
   }
 
   async function handleDelete(person) {
@@ -200,7 +212,7 @@ export default function Personnel() {
                 <td className="px-4 py-3">
                   <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${roleBadgeClass(p.role)}`}>{roleLabel(p.role)}</span>
                 </td>
-                <td className="px-4 py-3">{p.country || '—'}</td>
+                <td className="px-4 py-3">{p.country_code ? `${countryName(p.country_code, lang)} (${p.country_code})` : (p.country || '—')}</td>
                 <td className="px-4 py-3">{p.email}</td>
                 <td className="px-4 py-3">{p.passport || '—'}</td>
                 <td className="px-4 py-3">
@@ -232,7 +244,18 @@ export default function Personnel() {
             <form onSubmit={handleSubmit} className="space-y-3">
               <input required placeholder={t('personnel.name')} value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} className="fiba-input" />
               <input required type="email" placeholder={t('personnel.email')} value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} className="fiba-input" />
-              <input placeholder={t('personnel.country')} value={form.country} onChange={e => setForm(f => ({ ...f, country: e.target.value }))} className="fiba-input" />
+              <div>
+                <select value={form.country_code} onChange={e => handleCountryChange(e.target.value)} className="fiba-select">
+                  <option value="">{t('personnel.selectCountry')}</option>
+                  {COUNTRIES.map(c => (
+                    <option key={c.code} value={c.code}>{lang === 'en' ? c.en : c.es} ({c.code})</option>
+                  ))}
+                </select>
+                {/* Legacy free-text country that didn't map to a code — kept until a code is picked */}
+                {!form.country_code && form.country && (
+                  <p className="text-xs text-fiba-muted/60 mt-1">{t('personnel.unmappedCountry', { country: form.country })}</p>
+                )}
+              </div>
               <input placeholder={t('personnel.phone')} value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))} className="fiba-input" />
               <input placeholder={t('personnel.passport')} value={form.passport} onChange={e => setForm(f => ({ ...f, passport: e.target.value }))} className="fiba-input" />
               <select value={form.role} onChange={e => setForm(f => ({ ...f, role: e.target.value }))} className="fiba-select">
@@ -378,7 +401,7 @@ function ImportView({ onClose }) {
                     [t('personnel.country'), t('personnel.no'), t('personnel.freeText')],
                     [t('personnel.phone'), t('personnel.no'), t('personnel.freeText')],
                     [t('personnel.passport'), t('personnel.no'), t('personnel.freeText')],
-                    [t('personnel.role'), t('personnel.yes'), 'VGO / TD'],
+                    [t('personnel.role'), t('personnel.yes'), 'VGO / TD / REF / REF_INSTRUCTOR'],
                   ].map(([col, req, vals]) => (
                     <tr key={col} className="border-t border-fiba-border">
                       <td className="px-3 py-1.5">{col}</td>

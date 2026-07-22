@@ -113,6 +113,11 @@ const translations = {
     name: { en: 'Name', es: 'Nombre' },
     role: { en: 'Role', es: 'Rol' },
     country: { en: 'Country', es: 'País' },
+    selectCountry: { en: 'Select country…', es: 'Seleccionar país…' },
+    unmappedCountry: {
+      en: 'Current value "{country}" is not a recognized country — pick one to enable referee eligibility checks.',
+      es: 'El valor actual "{country}" no es un país reconocido; selecciona uno para habilitar los chequeos de elegibilidad de árbitros.',
+    },
     email: { en: 'Email', es: 'Email' },
     passport: { en: 'Passport', es: 'Pasaporte' },
     phone: { en: 'Phone', es: 'Teléfono' },
@@ -226,6 +231,20 @@ const translations = {
     generate: { en: 'Generate', es: 'Generar' },
     delete: { en: 'Delete', es: 'Eliminar' },
     noNominations: { en: 'No nominations', es: 'No hay nominaciones' },
+    // Referee neutrality — informative notice (competition-level nominations)
+    refWarningTitle: { en: 'Referee neutrality notice', es: 'Aviso de neutralidad arbitral' },
+    refWarningGroups: {
+      en: '{name} ({country}): their country plays in group {groups} — they will not be able to officiate those games.',
+      es: '{name} ({country}): su país juega en el grupo {groups}; no podrá dirigir esos partidos.',
+    },
+    refWarningPlays: {
+      en: '{name} ({country}): their country plays in this tournament.',
+      es: '{name} ({country}): su país participa en este torneo.',
+    },
+    refWarningHint: {
+      en: 'The nomination is allowed — on-site game assignments must respect the restriction.',
+      es: 'La nominación está permitida; la asignación de partidos en sitio debe respetar la restricción.',
+    },
     confirmDelete: { en: 'Delete nomination for {name}?', es: '¿Eliminar la nominación de {name}?' },
     confirmBulkDelete: { en: 'Delete {count} nomination(s)?', es: '¿Eliminar {count} nominación(es)?' },
     errorDeleting: { en: 'Error deleting nomination', es: 'Error eliminando nominación' },
@@ -302,6 +321,11 @@ const translations = {
     confirmDelete: { en: 'Delete competition "{name}"?', es: '¿Eliminar la competencia "{name}"?' },
     confirmForceDelete: { en: '{detail}\nDelete competition and all its nominations?', es: '{detail}\n¿Desea eliminar la competencia y todas sus nominaciones?' },
     errorDeleting: { en: 'Error deleting competition', es: 'Error eliminando competencia' },
+    nationalTeam: { en: 'National teams competition', es: 'Competencia de selecciones nacionales' },
+    nationalTeamHint: {
+      en: 'Enables the referee neutrality restriction: a referee cannot work games — nor groups — involving their own country.',
+      es: 'Activa la restricción de neutralidad arbitral: un árbitro no puede dirigir partidos —ni grupos— donde participe su país.',
+    },
   },
 
   // ===== Templates =====
@@ -636,9 +660,28 @@ const translations = {
     errorImporting: { en: 'Error importing games', es: 'Error importando juegos' },
     fibaUrl: { en: 'FIBA Games URL or Competition ID', es: 'URL de Juegos FIBA o ID de Competencia' },
     fibaUrlHint: { en: 'Paste the FIBA games page URL or the numeric competition ID (e.g. 209032)', es: 'Pega la URL de la pagina de juegos FIBA o el ID numerico de competencia (ej. 209032)' },
-    // Per-game TD/VGO assignment (WCQ / BCLA / LSB)
+    // Per-game TD/VGO/referee assignment (WCQ / BCLA / LSB)
     roleTD: { en: 'TD', es: 'TD' },
     roleVGO: { en: 'VGO', es: 'VGO' },
+    roleCC: { en: 'Crew Chief', es: 'Crew Chief' },
+    roleU1: { en: 'Umpire 1', es: 'Umpire 1' },
+    roleU2: { en: 'Umpire 2', es: 'Umpire 2' },
+    // Referee neutrality (national-team competitions)
+    refNotEligible: { en: 'Not eligible — {detail}', es: 'No elegible — {detail}' },
+    refConflictTitle: { en: 'Assignment not allowed', es: 'Asignación no permitida' },
+    refConflictOwnCountry: {
+      en: '{name} is from {country} and cannot officiate {teams}: their country plays this game.',
+      es: '{name} es de {country} y no puede dirigir {teams}: su país juega este partido.',
+    },
+    refConflictOwnGroup: {
+      en: '{name} is from {country}, which plays in Group {group}. A referee cannot work any game of the group where their country plays.',
+      es: '{name} es de {country}, que compite en el Grupo {group}. Un árbitro no puede dirigir ningún partido del grupo donde juega su país.',
+    },
+    refConflictRule: {
+      en: 'FIBA neutrality rule for national-team competitions: referees cannot officiate games involving their own country nor games of the group where their country plays.',
+      es: 'Regla de neutralidad FIBA para competencias de selecciones: un árbitro no puede dirigir partidos donde juega su país ni partidos del grupo donde su país compite.',
+    },
+    refConflictOk: { en: 'Got it', es: 'Entendido' },
     assignRole: { en: 'Assign {role}', es: 'Asignar {role}' },
     unassign: { en: 'Remove assignment', es: 'Quitar asignación' },
     unassigned: { en: 'Unassigned', es: 'Sin asignar' },

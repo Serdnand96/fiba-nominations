@@ -9,9 +9,14 @@ import {
 import { useLanguage } from '../i18n/LanguageContext'
 import { useAuth } from '../contexts/AuthContext'
 import CompetitionSearch from '../components/CompetitionSearch'
+import { countryName } from '../lib/countries'
+import { findRefereeGameConflict } from '../lib/refereeNeutrality'
 
 const PHASE_OPTIONS = ['Group Phase', 'Quarterfinals', 'Semifinals', 'Classification', 'Finals']
 const ASSIGNMENT_TEMPLATES = new Set(['WCQ', 'BCLA', 'LSB'])
+// Referee crew slots (national-team events only): Crew Chief + Umpires.
+const REF_SLOTS = ['CC', 'U1', 'U2']
+const REF_SLOT_SET = new Set(REF_SLOTS)
 
 const EMPTY_FORM = {
   date: '', time: '', team_a: '', team_a_code: '', team_b: '', team_b_code: '',
@@ -56,9 +61,14 @@ export default function Games() {
   const [defaultsMsg, setDefaultsMsg] = useState('')
   const fileRef = useRef(null)
   const autoSyncDone = useRef(new Set()) // track which comps we've auto-synced
+  // Blocking pop-up when a referee with a country conflict is selected
+  const [refConflict, setRefConflict] = useState(null)
 
   const selectedComp = competitions.find(c => c.id === selectedCompId)
   const supportsAssignments = ASSIGNMENT_TEMPLATES.has((selectedComp?.template_key || '').toUpperCase())
+  // Referee crew slots only make sense on national-team events, where the
+  // neutrality restriction applies.
+  const supportsRefSlots = supportsAssignments && !!selectedComp?.is_national_team
 
   // Pull defaults from the selected competition into the editable form state
   // whenever the comp changes.
@@ -175,12 +185,40 @@ export default function Games() {
     }
   }
 
-  async function handleAssign(gameId, personId, role) {
+  // Conflict check used both before assigning (pop-up) and to mark
+  // non-eligible referees inside the picker dropdown.
+  function refConflictFor(game, person) {
+    if (!selectedComp?.is_national_team) return null
+    return findRefereeGameConflict(person, game, games)
+  }
+
+  async function handleAssign(gameId, person, role) {
+    // Referee neutrality: hard block with pop-up before touching the API
+    if (REF_SLOT_SET.has(role)) {
+      const game = games.find(g => g.id === gameId)
+      const conflict = refConflictFor(game, person)
+      if (conflict) {
+        setRefConflict({ ...conflict, person, game })
+        return
+      }
+    }
     try {
-      await setGameAssignment(gameId, personId, role)
+      await setGameAssignment(gameId, person.id, role)
       await reloadAssignments()
     } catch (err) {
-      alert(err.response?.data?.detail || 'Error')
+      const detail = err.response?.data?.detail
+      // Backend enforces the same rule — surface its 409 with the same pop-up
+      if (detail && detail.code === 'referee_neutrality') {
+        setRefConflict({
+          reason: detail.reason,
+          countryCode: detail.country_code,
+          group: detail.group,
+          person,
+          game: games.find(g => g.id === gameId),
+        })
+        return
+      }
+      alert(typeof detail === 'string' ? detail : 'Error')
     }
   }
 
@@ -627,9 +665,11 @@ export default function Games() {
                     <GameCard key={game.id} game={game} canEdit={canEdit}
                       onEdit={() => openEdit(game)} onDelete={() => handleDelete(game)} t={t}
                       supportsAssignments={supportsAssignments}
+                      supportsRefSlots={supportsRefSlots}
                       templateKey={(selectedComp?.template_key || '').toUpperCase()}
                       assignment={assignmentsByGame[game.id] || {}}
-                      onAssign={handleAssign} onUnassign={handleUnassign} />
+                      onAssign={handleAssign} onUnassign={handleUnassign}
+                      refConflictFor={refConflictFor} />
                   ))}
                 </div>
               </div>
@@ -761,6 +801,46 @@ export default function Games() {
         </div>
       )}
 
+      {/* Referee neutrality conflict — blocking pop-up */}
+      {refConflict && (
+        <div className="fiba-modal-overlay" onClick={() => setRefConflict(null)}>
+          <div className="fiba-modal max-w-md p-6" onClick={e => e.stopPropagation()}>
+            <div className="flex items-start gap-3">
+              <div className="flex-shrink-0 w-10 h-10 rounded-full bg-red-500/15 flex items-center justify-center">
+                <svg className="w-5 h-5 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                    d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
+                </svg>
+              </div>
+              <div className="min-w-0">
+                <h3 className="text-base font-bold text-ink-900 dark:text-white">
+                  {t('games.refConflictTitle')}
+                </h3>
+                <p className="text-sm text-ink-700 dark:text-gray-300 mt-2">
+                  {refConflict.reason === 'own_country'
+                    ? t('games.refConflictOwnCountry', {
+                        name: refConflict.person?.name || '',
+                        country: countryName(refConflict.countryCode),
+                        teams: `${refConflict.game?.team_a || ''} vs ${refConflict.game?.team_b || ''}`,
+                      })
+                    : t('games.refConflictOwnGroup', {
+                        name: refConflict.person?.name || '',
+                        country: countryName(refConflict.countryCode),
+                        group: refConflict.group || refConflict.game?.group_label || '',
+                      })}
+                </p>
+                <p className="text-xs text-fiba-muted mt-2">{t('games.refConflictRule')}</p>
+              </div>
+            </div>
+            <div className="flex justify-end mt-5">
+              <button onClick={() => setRefConflict(null)} className="btn-fiba">
+                {t('games.refConflictOk')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Import modal */}
       {showImport && (
         <div className="fiba-modal-overlay">
@@ -874,8 +954,8 @@ function DateMultiFilter({ dates, selected, onChange, formatDate, t }) {
 
 function GameCard({
   game, canEdit, onEdit, onDelete, t,
-  supportsAssignments = false, templateKey = '', assignment = {},
-  onAssign, onUnassign,
+  supportsAssignments = false, supportsRefSlots = false, templateKey = '', assignment = {},
+  onAssign, onUnassign, refConflictFor,
 }) {
   const displayCountry = game.country || (templateKey === 'WCQ' ? game.team_a : '') || ''
   const isCompleted = game.status === 'completed'
@@ -960,6 +1040,12 @@ function GameCard({
           <AssignmentSlot role="VGO" game={game} t={t} canEdit={canEdit}
             assignment={assignment.VGO}
             onAssign={onAssign} onUnassign={onUnassign} />
+          {supportsRefSlots && REF_SLOTS.map(slot => (
+            <AssignmentSlot key={slot} role={slot} game={game} t={t} canEdit={canEdit}
+              assignment={assignment[slot]}
+              onAssign={onAssign} onUnassign={onUnassign}
+              refConflictFor={refConflictFor} />
+          ))}
         </div>
       )}
     </div>
@@ -967,9 +1053,13 @@ function GameCard({
 }
 
 
-// ── Per-game assignment slot (TD or VGO) ───────────────────────────────────
+// ── Per-game assignment slot (TD / VGO / referee crew) ─────────────────────
 
-function AssignmentSlot({ role, game, assignment, canEdit, onAssign, onUnassign, t }) {
+// Assignment slot → personnel role to list in the picker. The referee crew
+// slots (CC/U1/U2) all draw from REF personnel.
+const SLOT_PERSONNEL_ROLE = { TD: 'TD', VGO: 'VGO', CC: 'REF', U1: 'REF', U2: 'REF' }
+
+function AssignmentSlot({ role, game, assignment, canEdit, onAssign, onUnassign, refConflictFor, t }) {
   const [open, setOpen] = useState(false)
   const [search, setSearch] = useState('')
   const [coords, setCoords] = useState(null)
@@ -977,6 +1067,7 @@ function AssignmentSlot({ role, game, assignment, canEdit, onAssign, onUnassign,
   const [loadingOptions, setLoadingOptions] = useState(false)
   const triggerRef = useRef(null)
   const dropdownRef = useRef(null)
+  const personnelRole = SLOT_PERSONNEL_ROLE[role] || role
 
   // Lazy-fetch personnel filtered by this slot's role the first time the
   // picker opens. Keeps assignment slots self-contained instead of relying on
@@ -985,7 +1076,7 @@ function AssignmentSlot({ role, game, assignment, canEdit, onAssign, onUnassign,
     if (!open || options.length > 0 || loadingOptions) return
     let cancelled = false
     setLoadingOptions(true)
-    getPersonnel({ role }).then(data => {
+    getPersonnel({ role: personnelRole }).then(data => {
       if (!cancelled) setOptions(data || [])
     }).catch(() => {
       if (!cancelled) setOptions([])
@@ -993,7 +1084,7 @@ function AssignmentSlot({ role, game, assignment, canEdit, onAssign, onUnassign,
       if (!cancelled) setLoadingOptions(false)
     })
     return () => { cancelled = true }
-  }, [open, role])
+  }, [open, personnelRole])
 
   // The compact card is narrow and sits inside a grid, so an in-tree dropdown
   // would be cramped or clipped by neighbors. We render into document.body via
@@ -1037,7 +1128,7 @@ function AssignmentSlot({ role, game, assignment, canEdit, onAssign, onUnassign,
   })
 
   const name = assignment?.personnel?.name
-  const roleLabel = role === 'TD' ? t('games.roleTD') : t('games.roleVGO')
+  const roleLabel = t(`games.role${role}`)
 
   return (
     <div className="flex-1 min-w-0" ref={triggerRef}>
@@ -1096,26 +1187,43 @@ function AssignmentSlot({ role, game, assignment, canEdit, onAssign, onUnassign,
               <div className="px-3 py-3 text-xs text-fiba-muted">{t('common.loading')}</div>
             ) : options.length === 0 ? (
               <div className="px-3 py-3 text-xs text-fiba-muted">
-                {t('games.noPersonnelForRole', { role })}
+                {t('games.noPersonnelForRole', { role: personnelRole })}
               </div>
             ) : filtered.length === 0 ? (
               <div className="px-3 py-3 text-xs text-fiba-muted">{t('games.noResults')}</div>
             ) : (
-              filtered.map(p => (
-                <button
-                  key={p.id}
-                  type="button"
-                  onClick={() => {
-                    onAssign(game.id, p.id, role)
-                    setOpen(false)
-                    setSearch('')
-                  }}
-                  className="w-full text-left px-3 py-1.5 text-xs hover:bg-fiba-surface text-ink-900 dark:text-white"
-                >
-                  <div className="font-medium truncate">{p.name}</div>
-                  {p.country && <div className="text-[10px] text-fiba-muted/60">{p.country}</div>}
-                </button>
-              ))
+              filtered.map(p => {
+                const conflict = refConflictFor ? refConflictFor(game, p) : null
+                return (
+                  <button
+                    key={p.id}
+                    type="button"
+                    onClick={() => {
+                      onAssign(game.id, p, role)
+                      setOpen(false)
+                      setSearch('')
+                    }}
+                    className={`w-full text-left px-3 py-1.5 text-xs hover:bg-fiba-surface ${
+                      conflict ? 'opacity-75' : ''
+                    } text-ink-900 dark:text-white`}
+                  >
+                    <div className={`font-medium truncate ${conflict ? 'line-through decoration-red-400/70' : ''}`}>
+                      {p.name}
+                    </div>
+                    {conflict ? (
+                      <div className="text-[10px] text-red-400">
+                        {t('games.refNotEligible', {
+                          detail: conflict.reason === 'own_group'
+                            ? `${t('games.group')} ${conflict.group}`
+                            : `${game.team_a_code || game.team_a} vs ${game.team_b_code || game.team_b}`,
+                        })}
+                      </div>
+                    ) : (
+                      p.country && <div className="text-[10px] text-fiba-muted/60">{p.country}</div>
+                    )}
+                  </button>
+                )
+              })
             )}
           </div>
           <div className="border-t border-fiba-border px-3 py-1 text-[10px] text-fiba-muted/70 flex justify-between">

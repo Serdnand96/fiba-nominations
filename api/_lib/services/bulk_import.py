@@ -3,6 +3,7 @@ import csv
 import re
 from openpyxl import load_workbook
 from api._lib.database import supabase
+from api._lib.countries import name_to_code
 
 COLUMN_MAP = {
     "nombre": "name",
@@ -116,19 +117,23 @@ def process_bulk_import(file_bytes: bytes, filename: str) -> dict:
         if not EMAIL_REGEX.match(email):
             errors.append({"row": row_num, "email": email, "reason": "Invalid email format"})
             continue
-        if role not in ("VGO", "TD"):
-            errors.append({"row": row_num, "email": email, "reason": f"Role must be VGO or TD, got '{role}'"})
+        if role not in ("VGO", "TD", "REF", "REF_INSTRUCTOR"):
+            errors.append({"row": row_num, "email": email, "reason": f"Role must be VGO, TD, REF or REF_INSTRUCTOR, got '{role}'"})
             continue
         if email.lower() in existing_emails:
             skipped += 1
             continue
 
         existing_emails.add(email.lower())
+        country = _clean(row.get("country"))
         record = {
             "name": name,
             "email": email,
             "role": role,
-            "country": _clean(row.get("country")),
+            "country": country,
+            # FIBA code derived from the free-text country (referee neutrality
+            # checks match on this). Unrecognized names stay NULL.
+            "country_code": name_to_code(country),
             "phone": _clean(row.get("phone")),
             "passport": _clean(row.get("passport")),
         }

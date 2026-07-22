@@ -19,7 +19,7 @@ export default function Competitions() {
   const [nominations, setNominations] = useState([])
   const [showModal, setShowModal] = useState(false)
   const [editing, setEditing] = useState(null)
-  const [form, setForm] = useState({ name: '', template_key: 'WCQ', year: new Date().getFullYear(), fiba_games_url: '', fee_type: 'per_game' })
+  const [form, setForm] = useState({ name: '', template_key: 'WCQ', year: new Date().getFullYear(), fiba_games_url: '', fee_type: 'per_game', is_national_team: true })
 
   // Search & filter
   const [search, setSearch] = useState('')
@@ -67,13 +67,13 @@ export default function Competitions() {
 
   function openCreate() {
     setEditing(null)
-    setForm({ name: '', template_key: 'WCQ', year: new Date().getFullYear(), fiba_games_url: '', fee_type: 'per_game' })
+    setForm({ name: '', template_key: 'WCQ', year: new Date().getFullYear(), fiba_games_url: '', fee_type: 'per_game', is_national_team: true })
     setShowModal(true)
   }
 
   function openEdit(comp) {
     setEditing(comp)
-    setForm({ name: comp.name, template_key: comp.template_key, year: comp.year || new Date().getFullYear(), fiba_games_url: comp.fiba_games_url || '', fee_type: comp.fee_type || 'per_game' })
+    setForm({ name: comp.name, template_key: comp.template_key, year: comp.year || new Date().getFullYear(), fiba_games_url: comp.fiba_games_url || '', fee_type: comp.fee_type || 'per_game', is_national_team: !!comp.is_national_team })
     setShowModal(true)
   }
 
@@ -209,7 +209,9 @@ export default function Competitions() {
             <h3 className="text-lg font-bold text-ink-900 dark:text-white mb-4">{editing ? t('competitions.editCompetition') : t('competitions.newCompetitionTitle')}</h3>
             <form onSubmit={handleSubmit} className="space-y-3">
               <input required placeholder={t('competitions.name')} value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} className="fiba-input" />
-              <select value={form.template_key} onChange={e => setForm(f => ({ ...f, template_key: e.target.value }))} className="fiba-select">
+              <select value={form.template_key}
+                onChange={e => setForm(f => ({ ...f, template_key: e.target.value, is_national_team: e.target.value === 'WCQ' }))}
+                className="fiba-select">
                 <option value="WCQ">WCQ</option>
                 <option value="BCLA_F4">BCLA Final 4</option>
                 <option value="BCLA_RS">BCLA Regular Season</option>
@@ -233,6 +235,15 @@ export default function Competitions() {
                   <option value="tournament">Tournament Fee</option>
                 </select>
                 <p className="text-xs text-fiba-muted/60 mt-1">Determina el texto de honorarios en la nominación.</p>
+              </div>
+              <div>
+                <label className="flex items-center gap-2 cursor-pointer select-none">
+                  <input type="checkbox" checked={!!form.is_national_team}
+                    onChange={e => setForm(f => ({ ...f, is_national_team: e.target.checked }))}
+                    className="rounded accent-fiba-accent" />
+                  <span className="text-sm text-ink-700 dark:text-gray-300">{t('competitions.nationalTeam')}</span>
+                </label>
+                <p className="text-xs text-fiba-muted/60 mt-1">{t('competitions.nationalTeamHint')}</p>
               </div>
               <div className="flex justify-end gap-3 pt-2">
                 <button type="button" onClick={() => setShowModal(false)} className="px-4 py-2 text-sm text-fiba-muted">{t('competitions.cancel')}</button>

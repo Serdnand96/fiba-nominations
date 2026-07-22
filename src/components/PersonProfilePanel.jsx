@@ -6,6 +6,7 @@ import {
 } from '../api/client'
 import { useLanguage } from '../i18n/LanguageContext'
 import { ROLES, roleLabel, roleBadgeClass } from '../lib/roles'
+import { COUNTRIES, countryName, countryNameToCode } from '../lib/countries'
 
 const STATUS_STYLES = {
   available: 'bg-emerald-500/20 text-emerald-400',
@@ -44,7 +45,7 @@ const VISA_STYLES = {
  * so it can be dropped into any page (Personnel, Nominations, …).
  */
 export default function PersonProfilePanel({ person: initialPerson, onClose, onUpdated, canEdit, canEditAvail }) {
-  const { t } = useLanguage()
+  const { t, lang } = useLanguage()
   const [person, setPerson] = useState(initialPerson)
   const [workload, setWorkload] = useState(null)
   const [availRecords, setAvailRecords] = useState([])
@@ -55,7 +56,7 @@ export default function PersonProfilePanel({ person: initialPerson, onClose, onU
 
   // Edit-info modal
   const [showEdit, setShowEdit] = useState(false)
-  const [form, setForm] = useState({ name: '', email: '', country: '', phone: '', passport: '', role: 'VGO', languagesText: '', visas: [] })
+  const [form, setForm] = useState({ name: '', email: '', country: '', country_code: '', phone: '', passport: '', role: 'VGO', languagesText: '', visas: [] })
 
   // Availability modal
   const [showAvailModal, setShowAvailModal] = useState(false)
@@ -109,6 +110,7 @@ export default function PersonProfilePanel({ person: initialPerson, onClose, onU
   function openEdit() {
     setForm({
       name: person.name, email: person.email, country: person.country || '',
+      country_code: person.country_code || countryNameToCode(person.country) || '',
       phone: person.phone || '', passport: person.passport || '', role: person.role,
       languagesText: (person.languages || []).join(', '),
       visas: (person.visas || []).map(v => ({ country: v.country || '', expires: v.expires || '' })),
@@ -133,7 +135,7 @@ export default function PersonProfilePanel({ person: initialPerson, onClose, onU
   async function handleEditSubmit(e) {
     e.preventDefault()
     const payload = {
-      name: form.name, email: form.email, country: form.country,
+      name: form.name, email: form.email, country: form.country, country_code: form.country_code,
       phone: form.phone, passport: form.passport, role: form.role,
       languages: (form.languagesText || '').split(',').map(s => s.trim()).filter(Boolean),
       visas: form.visas
@@ -410,7 +412,17 @@ export default function PersonProfilePanel({ person: initialPerson, onClose, onU
             <form onSubmit={handleEditSubmit} className="space-y-3">
               <input required placeholder={t('personnel.name')} value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} className="fiba-input" />
               <input required type="email" placeholder={t('personnel.email')} value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} className="fiba-input" />
-              <input placeholder={t('personnel.country')} value={form.country} onChange={e => setForm(f => ({ ...f, country: e.target.value }))} className="fiba-input" />
+              <select value={form.country_code}
+                onChange={e => {
+                  const code = e.target.value
+                  setForm(f => ({ ...f, country_code: code, country: code ? countryName(code, lang) : '' }))
+                }}
+                className="fiba-select">
+                <option value="">{t('personnel.selectCountry')}</option>
+                {COUNTRIES.map(c => (
+                  <option key={c.code} value={c.code}>{lang === 'en' ? c.en : c.es} ({c.code})</option>
+                ))}
+              </select>
               <input placeholder={t('personnel.phone')} value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))} className="fiba-input" />
               <input placeholder={t('personnel.passport')} value={form.passport} onChange={e => setForm(f => ({ ...f, passport: e.target.value }))} className="fiba-input" />
               <select value={form.role} onChange={e => setForm(f => ({ ...f, role: e.target.value }))} className="fiba-select">

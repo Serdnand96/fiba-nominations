@@ -1,12 +1,14 @@
 import { useState, useEffect, useMemo } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import {
-  getNominations, getPersonnel, getCompetitions,
+  getNominations, getPersonnel, getCompetitions, getGames,
   createNomination, createBulkNominations, generateNomination,
   bulkGenerateNominations, deleteNomination, bulkDeleteNominations,
   downloadNominationBlob, updateNominationConfirmation,
 } from '../api/client'
 import { roleLabel, roleBadgeClass } from '../lib/roles'
+import { countryName } from '../lib/countries'
+import { refereeCompetitionConflicts } from '../lib/refereeNeutrality'
 
 const CONFIRMATION_BADGES = {
   pending: 'bg-gray-500/20 text-ink-700 dark:text-gray-300 border border-gray-500/40',
@@ -87,6 +89,34 @@ export default function Nominations() {
   const templateKey = selectedComp?.template_key || ''
   const showLocationFields = ['BCLA', 'BCLA_F4', 'BCLA_RS', 'LSB'].includes(templateKey)
   const showDeadline = ['WCQ', 'GENERIC'].includes(templateKey)
+
+  // Games of the selected national-team competition, for the informative
+  // referee-neutrality notice (competition-level nominations don't block).
+  const [compGames, setCompGames] = useState([])
+  useEffect(() => {
+    if (!form.competition_id || !selectedComp?.is_national_team) {
+      setCompGames([])
+      return
+    }
+    let cancelled = false
+    getGames(form.competition_id)
+      .then(g => { if (!cancelled) setCompGames(g || []) })
+      .catch(() => { if (!cancelled) setCompGames([]) })
+    return () => { cancelled = true }
+  }, [form.competition_id, selectedComp?.is_national_team])
+
+  // One entry per selected referee whose country plays in this tournament.
+  const refereeNotices = useMemo(() => {
+    if (!selectedComp?.is_national_team || compGames.length === 0) return []
+    const notices = []
+    for (const pid of form.personnel_ids) {
+      const person = personnel.find(p => p.id === pid)
+      if (!person || (person.role !== 'REF' && person.role !== 'REF_INSTRUCTOR')) continue
+      const conflict = refereeCompetitionConflicts(person, compGames)
+      if (conflict) notices.push({ person, ...conflict })
+    }
+    return notices
+  }, [form.personnel_ids, personnel, compGames, selectedComp?.is_national_team])
 
   const total = useMemo(() => {
     const w = parseFloat(form.window_fee) || 0
@@ -651,6 +681,28 @@ export default function Nominations() {
                   ))}
                 </select>
               </div>
+
+              {/* Referee neutrality — informative only at competition level */}
+              {refereeNotices.length > 0 && (
+                <div className="px-3 py-2.5 bg-amber-500/10 border border-amber-500/30 rounded-lg space-y-1">
+                  <p className="text-xs font-bold text-amber-500">{t('nominations.refWarningTitle')}</p>
+                  {refereeNotices.map(n => (
+                    <p key={n.person.id} className="text-xs text-amber-500/90">
+                      {n.groups.length > 0
+                        ? t('nominations.refWarningGroups', {
+                            name: n.person.name,
+                            country: countryName(n.countryCode),
+                            groups: n.groups.join(', '),
+                          })
+                        : t('nominations.refWarningPlays', {
+                            name: n.person.name,
+                            country: countryName(n.countryCode),
+                          })}
+                    </p>
+                  ))}
+                  <p className="text-[11px] text-amber-500/70">{t('nominations.refWarningHint')}</p>
+                </div>
+              )}
 
               {/* Letter date */}
               <div>

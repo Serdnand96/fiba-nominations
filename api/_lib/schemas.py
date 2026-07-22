@@ -20,6 +20,7 @@ class PersonnelCreate(BaseModel):
     name: str
     email: str
     country: Optional[str] = None
+    country_code: Optional[str] = None  # FIBA code (COL, ARG…) — see api/_lib/countries.py
     phone: Optional[str] = None
     passport: Optional[str] = None
     role: str
@@ -31,6 +32,7 @@ class PersonnelUpdate(BaseModel):
     name: Optional[str] = None
     email: Optional[str] = None
     country: Optional[str] = None
+    country_code: Optional[str] = None
     phone: Optional[str] = None
     passport: Optional[str] = None
     role: Optional[str] = None
@@ -44,6 +46,9 @@ class CompetitionCreate(BaseModel):
     year: Optional[int] = None
     fiba_games_url: Optional[str] = None
     fee_type: Optional[str] = "per_game"  # 'per_game' or 'tournament'
+    # National-team event → referee neutrality restriction applies.
+    # None → derived from template_key (WCQ) at creation.
+    is_national_team: Optional[bool] = None
 
 
 class CompetitionUpdate(BaseModel):
@@ -52,6 +57,7 @@ class CompetitionUpdate(BaseModel):
     year: Optional[int] = None
     fiba_games_url: Optional[str] = None
     fee_type: Optional[str] = None
+    is_national_team: Optional[bool] = None
     # Nomination defaults used by the per-game assignment workflow
     default_letter_date: Optional[str] = None
     default_location: Optional[str] = None

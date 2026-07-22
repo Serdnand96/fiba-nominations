@@ -6,6 +6,7 @@ from api._lib.database import supabase
 from api._lib.auth import require_view, require_edit
 from api._lib.schemas import PersonnelCreate, PersonnelUpdate
 from api._lib.services.bulk_import import process_bulk_import
+from api._lib.countries import name_to_code
 
 router = APIRouter(prefix="/personnel", tags=["personnel"], dependencies=[Depends(require_view("personnel"))])
 
@@ -15,6 +16,19 @@ _SAFE_SEARCH_RE = re.compile(r"^[\w\s\-\.@áéíóúñüÁÉÍÓÚÑÜ]+$")
 _PHOTO_BUCKET = "inventory"
 # Valid personnel roles (matches the CHECK constraint in migration 011).
 _VALID_ROLES = ("VGO", "TD", "REF", "REF_INSTRUCTOR")
+
+
+def _normalize_country(record: dict) -> None:
+    """Keep country_code consistent: uppercase it, or derive it from the
+    free-text country when the client didn't send a code. Empty string → None
+    (clears the code)."""
+    if "country_code" in record:
+        code = (record.get("country_code") or "").strip().upper()
+        record["country_code"] = code or None
+    elif record.get("country"):
+        derived = name_to_code(record["country"])
+        if derived:
+            record["country_code"] = derived
 
 
 def _upload_photo_to_storage(path: str, content: bytes, content_type: str) -> str:
@@ -55,6 +69,7 @@ def create_personnel(data: PersonnelCreate):
     record["role"] = record["role"].upper()
     if record["role"] not in _VALID_ROLES:
         raise HTTPException(status_code=400, detail=f"Role must be one of {', '.join(_VALID_ROLES)}")
+    _normalize_country(record)
     result = supabase.table("personnel").insert(record).execute()
     return result.data[0]
 
@@ -150,6 +165,7 @@ def update_personnel(person_id: str, data: PersonnelUpdate):
         updates["role"] = updates["role"].upper()
         if updates["role"] not in _VALID_ROLES:
             raise HTTPException(status_code=400, detail=f"Role must be one of {', '.join(_VALID_ROLES)}")
+    _normalize_country(updates)
     result = supabase.table("personnel").update(updates).eq("id", person_id).execute()
     if not result.data:
         raise HTTPException(status_code=404, detail="Person not found")

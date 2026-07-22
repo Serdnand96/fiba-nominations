@@ -15,6 +15,9 @@ def list_competitions():
 @router.post("", dependencies=[Depends(require_edit("competitions"))])
 def create_competition(data: CompetitionCreate):
     record = data.model_dump()
+    # Not sent explicitly → national-team flag follows the template (WCQ).
+    if record.get("is_national_team") is None:
+        record["is_national_team"] = (record.get("template_key") or "").upper() == "WCQ"
     result = supabase.table("competitions").insert(record).execute()
     return result.data[0]
 

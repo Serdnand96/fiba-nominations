@@ -484,12 +484,18 @@ async def import_games_excel(
     return {"imported": created, "errors": errors}
 
 
-# ── Per-game TD/VGO assignments (WCQ / BCLA / LSB) ──────────────────────────
+# ── Per-game TD/VGO/referee assignments (WCQ / BCLA / LSB) ──────────────────
+
+# Referee crew slots for national-team events: Crew Chief + Umpire 1 + Umpire 2.
+REF_SLOTS = ("CC", "U1", "U2")
+# personnel.role expected for each assignment slot.
+_SLOT_EXPECTED_ROLE = {"TD": "TD", "VGO": "VGO", "CC": "REF", "U1": "REF", "U2": "REF"}
+
 
 class AssignmentCreate(BaseModel):
     game_id: str
     personnel_id: str
-    role: str  # 'TD' or 'VGO'
+    role: str  # 'TD' | 'VGO' | 'CC' | 'U1' | 'U2'
 
 
 def _competition_supports_assignments(competition_id: str) -> bool:
@@ -503,6 +509,57 @@ def _competition_supports_assignments(competition_id: str) -> bool:
     if not comp:
         return False
     return (comp[0].get("template_key") or "").upper() in ASSIGNMENT_TEMPLATES
+
+
+def _referee_conflict(game: dict, person: dict) -> dict | None:
+    """Neutrality check for national-team events (see migration 014).
+
+    A referee cannot work a game their own country plays, nor any game of the
+    group their country plays in. Returns a conflict payload, or None when the
+    assignment is allowed. Competitions without is_national_team are exempt,
+    as are people whose country we cannot resolve to a FIBA code.
+    """
+    from api._lib.countries import (
+        person_country_code, game_country_codes, country_display_name,
+    )
+
+    comp = (
+        supabase.table("competitions")
+        .select("is_national_team")
+        .eq("id", game["competition_id"])
+        .execute()
+        .data
+    )
+    if not comp or not comp[0].get("is_national_team"):
+        return None
+
+    person_code = person_country_code(person)
+    if not person_code:
+        return None
+
+    base = {
+        "code": "referee_neutrality",
+        "country_code": person_code,
+        "country": country_display_name(person_code),
+        "person_name": person.get("name") or "",
+    }
+    if person_code in game_country_codes(game):
+        return {**base, "reason": "own_country"}
+
+    group = game.get("group_label")
+    if group:
+        group_games = (
+            supabase.table("game_schedule")
+            .select("team_a, team_a_code, team_b, team_b_code")
+            .eq("competition_id", game["competition_id"])
+            .eq("group_label", group)
+            .execute()
+            .data
+        )
+        for g in group_games:
+            if person_code in game_country_codes(g):
+                return {**base, "reason": "own_group", "group": group}
+    return None
 
 
 @router.get("/assignments/by-competition")
@@ -530,22 +587,41 @@ def list_assignments_by_competition(competition_id: str = Query(...)):
 @router.post("/assignments", dependencies=[Depends(require_edit("games"))])
 def create_assignment(data: AssignmentCreate):
     role = (data.role or "").upper()
-    if role not in ("TD", "VGO"):
-        raise HTTPException(400, "Role must be TD or VGO")
+    if role not in _SLOT_EXPECTED_ROLE:
+        raise HTTPException(400, f"Role must be one of {', '.join(_SLOT_EXPECTED_ROLE)}")
 
     # Verify the game exists and its competition supports assignments
-    game = supabase.table("game_schedule").select("id, competition_id").eq("id", data.game_id).execute().data
+    game = (
+        supabase.table("game_schedule")
+        .select("id, competition_id, team_a, team_a_code, team_b, team_b_code, group_label")
+        .eq("id", data.game_id)
+        .execute()
+        .data
+    )
     if not game:
         raise HTTPException(404, "Game not found")
     if not _competition_supports_assignments(game[0]["competition_id"]):
         raise HTTPException(400, "This competition does not support per-game assignments")
 
-    # Verify personnel role matches
-    person = supabase.table("personnel").select("id, role").eq("id", data.personnel_id).execute().data
+    # Verify personnel role matches the slot (CC/U1/U2 → REF)
+    person = (
+        supabase.table("personnel")
+        .select("id, name, role, country, country_code")
+        .eq("id", data.personnel_id)
+        .execute()
+        .data
+    )
     if not person:
         raise HTTPException(404, "Personnel not found")
-    if (person[0].get("role") or "").upper() != role:
-        raise HTTPException(400, f"Personnel role does not match (expected {role})")
+    expected_role = _SLOT_EXPECTED_ROLE[role]
+    if (person[0].get("role") or "").upper() != expected_role:
+        raise HTTPException(400, f"Personnel role does not match (expected {expected_role})")
+
+    # Referee neutrality — hard block, mirrored client-side as a pop-up.
+    if role in REF_SLOTS:
+        conflict = _referee_conflict(game[0], person[0])
+        if conflict:
+            raise HTTPException(status_code=409, detail=conflict)
 
     # Upsert: one slot per (game_id, role)
     existing = (
@@ -598,13 +674,17 @@ def _build_default_overrides(competition: dict, role: str) -> dict:
         v = competition.get(src)
         if v is not None and v != "":
             overrides[dst] = v
-    # Role-aware fees
+    # Role-aware fees. Referee slots (CC/U1/U2) have no fee defaults yet —
+    # their nominations are created with fees left for manual entry.
     if role == "TD":
         fee = competition.get("td_window_fee")
         inc = competition.get("td_incidentals")
-    else:
+    elif role == "VGO":
         fee = competition.get("vgo_window_fee")
         inc = competition.get("vgo_incidentals")
+    else:
+        fee = None
+        inc = None
     if fee is not None:
         overrides["window_fee"] = fee
     if inc is not None:
