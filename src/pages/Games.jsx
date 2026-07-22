@@ -622,7 +622,7 @@ export default function Games() {
             {Object.entries(dateGroups).sort(([a], [b]) => a.localeCompare(b)).map(([date, dateGames]) => (
               <div key={date} className="mb-6">
                 <div className="text-xs font-semibold text-fiba-muted/60 uppercase mb-2 px-1">{formatDate(date)}</div>
-                <div className="space-y-2">
+                <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
                   {dateGames.sort((a, b) => (a.time || '').localeCompare(b.time || '')).map(game => (
                     <GameCard key={game.id} game={game} canEdit={canEdit}
                       onEdit={() => openEdit(game)} onDelete={() => handleDelete(game)} t={t}
@@ -818,109 +818,78 @@ function GameCard({
   const isLive = game.status === 'live'
   const scoreA = game.score_a ?? '-'
   const scoreB = game.score_b ?? '-'
+  const locationLine = [game.venue, [game.city, displayCountry].filter(Boolean).join(', ')]
+    .filter(Boolean).join(' · ')
 
   return (
-    <div className={`bg-fiba-card rounded-lg border border-fiba-border overflow-hidden hover:shadow-sm transition-shadow ${
+    <div className={`bg-fiba-card rounded-lg border border-fiba-border p-3 flex flex-col hover:shadow-sm transition-shadow ${
       isLive ? 'border-red-500/50 ring-1 ring-red-500/20' : ''
     }`}>
-      <div className="flex items-center">
-        {/* Group label */}
-        {game.group_label && (
-          <div className="w-10 bg-fiba-surface flex items-center justify-center border-r border-fiba-border self-stretch">
-            <span className="text-xs font-bold text-fiba-muted/60 rotate-0">{game.group_label}</span>
-          </div>
-        )}
-
-        {/* Game content */}
-        <div className="flex-1 px-4 py-3">
-          <div className="flex items-center gap-4">
-            {/* Team A */}
-            <div className="flex-1 text-right">
-              <div className={`text-sm font-semibold ${isCompleted && game.score_a > game.score_b ? 'text-ink-900 dark:text-white' : 'text-ink-700 dark:text-gray-300'}`}>
-                {game.team_a}
-              </div>
-              {game.team_a_code && (
-                <div className="text-xs text-fiba-muted/60 font-medium">{game.team_a_code}</div>
-              )}
-            </div>
-
-            {/* Score / Time */}
-            <div className="flex-shrink-0 w-28 text-center">
-              {isCompleted || isLive ? (
-                <div className="flex items-center justify-center gap-2">
-                  <span className={`text-xl font-bold min-w-[2rem] text-right ${
-                    isCompleted && game.score_a > game.score_b ? 'text-ink-900 dark:text-white' : 'text-fiba-muted'
-                  }`}>{scoreA}</span>
-                  <span className="text-fiba-border text-sm">-</span>
-                  <span className={`text-xl font-bold min-w-[2rem] text-left ${
-                    isCompleted && game.score_b > game.score_a ? 'text-ink-900 dark:text-white' : 'text-fiba-muted'
-                  }`}>{scoreB}</span>
-                </div>
-              ) : (
-                <div className="text-sm font-semibold text-fiba-accent">
-                  {game.time || '--:--'}
-                </div>
-              )}
-              {isLive && (
-                <div className="text-[10px] font-bold text-red-500 uppercase tracking-wider mt-0.5">LIVE</div>
-              )}
-              {isCompleted && (
-                <div className="text-[10px] text-fiba-muted/60 uppercase tracking-wider mt-0.5">Final</div>
-              )}
-            </div>
-
-            {/* Team B */}
-            <div className="flex-1">
-              <div className={`text-sm font-semibold ${isCompleted && game.score_b > game.score_a ? 'text-ink-900 dark:text-white' : 'text-ink-700 dark:text-gray-300'}`}>
-                {game.team_b}
-              </div>
-              {game.team_b_code && (
-                <div className="text-xs text-fiba-muted/60 font-medium">{game.team_b_code}</div>
-              )}
-            </div>
-          </div>
-
-          {/* Venue + meta row */}
-          {(game.venue || game.city || displayCountry || game.game_number) && (
-            <div className="flex items-center justify-center gap-3 mt-1.5">
-              {game.venue && (
-                <span className="text-[11px] text-fiba-muted/60">{game.venue}</span>
-              )}
-              {(game.city || displayCountry) && (
-                <span className="text-[11px] text-fiba-muted/60">
-                  {[game.city, displayCountry].filter(Boolean).join(', ')}
-                </span>
-              )}
-              {game.game_number && (
-                <span className="text-[11px] text-fiba-border">{game.game_number}</span>
-              )}
-            </div>
+      {/* Header: group + status + actions */}
+      <div className="flex items-center justify-between gap-2 mb-1.5">
+        <span className="text-[10px] font-bold uppercase tracking-wider text-fiba-muted/60">
+          {game.group_label ? `${t('games.group')} ${game.group_label}` : (game.phase || '')}
+        </span>
+        <div className="flex items-center gap-1">
+          {isLive && (
+            <span className="text-[10px] font-bold text-red-500 uppercase tracking-wider">LIVE</span>
+          )}
+          {isCompleted && !isLive && (
+            <span className="text-[10px] text-fiba-muted/60 uppercase tracking-wider">Final</span>
+          )}
+          {canEdit && (
+            <>
+              <button onClick={onEdit} className="p-1 text-fiba-muted hover:text-fiba-accent rounded transition-colors"
+                title={t('games.editGame')}>
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                    d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                </svg>
+              </button>
+              <button onClick={onDelete} className="p-1 text-fiba-muted hover:text-red-400 rounded transition-colors"
+                title={t('games.delete')}>
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                    d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                </svg>
+              </button>
+            </>
           )}
         </div>
-
-        {/* Actions */}
-        {canEdit && (
-          <div className="flex items-center gap-1 pr-3">
-            <button onClick={onEdit} className="p-1.5 text-fiba-muted hover:text-fiba-accent rounded transition-colors"
-              title={t('games.editGame')}>
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                  d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-              </svg>
-            </button>
-            <button onClick={onDelete} className="p-1.5 text-fiba-muted hover:text-red-400 rounded transition-colors"
-              title={t('games.delete')}>
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                  d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-              </svg>
-            </button>
-          </div>
-        )}
       </div>
 
+      {/* Teams + score/time */}
+      <div className="flex items-baseline gap-1.5 min-w-0" title={`${game.team_a} vs ${game.team_b}`}>
+        <span className={`text-sm font-bold truncate ${isCompleted && game.score_a > game.score_b ? 'text-ink-900 dark:text-white' : 'text-ink-700 dark:text-gray-300'}`}>
+          {game.team_a_code || game.team_a}
+        </span>
+        <span className="text-xs text-fiba-muted/60 flex-shrink-0">vs</span>
+        <span className={`text-sm font-bold truncate ${isCompleted && game.score_b > game.score_a ? 'text-ink-900 dark:text-white' : 'text-ink-700 dark:text-gray-300'}`}>
+          {game.team_b_code || game.team_b}
+        </span>
+        <span className="ml-auto flex-shrink-0 text-sm font-bold">
+          {isCompleted || isLive ? (
+            <span className="text-ink-900 dark:text-white">{scoreA}<span className="text-fiba-border font-normal mx-1">-</span>{scoreB}</span>
+          ) : (
+            <span className="text-fiba-accent">{game.time || '--:--'}</span>
+          )}
+        </span>
+      </div>
+
+      {/* Location line */}
+      {(locationLine || game.game_number) && (
+        <div className="flex items-center gap-2 mt-0.5 min-w-0">
+          {locationLine && (
+            <span className="text-[11px] text-fiba-muted/60 truncate" title={locationLine}>{locationLine}</span>
+          )}
+          {game.game_number && (
+            <span className="text-[11px] text-fiba-border flex-shrink-0 ml-auto">{game.game_number}</span>
+          )}
+        </div>
+      )}
+
       {supportsAssignments && (
-        <div className="border-t border-fiba-border bg-fiba-surface/40 px-4 py-2 flex items-center gap-3">
+        <div className="border-t border-fiba-border mt-2 pt-2 flex flex-col gap-1.5">
           <AssignmentSlot role="TD" game={game} t={t} canEdit={canEdit}
             assignment={assignment.TD}
             onAssign={onAssign} onUnassign={onUnassign} />
@@ -962,9 +931,9 @@ function AssignmentSlot({ role, game, assignment, canEdit, onAssign, onUnassign,
     return () => { cancelled = true }
   }, [open, role])
 
-  // The GameCard wrapper uses overflow-hidden for its rounded corners, which
-  // would clip an in-tree dropdown. We render into document.body via a portal
-  // with fixed positioning so the picker is always visible.
+  // The compact card is narrow and sits inside a grid, so an in-tree dropdown
+  // would be cramped or clipped by neighbors. We render into document.body via
+  // a portal with fixed positioning so the picker is always visible.
   useLayoutEffect(() => {
     if (!open || !triggerRef.current) return
     function updatePosition() {
