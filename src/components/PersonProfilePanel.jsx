@@ -455,8 +455,8 @@ export default function PersonProfilePanel({ person: initialPerson, onClose, onU
 
       {/* Availability Modal */}
       {showAvailModal && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[60]">
-          <div className="fiba-modal max-w-md p-6">
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[60] p-4">
+          <div className="fiba-modal max-w-md p-6 max-h-[85vh] overflow-y-auto">
             <h3 className="text-lg font-bold text-ink-900 dark:text-white mb-4">
               {editingAvail ? t('availability.editAvailability') : t('availability.newAvailability')}
             </h3>

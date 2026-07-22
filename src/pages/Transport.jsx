@@ -322,8 +322,8 @@ export default function Transport() {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center gap-4">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-4">
+        <div className="flex flex-wrap items-center gap-3 sm:gap-4">
           <h2 className="text-2xl font-bold text-ink-900 dark:text-white">{lang === 'es' ? 'Transporte' : 'Transport'}</h2>
           <CompetitionSearch competitions={competitions} value={competitionId} onChange={setCompetitionId} placeholder={lang === 'es' ? 'Buscar competencia...' : 'Search competition...'} />
         </div>
@@ -355,7 +355,7 @@ export default function Transport() {
           {/* SCHEDULE TAB */}
           {tab === 'schedule' && (
             <div>
-              <div className="flex items-center gap-3 mb-6">
+              <div className="flex flex-wrap items-center gap-3 mb-6">
                 <button onClick={() => changeDate(-1)} disabled={minDate && date <= minDate}
                   className="p-1 rounded hover:bg-fiba-surface disabled:opacity-30 disabled:cursor-not-allowed">
                   <svg className="w-5 h-5 text-fiba-muted" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
@@ -449,6 +449,7 @@ export default function Transport() {
                         </div>
                       )}
 
+                      <div className="overflow-x-auto">
                       <table className="fiba-table">
                         <thead>
                           <tr>
@@ -492,6 +493,7 @@ export default function Transport() {
                           ))}
                         </tbody>
                       </table>
+                      </div>
                     </div>
                   )
                 })}
@@ -513,7 +515,7 @@ export default function Transport() {
                   <h3 className="text-lg font-semibold text-ink-900 dark:text-white">{lang === 'es' ? 'Vehículos' : 'Vehicles'}</h3>
                   {canEdit && <button onClick={openCreateVehicle} className="btn-fiba text-xs px-3 py-1.5">+ {lang === 'es' ? 'Agregar' : 'Add'}</button>}
                 </div>
-                <div className="rounded-xl border border-fiba-border overflow-hidden">
+                <div className="rounded-xl border border-fiba-border overflow-x-auto">
                   <table className="fiba-table">
                     <thead><tr><th>{lang === 'es' ? 'Nombre' : 'Name'}</th><th>{lang === 'es' ? 'Tipo' : 'Type'}</th>{canEdit && <th className="w-20"></th>}</tr></thead>
                     <tbody>
@@ -534,7 +536,7 @@ export default function Transport() {
                   <h3 className="text-lg font-semibold text-ink-900 dark:text-white">{lang === 'es' ? 'Choferes' : 'Drivers'}</h3>
                   {canEdit && <button onClick={openCreateDriver} className="btn-fiba text-xs px-3 py-1.5">+ {lang === 'es' ? 'Agregar' : 'Add'}</button>}
                 </div>
-                <div className="rounded-xl border border-fiba-border overflow-hidden">
+                <div className="rounded-xl border border-fiba-border overflow-x-auto">
                   <table className="fiba-table">
                     <thead><tr><th>{lang === 'es' ? 'Nombre' : 'Name'}</th><th>{lang === 'es' ? 'Teléfono' : 'Phone'}</th>{canEdit && <th className="w-20"></th>}</tr></thead>
                     <tbody>
@@ -589,7 +591,7 @@ export default function Transport() {
                   <h3 className="text-lg font-semibold text-ink-900 dark:text-white">Venues</h3>
                   {canEdit && <button onClick={() => setShowVenueModal(true)} className="btn-fiba text-xs px-3 py-1.5">+ {lang === 'es' ? 'Agregar' : 'Add'}</button>}
                 </div>
-                <div className="rounded-xl border border-fiba-border overflow-hidden">
+                <div className="rounded-xl border border-fiba-border overflow-x-auto">
                   <table className="fiba-table">
                     <thead><tr><th>{lang === 'es' ? 'Nombre' : 'Name'}</th><th>{lang === 'es' ? 'Tipo' : 'Type'}</th>{canEdit && <th className="w-12"></th>}</tr></thead>
                     <tbody>

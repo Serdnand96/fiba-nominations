@@ -350,7 +350,7 @@ export default function Availability() {
       {/* Quick-set Modal */}
       {modal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-navy-950/60 backdrop-blur-sm px-4">
-          <div className="w-full max-w-sm rounded-xl bg-white dark:bg-navy-900 border border-ink-200 dark:border-navy-700 shadow-pop p-6">
+          <div className="w-full max-w-sm max-h-[85vh] overflow-y-auto rounded-xl bg-white dark:bg-navy-900 border border-ink-200 dark:border-navy-700 shadow-pop p-6">
             <h3 className="text-[15px] font-semibold text-navy-900 dark:text-white mb-1">
               {modal.existing ? t('availability.editAvailability') : t('availability.newAvailability')}
             </h3>

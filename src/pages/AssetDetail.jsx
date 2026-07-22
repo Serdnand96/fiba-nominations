@@ -131,9 +131,9 @@ export default function AssetDetail() {
         )}
       </div>
 
-      <div className="grid grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         {/* Photo + QR */}
-        <div className="space-y-4">
+        <div className="grid grid-cols-2 md:grid-cols-1 gap-4">
           <div className="fiba-card p-3">
             <p className="text-xs text-fiba-muted mb-2">{t('assets.photo')}</p>
             {asset.photo_url ? (
@@ -170,10 +170,10 @@ export default function AssetDetail() {
         </div>
 
         {/* Info */}
-        <div className="col-span-2 space-y-4">
+        <div className="md:col-span-2 space-y-4">
           <div className="fiba-card p-4">
             <h3 className="text-sm font-bold text-ink-900 dark:text-white mb-3">{t('assets.details')}</h3>
-            <dl className="grid grid-cols-2 gap-x-6 gap-y-3 text-sm">
+            <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3 text-sm">
               <Row k={t('assets.serial')} v={asset.serial_number} />
               <Row k={t('assets.category')} v={asset.category} />
               <Row k={t('assets.brand')} v={asset.brand} />
@@ -188,7 +188,7 @@ export default function AssetDetail() {
           {asset.active_loan && (
             <div className="fiba-card p-4 border-blue-500/40">
               <h3 className="text-sm font-bold text-blue-400 mb-3">{t('loans.activeLoan')}</h3>
-              <dl className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
+              <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2 text-sm">
                 <Row k={t('loans.assignedTo')} v={asset.active_loan.assigned_to} />
                 <Row k={t('loans.expectedReturn')} v={asset.active_loan.expected_return} />
                 <Row k={t('loans.loanDate')} v={fmtDate(asset.active_loan.loan_date)} />
@@ -207,6 +207,7 @@ export default function AssetDetail() {
           {asset.loan_history?.length > 0 && (
             <div className="fiba-card p-4">
               <h3 className="text-sm font-bold text-ink-900 dark:text-white mb-3">{t('loans.history')}</h3>
+              <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead className="text-xs text-fiba-muted">
                   <tr>
@@ -231,6 +232,7 @@ export default function AssetDetail() {
                   ))}
                 </tbody>
               </table>
+              </div>
             </div>
           )}
         </div>

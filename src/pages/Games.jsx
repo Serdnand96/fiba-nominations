@@ -397,9 +397,9 @@ export default function Games() {
   return (
     <div>
       {/* Header */}
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-6">
         <h2 className="text-2xl font-bold text-ink-900 dark:text-white">{t('games.title')}</h2>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           {selectedCompId && (
             <>
               {supportsAssignments && canEdit && (
@@ -477,25 +477,25 @@ export default function Games() {
 
       {/* Stats row */}
       {games.length > 0 && (
-        <div className="flex gap-6 mb-6">
-          <div className="fiba-stat flex-1">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 lg:gap-6 mb-6">
+          <div className="fiba-stat">
             <div className="text-2xl font-bold text-ink-900 dark:text-white">{games.length}</div>
             <div className="text-xs text-fiba-muted">{t('games.totalGames')}</div>
           </div>
-          <div className="fiba-stat flex-1">
+          <div className="fiba-stat">
             <div className="text-2xl font-bold text-ink-900 dark:text-white">{teams.length}</div>
             <div className="text-xs text-fiba-muted">{t('games.teams')}</div>
           </div>
-          <div className="fiba-stat flex-1">
+          <div className="fiba-stat">
             <div className="text-2xl font-bold text-ink-900 dark:text-white">{gameDates.length}</div>
             <div className="text-xs text-fiba-muted">{t('games.gameDays')}</div>
           </div>
-          <div className="fiba-stat flex-1">
+          <div className="fiba-stat">
             <div className="text-2xl font-bold text-emerald-400">{completedCount}</div>
             <div className="text-xs text-fiba-muted">{t('games.completed')}</div>
           </div>
           {supportsAssignments && (
-            <div className="fiba-stat flex-1">
+            <div className="fiba-stat">
               <div className="text-2xl font-bold text-fiba-accent">{assignedCount}</div>
               <div className="text-xs text-fiba-muted">{t('games.assignedPeople')}</div>
             </div>
@@ -721,7 +721,7 @@ export default function Games() {
                   className="fiba-input" />
               </div>
 
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div>
                   <label className="fiba-label">{t('games.phase')}</label>
                   <select value={form.phase} onChange={e => setForm(f => ({ ...f, phase: e.target.value }))}

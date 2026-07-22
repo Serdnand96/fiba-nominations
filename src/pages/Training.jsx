@@ -365,7 +365,7 @@ export default function Training() {
           {/* ── TAB: By Day ─────────────────────────────────────────────── */}
           {tab === 'byDay' && (
             <div>
-              <div className="flex items-center gap-3 mb-4">
+              <div className="flex flex-wrap items-center gap-3 mb-4">
                 <button onClick={prevDate} disabled={dates.indexOf(selectedDate) <= 0}
                   className="px-3 py-1.5 border border-fiba-border rounded-lg text-sm text-fiba-muted disabled:opacity-30 hover:bg-fiba-surface">&larr;</button>
                 <input type="date" value={selectedDate} onChange={e => setSelectedDate(e.target.value)}

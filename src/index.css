@@ -40,7 +40,10 @@
   .num { font-variant-numeric: tabular-nums; }
   .tabler { width: 1em; height: 1em; stroke-width: 1.75; stroke: currentColor; fill: none; stroke-linecap: round; stroke-linejoin: round; flex-shrink: 0; }
   .row-divide > * + * { @apply border-t border-ink-100 dark:border-navy-800; }
-  .screen-enter { animation: screenIn 240ms cubic-bezier(.2,.7,.2,1) both; }
+  /* fill-mode must NOT be both/forwards: a filling transform animation keeps the
+     element as containing block for position:fixed descendants, so every inline
+     modal anchors to this div instead of the viewport (appears mid-page, clipped). */
+  .screen-enter { animation: screenIn 240ms cubic-bezier(.2,.7,.2,1) backwards; }
   @keyframes screenIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
 }
 

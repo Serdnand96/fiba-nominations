@@ -165,9 +165,9 @@ export default function Personnel() {
       </div>
 
       {/* Filters */}
-      <div className="flex gap-3 mb-4">
+      <div className="flex flex-col sm:flex-row flex-wrap gap-3 mb-4">
         <input type="text" placeholder={t('personnel.search')} value={search} onChange={e => setSearch(e.target.value)}
-          className="fiba-input w-80" />
+          className="fiba-input w-full sm:w-80" />
         <select value={roleFilter} onChange={e => setRoleFilter(e.target.value)} className="fiba-select">
           <option value="">{t('personnel.allRoles')}</option>
           {ROLES.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
@@ -421,7 +421,7 @@ function ImportView({ onClose }) {
 
         {tab === 'result' && result && (
           <div className="space-y-4">
-            <div className="grid grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-lg p-3 text-center">
                 <p className="text-2xl font-bold text-emerald-400">{result.imported}</p>
                 <p className="text-xs text-emerald-400">{t('personnel.imported')}</p>

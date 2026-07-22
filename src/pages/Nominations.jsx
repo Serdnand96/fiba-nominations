@@ -412,8 +412,8 @@ export default function Nominations() {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-6">
-        <div className="flex items-center gap-4">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-6">
+        <div className="flex flex-wrap items-center gap-3 sm:gap-4">
           <h2 className="text-2xl font-bold text-ink-900 dark:text-white">{t('nominations.title')}</h2>
           <div className="inline-flex rounded-lg border border-fiba-border overflow-hidden">
             {[
@@ -432,7 +432,7 @@ export default function Nominations() {
           </div>
         </div>
         {canEdit && view === 'table' && (
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             {selectedIds.size > 0 && (
               <>
                 <button onClick={handleBulkDelete} disabled={loading}
@@ -603,7 +603,7 @@ export default function Nominations() {
 
       {/* Creation Form Modal */}
       {showForm && (
-        <div className="fixed inset-0 bg-black/60 flex items-start justify-center pt-16 z-50">
+        <div className="fixed inset-0 bg-black/60 flex items-start justify-center p-4 pt-4 sm:pt-16 z-50">
           <div className="fiba-modal max-w-2xl max-h-[80vh] overflow-y-auto p-6">
             <div className="flex justify-between items-center mb-4">
               <h3 className="text-lg font-bold text-ink-900 dark:text-white">{t('nominations.newNominationTitle')}</h3>
@@ -662,7 +662,7 @@ export default function Nominations() {
               {/* Location & Venue */}
               {showLocationFields && (
                 <>
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
                       <label className="block text-sm font-medium text-ink-700 dark:text-gray-300 mb-1">Location</label>
                       <input type="text" value={form.location} onChange={e => setForm(f => ({ ...f, location: e.target.value }))}
@@ -674,7 +674,7 @@ export default function Nominations() {
                         className="fiba-input" />
                     </div>
                   </div>
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
                       <label className="block text-sm font-medium text-ink-700 dark:text-gray-300 mb-1">{t('nominations.arrivalDate')}</label>
                       <input type="date" value={form.arrival_date} onChange={e => setForm(f => ({ ...f, arrival_date: e.target.value }))}
@@ -727,7 +727,7 @@ export default function Nominations() {
               )}
 
               {/* Fees */}
-              <div className="grid grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-ink-700 dark:text-gray-300 mb-1">
                     {selectedComp?.fee_type === 'tournament'

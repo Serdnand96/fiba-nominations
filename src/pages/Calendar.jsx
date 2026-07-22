@@ -549,7 +549,7 @@ export default function Calendar() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div>
                   <label className="fiba-label">{t('calendar.month')}</label>
                   <select value={eventForm.month} onChange={e => setEventForm(f => ({ ...f, month: parseInt(e.target.value) }))}
