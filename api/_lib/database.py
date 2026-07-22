@@ -130,11 +130,6 @@ class _StorageBucket:
     def get_public_url(self, path: str) -> str:
         return f"{self._url.replace('/storage/v1', '')}/storage/v1/object/public/{self._bucket}/{path}"
 
-    def list_buckets(self):
-        url = f"{self._url}/bucket"
-        resp = _HTTP.get(url, headers=self._headers)
-        return resp.json()
-
 
 class _StorageClient:
     def __init__(self, url: str, headers: dict):
@@ -143,17 +138,6 @@ class _StorageClient:
 
     def from_(self, bucket: str) -> _StorageBucket:
         return _StorageBucket(self._url, self._headers, bucket)
-
-    def list_buckets(self):
-        url = f"{self._url}/storage/v1/bucket"
-        resp = _HTTP.get(url, headers=self._headers)
-        items = resp.json()
-
-        class _Bucket:
-            def __init__(self, d):
-                self.name = d.get("name", "")
-
-        return [_Bucket(b) for b in items]
 
 
 class _AuthAdmin:

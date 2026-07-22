@@ -1,17 +1,18 @@
 """Inventory: assets router."""
 import io
+import logging
 import os
 import uuid
-from datetime import datetime, timezone
 from typing import Optional
 
 import qrcode
 from fastapi import APIRouter, HTTPException, Query, Request, UploadFile, File, Depends
-from fastapi.responses import Response
 
 from api._lib.database import supabase
 from api._lib.auth import require_view, require_edit
 from api._lib.schemas import AssetCreate, AssetUpdate
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/assets", tags=["assets"], dependencies=[Depends(require_view("assets"))])
 
@@ -154,7 +155,7 @@ def create_asset(data: AssetCreate, request: Request):
         asset = updated.data[0] if updated.data else {**asset, "qr_code_url": qr_url}
     except Exception as e:
         # QR generation failure shouldn't break asset creation
-        print(f"[assets] QR generation failed for {asset['id']}: {e}")
+        logger.warning(f"[assets] QR generation failed for {asset['id']}: {e}")
 
     return asset
 

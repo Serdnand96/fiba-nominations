@@ -1,6 +1,5 @@
 import os
-import re
-from fastapi import FastAPI, Request, HTTPException, Depends
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from api._lib.routers import (
@@ -45,33 +44,11 @@ async def add_security_headers(request: Request, call_next):
     return response
 
 
-# ── JWT auth dependency ─────────────────────────────────────────────────────
+# ── Supabase JWT validation (used by the auth middleware) ───────────────────
 import httpx as _httpx
 
 _SUPABASE_URL = os.environ.get("SUPABASE_URL", "")
 _SUPABASE_KEY = os.environ.get("SUPABASE_SERVICE_ROLE_KEY", "") or os.environ.get("SUPABASE_KEY", "")
-
-
-async def require_auth(request: Request) -> dict:
-    """Validate Supabase JWT and return the authenticated user dict."""
-    auth_header = request.headers.get("Authorization", "")
-    if not auth_header.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="Missing authorization token")
-
-    token = auth_header[7:]
-    try:
-        resp = _httpx.get(
-            f"{_SUPABASE_URL}/auth/v1/user",
-            headers={"Authorization": f"Bearer {token}", "apikey": _SUPABASE_KEY},
-            timeout=10.0,
-        )
-        if resp.status_code != 200:
-            raise HTTPException(status_code=401, detail="Invalid or expired token")
-        return resp.json()
-    except HTTPException:
-        raise
-    except Exception:
-        raise HTTPException(status_code=401, detail="Authentication failed")
 
 
 # Store auth user on request state so routers can access it

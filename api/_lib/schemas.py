@@ -104,13 +104,6 @@ class BulkNominationCreate(BaseModel):
     confirmation_deadline: Optional[str] = None
 
 
-class BulkImportResult(BaseModel):
-    total: int
-    imported: int
-    skipped: int
-    errors: list[dict]
-
-
 # ─── INVENTORY ─────────────────────────────────────────────────────────────
 
 class AssetCreate(BaseModel):

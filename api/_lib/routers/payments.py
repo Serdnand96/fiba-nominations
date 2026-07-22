@@ -9,6 +9,7 @@ Sensitive data (amounts, bank confirmations, W8 docs) lives here, so the
 tables are backend-only (RLS on, no policies) and this router is gated by the
 `payments` module permission — view separate from edit.
 """
+import logging
 import os
 import re
 import uuid
@@ -22,6 +23,8 @@ from fastapi.responses import Response
 from api._lib.database import supabase
 from api._lib.auth import require_view, require_edit
 from api._lib.schemas import PaymentCreate, PaymentUpdate
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/payments", tags=["payments"], dependencies=[Depends(require_view("payments"))])
 
@@ -71,7 +74,7 @@ def _delete_from_storage(storage_path: Optional[str]) -> None:
     try:
         supabase.storage.from_(_BUCKET).remove([key])
     except Exception as e:
-        print(f"[storage cleanup] could not remove {key}: {e}")
+        logger.warning(f"[storage cleanup] could not remove {key}: {e}")
 
 
 # ─── Serialization ───────────────────────────────────────────────────────────

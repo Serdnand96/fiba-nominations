@@ -204,18 +204,3 @@ def remove_assignment(assignment_id: str):
     if not result.data:
         raise HTTPException(status_code=404, detail="Assignment not found")
     return {"ok": True}
-
-
-# ---------------------------------------------------------------------------
-# GET /calendar/assignments?competition_id=X — list assignments
-# ---------------------------------------------------------------------------
-@router.get("/assignments")
-def list_assignments(competition_id: str = Query(...)):
-    result = (
-        supabase.table("competition_assignments")
-        .select("*")
-        .eq("competition_id", competition_id)
-        .order("assigned_at", desc=True)
-        .execute()
-    )
-    return result.data

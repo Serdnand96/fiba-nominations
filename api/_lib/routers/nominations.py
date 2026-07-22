@@ -1,14 +1,17 @@
+import logging
 import os
 import re
 from datetime import datetime, timezone
 from fastapi import APIRouter, HTTPException, Depends
-from fastapi.responses import FileResponse, RedirectResponse
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from typing import Optional
 from api._lib.database import supabase
 from api._lib.auth import require_view, require_edit
 from api._lib.schemas import NominationCreate, BulkNominationCreate
 from api._lib.services.document_generator import generate_nomination
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/nominations", tags=["nominations"], dependencies=[Depends(require_view("nominations"))])
 
@@ -273,7 +276,7 @@ def _delete_pdf_from_storage(pdf_path: str | None) -> None:
     try:
         supabase.storage.from_("nominations").remove([key])
     except Exception as e:
-        print(f"[storage cleanup] could not remove {key}: {e}")
+        logger.warning(f"[storage cleanup] could not remove {key}: {e}")
 
 
 @router.delete("/{nomination_id}", dependencies=[Depends(require_edit("nominations"))])

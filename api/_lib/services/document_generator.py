@@ -294,7 +294,7 @@ def _fee_lines(data: dict, *, incidentals_label: str = "Incidentals",
 # (paras[2], paras[4], …), so the .docx is really a positional skeleton: any
 # file with a different paragraph layout produces garbage, and the `if idx <
 # sig_start - N` guards drop content silently. Templates rendered through
-# _build_from_docx_template instead carry {{ placeholders }}, so the letter
+# _render_template instead carry {{ placeholders }}, so the letter
 # survives edits to the .docx and an uploaded file can be validated by
 # rendering it.
 #
@@ -739,14 +739,6 @@ def _render_template(path, context: dict):
     return tpl
 
 
-def _build_from_docx_template(data: dict, template_file: str, font: str,
-                              date_color: str = DARK_HEX, context: dict | None = None):
-    """Back-compat wrapper used by the build/verification scripts."""
-    return _render_template(
-        TEMPLATES_DIR / template_file,
-        context if context is not None else _letter_context(data, font, date_color))
-
-
 # ─── WCQ / GENERIC LETTER ────────────────────────────────────────────────────
 
 def _build_wcq_letter(data: dict) -> Document:
@@ -772,9 +764,6 @@ def _build_wcq_letter(data: dict) -> Document:
     game_dates = data.get("game_dates") or []
     deadline = _fmt_deadline(data.get("confirmation_deadline", ""))
     letter_date = _fmt_date(data.get("letter_date", ""))
-    fee = data.get("window_fee")
-    incidentals = data.get("incidentals")
-    total = data.get("total")
 
     # Clear paragraphs 1-44 (keep [0] title+logo, [45] signature image, [46] signature text)
     for i in range(1, len(paras) - 2):
@@ -927,9 +916,6 @@ def _build_generic_letter(data: dict) -> Document:
     game_dates = data.get("game_dates") or []
     deadline = _fmt_deadline(data.get("confirmation_deadline", ""))
     letter_date = _fmt_date(data.get("letter_date", ""))
-    fee = data.get("window_fee")
-    incidentals = data.get("incidentals")
-    total = data.get("total")
 
     # Generic template structure: [0-38] content area, [39] signature image, [40-42] sig text
     # Clear content paragraphs (preserve signature at end)
@@ -1059,9 +1045,6 @@ def _build_bcla_letter(data: dict, variant: str = "F4") -> Document:
     arrival_date = data.get("arrival_date", "")
     departure_date = data.get("departure_date", "")
     letter_date = data.get("letter_date", "")
-    fee = data.get("window_fee")
-    incidentals = data.get("incidentals")
-    total = data.get("total")
 
     # Format letter date like "Miami, March 27th, 2024"
     formatted_letter_date = ""
@@ -1200,7 +1183,6 @@ def _build_bcla_letter(data: dict, variant: str = "F4") -> Document:
 
     # Insert remaining content paragraphs after [4]
     from docx.oxml.ns import qn as _qn
-    from copy import deepcopy
 
     insert_after = paras[4]._element
     for line in content_lines[1:]:

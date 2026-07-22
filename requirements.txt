@@ -13,4 +13,3 @@ docxtpl>=0.16,<1.0
 # Runtime server (previously installed unpinned in the deploy workflow)
 gunicorn>=21.0,<24.0
 uvicorn[standard]>=0.23,<1.0
-supabase>=2.0,<3.0

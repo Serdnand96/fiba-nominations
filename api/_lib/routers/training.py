@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException, Query, UploadFile, File, Form, Depends
 from pydantic import BaseModel
 from typing import Optional, List
-from datetime import datetime, timedelta
+from datetime import datetime
 import io
 import tempfile
 import os
@@ -569,7 +569,7 @@ def export_pdf_competition(competition_id: str):
     slots = _enrich_slots(slots)
 
     title = f"Training Schedule - {comp['name']}"
-    subtitle = f"All dates"
+    subtitle = "All dates"
     return _generate_schedule_pdf(title, subtitle, slots)
 
 
@@ -624,7 +624,7 @@ def export_pdf_team(competition_id: str = Query(...), team_label: str = Query(..
 def _generate_schedule_pdf(title: str, subtitle: str, slots: list):
     """Generate a training schedule PDF using python-docx, return as download."""
     from docx import Document
-    from docx.shared import Pt, Inches, Cm, RGBColor
+    from docx.shared import Pt, Cm, RGBColor
     from docx.enum.text import WD_ALIGN_PARAGRAPH
     from docx.enum.table import WD_TABLE_ALIGNMENT
     from fastapi.responses import FileResponse

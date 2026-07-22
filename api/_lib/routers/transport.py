@@ -1,7 +1,6 @@
 from fastapi import APIRouter, HTTPException, Query, Depends
 from pydantic import BaseModel
 from typing import Optional, List
-from datetime import date, time, timedelta, datetime
 
 from api._lib.database import supabase
 from api._lib.auth import require_view, require_edit
@@ -179,11 +178,6 @@ def assign_vehicle_driver(data: VehicleDriverAssign):
     supabase.table("transport_vehicle_drivers").delete().eq("vehicle_id", data.vehicle_id).eq("date", data.date).execute()
     result = supabase.table("transport_vehicle_drivers").insert(record).execute()
     return result.data[0]
-
-@router.delete("/vehicle-drivers/{assignment_id}", dependencies=[Depends(require_edit("transport"))])
-def remove_vehicle_driver(assignment_id: str):
-    supabase.table("transport_vehicle_drivers").delete().eq("id", assignment_id).execute()
-    return {"ok": True}
 
 
 # ── Trips ────────────────────────────────────────────────────────────────────
