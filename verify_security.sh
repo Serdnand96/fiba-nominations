@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Quick verification of the H1-H9 fixes from fibaapp_security_audit.md
+# Quick verification of the H1-H9 fixes de la auditoría de seguridad
+# (fibaapp_security_audit.md — doc privado, fuera del repo)
 # Usage:  bash verify_security.sh
 #
 # Optional env vars:

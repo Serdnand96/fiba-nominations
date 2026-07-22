@@ -86,7 +86,7 @@ async def auth_middleware(request: Request, call_next):
     return await call_next(request)
 
 
-# Mount all routers under /api prefix to match Vercel's routing
+# Mount all routers under /api prefix (nginx proxies /api/* to this app)
 app.include_router(personnel.router, prefix="/api")
 app.include_router(competitions.router, prefix="/api")
 app.include_router(nominations.router, prefix="/api")

@@ -125,9 +125,10 @@ Uno por módulo:
 ```
 assets.py          competitions.py    games.py
 availability.py    employees.py       loans.py
-calendar.py        nominations.py     permissions.py
-personnel.py       public_assets.py   training.py
-transport.py
+calendar.py        nominations.py     payments.py
+permissions.py     personnel.py       public_assets.py
+templates.py       training.py        transport.py
+users.py
 ```
 
 Cada router declara permisos vía dependencies:
@@ -163,7 +164,7 @@ agregaba dependencias innecesarias. Service-role key en
 
 - Render del `.docx` con `python-docx` usando templates en `templates/`
 - Conversión a PDF con LibreOffice headless (`soffice --convert-to pdf`)
-- Profile dir único por request (`--user-profile=/tmp/lo_<uuid>`)
+- Profile dir único por request (`-env:UserInstallation=file://<tmpdir>`)
   para evitar locks
 - CloudConvert quedó como fallback pero no se usa (env var
   `CLOUDCONVERT_API_KEY` deshabilitada)

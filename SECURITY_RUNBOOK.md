@@ -2,7 +2,7 @@
 
 Acciones de hardening que requieren acceso a paneles externos (DigitalOcean,
 Supabase, GoDaddy, Cloudflare). Status interno se trackea en
-`fibaapp_security_audit.md`.
+`fibaapp_security_audit.md` (doc privado, fuera del repo).
 
 ---
 

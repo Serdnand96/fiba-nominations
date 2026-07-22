@@ -27,7 +27,7 @@ bash verify_security.sh       # smoke test
 | Frontend out | `/opt/fiba-nominations/dist` (servido por nginx)                  |
 | Service unit | `/etc/systemd/system/fiba-api.service`                            |
 | nginx site   | `/etc/nginx/sites-available/fiba-nominations`                     |
-| TLS          | Let's Encrypt en `/etc/letsencrypt/live/www.fibaamericascloud.com/` |
+| TLS          | Let's Encrypt en `/etc/letsencrypt/live/www.fibaapp.com/`         |
 
 ---
 
@@ -44,11 +44,10 @@ bash verify_security.sh       # smoke test
 cd /opt/fiba-nominations
 git fetch origin main && git reset --hard origin/main
 
-./venv/bin/pip install -r requirements.txt -q
-./venv/bin/pip install gunicorn "uvicorn[standard]" supabase -q
+./venv/bin/pip install -r requirements.txt -q   # incluye gunicorn/uvicorn pinneados
 
 set -a && . ./.env && set +a
-npm install --silent --no-audit --no-fund
+npm ci --silent --no-audit --no-fund
 npm run build
 
 sudo systemctl restart fiba-api

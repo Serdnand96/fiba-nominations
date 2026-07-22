@@ -154,8 +154,8 @@ FastAPI local sin CORS.
 
 1. Drop el `.docx` en `templates/`
 2. SQL: agregar el key al `CHECK` constraint de `competitions.template_key`
-3. `api/_lib/services/document_generator.py` → `TEMPLATE_FILES[key] = 'archivo.docx'`
-4. `api/_lib/models.py` → `TEMPLATE_FIELDS[key] = [...]` con los placeholders
+3. `api/_lib/services/document_generator.py` → `TEMPLATE_SPECS[key]` (archivo + contexto)
+4. `api/_lib/routers/templates.py` → `TEMPLATES` para exponerlo en la UI
 5. Si el template tiene lógica especial: `src/pages/Nominations.jsx`
 
 ### Agregar un icono al DS
@@ -246,8 +246,9 @@ Si vas a agregar tests:
    URLs reales. El backend los traduce. Si necesitás el URL real:
    `await supabase.storage.from_("nominations").createSignedUrl(...)`.
 
-5. **vercel.json y .vercel/** existen pero **están dead**. El deploy
-   real es al DigitalOcean droplet — ver `DEPLOYMENT.md`.
+5. **Vercel está muerto.** `vercel.json` ya no existe (a lo sumo queda un
+   `.vercel/` local, gitignoreado). El deploy real es al DigitalOcean
+   droplet — ver `DEPLOYMENT.md`.
 
 6. **`personnel` ≠ `employees`** — TDs/VGOs vs staff interno. Dos
    tablas distintas, no mezclar.

@@ -23,8 +23,8 @@ legacy `fibaamericascloud.com`).
 
 ## ⚠️ Cosas que confunden a sesiones nuevas
 
-1. **NO está en Vercel.** Hay un `vercel.json` y `.vercel/` legacy, pero
-   no son la fuente de verdad. El deploy real es al droplet DO.
+1. **NO está en Vercel.** `vercel.json` ya no existe (a lo sumo queda un
+   `.vercel/` local, gitignoreado). El deploy real es al droplet DO.
    La migración a DO se completó en abril 2026.
 
 2. **PDF generation usa LibreOffice local**, no CloudConvert. El droplet
@@ -84,7 +84,7 @@ fiba-nominations/
 │   ├── contexts/              ← Auth, Language
 │   └── i18n/                  ← ES + EN
 │
-├── public/favicon.svg         ← monograma F + basketball seam
+├── public/favicon.png         ← monograma F + basketball seam
 ├── scripts/
 │   └── fiba-security-scan.sh  ← scanner horario de nginx logs (corre en droplet)
 ├── supabase/migrations/       ← schema SQL

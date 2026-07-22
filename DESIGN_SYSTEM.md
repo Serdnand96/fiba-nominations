@@ -242,7 +242,7 @@ src/lib/icons.jsx                ← Tabler icons
 src/components/ui/               ← primitivos (Button, Input, Table, …)
 src/components/layout/           ← Sidebar, Topbar, AppShell
 src/components/brand/Logo.jsx    ← LogoMonogram, Roundel, Wordmark, Shield, …
-public/favicon.svg               ← monograma F + basketball seam
+public/favicon.png               ← monograma F + basketball seam
 index.html                       ← favicon link + theme-color navy
 ```
 

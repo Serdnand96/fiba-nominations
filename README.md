@@ -126,9 +126,10 @@ inicial.
 
 1. Coloca el `.docx` template en `templates/`
 2. Agregá la `template_key` al CHECK constraint en `competitions.template_key`
-3. Agregá el mapping en `api/_lib/services/document_generator.py` →
-   `TEMPLATE_FILES`
-4. Agregá el field mapping en `api/_lib/models.py` → `TEMPLATE_FIELDS`
+3. Agregá el spec en `api/_lib/services/document_generator.py` →
+   `TEMPLATE_SPECS` (archivo `_TPL.docx` + contexto/builder)
+4. Registralo en `api/_lib/routers/templates.py` → `TEMPLATES` para que
+   aparezca en la UI de Templates
 5. Actualizá `src/pages/Nominations.jsx` para lógica template-specific
 
 ---

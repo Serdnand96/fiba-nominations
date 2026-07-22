@@ -39,7 +39,7 @@ jobs:
 
           echo "=== Frontend build ==="
           set -a && . ./.env && set +a
-          npm install --silent --no-audit --no-fund
+          npm ci --silent --no-audit --no-fund
           npm run build
 
           echo "=== Restart API ==="
@@ -48,6 +48,8 @@ jobs:
           sudo systemctl is-active fiba-api
 
           echo "=== Smoke test ==="
-          curl -fsS -o /dev/null -w "HTTPS %{http_code}\n" https://www.fibaamericascloud.com/ || true
+          # Sin "|| true": si el dominio canónico no responde, el workflow
+          # debe quedar en rojo (el deploy ya corrió; esto es alerta).
+          curl -fsS -o /dev/null -w "HTTPS %{http_code}\n" https://www.fibaapp.com/
           echo "✅ Deploy OK"
           EOF
