@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo, useRef } from 'react'
 import { getPersonnel, createPersonnel, updatePersonnel, deletePersonnel, importPersonnel } from '../api/client'
 import { useLanguage } from '../i18n/LanguageContext'
 import { useAuth } from '../contexts/AuthContext'
+import { useToast } from '../components/ui/Toast'
 import PersonProfilePanel from '../components/PersonProfilePanel'
 import { ROLES, roleLabel, roleBadgeClass } from '../lib/roles'
 import { COUNTRIES, countryName, countryNameToCode } from '../lib/countries'
@@ -16,6 +17,7 @@ function compareValues(a, b, dir) {
 export default function Personnel() {
   const { t, lang } = useLanguage()
   const { hasEdit } = useAuth()
+  const { push } = useToast()
   const canEdit = hasEdit('personnel')
   const canEditAvail = hasEdit('availability')
   const [people, setPeople] = useState([])
@@ -33,8 +35,16 @@ export default function Personnel() {
   useEffect(() => { load() }, [])
 
   async function load() {
-    const data = await getPersonnel()
-    setPeople(data)
+    setLoading(true)
+    try {
+      const data = await getPersonnel()
+      setPeople(data)
+    } catch (err) {
+      console.error('Load error:', err)
+      push({ type: 'error', title: t('personnel.errorLoading') })
+    } finally {
+      setLoading(false)
+    }
   }
 
   const stats = useMemo(() => ({

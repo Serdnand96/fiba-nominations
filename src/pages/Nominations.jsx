@@ -18,6 +18,7 @@ const CONFIRMATION_BADGES = {
 }
 import { useLanguage } from '../i18n/LanguageContext'
 import { useAuth } from '../contexts/AuthContext'
+import { useToast } from '../components/ui/Toast'
 import NominationsMatrix from '../components/NominationsMatrix'
 import PersonProfilePanel from '../components/PersonProfilePanel'
 
@@ -33,6 +34,7 @@ function compareValues(a, b, dir) {
 export default function Nominations() {
   const { t } = useLanguage()
   const { hasEdit } = useAuth()
+  const { push } = useToast()
   const canEdit = hasEdit('nominations')
   const [searchParams, setSearchParams] = useSearchParams()
   const [nominations, setNominations] = useState([])
@@ -79,10 +81,18 @@ export default function Nominations() {
   }, [competitions, searchParams])
 
   async function load() {
-    const [n, p, c] = await Promise.all([getNominations(), getPersonnel(), getCompetitions()])
-    setNominations(n)
-    setPersonnel(p)
-    setCompetitions(c)
+    setLoading(true)
+    try {
+      const [n, p, c] = await Promise.all([getNominations(), getPersonnel(), getCompetitions()])
+      setNominations(n)
+      setPersonnel(p)
+      setCompetitions(c)
+    } catch (err) {
+      console.error('Load error:', err)
+      push({ type: 'error', title: t('nominations.errorLoading') })
+    } finally {
+      setLoading(false)
+    }
   }
 
   const selectedComp = competitions.find(c => c.id === form.competition_id)

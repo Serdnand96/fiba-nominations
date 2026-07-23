@@ -4,13 +4,16 @@ import { Input } from './Input';
 
 export function MultiSelect({ label, options, value=[], onChange, icon }) {
   const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState('');
   const ref = useRef();
   useEffect(() => {
     const h = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
     document.addEventListener('mousedown', h);
     return () => document.removeEventListener('mousedown', h);
   }, []);
+  useEffect(() => { if (!open) setSearch(''); }, [open]);
   const toggle = (v) => onChange(value.includes(v) ? value.filter(x=>x!==v) : [...value, v]);
+  const filteredOptions = options.filter(o => String(o.label ?? '').toLowerCase().includes(search.toLowerCase()));
   const summary = value.length === 0 ? label
     : value.length === 1 ? `${label}: ${options.find(o=>o.value===value[0])?.label}`
     : `${label} · ${value.length}`;
@@ -27,10 +30,11 @@ export function MultiSelect({ label, options, value=[], onChange, icon }) {
       {open && (
         <div className="absolute z-30 mt-1.5 w-64 bg-white dark:bg-navy-800 rounded-lg shadow-pop border border-ink-200 dark:border-navy-700 overflow-hidden">
           <div className="p-2 border-b border-ink-100 dark:border-navy-700">
-            <Input icon={<Icon.Search/>} placeholder={`Filtrar ${label.toLowerCase()}...`} />
+            <Input icon={<Icon.Search/>} placeholder={`Filtrar ${label.toLowerCase()}...`}
+              value={search} onChange={e=>setSearch(e.target.value)} />
           </div>
           <div className="max-h-64 overflow-y-auto py-1">
-            {options.map(o => (
+            {filteredOptions.map(o => (
               <button key={o.value} onClick={()=>toggle(o.value)}
                 className="w-full flex items-center gap-2.5 px-3 py-1.5 text-[13px] hover:bg-ink-50 dark:hover:bg-navy-700 text-left">
                 <span className={`w-4 h-4 rounded border flex items-center justify-center ${value.includes(o.value)?'bg-navy-700 border-navy-700':'border-ink-300 dark:border-navy-600'}`}>

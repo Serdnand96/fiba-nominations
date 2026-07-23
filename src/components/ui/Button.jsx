@@ -7,7 +7,7 @@ const sizes = {
   lg: 'h-11 px-5 text-[15px] gap-2 rounded-lg',
 };
 const variants = {
-  primary:  'bg-basketball-500 hover:bg-basketball-600 active:bg-basketball-700 text-white font-medium shadow-card focus:shadow-focus-accent',
+  primary:  'bg-basketball-700 hover:bg-basketball-800 active:bg-basketball-900 text-white font-medium shadow-card focus:shadow-focus-accent',
   secondary:'bg-white hover:bg-ink-50 active:bg-ink-100 text-ink-800 font-medium border border-ink-200 dark:bg-navy-800 dark:hover:bg-navy-700 dark:text-ink-50 dark:border-navy-700',
   ghost:    'bg-transparent hover:bg-ink-100 active:bg-ink-200 text-ink-700 font-medium dark:hover:bg-navy-800 dark:text-ink-200',
   navy:     'bg-navy-900 hover:bg-navy-800 active:bg-navy-950 text-white font-medium dark:bg-navy-700 dark:hover:bg-navy-600',

@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from 'react'
 import { getCompetitions, createCompetition, updateCompetition, deleteCompetition, getNominations, getTemplates } from '../api/client'
 import { useLanguage } from '../i18n/LanguageContext'
 import { useAuth } from '../contexts/AuthContext'
+import { useToast } from '../components/ui/Toast'
 import { readLastSearch, writeLastSearch } from '../lib/lastSearch'
 
 const TEMPLATE_BADGES = {
@@ -29,9 +30,11 @@ function loadLastSearch() {
 export default function Competitions() {
   const { t } = useLanguage()
   const { hasEdit } = useAuth()
+  const { push } = useToast()
   const canEdit = hasEdit('competitions')
   const [competitions, setCompetitions] = useState([])
   const [nominations, setNominations] = useState([])
+  const [loading, setLoading] = useState(false)
   const [showModal, setShowModal] = useState(false)
   const [editing, setEditing] = useState(null)
   const [form, setForm] = useState({ name: '', template_key: 'WCQ', year: new Date().getFullYear(), fiba_games_url: '', fee_type: 'per_game', is_national_team: true })
@@ -56,12 +59,20 @@ export default function Competitions() {
   useEffect(() => { load() }, [])
 
   async function load() {
-    const [c, n] = await Promise.all([getCompetitions(), getNominations()])
-    setCompetitions(c)
-    setNominations(n)
-    // Drop a restored template filter that no longer matches any competition,
-    // so a stale value can't leave the list silently empty.
-    setFilterTemplate(ft => (ft && !c.some(x => x.template_key === ft) ? '' : ft))
+    setLoading(true)
+    try {
+      const [c, n] = await Promise.all([getCompetitions(), getNominations()])
+      setCompetitions(c)
+      setNominations(n)
+      // Drop a restored template filter that no longer matches any competition,
+      // so a stale value can't leave the list silently empty.
+      setFilterTemplate(ft => (ft && !c.some(x => x.template_key === ft) ? '' : ft))
+    } catch (err) {
+      console.error('Load error:', err)
+      push({ type: 'error', title: t('competitions.errorLoading') })
+    } finally {
+      setLoading(false)
+    }
   }
 
   function nomCount(compId) {
@@ -256,7 +267,7 @@ export default function Competitions() {
                   <option value="per_game">Per Game Fee</option>
                   <option value="tournament">Tournament Fee</option>
                 </select>
-                <p className="text-xs text-fiba-muted/60 mt-1">Determina el texto de honorarios en la nominación.</p>
+                <p className="text-xs text-fiba-muted/60 mt-1">{t('competitions.feeTypeHint')}</p>
               </div>
               <div>
                 <label className="flex items-center gap-2 cursor-pointer select-none">

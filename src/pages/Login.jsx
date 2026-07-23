@@ -70,16 +70,17 @@ export default function Login() {
 
           <form onSubmit={handleSubmit} className="space-y-4">
             {error && (
-              <div className="bg-danger-50 dark:bg-danger-700/20 border border-danger-200 dark:border-danger-700/40 text-danger-700 dark:text-danger-100 text-sm px-4 py-3 rounded-lg">
+              <div role="alert" className="bg-danger-50 dark:bg-danger-700/20 border border-danger-200 dark:border-danger-700/40 text-danger-700 dark:text-danger-100 text-sm px-4 py-3 rounded-lg">
                 {error}
               </div>
             )}
 
             <div>
-              <label className="block text-sm font-medium text-ink-700 dark:text-ink-300 mb-1.5">
+              <label htmlFor="login-email" className="block text-sm font-medium text-ink-700 dark:text-ink-300 mb-1.5">
                 {t('login.email')}
               </label>
               <input
+                id="login-email"
                 type="email"
                 required
                 value={email}
@@ -92,10 +93,11 @@ export default function Login() {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-ink-700 dark:text-ink-300 mb-1.5">
+              <label htmlFor="login-password" className="block text-sm font-medium text-ink-700 dark:text-ink-300 mb-1.5">
                 {t('login.password')}
               </label>
               <input
+                id="login-password"
                 type="password"
                 required
                 value={password}

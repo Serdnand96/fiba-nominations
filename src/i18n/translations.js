@@ -129,6 +129,7 @@ const translations = {
     edit: { en: 'Edit', es: 'Editar' },
     delete: { en: 'Delete', es: 'Eliminar' },
     noPersonnel: { en: 'No personnel', es: 'No hay personal' },
+    errorLoading: { en: 'Error loading personnel', es: 'Error cargando personal' },
     editPerson: { en: 'Edit Person', es: 'Editar Persona' },
     addPersonTitle: { en: 'Add Person', es: 'Agregar Persona' },
     cancel: { en: 'Cancel', es: 'Cancelar' },
@@ -236,6 +237,7 @@ const translations = {
     generate: { en: 'Generate', es: 'Generar' },
     delete: { en: 'Delete', es: 'Eliminar' },
     noNominations: { en: 'No nominations', es: 'No hay nominaciones' },
+    errorLoading: { en: 'Error loading nominations', es: 'Error cargando nominaciones' },
     // Referee neutrality — informative notice (competition-level nominations)
     refWarningTitle: { en: 'Referee neutrality notice', es: 'Aviso de neutralidad arbitral' },
     refWarningGroups: {
@@ -326,6 +328,7 @@ const translations = {
     edit: { en: 'Edit', es: 'Editar' },
     delete: { en: 'Delete', es: 'Eliminar' },
     noCompetitions: { en: 'No competitions', es: 'No hay competencias' },
+    errorLoading: { en: 'Error loading competitions', es: 'Error cargando competencias' },
     editCompetition: { en: 'Edit Competition', es: 'Editar Competencia' },
     newCompetitionTitle: { en: 'New Competition', es: 'Nueva Competencia' },
     cancel: { en: 'Cancel', es: 'Cancelar' },
@@ -338,6 +341,10 @@ const translations = {
     nationalTeamHint: {
       en: 'Enables the referee neutrality restriction: a referee cannot work games — nor groups — involving their own country.',
       es: 'Activa la restricción de neutralidad arbitral: un árbitro no puede dirigir partidos —ni grupos— donde participe su país.',
+    },
+    feeTypeHint: {
+      en: 'Determines the fee wording used on the nomination letter.',
+      es: 'Determina el texto de honorarios en la nominación.',
     },
   },
 

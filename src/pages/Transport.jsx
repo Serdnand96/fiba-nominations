@@ -344,6 +344,13 @@ export default function Transport() {
     const blob = new Blob([html], { type: 'text/html' })
     const url = URL.createObjectURL(blob)
     const win = window.open(url, '_blank')
+    if (!win) {
+      URL.revokeObjectURL(url)
+      alert(lang === 'es'
+        ? 'El navegador bloqueó la ventana emergente. Habilita los popups para exportar el PDF.'
+        : 'The browser blocked the popup window. Enable popups to export the PDF.')
+      return
+    }
     setTimeout(() => { win.print(); URL.revokeObjectURL(url) }, 600)
   }
 
