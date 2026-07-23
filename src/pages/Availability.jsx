@@ -291,12 +291,15 @@ export default function Availability() {
             </div>
           </div>
 
-          {/* Matrix */}
+          {/* Matrix. Sticky cells use opaque backgrounds — the row tints
+              (ink-50/60, navy-950/40, …) flattened over the card color —
+              because with translucent ones the columns scrolling underneath
+              bleed through the fixed Delegate column. */}
           <div className="overflow-x-auto" ref={matrixScrollRef}>
             <table className="w-full text-xs border-collapse">
               <thead>
                 <tr className="bg-ink-50/60 dark:bg-navy-950/40 border-b border-ink-100 dark:border-navy-800">
-                  <th className="text-left px-4 py-2.5 font-semibold text-2xs uppercase tracking-wide text-ink-500 dark:text-ink-400 sticky left-0 bg-ink-50/60 dark:bg-navy-950/40 z-10 min-w-[200px] border-r border-ink-100 dark:border-navy-800">
+                  <th className="text-left px-4 py-2.5 font-semibold text-2xs uppercase tracking-wide text-ink-500 dark:text-ink-400 sticky left-0 bg-[#fbfcfd] dark:bg-[#0a1e36] z-10 min-w-[200px] border-r border-ink-100 dark:border-navy-800">
                     Delegate
                   </th>
                   {filteredComps.map((comp, idx) => (
@@ -318,7 +321,7 @@ export default function Availability() {
               <tbody>
                 {filteredTds.map(td => (
                   <tr key={td.id} className="border-b border-ink-100 dark:border-navy-800 hover:bg-ink-50/40 dark:hover:bg-navy-800/30 group">
-                    <td className="px-4 py-2 sticky left-0 bg-white dark:bg-navy-900 group-hover:bg-ink-50/40 dark:group-hover:bg-navy-800/30 z-10 border-r border-ink-100 dark:border-navy-800">
+                    <td className="px-4 py-2 sticky left-0 bg-white dark:bg-navy-900 group-hover:bg-[#fcfdfe] dark:group-hover:bg-[#0e2644] z-10 border-r border-ink-100 dark:border-navy-800">
                       <div className="flex items-center gap-2.5 min-w-0">
                         <Avatar name={td.name} size="sm" />
                         <div className="min-w-0">
@@ -354,7 +357,7 @@ export default function Availability() {
                 ))}
                 {/* Summary row */}
                 <tr className="bg-ink-50/60 dark:bg-navy-950/40 border-t-2 border-ink-200 dark:border-navy-800">
-                  <td className="px-4 py-2.5 text-2xs font-semibold uppercase tracking-wide text-ink-500 dark:text-ink-400 sticky left-0 bg-ink-50/60 dark:bg-navy-950/40 z-10 border-r border-ink-100 dark:border-navy-800">
+                  <td className="px-4 py-2.5 text-2xs font-semibold uppercase tracking-wide text-ink-500 dark:text-ink-400 sticky left-0 bg-[#fbfcfd] dark:bg-[#0a1e36] z-10 border-r border-ink-100 dark:border-navy-800">
                     {t('availability.availableTds')}
                   </td>
                   {filteredComps.map(comp => (
