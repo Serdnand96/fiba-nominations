@@ -7,6 +7,12 @@
       "runtimeArgs": ["run", "dev:frontend"],
       "port": 5173,
       "autoPort": true
+    },
+    {
+      "name": "api",
+      "runtimeExecutable": "./venv/bin/uvicorn",
+      "runtimeArgs": ["api.index:app", "--port", "8000", "--env-file", ".env"],
+      "port": 8000
     }
   ]
 }

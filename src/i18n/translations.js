@@ -525,7 +525,7 @@ const translations = {
     noWorkload: { en: 'No activity in the last 12 months', es: 'Sin actividad en los últimos 12 meses' },
   },
   availability: {
-    title: { en: 'TD Availability', es: 'Disponibilidad de TDs' },
+    title: { en: 'Officials Availability', es: 'Disponibilidad de Oficiales' },
     tab: { en: 'Availability', es: 'Disponibilidad' },
     addAvailability: { en: '+ Add Availability', es: '+ Agregar Disponibilidad' },
     editAvailability: { en: 'Edit Availability', es: 'Editar Disponibilidad' },
@@ -555,7 +555,8 @@ const translations = {
     type: { en: 'Type', es: 'Tipo' },
     event: { en: 'Event', es: 'Evento' },
     noRecords: { en: 'No availability records', es: 'Sin registros de disponibilidad' },
-    availableTds: { en: 'Available TDs', es: 'TDs disponibles' },
+    availableTds: { en: 'Available officials', es: 'Oficiales disponibles' },
+    officials: { en: 'officials', es: 'oficiales' },
     conflictDetected: { en: 'Conflict detected', es: 'Conflicto detectado' },
     scheduleConflict: { en: 'Schedule conflict', es: 'Conflicto de horario' },
     filters: { en: 'Filters', es: 'Filtros' },
@@ -568,6 +569,93 @@ const translations = {
     errorSaving: { en: 'Error saving', es: 'Error guardando' },
     errorDeleting: { en: 'Error deleting', es: 'Error eliminando' },
     errorLoading: { en: 'Error loading availability', es: 'Error cargando disponibilidad' },
+
+    // Self-service links panel
+    linksButton: { en: 'Share links', es: 'Enlaces para oficiales' },
+    linksTitle: { en: 'Self-service availability links', es: 'Enlaces de autoservicio' },
+    linksHelp: {
+      en: 'Share each link with the officials of that role (email, WhatsApp). They pick their name and submit their availability — no account needed. Rotating a link invalidates the one previously shared.',
+      es: 'Comparte cada enlace con los oficiales de ese cargo (email, WhatsApp). Ellos eligen su nombre y cargan su disponibilidad, sin necesidad de cuenta. Rotar un enlace invalida el compartido anteriormente.',
+    },
+    copy: { en: 'Copy', es: 'Copiar' },
+    copied: { en: 'Copied!', es: '¡Copiado!' },
+    rotate: { en: 'Rotate', es: 'Rotar' },
+    rotateConfirm: {
+      en: 'Rotate this link? The one currently shared will stop working.',
+      es: '¿Rotar este enlace? El que está compartido dejará de funcionar.',
+    },
+    linksError: { en: 'Error loading links', es: 'Error cargando enlaces' },
+
+    // Freshness badge (self-service confirmations)
+    confirmedOn: { en: 'Confirmed {date}', es: 'Confirmó {date}' },
+    notConfirmed: { en: 'Not confirmed', es: 'Sin confirmar' },
+  },
+
+  // ===== Personnel role labels =====
+  roles: {
+    TD: { en: 'Technical Delegate', es: 'Delegado Técnico' },
+    VGO: { en: 'Video Graphic Operator', es: 'Video Graphic Operator' },
+    REF: { en: 'Referee', es: 'Árbitro' },
+    REF_INSTRUCTOR: { en: 'Referee Instructor', es: 'Instructor de Árbitros' },
+    VIDEO_OPERATOR: { en: 'Video Operator', es: 'Operador de Video' },
+  },
+  rolesShort: {
+    TD: { en: 'TDs', es: 'TDs' },
+    VGO: { en: 'VGOs', es: 'VGOs' },
+    REF: { en: 'Referees', es: 'Árbitros' },
+    REF_INSTRUCTOR: { en: 'Instructors', es: 'Instructores' },
+    VIDEO_OPERATOR: { en: 'Video Ops', es: 'Video Ops' },
+  },
+
+  // ===== Public availability form (self-service, no auth) =====
+  publicAvailability: {
+    pageTitle: { en: 'Officials Availability', es: 'Disponibilidad de Oficiales' },
+    intro: {
+      en: 'Select your name to review and update your availability.',
+      es: 'Selecciona tu nombre para revisar y actualizar tu disponibilidad.',
+    },
+    searchPlaceholder: { en: 'Search your name...', es: 'Busca tu nombre...' },
+    noMatches: { en: 'No matches', es: 'Sin resultados' },
+    changeName: { en: 'Change name', es: 'Cambiar nombre' },
+    lastConfirmed: { en: 'Last confirmed: {date}', es: 'Última confirmación: {date}' },
+    neverConfirmed: {
+      en: 'You have not confirmed your availability yet.',
+      es: 'Aún no has confirmado tu disponibilidad.',
+    },
+    upcoming: { en: 'Upcoming competitions', es: 'Próximas competencias' },
+    upcomingHelp: {
+      en: 'Mark your availability for each event. You can leave it blank if you are not sure yet.',
+      es: 'Marca tu disponibilidad para cada evento. Puedes dejarlo en blanco si aún no lo sabes.',
+    },
+    noCompetitions: { en: 'No upcoming competitions', es: 'No hay competencias próximas' },
+    blockedPeriods: { en: 'Unavailable periods', es: 'Periodos no disponibles' },
+    blockedHelp: {
+      en: 'Add the date ranges when you are not available.',
+      es: 'Agrega los rangos de fechas en los que no estás disponible.',
+    },
+    addPeriod: { en: '+ Add period', es: '+ Agregar periodo' },
+    noPeriods: { en: 'No unavailable periods', es: 'Sin periodos no disponibles' },
+    from: { en: 'From', es: 'Desde' },
+    to: { en: 'To', es: 'Hasta' },
+    optionalNote: { en: 'Optional note', es: 'Nota opcional' },
+    restrictionNote: { en: 'Which restriction?', es: '¿Cuál es la restricción?' },
+    confirmBtn: { en: 'Confirm availability', es: 'Confirmar disponibilidad' },
+    confirming: { en: 'Sending...', es: 'Enviando...' },
+    thanksTitle: { en: 'Thank you, {name}!', es: '¡Gracias, {name}!' },
+    thanksBody: {
+      en: 'Your availability was recorded on {date}. You can return to this same link anytime to update it.',
+      es: 'Tu disponibilidad quedó registrada el {date}. Puedes volver a este mismo enlace cuando quieras para actualizarla.',
+    },
+    editAgain: { en: 'Review again', es: 'Revisar de nuevo' },
+    invalidLink: {
+      en: 'This link is not valid or has been replaced. Contact FIBA Americas to get a new one.',
+      es: 'Este enlace no es válido o fue reemplazado. Contacta a FIBA Americas para recibir uno nuevo.',
+    },
+    submitError: { en: 'Something went wrong. Please try again.', es: 'Algo salió mal. Intenta de nuevo.' },
+    rangeError: {
+      en: 'Check the periods: every period needs both dates, and the end cannot be before the start.',
+      es: 'Revisa los periodos: cada periodo necesita ambas fechas y el fin no puede ser anterior al inicio.',
+    },
   },
 
   // ===== Training =====

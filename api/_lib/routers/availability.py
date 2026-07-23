@@ -1,9 +1,13 @@
+import secrets
+from datetime import datetime, timezone
+
 from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 from typing import Optional
 
 from api._lib.database import supabase
 from api._lib.auth import require_view, require_edit
+from api._lib.roles import VALID_ROLES
 
 router = APIRouter(prefix="/availability", tags=["availability"], dependencies=[Depends(require_view("availability"))])
 
@@ -61,16 +65,19 @@ def get_personnel_availability(personnel_id: str):
 # GET /availability/competition/{competition_id}
 # ---------------------------------------------------------------------------
 @router.get("/competition/{competition_id}")
-def get_competition_availability(competition_id: str):
-    """All TDs with their availability status for a given competition."""
+def get_competition_availability(competition_id: str, role: str = "TD"):
+    """All officials of `role` with their availability status for a competition."""
+    if role.upper() not in VALID_ROLES:
+        raise HTTPException(status_code=400, detail=f"Role must be one of {', '.join(VALID_ROLES)}")
+
     # Get competition details (for date overlap checks)
     comp = supabase.table("competitions").select("*").eq("id", competition_id).execute().data
     if not comp:
         raise HTTPException(status_code=404, detail="Competition not found")
     comp = comp[0]
 
-    # Get all TDs
-    tds = supabase.table("personnel").select("id,name,email,country").eq("role", "TD").order("name").execute().data
+    # Get all officials of the requested role
+    tds = supabase.table("personnel").select("id,name,email,country").eq("role", role.upper()).order("name").execute().data
 
     # Get all availability records for this competition (event_specific)
     event_records = (
@@ -182,6 +189,7 @@ def create_availability(data: AvailabilityCreate):
         raise HTTPException(status_code=400, detail="status must be 'available', 'unavailable', or 'restricted'")
 
     record = data.model_dump()
+    record["updated_by"] = "admin"
     # Clear irrelevant fields
     if data.type == "event_specific":
         record["start_date"] = None
@@ -217,6 +225,7 @@ def update_availability(availability_id: str, data: AvailabilityUpdate):
                 if not (updates.get("end_date") or existing[0].get("end_date")):
                     raise HTTPException(status_code=400, detail="end_date required for date_range")
 
+    updates["updated_by"] = "admin"
     result = supabase.table("td_availability").update(updates).eq("id", availability_id).execute()
     if not result.data:
         raise HTTPException(status_code=404, detail="Availability record not found")
@@ -232,3 +241,38 @@ def delete_availability(availability_id: str):
     if not result.data:
         raise HTTPException(status_code=404, detail="Availability record not found")
     return {"ok": True}
+
+
+# ---------------------------------------------------------------------------
+# Self-service links — one shared secret link per personnel role. The token
+# is the whole credential for the public form (see public_availability.py),
+# so only availability editors may read or rotate them.
+# ---------------------------------------------------------------------------
+@router.get("/links", dependencies=[Depends(require_edit("availability"))])
+def get_links():
+    """One link per role, lazily created on first read."""
+    rows = supabase.table("availability_links").select("*").execute().data
+    by_role = {r["role"]: r for r in rows}
+    for role in VALID_ROLES:
+        if role not in by_role:
+            created = supabase.table("availability_links").insert({
+                "role": role,
+                "token": secrets.token_urlsafe(32),
+            }).execute().data
+            by_role[role] = created[0]
+    return [by_role[role] for role in VALID_ROLES]
+
+
+@router.post("/links/{role}/rotate", dependencies=[Depends(require_edit("availability"))])
+def rotate_link(role: str):
+    """Replace the role's token — the previously shared link stops working."""
+    role = role.upper()
+    if role not in VALID_ROLES:
+        raise HTTPException(status_code=400, detail=f"Role must be one of {', '.join(VALID_ROLES)}")
+    updated = supabase.table("availability_links").update({
+        "token": secrets.token_urlsafe(32),
+        "rotated_at": datetime.now(timezone.utc).isoformat(),
+    }).eq("role", role).execute().data
+    if not updated:
+        raise HTTPException(status_code=404, detail="Link not found — open the links panel first")
+    return updated[0]

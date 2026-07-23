@@ -229,10 +229,19 @@ export const generateAssignmentPDFs = (competitionId) =>
 
 // Availability
 export const getPersonnelAvailability = (personnelId) => api.get(`/availability/personnel/${personnelId}`).then(r => r.data)
-export const getCompetitionAvailability = (competitionId) => api.get(`/availability/competition/${competitionId}`).then(r => r.data)
+export const getCompetitionAvailability = (competitionId, role = 'TD') => api.get(`/availability/competition/${competitionId}`, { params: { role } }).then(r => r.data)
 export const createAvailability = (data) => api.post('/availability', data).then(r => r.data)
 export const updateAvailability = (id, data) => api.put(`/availability/${id}`, data).then(r => r.data)
 export const deleteAvailability = (id) => api.delete(`/availability/${id}`).then(r => r.data)
+
+// Availability self-service links (admin side)
+export const getAvailabilityLinks = () => api.get('/availability/links').then(r => r.data)
+export const rotateAvailabilityLink = (role) => api.post(`/availability/links/${role}/rotate`).then(r => r.data)
+
+// Availability self-service form (public, token-authenticated)
+export const getPublicAvailabilityForm = (token) => api.get(`/public/availability/${token}`).then(r => r.data)
+export const getPublicAvailabilityPerson = (token, personnelId) => api.get(`/public/availability/${token}/personnel/${personnelId}`).then(r => r.data)
+export const submitPublicAvailability = (token, personnelId, data) => api.put(`/public/availability/${token}/personnel/${personnelId}`, data).then(r => r.data)
 
 // Inventory: Assets
 export const getAssets = (params) => api.get('/assets', { params }).then(r => r.data)

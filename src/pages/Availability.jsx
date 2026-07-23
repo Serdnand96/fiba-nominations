@@ -1,11 +1,15 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
 import { getCalendarCompetitions, getPersonnel, getCompetitionAvailability,
-  createAvailability, updateAvailability } from '../api/client'
+  createAvailability, updateAvailability,
+  getAvailabilityLinks, rotateAvailabilityLink } from '../api/client'
 import { useLanguage } from '../i18n/LanguageContext'
 import { useAuth } from '../contexts/AuthContext'
 import { Card } from '../components/ui/Card'
 import { Avatar } from '../components/ui/Avatar'
 import { Button } from '../components/ui/Button'
+
+// Personnel roles with a self-service availability roster (all of them).
+const ROLES = ['TD', 'VGO', 'REF', 'REF_INSTRUCTOR', 'VIDEO_OPERATOR']
 
 // Raw availability cell treatment — colored blocks, no dots.
 const STATUS_STYLES = {
@@ -36,6 +40,7 @@ export default function Availability() {
   const [tds, setTds] = useState([])
   const [availData, setAvailData] = useState({}) // comp_id -> [{ personnel_id, status, notes, availability_id, nomination_id?, confirmation_status? }]
   const [loading, setLoading] = useState(true)
+  const [role, setRole] = useState('TD')
 
   const [typeFilter, setTypeFilter] = useState([])
   const [statusFilter, setStatusFilter] = useState('')
@@ -43,18 +48,19 @@ export default function Availability() {
   const [modal, setModal] = useState(null)
   const [modalForm, setModalForm] = useState({ status: 'available', notes: '' })
   const [saving, setSaving] = useState(false)
+  const [linksOpen, setLinksOpen] = useState(false)
 
   const matrixScrollRef = useRef(null) // horizontal scroll container of the matrix
   const currentMonthColRef = useRef(null) // header cell of the first current-month competition
 
-  useEffect(() => { loadAll() }, [])
+  useEffect(() => { loadAll(role) }, [role])
 
-  async function loadAll() {
+  async function loadAll(forRole) {
     setLoading(true)
     try {
       const [comps, pers] = await Promise.all([
         getCalendarCompetitions({}),
-        getPersonnel({ role: 'TD' }),
+        getPersonnel({ role: forRole }),
       ])
       const now = new Date()
       const cutoff = new Date(now.getFullYear() + 1, now.getMonth(), now.getDate())
@@ -63,9 +69,9 @@ export default function Availability() {
         return true
       }).sort((a, b) => (a.start_date || '9999').localeCompare(b.start_date || '9999'))
       setCompetitions(upcoming)
-      setTds(pers.filter(p => p.role === 'TD'))
+      setTds(pers.filter(p => p.role === forRole))
       const avails = await Promise.all(
-        upcoming.map(c => getCompetitionAvailability(c.id).catch(() => []))
+        upcoming.map(c => getCompetitionAvailability(c.id, forRole).catch(() => []))
       )
       const map = {}
       upcoming.forEach((c, i) => { map[c.id] = avails[i] })
@@ -157,7 +163,7 @@ export default function Availability() {
           notes: modalForm.notes || null,
         })
       }
-      const updated = await getCompetitionAvailability(modal.competition.id).catch(() => [])
+      const updated = await getCompetitionAvailability(modal.competition.id, role).catch(() => [])
       setAvailData(prev => ({ ...prev, [modal.competition.id]: updated }))
       setModal(null)
     } catch (err) {
@@ -210,13 +216,32 @@ export default function Availability() {
   return (
     <div className="space-y-4">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-start justify-between flex-wrap gap-3">
         <div>
           <h1 className="text-[22px] font-semibold text-navy-900 dark:text-white tracking-tight">{t('availability.title')}</h1>
           <p className="text-sm text-ink-500 dark:text-ink-400 mt-0.5">
-            <span className="num font-medium text-ink-700 dark:text-ink-200">{filteredTds.length}</span> TDs · <span className="num font-medium text-ink-700 dark:text-ink-200">{filteredComps.length}</span> {filteredComps.length === 1 ? 'competencia' : 'competencias'}
+            <span className="num font-medium text-ink-700 dark:text-ink-200">{filteredTds.length}</span> {t(`rolesShort.${role}`)} · <span className="num font-medium text-ink-700 dark:text-ink-200">{filteredComps.length}</span> {filteredComps.length === 1 ? 'competencia' : 'competencias'}
           </p>
         </div>
+        {canEdit && (
+          <Button variant="secondary" size="sm" onClick={() => setLinksOpen(true)}>
+            {t('availability.linksButton')}
+          </Button>
+        )}
+      </div>
+
+      {/* Role selector */}
+      <div className="flex flex-wrap gap-1.5">
+        {ROLES.map(r => (
+          <button key={r} onClick={() => setRole(r)}
+            className={`px-2.5 h-7 rounded-md text-xs font-medium border transition-colors ${
+              role === r
+                ? 'bg-navy-900 text-white border-navy-900 dark:bg-navy-700 dark:border-navy-700'
+                : 'bg-white dark:bg-navy-900 text-ink-600 dark:text-ink-300 border-ink-200 dark:border-navy-700 hover:bg-ink-50 dark:hover:bg-navy-800'
+            }`}>
+            {t(`rolesShort.${r}`)}
+          </button>
+        ))}
       </div>
 
       {/* Stat cards */}
@@ -300,7 +325,7 @@ export default function Availability() {
               <thead>
                 <tr className="bg-ink-50/60 dark:bg-navy-950/40 border-b border-ink-100 dark:border-navy-800">
                   <th className="text-left px-4 py-2.5 font-semibold text-2xs uppercase tracking-wide text-ink-500 dark:text-ink-400 sticky left-0 bg-[#fbfcfd] dark:bg-[#0a1e36] z-10 min-w-[200px] border-r border-ink-100 dark:border-navy-800">
-                    Delegate
+                    {t(`roles.${role}`)}
                   </th>
                   {filteredComps.map((comp, idx) => (
                     <th key={comp.id}
@@ -326,9 +351,18 @@ export default function Availability() {
                         <Avatar name={td.name} size="sm" />
                         <div className="min-w-0">
                           <div className="text-[13px] font-medium text-ink-900 dark:text-white truncate">{td.name}</div>
-                          {td.country && (
-                            <div className="text-[11px] text-ink-500 dark:text-ink-400 truncate">{td.country}</div>
-                          )}
+                          <div className="text-[11px] truncate">
+                            {td.country && <span className="text-ink-500 dark:text-ink-400">{td.country} · </span>}
+                            {td.availability_confirmed_at ? (
+                              <span className="text-success-600 dark:text-success-500">
+                                {t('availability.confirmedOn', {
+                                  date: new Date(td.availability_confirmed_at).toLocaleDateString(lang === 'es' ? 'es' : 'en-US', { day: 'numeric', month: 'short', year: '2-digit' }),
+                                })}
+                              </span>
+                            ) : (
+                              <span className="text-ink-400 dark:text-ink-500">{t('availability.notConfirmed')}</span>
+                            )}
+                          </div>
                         </div>
                       </div>
                     </td>
@@ -411,6 +445,96 @@ export default function Availability() {
           </div>
         </div>
       )}
+
+      {/* Self-service links modal */}
+      {linksOpen && <LinksModal t={t} onClose={() => setLinksOpen(false)} />}
+    </div>
+  )
+}
+
+/* ── Self-service links: one shared URL per role, copy + rotate ──── */
+function LinksModal({ t, onClose }) {
+  const [links, setLinks] = useState(null)
+  const [error, setError] = useState(false)
+  const [copiedRole, setCopiedRole] = useState(null)
+  const [rotating, setRotating] = useState(null)
+
+  useEffect(() => {
+    getAvailabilityLinks().then(setLinks).catch(() => setError(true))
+  }, [])
+
+  const urlFor = (link) => `${window.location.origin}/availability/${link.token}`
+
+  async function handleCopy(link) {
+    try {
+      await navigator.clipboard.writeText(urlFor(link))
+      setCopiedRole(link.role)
+      setTimeout(() => setCopiedRole(r => (r === link.role ? null : r)), 2000)
+    } catch {
+      // Clipboard can be unavailable (http, permissions) — show the URL to copy by hand
+      window.prompt(t('availability.copy'), urlFor(link))
+    }
+  }
+
+  async function handleRotate(link) {
+    if (!window.confirm(t('availability.rotateConfirm'))) return
+    setRotating(link.role)
+    try {
+      const updated = await rotateAvailabilityLink(link.role)
+      setLinks(prev => prev.map(l => (l.role === updated.role ? updated : l)))
+    } catch {
+      alert(t('availability.linksError'))
+    }
+    setRotating(null)
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-navy-950/60 backdrop-blur-sm px-4">
+      <div className="w-full max-w-lg max-h-[85vh] overflow-y-auto rounded-xl bg-white dark:bg-navy-900 border border-ink-200 dark:border-navy-700 shadow-pop p-6">
+        <h3 className="text-[15px] font-semibold text-navy-900 dark:text-white mb-1">
+          {t('availability.linksTitle')}
+        </h3>
+        <p className="text-xs text-ink-500 dark:text-ink-400 mb-4">{t('availability.linksHelp')}</p>
+
+        {error && <div className="text-sm text-danger-600 dark:text-danger-500">{t('availability.linksError')}</div>}
+        {!links && !error && (
+          <div className="flex justify-center py-8">
+            <div className="w-5 h-5 border-2 border-basketball-500 border-t-transparent rounded-full animate-spin" />
+          </div>
+        )}
+
+        {links && (
+          <div className="space-y-3">
+            {links.map(link => (
+              <div key={link.role} className="border border-ink-100 dark:border-navy-800 rounded-lg p-3">
+                <div className="flex items-center justify-between gap-2 mb-1.5">
+                  <span className="text-[13px] font-medium text-ink-900 dark:text-white">
+                    {t(`roles.${link.role}`)}
+                  </span>
+                  <div className="flex gap-1.5 flex-shrink-0">
+                    <Button variant="secondary" size="xs" onClick={() => handleCopy(link)}>
+                      {copiedRole === link.role ? t('availability.copied') : t('availability.copy')}
+                    </Button>
+                    <Button variant="ghost" size="xs" disabled={rotating === link.role}
+                      onClick={() => handleRotate(link)}>
+                      {t('availability.rotate')}
+                    </Button>
+                  </div>
+                </div>
+                <div className="font-mono text-[11px] text-ink-500 dark:text-ink-400 truncate" title={urlFor(link)}>
+                  {urlFor(link)}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <div className="flex justify-end mt-5">
+          <Button variant="secondary" size="sm" onClick={onClose}>
+            {t('availability.cancel')}
+          </Button>
+        </div>
+      </div>
     </div>
   )
 }

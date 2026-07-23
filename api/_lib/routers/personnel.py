@@ -7,6 +7,7 @@ from api._lib.auth import require_view, require_edit
 from api._lib.schemas import PersonnelCreate, PersonnelUpdate
 from api._lib.services.bulk_import import process_bulk_import
 from api._lib.countries import name_to_code
+from api._lib.roles import VALID_ROLES
 
 router = APIRouter(prefix="/personnel", tags=["personnel"], dependencies=[Depends(require_view("personnel"))])
 
@@ -14,8 +15,8 @@ router = APIRouter(prefix="/personnel", tags=["personnel"], dependencies=[Depend
 _MAX_UPLOAD_BYTES = 5 * 1024 * 1024
 _SAFE_SEARCH_RE = re.compile(r"^[\w\s\-\.@áéíóúñüÁÉÍÓÚÑÜ]+$")
 _PHOTO_BUCKET = "inventory"
-# Valid personnel roles (matches the CHECK constraint in migration 016).
-_VALID_ROLES = ("VGO", "TD", "REF", "REF_INSTRUCTOR", "VIDEO_OPERATOR")
+# Valid personnel roles (single source in api/_lib/roles.py).
+_VALID_ROLES = VALID_ROLES
 
 
 def _normalize_country(record: dict) -> None:

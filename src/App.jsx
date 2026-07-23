@@ -8,6 +8,10 @@ import { Icon } from './lib/icons'
 import Login from './pages/Login'
 import PublicAsset from './pages/PublicAsset'
 
+// Public self-service availability form (no-auth route, lazy: only official
+// links ever hit it, so it stays out of the main bundle)
+const PublicAvailability = lazy(() => import('./pages/PublicAvailability'))
+
 // Lazy-load every authenticated page so the initial bundle is small
 const Calendar     = lazy(() => import('./pages/Calendar'))
 const Nominations  = lazy(() => import('./pages/Nominations'))
@@ -88,6 +92,23 @@ export default function App() {
       <Routes>
         <Route path="/asset/:id" element={<PublicAsset />} />
       </Routes>
+    )
+  }
+
+  // Self-service availability form: /availability/<token>. The token is a long
+  // urlsafe secret, so the length guard keeps the authenticated /availability
+  // matrix route from matching here.
+  if (typeof window !== 'undefined' && /^\/availability\/[A-Za-z0-9_-]{16,}$/.test(window.location.pathname)) {
+    return (
+      <Suspense fallback={
+        <div className="min-h-screen bg-ink-50 dark:bg-navy-950 flex items-center justify-center">
+          <div className="w-6 h-6 border-2 border-basketball-500 border-t-transparent rounded-full animate-spin" />
+        </div>
+      }>
+        <Routes>
+          <Route path="/availability/:token" element={<PublicAvailability />} />
+        </Routes>
+      </Suspense>
     )
   }
 
