@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from 'react'
 import { getCompetitions, createCompetition, updateCompetition, deleteCompetition, getNominations, getTemplates } from '../api/client'
 import { useLanguage } from '../i18n/LanguageContext'
 import { useAuth } from '../contexts/AuthContext'
+import { readLastSearch, writeLastSearch } from '../lib/lastSearch'
 
 const TEMPLATE_BADGES = {
   WCQ: 'bg-red-500/20 text-red-400',
@@ -9,6 +10,20 @@ const TEMPLATE_BADGES = {
   BCLA_RS: 'bg-blue-500/20 text-blue-400',
   LSB: 'bg-amber-500/20 text-amber-400',
   GENERIC: 'bg-fiba-surface text-fiba-muted',
+}
+
+// Last search (text + template filter), persisted across visits — same
+// pattern as Games. Restored synchronously as the initial state; the
+// template filter is re-validated against the data once it loads.
+const LAST_SEARCH_KEY = 'fiba_competitions_last_search'
+
+function loadLastSearch() {
+  const parsed = readLastSearch(LAST_SEARCH_KEY)
+  if (!parsed) return null
+  return {
+    search: typeof parsed.search === 'string' ? parsed.search : '',
+    template: typeof parsed.template === 'string' ? parsed.template : '',
+  }
 }
 
 export default function Competitions() {
@@ -21,9 +36,13 @@ export default function Competitions() {
   const [editing, setEditing] = useState(null)
   const [form, setForm] = useState({ name: '', template_key: 'WCQ', year: new Date().getFullYear(), fiba_games_url: '', fee_type: 'per_game', is_national_team: true })
 
-  // Search & filter
-  const [search, setSearch] = useState('')
-  const [filterTemplate, setFilterTemplate] = useState('')
+  // Search & filter — restored from the persisted last search
+  const [search, setSearch] = useState(() => loadLastSearch()?.search || '')
+  const [filterTemplate, setFilterTemplate] = useState(() => loadLastSearch()?.template || '')
+
+  useEffect(() => {
+    writeLastSearch(LAST_SEARCH_KEY, { search, template: filterTemplate })
+  }, [search, filterTemplate])
 
   // Template types created on the Templates page — the built-ins are listed
   // statically in the select below.
@@ -40,6 +59,9 @@ export default function Competitions() {
     const [c, n] = await Promise.all([getCompetitions(), getNominations()])
     setCompetitions(c)
     setNominations(n)
+    // Drop a restored template filter that no longer matches any competition,
+    // so a stale value can't leave the list silently empty.
+    setFilterTemplate(ft => (ft && !c.some(x => x.template_key === ft) ? '' : ft))
   }
 
   function nomCount(compId) {

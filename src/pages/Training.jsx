@@ -9,6 +9,7 @@ import {
   importTrainingExcel, previewTrainingExcel, downloadTrainingPdf,
   checkTrainingConflicts,
 } from '../api/client'
+import { readLastSearch, writeLastSearch } from '../lib/lastSearch'
 
 function formatTime(t) {
   if (!t) return ''
@@ -16,11 +17,29 @@ function formatTime(t) {
   return `${parts[0]}:${parts[1]}`
 }
 
+// Last search (competition + tab + day/team/TD), persisted across visits —
+// same pattern as Games.
+const LAST_SEARCH_KEY = 'fiba_training_last_search'
+const TAB_KEYS = ['byDay', 'byTeam', 'byTd']
+
+function loadLastSearch() {
+  const parsed = readLastSearch(LAST_SEARCH_KEY)
+  if (!parsed) return null
+  return {
+    compId: typeof parsed.compId === 'string' ? parsed.compId : '',
+    tab: TAB_KEYS.includes(parsed.tab) ? parsed.tab : '',
+    date: typeof parsed.date === 'string' ? parsed.date : '',
+    team: typeof parsed.team === 'string' ? parsed.team : '',
+    td: typeof parsed.td === 'string' ? parsed.td : '',
+  }
+}
+
 export default function Training() {
   const { t, lang } = useLanguage()
   const { hasEdit } = useAuth()
   const canEdit = hasEdit('training')
-  const [tab, setTab] = useState('byDay')
+  const lastSearchRef = useRef(loadLastSearch()) // pending restore, consumed once
+  const [tab, setTab] = useState(() => lastSearchRef.current?.tab || 'byDay')
   const [competitions, setCompetitions] = useState([])
   const [competitionId, setCompetitionId] = useState('')
   const [loading, setLoading] = useState(true)
@@ -70,6 +89,15 @@ export default function Training() {
     if (competitionId) loadSlots()
   }, [competitionId])
 
+  // Persist the current search as the user changes it. Paused while a restore
+  // is pending so the initial defaults don't clobber the saved values.
+  useEffect(() => {
+    if (!competitionId || lastSearchRef.current) return
+    writeLastSearch(LAST_SEARCH_KEY, {
+      compId: competitionId, tab, date: selectedDate, team: selectedTeam, td: selectedTd,
+    })
+  }, [competitionId, tab, selectedDate, selectedTeam, selectedTd])
+
   async function loadCompetitions() {
     try {
       const [comps, pers] = await Promise.all([
@@ -78,7 +106,13 @@ export default function Training() {
       ])
       setCompetitions(comps)
       setTds(pers.filter(p => p.role === 'TD'))
-      if (comps.length > 0) setCompetitionId(comps[0].id)
+      const saved = lastSearchRef.current
+      if (saved?.compId && comps.some(c => c.id === saved.compId)) {
+        setCompetitionId(saved.compId)
+      } else {
+        lastSearchRef.current = null // saved comp is gone → nothing to restore
+        if (comps.length > 0) setCompetitionId(comps[0].id)
+      }
     } catch (err) { console.error('Load error:', err) }
     setLoading(false)
   }
@@ -91,7 +125,20 @@ export default function Training() {
       ])
       setAllSlots(slots)
       setAvailData(avail)
-      if (slots.length > 0 && !selectedDate) {
+      // One-shot restore of the persisted last search, only for the
+      // competition it was saved for; stale values are dropped silently.
+      const saved = lastSearchRef.current
+      lastSearchRef.current = null
+      let dateRestored = false
+      if (saved && saved.compId === competitionId) {
+        if (saved.date && slots.some(s => s.date === saved.date)) {
+          setSelectedDate(saved.date)
+          dateRestored = true
+        }
+        if (saved.team && slots.some(s => s.team_label === saved.team)) setSelectedTeam(saved.team)
+        if (saved.td && tds.some(p => p.id === saved.td)) setSelectedTd(saved.td)
+      }
+      if (!dateRestored && slots.length > 0 && !selectedDate) {
         const d = [...new Set(slots.map(s => s.date))].sort()
         setSelectedDate(d[0])
       }

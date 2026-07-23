@@ -1,7 +1,8 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import { useLanguage } from '../i18n/LanguageContext'
 import { useAuth } from '../contexts/AuthContext'
 import CompetitionSearch from '../components/CompetitionSearch'
+import { readLastSearch, writeLastSearch } from '../lib/lastSearch'
 import {
   getTransportEvents, getTransportVehicles, getTransportDrivers,
   getTransportTrips, createTransportTrip, updateTransportTrip, deleteTransportTrip,
@@ -20,11 +21,27 @@ function formatTime(t) {
   return `${parts[0]}:${parts[1]}`
 }
 
+// Last search (competition + tab + date), persisted across visits — same
+// pattern as Games.
+const LAST_SEARCH_KEY = 'fiba_transport_last_search'
+const TAB_KEYS = ['schedule', 'config', 'passengers']
+
+function loadLastSearch() {
+  const parsed = readLastSearch(LAST_SEARCH_KEY)
+  if (!parsed) return null
+  return {
+    compId: typeof parsed.compId === 'string' ? parsed.compId : '',
+    tab: TAB_KEYS.includes(parsed.tab) ? parsed.tab : '',
+    date: typeof parsed.date === 'string' ? parsed.date : '',
+  }
+}
+
 export default function Transport() {
   const { t, lang } = useLanguage()
   const { hasEdit } = useAuth()
   const canEdit = hasEdit('transport')
-  const [tab, setTab] = useState('schedule')
+  const lastSearchRef = useRef(loadLastSearch()) // pending restore, consumed once
+  const [tab, setTab] = useState(() => lastSearchRef.current?.tab || 'schedule')
 
   // Competition selector
   const [competitions, setCompetitions] = useState([])
@@ -75,15 +92,36 @@ export default function Transport() {
   useEffect(() => {
     getCalendarCompetitions().then(comps => {
       setCompetitions(comps)
-      if (comps.length > 0) setCompetitionId(comps[0].id)
+      const saved = lastSearchRef.current
+      if (saved?.compId && comps.some(c => c.id === saved.compId)) {
+        setCompetitionId(saved.compId)
+      } else {
+        lastSearchRef.current = null // saved comp is gone → nothing to restore
+        if (comps.length > 0) setCompetitionId(comps[0].id)
+      }
     }).catch(() => {})
   }, [])
+
+  // Persist the current search as the user changes it. Paused while a restore
+  // is pending so the initial defaults don't clobber the saved values.
+  useEffect(() => {
+    if (!competitionId || lastSearchRef.current) return
+    writeLastSearch(LAST_SEARCH_KEY, { compId: competitionId, tab, date })
+  }, [competitionId, tab, date])
 
   useEffect(() => {
     if (!competitionId) return
     const comp = competitions.find(c => c.id === competitionId)
     setSelectedComp(comp || null)
-    if (comp?.start_date) setDate(comp.start_date)
+    // One-shot restore of the persisted date, only for the competition it was
+    // saved for and only if it falls inside the competition range.
+    const saved = lastSearchRef.current
+    lastSearchRef.current = null
+    const savedDateOk = saved && saved.compId === competitionId && saved.date
+      && (!comp?.start_date || saved.date >= comp.start_date)
+      && (!comp?.end_date || saved.date <= comp.end_date)
+    if (savedDateOk) setDate(saved.date)
+    else if (comp?.start_date) setDate(comp.start_date)
     else setDate(new Date().toISOString().split('T')[0])
 
     setEventLoading(true)

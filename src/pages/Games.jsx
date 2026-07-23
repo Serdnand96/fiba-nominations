@@ -12,6 +12,7 @@ import { useAuth } from '../contexts/AuthContext'
 import CompetitionSearch from '../components/CompetitionSearch'
 import { COUNTRIES, countryName } from '../lib/countries'
 import { findRefereeGameConflict } from '../lib/refereeNeutrality'
+import { readLastSearch, writeLastSearch } from '../lib/lastSearch'
 
 const PHASE_OPTIONS = ['Group Phase', 'Quarterfinals', 'Semifinals', 'Classification', 'Finals']
 const ASSIGNMENT_TEMPLATES = new Set(['WCQ', 'BCLA', 'LSB'])
@@ -33,16 +34,12 @@ const EMPTY_FORM = {
 const LAST_SEARCH_KEY = 'fiba_games_last_search'
 
 function loadLastSearch() {
-  try {
-    const parsed = JSON.parse(localStorage.getItem(LAST_SEARCH_KEY) || 'null')
-    if (!parsed || typeof parsed !== 'object') return null
-    return {
-      compId: typeof parsed.compId === 'string' ? parsed.compId : '',
-      dates: Array.isArray(parsed.dates) ? parsed.dates.filter(d => typeof d === 'string') : [],
-      group: typeof parsed.group === 'string' ? parsed.group : '',
-    }
-  } catch {
-    return null
+  const parsed = readLastSearch(LAST_SEARCH_KEY)
+  if (!parsed) return null
+  return {
+    compId: typeof parsed.compId === 'string' ? parsed.compId : '',
+    dates: Array.isArray(parsed.dates) ? parsed.dates.filter(d => typeof d === 'string') : [],
+    group: typeof parsed.group === 'string' ? parsed.group : '',
   }
 }
 
@@ -147,13 +144,11 @@ export default function Games() {
   // is pending so the initial empty filters don't clobber the saved ones.
   useEffect(() => {
     if (!selectedCompId || lastSearchRef.current) return
-    try {
-      localStorage.setItem(LAST_SEARCH_KEY, JSON.stringify({
-        compId: selectedCompId,
-        dates: filterDates,
-        group: filterGroup,
-      }))
-    } catch {}
+    writeLastSearch(LAST_SEARCH_KEY, {
+      compId: selectedCompId,
+      dates: filterDates,
+      group: filterGroup,
+    })
   }, [selectedCompId, filterDates, filterGroup])
 
   // Load games when competition changes
