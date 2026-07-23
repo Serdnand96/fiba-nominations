@@ -42,6 +42,11 @@ def _role_label(role: str) -> str:
 CONFIRMATION_EMAIL = {
     "VGO": "vgo.americas@fiba.basketball",
     "TD": "competitions-americas@fiba.basketball",
+    # Referee nominations are confirmed to the Americas Referees inbox.
+    # Instructors belong to the same referee department. VIDEO_OPERATOR is
+    # intentionally absent → falls back to the VGO inbox.
+    "REF": "americas.refs@fiba.basketball",
+    "REF_INSTRUCTOR": "americas.refs@fiba.basketball",
 }
 
 SIGNATORIES = {
