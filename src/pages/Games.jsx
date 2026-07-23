@@ -28,6 +28,24 @@ const EMPTY_FORM = {
   group_label: '', status: 'scheduled', sport: 'Basketball',
 }
 
+// Last Games search (competition + filters), persisted so returning to the
+// page restores it instead of forcing the user to rebuild the same search.
+const LAST_SEARCH_KEY = 'fiba_games_last_search'
+
+function loadLastSearch() {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(LAST_SEARCH_KEY) || 'null')
+    if (!parsed || typeof parsed !== 'object') return null
+    return {
+      compId: typeof parsed.compId === 'string' ? parsed.compId : '',
+      dates: Array.isArray(parsed.dates) ? parsed.dates.filter(d => typeof d === 'string') : [],
+      group: typeof parsed.group === 'string' ? parsed.group : '',
+    }
+  } catch {
+    return null
+  }
+}
+
 export default function Games() {
   const { t } = useLanguage()
   const { hasEdit } = useAuth()
@@ -70,6 +88,7 @@ export default function Games() {
   const [teamCountriesMsg, setTeamCountriesMsg] = useState('')
   const fileRef = useRef(null)
   const autoSyncDone = useRef(new Set()) // track which comps we've auto-synced
+  const lastSearchRef = useRef(loadLastSearch()) // pending restore, consumed once
   // Blocking pop-up when a referee with a country conflict is selected
   const [refConflict, setRefConflict] = useState(null)
 
@@ -110,13 +129,32 @@ export default function Games() {
     })
   }, [selectedCompId, selectedComp?.default_letter_date]) // re-pull when comp data changes
 
-  // Load competitions
+  // Load competitions — reopen the last searched one if it still exists
   useEffect(() => {
     getCalendarCompetitions().then(c => {
       setCompetitions(c)
-      if (c.length > 0) setSelectedCompId(c[0].id)
+      const saved = lastSearchRef.current
+      if (saved?.compId && c.some(x => x.id === saved.compId)) {
+        setSelectedCompId(saved.compId)
+      } else {
+        lastSearchRef.current = null // saved comp is gone → nothing to restore
+        if (c.length > 0) setSelectedCompId(c[0].id)
+      }
     }).catch(() => {})
   }, [])
+
+  // Persist the current search as the user changes it. Paused while a restore
+  // is pending so the initial empty filters don't clobber the saved ones.
+  useEffect(() => {
+    if (!selectedCompId || lastSearchRef.current) return
+    try {
+      localStorage.setItem(LAST_SEARCH_KEY, JSON.stringify({
+        compId: selectedCompId,
+        dates: filterDates,
+        group: filterGroup,
+      }))
+    } catch {}
+  }, [selectedCompId, filterDates, filterGroup])
 
   // Load games when competition changes
   useEffect(() => {
@@ -141,6 +179,8 @@ export default function Games() {
       setGameDates(d)
       setTeams(te)
       setAssignments(asg)
+      let finalGames = g
+      let finalDates = d
 
       // Auto-sync from FIBA if competition has URL and no games yet
       if (g.length === 0 && comp?.fiba_games_url && !autoSyncDone.current.has(selectedCompId)) {
@@ -165,11 +205,25 @@ export default function Games() {
           setGameDates(d2)
           setTeams(te2)
           setAssignments(asg2 || [])
+          finalGames = g2
+          finalDates = d2
         } catch (err) {
           setSyncMsg(err.response?.data?.detail || 'Auto-sync failed')
         }
         setSyncing(false)
         setTimeout(() => setSyncMsg(''), 6000)
+      }
+
+      // One-shot restore of the persisted last search. Only applies to the
+      // competition it was saved for; values that no longer exist in the
+      // loaded data (stale dates/groups) are dropped silently.
+      const saved = lastSearchRef.current
+      lastSearchRef.current = null
+      if (saved && saved.compId === selectedCompId) {
+        const validDates = saved.dates.filter(x => finalDates.includes(x))
+        if (validDates.length > 0) setFilterDates(validDates)
+        const groupSet = new Set(finalGames.map(gm => gm.group_label).filter(Boolean))
+        if (saved.group && groupSet.has(saved.group)) setFilterGroup(saved.group)
       }
     } catch (e) {
       console.error(e)
