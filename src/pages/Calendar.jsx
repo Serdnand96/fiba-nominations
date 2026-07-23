@@ -17,7 +17,6 @@ const COMP_TYPES = [
   { key: 'WBLA', label: 'WBLA', color: '#BA7517' },
   { key: 'AmeriCup', label: 'AmeriCup', color: '#993C1D' },
   { key: 'U-Series', label: 'U-Series', color: '#0F6E56' },
-  { key: '3x3', label: '3x3', color: '#5F5E5A' },
 ]
 const TYPE_COLORS = Object.fromEntries(COMP_TYPES.filter(t => t.color).map(t => [t.key, t.color]))
 function getTypeColor(type) { return TYPE_COLORS[type] || '#6B7280' }
@@ -25,7 +24,7 @@ function getTypeColor(type) { return TYPE_COLORS[type] || '#6B7280' }
 const TEMPLATE_MAP = {
   'BCLA': 'BCLA_RS', 'WCQ': 'WCQ', 'LSB': 'LSB', 'LSBF': 'LSB',
   'WBLA': 'GENERIC', 'AmeriCup': 'GENERIC', 'U-Series': 'GENERIC',
-  '3x3': 'GENERIC', 'Other': 'GENERIC',
+  'Other': 'GENERIC',
 }
 
 function groupByMonth(events) {

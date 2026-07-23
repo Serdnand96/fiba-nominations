@@ -24,7 +24,7 @@ const NOMINATION_STYLES = {
   pending:   { cell: 'bg-basketball-50 dark:bg-basketball-500/10 hover:bg-basketball-100 dark:hover:bg-basketball-500/20 ring-1 ring-basketball-500/40', dot: 'bg-basketball-300' },
 }
 
-const COMP_TYPES = ['BCLA', 'WCQ', 'LSB', 'LSBF', 'WBLA', 'AmeriCup', 'U-Series', '3x3']
+const COMP_TYPES = ['BCLA', 'WCQ', 'LSB', 'LSBF', 'WBLA', 'AmeriCup', 'U-Series']
 
 const isWeekend = (d) => [0, 6].includes(d.getDay())
 
