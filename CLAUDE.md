@@ -75,6 +75,7 @@ fiba-nominations/
 ├── DEVELOPMENT.md             ← correr local
 ├── DESIGN_SYSTEM.md           ← tokens / componentes UI
 ├── SECURITY_RUNBOOK.md        ← acciones manuales pendientes (Supabase, DNS)
+├── .claude/                   ← subagentes + skills para sesiones de IA (ver abajo)
 │
 ├── api/                       ← FastAPI backend
 │   ├── index.py               ← entry, middleware, mounting routers
@@ -104,6 +105,25 @@ fiba-nominations/
 ├── .github/workflows/deploy.yml  ← CI/CD
 └── tailwind.config.js         ← tokens del DS
 ```
+
+---
+
+## 🤖 Subagentes y skills (para sesiones de Claude Code)
+
+En `.claude/` hay subagentes y skills con las convenciones **reales** del
+repo, para no reconstruirlas de cero en cada sesión:
+
+- **Agentes** (`.claude/agents/`): `explorer` (read-only, entender un módulo
+  antes de tocarlo), `frontend-implementer`, `api-implementer`,
+  `pdf-specialist`, `excel-import-specialist` y `code-reviewer`. Flujo
+  sugerido: explorer → implementer(s) → code-reviewer.
+- **Skills** (`.claude/skills/`, se auto-cargan según el contexto):
+  `api-conventions`, `frontend-conventions`, `fiba-excel-format`,
+  `pdf-templates`, `security-checklist`.
+
+⚠️ Son una **foto del código**: si refactorizás auth, la generación de PDF o
+el import de Excel, actualizá el skill correspondiente en el mismo PR — un
+skill desactualizado es peor que ninguno.
 
 ---
 
