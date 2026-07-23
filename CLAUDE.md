@@ -27,10 +27,15 @@ legacy `fibaamericascloud.com`).
    `.vercel/` local, gitignoreado). El deploy real es al droplet DO.
    La migración a DO se completó en abril 2026.
 
-2. **PDF generation usa LibreOffice local**, no CloudConvert. El droplet
-   tiene `soffice` instalado y `api/_lib/services/document_generator.py`
-   lo usa. CloudConvert quedó como fallback opcional pero deshabilitado
-   en prod.
+2. **Los PDFs se generan con python-docx + docxtpl → LibreOffice**, no
+   WeasyPrint ni templates HTML. Las cartas de nominación
+   (`api/_lib/services/document_generator.py`) renderizan templates `.docx`
+   con placeholders `docxtpl` y los convierten a PDF con `soffice` local
+   (`USE_LOCAL_LIBREOFFICE=1`); CloudConvert quedó como fallback
+   deshabilitado. **Ojo:** el export de training schedule
+   (`api/_lib/routers/training.py`) es un camino aparte — arma la tabla con
+   python-docx y todavía convierte vía CloudConvert únicamente (si no hay
+   API key, sirve el `.docx`).
 
 3. **Hay dos tablas distintas para personas:**
    - `personnel` → TDs / VGOs (oficiales que se nominan)
@@ -49,6 +54,13 @@ legacy `fibaamericascloud.com`).
 6. **CSS variables hacen los tokens `fiba-*` dark-aware.** No es
    Tailwind nativo — ver `DESIGN_SYSTEM.md`. Si tocás colores, leelo
    primero.
+
+7. **El módulo Transport NO tiene "Supabase Auth standalone".** Es un
+   módulo permisado normal: `require_view/require_edit("transport")`,
+   tablas `transport_*`, y comparte el mismo `AuthContext` y cliente de
+   Supabase que todo el resto del sistema. No hay un sandbox de auth
+   separado — revisalo con el mismo checklist de permisos que cualquier
+   otro módulo.
 
 ---
 
@@ -71,7 +83,7 @@ fiba-nominations/
 │       ├── database.py        ← lightweight supabase client (httpx)
 │       ├── routers/           ← uno por módulo (nominations, training, …)
 │       └── services/
-│           └── document_generator.py  ← docx → pdf via LibreOffice
+│           └── document_generator.py  ← docx (docxtpl) → pdf (LibreOffice)
 │
 ├── src/                       ← React frontend
 │   ├── App.jsx                ← shell (sidebar + topbar + router)
@@ -153,10 +165,16 @@ npm run dev                 # vite
   `/auth/v1/user`. Bypasses solo para: OPTIONS, `/api`, `/api/public/*`.
   Endpoints `/download` y `/export/pdf` **requieren auth** (pen-test N1).
 
-- **Permisos por módulo** vía dependencies `require_view("X")` /
-  `require_edit("X")` (de `api/_lib/auth.py`). El check pega a la
-  tabla `user_permissions` con cache por request en
-  `request.state._is_superadmin`.
+- **Autorización a nivel de app (NO RLS).** El backend pega a Supabase con
+  el `service_role` key (`api/_lib/database.py`), que **bypassa Row Level
+  Security**. Por eso el control de acceso vive en el código: cada router
+  declara `require_view("X")` a nivel `APIRouter` y cada escritura agrega
+  `require_edit("X")` (de `api/_lib/auth.py`). Los permisos salen de
+  `user_permissions` (`can_view`/`can_edit`); el flag `is_superadmin` sale
+  de `user_profiles` y se cachea por request en
+  `request.state._is_superadmin`. RLS existe solo como defensa en
+  profundidad en algunas tablas (migraciones 006/007), no como control
+  principal. **Un endpoint sin dependency de permiso = agujero P0.**
 
 - **Storage path normalization** (`api/_lib/routers/nominations.py` →
   `_extract_storage_key()`) maneja 3 formatos: `storage://nominations/X`,
@@ -247,8 +265,9 @@ explicación del truco de CSS variables para los aliases legacy
 - ❌ Asumir que está en Vercel (ya no — droplet DO).
 - ❌ Llamar al bucket `nominations` como público (es privado, siempre
   vía service_role en el backend).
-- ❌ Generar PDFs llamando a CloudConvert (deshabilitado; usar
-  LibreOffice local via `document_generator.py`).
+- ❌ Generar las cartas de nominación vía CloudConvert (deshabilitado;
+  usar LibreOffice local via `document_generator.py`). El único uso vivo
+  de CloudConvert hoy es el export de training schedule (`training.py`).
 - ❌ Borrar registros directamente con SQL si tocan storage — usar
   el endpoint que llama a Storage API (`_delete_pdf_from_storage`).
 - ❌ Confundir `personnel` con `employees` (TDs/VGOs vs staff interno).
