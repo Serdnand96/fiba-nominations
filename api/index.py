@@ -6,6 +6,7 @@ from api._lib.routers import (
     personnel, competitions, nominations, users, calendar, transport,
     availability, permissions, training, games,
     assets, loans, public_assets, public_availability, employees, templates, payments,
+    activity,
 )
 
 app = FastAPI(title="FIBA Americas Administration API", docs_url=None, redoc_url=None)
@@ -87,6 +88,52 @@ def _public_rate_limited(request: Request) -> bool:
     return False
 
 
+# ── Activity log (audit trail) ──────────────────────────────────────────────
+# Registered BEFORE auth_middleware on purpose: FastAPI middleware wraps in
+# reverse registration order, so this runs *inside* auth — request.state.user
+# is already set here, and rejected requests (401) never reach this layer.
+# The insert runs as a background task after the response is sent, so auditing
+# adds no latency; record_activity itself swallows every error (best-effort).
+from starlette.background import BackgroundTask, BackgroundTasks
+from api._lib.services.activity_log import record_activity, filtered_query_params
+
+_AUDITED_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
+
+
+@app.middleware("http")
+async def activity_log_middleware(request: Request, call_next):
+    response = await call_next(request)
+
+    user = getattr(request.state, "user", None)
+    if (
+        request.method in _AUDITED_METHODS
+        and response.status_code < 400
+        and isinstance(user, dict)
+        and not request.url.path.startswith("/api/public/")
+    ):
+        task = BackgroundTask(
+            record_activity,
+            user_id=user.get("id"),
+            user_email=user.get("email"),
+            action=request.method,
+            path=request.url.path,
+            status=response.status_code,
+            ip=_client_ip(request),
+            user_agent=(request.headers.get("user-agent") or "")[:500] or None,
+            metadata=filtered_query_params(request.query_params) or None,
+        )
+        # Chain after any background work the endpoint already scheduled.
+        prior = response.background
+        if prior is None:
+            response.background = task
+        elif isinstance(prior, BackgroundTasks):
+            prior.tasks.append(task)
+        else:
+            response.background = BackgroundTasks([prior, task])
+
+    return response
+
+
 # Store auth user on request state so routers can access it
 @app.middleware("http")
 async def auth_middleware(request: Request, call_next):
@@ -143,6 +190,7 @@ app.include_router(public_assets.router, prefix="/api")
 app.include_router(public_availability.router, prefix="/api")
 app.include_router(templates.router, prefix="/api")
 app.include_router(payments.router, prefix="/api")
+app.include_router(activity.router, prefix="/api")
 
 
 @app.get("/api")

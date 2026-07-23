@@ -21,6 +21,7 @@ const translations = {
     loans: { en: 'Loans', es: 'Préstamos' },
     scan: { en: 'Scan QR', es: 'Escanear QR' },
     employees: { en: 'Employees', es: 'Empleados' },
+    activity: { en: 'Activity', es: 'Actividad' },
   },
 
   // ===== Login =====
@@ -984,6 +985,29 @@ const translations = {
     deactivate: { en: 'Deactivate', es: 'Desactivar' },
     confirmDeactivate: { en: 'Deactivate employee', es: 'Desactivar empleado' },
     noEmployees: { en: 'No employees', es: 'No hay empleados' },
+  },
+
+  // ===== Activity (audit log) =====
+  activity: {
+    title: { en: 'Activity', es: 'Actividad' },
+    subtitle: { en: 'Audit trail of changes made in the admin', es: 'Registro de cambios hechos en el sistema' },
+    searchPlaceholder: { en: 'Filter by user email...', es: 'Filtrar por email de usuario...' },
+    allModules: { en: 'All modules', es: 'Todos los módulos' },
+    from: { en: 'From', es: 'Desde' },
+    to: { en: 'To', es: 'Hasta' },
+    date: { en: 'Date', es: 'Fecha' },
+    user: { en: 'User', es: 'Usuario' },
+    module: { en: 'Module', es: 'Módulo' },
+    detail: { en: 'Detail', es: 'Detalle' },
+    created: { en: 'Created', es: 'Creación' },
+    updated: { en: 'Updated', es: 'Edición' },
+    deleted: { en: 'Deleted', es: 'Borrado' },
+    permissionsModule: { en: 'Permissions', es: 'Permisos' },
+    noActivity: { en: 'No activity recorded for these filters', es: 'Sin actividad registrada para estos filtros' },
+    loadMore: { en: 'Load more', es: 'Cargar más' },
+    clearFilters: { en: 'Clear filters', es: 'Limpiar filtros' },
+    retentionNote: { en: 'Events are kept for 180 days. Reads are not recorded, only changes.', es: 'Los eventos se conservan por 180 días. No se registran lecturas, solo cambios.' },
+    errorLoading: { en: 'Could not load activity', es: 'No se pudo cargar la actividad' },
   },
 
   // ===== Scan =====

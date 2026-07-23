@@ -60,6 +60,31 @@ class _QueryBuilder:
         self._params[column] = f"eq.{value}"
         return self
 
+    def gte(self, column: str, value):
+        self._params[column] = f"gte.{value}"
+        return self
+
+    def lte(self, column: str, value):
+        self._params[column] = f"lte.{value}"
+        return self
+
+    def lt(self, column: str, value):
+        self._params[column] = f"lt.{value}"
+        return self
+
+    def ilike(self, column: str, pattern: str):
+        # PostgREST uses * as wildcard in URL params (translated to %).
+        self._params[column] = f"ilike.{pattern}"
+        return self
+
+    def limit(self, count: int):
+        self._params["limit"] = str(count)
+        return self
+
+    def offset(self, count: int):
+        self._params["offset"] = str(count)
+        return self
+
     def or_(self, filters: str):
         self._params["or"] = f"({filters})"
         return self

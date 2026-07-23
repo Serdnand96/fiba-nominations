@@ -29,6 +29,7 @@ const Loans        = lazy(() => import('./pages/Loans'))
 const Scan         = lazy(() => import('./pages/Scan'))
 const Employees    = lazy(() => import('./pages/Employees'))
 const Payments     = lazy(() => import('./pages/Payments'))
+const Activity     = lazy(() => import('./pages/Activity'))
 
 /* ── Module → icon map (uses Tabler-style icons from lib/icons) ──── */
 const moduleIcon = {
@@ -47,6 +48,27 @@ const moduleIcon = {
   loans:        Icon.Upload,
   scan:         Icon.Pin,
   employees:    Icon.Users,
+  activity:     Icon.History,
+}
+
+// Superadmin-only routes (e.g. Activity) sit outside the assignable
+// permission matrix on purpose: they can never be granted to regular users.
+function SuperadminGuard({ children }) {
+  const { isSuperadmin } = useAuth()
+  const { t } = useLanguage()
+
+  if (!isSuperadmin) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <div className="text-center">
+          <div className="text-5xl text-ink-300 dark:text-navy-700 font-bold mb-4">403</div>
+          <p className="text-ink-500 dark:text-ink-400 text-sm">{t('permissions.accessDenied')}</p>
+        </div>
+      </div>
+    )
+  }
+
+  return children
 }
 
 function PermissionGuard({ module, children }) {
@@ -68,7 +90,7 @@ function PermissionGuard({ module, children }) {
 }
 
 export default function App() {
-  const { user, loading, hasView } = useAuth()
+  const { user, loading, hasView, isSuperadmin } = useAuth()
   const { t } = useLanguage()
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [mobileOpen, setMobileOpen] = useState(false)
@@ -143,9 +165,10 @@ export default function App() {
     { to: '/loans',        label: t('nav.loans'),        module: 'loans' },
     { to: '/scan',         label: t('nav.scan'),         module: 'assets' },
     { to: '/employees',    label: t('nav.employees'),    module: 'employees' },
+    { to: '/activity',     label: t('nav.activity'),     module: 'activity', superadminOnly: true },
   ]
 
-  const navItems = allNavItems.filter(item => hasView(item.module))
+  const navItems = allNavItems.filter(item => item.superadminOnly ? isSuperadmin : hasView(item.module))
   const defaultRoute = navItems.length > 0 ? navItems[0].to : '/calendar'
 
   return (
@@ -295,6 +318,7 @@ export default function App() {
                 <Route path="/loans"           element={<PermissionGuard module="loans"><Loans /></PermissionGuard>} />
                 <Route path="/scan"            element={<PermissionGuard module="assets"><Scan /></PermissionGuard>} />
                 <Route path="/employees"       element={<PermissionGuard module="employees"><Employees /></PermissionGuard>} />
+                <Route path="/activity"        element={<SuperadminGuard><Activity /></SuperadminGuard>} />
               </Routes>
             </Suspense>
           </div>

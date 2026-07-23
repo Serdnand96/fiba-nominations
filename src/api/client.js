@@ -296,6 +296,9 @@ export const revertTemplate = (key) => api.delete(`/templates/${key}/custom`).th
 // Public asset (no auth)
 export const getPublicAsset = (id) => api.get(`/public/asset/${id}`).then(r => r.data)
 
+// Activity log (audit trail, superadmin only)
+export const getActivityLog = (params) => api.get('/activity', { params }).then(r => r.data)
+
 // Employees (internal staff for inventory loans)
 export const getEmployees = (params) => api.get('/employees', { params }).then(r => r.data)
 export const getEmployee = (id) => api.get(`/employees/${id}`).then(r => r.data)
