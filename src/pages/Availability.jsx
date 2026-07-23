@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import { getCalendarCompetitions, getPersonnel, getCompetitionAvailability,
   createAvailability, updateAvailability } from '../api/client'
 import { useLanguage } from '../i18n/LanguageContext'
@@ -44,6 +44,9 @@ export default function Availability() {
   const [modalForm, setModalForm] = useState({ status: 'available', notes: '' })
   const [saving, setSaving] = useState(false)
 
+  const matrixScrollRef = useRef(null) // horizontal scroll container of the matrix
+  const currentMonthColRef = useRef(null) // header cell of the first current-month competition
+
   useEffect(() => { loadAll() }, [])
 
   async function loadAll() {
@@ -77,6 +80,25 @@ export default function Availability() {
       return true
     })
   }, [competitions, typeFilter])
+
+  // Index of the first competition starting in the current month (or later) —
+  // where the matrix should land on entry instead of the oldest column.
+  const currentMonthIdx = useMemo(() => {
+    const now = new Date()
+    const monthStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`
+    return filteredComps.findIndex(c => c.start_date && c.start_date >= monthStart)
+  }, [filteredComps])
+
+  // On entry, jump the horizontal scroll to the current month so the user
+  // doesn't have to skip past all the finished competitions by hand.
+  useEffect(() => {
+    if (loading) return
+    const container = matrixScrollRef.current
+    const target = currentMonthColRef.current
+    if (!container || !target) return
+    const stickyWidth = container.querySelector('thead th')?.offsetWidth || 0
+    container.scrollLeft = Math.max(0, target.offsetLeft - stickyWidth)
+  }, [loading])
 
   function getStatus(tdId, compId) {
     const compAvail = availData[compId] || []
@@ -270,15 +292,16 @@ export default function Availability() {
           </div>
 
           {/* Matrix */}
-          <div className="overflow-x-auto">
+          <div className="overflow-x-auto" ref={matrixScrollRef}>
             <table className="w-full text-xs border-collapse">
               <thead>
                 <tr className="bg-ink-50/60 dark:bg-navy-950/40 border-b border-ink-100 dark:border-navy-800">
                   <th className="text-left px-4 py-2.5 font-semibold text-2xs uppercase tracking-wide text-ink-500 dark:text-ink-400 sticky left-0 bg-ink-50/60 dark:bg-navy-950/40 z-10 min-w-[200px] border-r border-ink-100 dark:border-navy-800">
                     Delegate
                   </th>
-                  {filteredComps.map(comp => (
+                  {filteredComps.map((comp, idx) => (
                     <th key={comp.id}
+                      ref={idx === currentMonthIdx ? currentMonthColRef : null}
                       className={`px-1.5 py-1.5 text-center font-medium min-w-[84px] border-l border-ink-100 dark:border-navy-800 ${
                         compIsWeekend(comp) ? 'bg-ink-100/60 dark:bg-navy-950/60' : ''
                       }`}>
