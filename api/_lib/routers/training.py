@@ -421,31 +421,85 @@ async def import_excel(
 
 
 def _parse_fiba_schedule(content: bytes, competition_id: str, sport: str) -> list:
-    """Parse FIBA multi-sport schedule Excel format."""
+    """Parse FIBA schedule Excel formats into training slots.
+
+    Supports both known layouts:
+    - multi-sport: date on the same row as the "FECHA" marker, times as
+      text/datetime, no end time (start + 90 min).
+    - Game & Practice Schedule: date in col A one row below "FECHA", times as
+      real Excel time cells, end time in col E, and a "PARTIDOS" section per
+      day block (games — skipped here, they belong to the games module).
+    """
     import openpyxl
+    from datetime import time as dt_time
 
     wb = openpyxl.load_workbook(io.BytesIO(content), data_only=True)
     ws = wb.active
 
+    def as_date(val):
+        """Value -> YYYY-MM-DD, or None if it isn't a date."""
+        if isinstance(val, datetime):
+            return val.strftime("%Y-%m-%d")
+        if isinstance(val, str):
+            s = val.strip()
+            for fmt in ("%Y-%m-%d", "%d/%m/%Y", "%d-%m-%Y", "%d/%m/%y"):
+                try:
+                    return datetime.strptime(s, fmt).strftime("%Y-%m-%d")
+                except ValueError:
+                    continue
+        return None
+
+    def as_time(val):
+        """Value -> HH:MM, or None if it isn't a time."""
+        if isinstance(val, (datetime, dt_time)):
+            return val.strftime("%H:%M")
+        if isinstance(val, str):
+            parts = val.strip().split(":")
+            if len(parts) >= 2:
+                try:
+                    h, m = int(parts[0]), int(parts[1])
+                    if 0 <= h <= 23 and 0 <= m <= 59:
+                        return f"{h:02d}:{m:02d}"
+                except ValueError:
+                    pass
+        return None
+
     slots = []
     current_date = None
+    in_partidos = False       # inside the PARTIDOS (games) section of a block
+    rows_below_fecha = None   # bounded date lookup under a FECHA marker row
 
     for row in ws.iter_rows(min_row=1, values_only=False):
         cells = [c.value for c in row]
 
         # Detect date header row: "Fecha" in first columns
+        is_fecha_row = False
         for i, val in enumerate(cells[:3]):
             if val and str(val).strip().upper() == "FECHA":
-                # Date is in the next cell(s)
+                is_fecha_row = True
+                in_partidos = False
+                rows_below_fecha = 0
+                # multi-sport layout: the date sits right of the marker
                 for j in range(i + 1, min(len(cells), i + 5)):
                     if cells[j]:
-                        date_val = cells[j]
-                        if isinstance(date_val, datetime):
-                            current_date = date_val.strftime("%Y-%m-%d")
-                        elif isinstance(date_val, str):
-                            current_date = date_val.strip()
+                        found = as_date(cells[j])
+                        if found:
+                            current_date = found
+                            rows_below_fecha = None
                         break
                 break
+        if is_fecha_row:
+            continue
+
+        # Game & Practice layout: the date is in col A shortly below FECHA
+        if rows_below_fecha is not None:
+            rows_below_fecha += 1
+            found = as_date(cells[0]) if cells else None
+            if found:
+                current_date = found
+                rows_below_fecha = None
+            elif rows_below_fecha >= 2:
+                rows_below_fecha = None
 
         if not current_date:
             continue
@@ -455,36 +509,24 @@ def _parse_fiba_schedule(content: bytes, competition_id: str, sport: str) -> lis
         if not time_val:
             continue
 
-        # Skip "PARTIDOS" rows
+        # "PARTIDOS" starts the games section: skip until the next day block
         if isinstance(time_val, str) and "PARTIDOS" in str(time_val).upper():
+            in_partidos = True
+            continue
+        if in_partidos:
             continue
 
         # Skip non-time values like "Comienza", "DIA", headers
-        time_str = None
-        if isinstance(time_val, datetime):
-            time_str = time_val.strftime("%H:%M")
-        elif isinstance(time_val, str):
-            # Try to parse HH:MM:SS or HH:MM
-            stripped = time_val.strip()
-            parts = stripped.split(":")
-            if len(parts) >= 2:
-                try:
-                    h = int(parts[0])
-                    m = int(parts[1])
-                    if 0 <= h <= 23 and 0 <= m <= 59:
-                        time_str = f"{h:02d}:{m:02d}"
-                except (ValueError, IndexError):
-                    pass
-
+        time_str = as_time(time_val)
         if not time_str:
             continue
 
-        # Calculate end time (start + 90 minutes)
-        h, m = map(int, time_str.split(":"))
-        end_minutes = h * 60 + m + 90
-        end_h = end_minutes // 60
-        end_m = end_minutes % 60
-        end_time_str = f"{end_h:02d}:{end_m:02d}"
+        # End time from col E when the sheet has it; else start + 90 minutes
+        end_time_str = as_time(cells[4]) if len(cells) > 4 else None
+        if not end_time_str or end_time_str <= time_str:
+            h, m = map(int, time_str.split(":"))
+            end_minutes = h * 60 + m + 90
+            end_time_str = f"{(end_minutes // 60) % 24:02d}:{end_minutes % 60:02d}"
 
         # Check columns for team labels
         # Column F (index 5) or H (index 7) = Estadio

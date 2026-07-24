@@ -15,35 +15,45 @@ tienen formatos distintos y alimentan tablas distintas.
 
 ---
 
-## 1) Training Schedule — formato multi-sport de FIBA (el principal)
+## 1) Training Schedule — planillas FIBA (el principal)
 
-Formato **específico de FIBA multi-sport**, NO un Excel genérico. Se parsea con
+Soporta **dos layouts** de FIBA (2026-07): el **multi-sport** clásico y el
+**Game & Practice Schedule** (p.ej. AmeriCup SA Qualifier). Se parsea con
 `openpyxl` (`load_workbook(..., data_only=True)`, hoja activa) recorriendo las
-filas con un estado `current_date` que se va actualizando.
+filas con estado `current_date` + `in_partidos`.
 
 ### Reglas de parsing (fila por fila)
 
 1. **Fila de fecha (header):** si alguna de las **primeras 3 columnas** contiene
-   el texto `"FECHA"` (case-insensitive, trim), la fecha es la **siguiente celda
-   no vacía** dentro de las columnas `i+1 .. i+4`.
-   - `datetime` → se formatea `%Y-%m-%d`.
-   - `str` → se usa tal cual (trim).
-   - Las filas **antes** de la primera fila `FECHA` se ignoran (`current_date`
-     todavía es `None`).
-2. **Hora de inicio:** se lee de la **columna C (índice 2)**.
-   - `datetime` → `%H:%M`.
-   - `str` → se parsea `HH:MM` o `HH:MM:SS`, validando `0 ≤ h ≤ 23` y
-     `0 ≤ m ≤ 59`.
-   - Se saltean celdas vacías, filas con `"PARTIDOS"`, y cualquier valor que no
-     parsee como hora (`"Comienza"`, `"DIA"`, headers, etc.).
-3. **Hora de fin:** calculada como **inicio + 90 minutos** (no se lee de la
-   planilla).
-4. **Labels de equipo / cancha:** se leen por índice de columna, tolerando
-   varios layouts:
-   - **Venue `"Estadio"`:** columnas índice **5 o 7**.
+   el texto `"FECHA"` (case-insensitive, trim):
+   - **Layout multi-sport:** la fecha está en la siguiente celda no vacía de
+     `i+1 .. i+4`, como `datetime` o string parseable (`%Y-%m-%d`, `%d/%m/%Y`,
+     `%d-%m-%Y`, `%d/%m/%y`). Strings que NO parsean como fecha se ignoran (ya
+     no se usan "tal cual" — antes metían labels como fecha).
+   - **Layout Game & Practice:** si la fila FECHA no trae fecha, se busca un
+     valor fecha en la **columna A de las 2 filas siguientes** (ahí vive la
+     fecha del bloque en ese template).
+   - La fila FECHA además **resetea la sección PARTIDOS** (ver punto 3).
+   - Las filas antes de la primera fecha resuelta se ignoran.
+2. **Hora de inicio:** columna C (índice 2). Acepta `datetime`,
+   **`datetime.time`** (celdas de hora reales — así vienen en el Game &
+   Practice) y strings `HH:MM`/`HH:MM:SS` (`0 ≤ h ≤ 23`, `0 ≤ m ≤ 59`). Celdas
+   vacías o no-hora (`"Comienza"`, headers) saltean la fila.
+3. **Sección PARTIDOS:** una celda `"PARTIDOS"` en columna C activa
+   `in_partidos` y **se saltea todo hasta la próxima fila FECHA** — esas filas
+   son partidos (van al módulo games), no entrenamientos. Antes solo se
+   salteaba la fila divisoria y los partidos podían colarse como slots.
+4. **Hora de fin:** se lee de la **columna E (índice 4)** si parsea como hora y
+   es mayor que el inicio; si no, fallback **inicio + 90 min** (con wrap
+   módulo 24 h: `23:30 → 01:00`, nunca `25:00`).
+5. **Labels de equipo / cancha:** por índice de columna:
+   - **Venue `"Estadio"`:** columnas índice **5 o 7** (el índice 6 se omite a
+     propósito: en el template Game & Practice esa columna suele arrastrar
+     equipos basura de torneos anteriores).
    - **Venue `"Cancha de Entrenamiento"`:** columna índice **8**.
    - Se **excluyen** los valores que son headers/ruido:
      `"Estadio"`, `"Cancha de Entrenamiento"`, `"PARTIDOS"`, `"Comienza"`.
+     Los `"TBC"` **sí** se importan (slot con equipo a confirmar).
    - Cada celda con un label válido genera un slot (una fila puede producir
      varios slots: Estadio y Cancha).
 
@@ -52,9 +62,9 @@ filas con un estado `current_date` que se va actualizando.
 ```python
 {
   "competition_id": <str>,   # viene del form, no de la planilla
-  "date": current_date,      # "YYYY-MM-DD"
+  "date": current_date,      # "YYYY-MM-DD" (siempre fecha real parseada)
   "start_time": "HH:MM",
-  "end_time": "HH:MM",       # inicio + 90 min
+  "end_time": "HH:MM",       # col E si existe; si no inicio + 90 min
   "venue": "Estadio" | "Cancha de Entrenamiento",
   "team_label": <str>,       # el texto de la celda
   "sport": <str>,            # del form, default "Basketball"
