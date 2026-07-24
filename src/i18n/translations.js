@@ -868,6 +868,7 @@ const translations = {
     },
     recalcing: { en: 'Recalculating...', es: 'Recalculando...' },
     travelRecalced: { en: 'Travel data recalculated for {people} people', es: 'Viajes recalculados para {people} personas' },
+    multiSedePeople: { en: '{count} with multi-venue itinerary: {names}', es: '{count} con itinerario multi-sede: {names}' },
     defaultsTD: { en: 'TD fees', es: 'Honorarios TD' },
     defaultsVGO: { en: 'VGO fees', es: 'Honorarios VGO' },
     defaultsREF: { en: 'Referee fees', es: 'Honorarios árbitros' },

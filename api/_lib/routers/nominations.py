@@ -10,6 +10,7 @@ from api._lib.database import supabase
 from api._lib.auth import require_view, require_edit
 from api._lib.schemas import NominationCreate, BulkNominationCreate
 from api._lib.services.document_generator import generate_nomination
+from api._lib.travel import sede_pairs, format_sedes
 
 logger = logging.getLogger(__name__)
 
@@ -55,6 +56,7 @@ def _host_location_for_nomination(
         return "", ""
 
     relevant: list[dict] = []
+    person_scoped = False  # games narrowed to this person (vs whole schedule)
 
     if personnel_id:
         try:
@@ -68,6 +70,7 @@ def _host_location_for_nomination(
             ) or []
             assigned_ids = {a["game_id"] for a in assignments}
             relevant = [g for g in games if g["id"] in assigned_ids]
+            person_scoped = bool(relevant)
         except Exception:
             relevant = []
 
@@ -75,9 +78,23 @@ def _host_location_for_nomination(
         dates = {gd.get("date") for gd in (game_dates or []) if isinstance(gd, dict) and gd.get("date")}
         if dates:
             relevant = [g for g in games if g.get("date") in dates]
+            person_scoped = bool(relevant)
 
     if not relevant:
         relevant = games
+
+    is_wcq = (template_key or "").upper() == "WCQ"
+
+    # Person-scoped games → itinerary order, keeping EVERY sede the person
+    # visits (a VGO can cover two hosts back to back). Falling back to the
+    # whole schedule (no assignments, no matching dates) keeps the old
+    # most-common pick — joining every host of a WCQ window would be noise.
+    if person_scoped:
+        pairs = sede_pairs(relevant, use_team_a=is_wcq)
+        if len(pairs) == 1:
+            return pairs[0]
+        if 1 < len(pairs) <= 3:
+            return format_sedes(pairs), ""
 
     def _most_common(values: list[str]) -> str:
         counts: dict[str, int] = {}
@@ -89,7 +106,7 @@ def _host_location_for_nomination(
 
     city = _most_common([g.get("city") for g in relevant])
     country = _most_common([g.get("country") for g in relevant])
-    if not country and (template_key or "").upper() == "WCQ":
+    if not country and is_wcq:
         country = _most_common([g.get("team_a") for g in relevant])
 
     return city, country

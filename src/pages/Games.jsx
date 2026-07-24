@@ -329,12 +329,22 @@ export default function Games() {
     }
   }
 
+  // "N con itinerario multi-sede: nombres" — appended to sync/recalc results
+  function multiSedeNote(r) {
+    return t('games.multiSedePeople', {
+      count: r.multi_sede,
+      names: (r.multi_sede_names || []).join(', '),
+    })
+  }
+
   async function handleSyncNominations() {
     setSyncingNoms(true)
     setNomMsg('')
     try {
       const r = await syncAssignmentsToNominations(selectedCompId)
-      setNomMsg(t('games.nominationsSynced', { created: r.created, updated: r.updated, people: r.people }))
+      let msg = t('games.nominationsSynced', { created: r.created, updated: r.updated, people: r.people })
+      if (r.multi_sede > 0) msg += ` · ${multiSedeNote(r)}`
+      setNomMsg(msg)
     } catch (err) {
       setNomMsg(err.response?.data?.detail || 'Error')
     }
@@ -400,7 +410,9 @@ export default function Games() {
     setDefaultsMsg('')
     try {
       const r = await syncAssignmentsToNominations(selectedCompId, true)
-      setDefaultsMsg(t('games.travelRecalced', { people: r.people }))
+      let msg = t('games.travelRecalced', { people: r.people })
+      if (r.multi_sede > 0) msg += ` · ${multiSedeNote(r)}`
+      setDefaultsMsg(msg)
     } catch (err) {
       const detail = err.response?.data?.detail
       setDefaultsMsg(typeof detail === 'string' ? detail : 'Error')

@@ -9,12 +9,12 @@ import re
 from fastapi import APIRouter, HTTPException, Query, UploadFile, File, Form, Depends
 from pydantic import BaseModel
 from typing import Optional, List
-from collections import Counter
 from datetime import datetime, timedelta, timezone
 
 from api._lib.database import supabase
 from api._lib.auth import require_view, require_edit
 from api._lib.net import safe_get
+from api._lib.travel import sede_pairs, format_sedes
 
 router = APIRouter(prefix="/games", tags=["games"], dependencies=[Depends(require_view("games"))])
 
@@ -877,34 +877,34 @@ _SHARED_DEFAULT_FIELDS = (
 )
 
 
-def _most_common(values) -> str:
-    vals = [str(v).strip() for v in values if v and str(v).strip()]
-    if not vals:
-        return ""
-    return Counter(vals).most_common(1)[0][0]
-
-
-def _derive_travel(person_games: list[dict], competition: dict) -> dict:
+def _derive_travel(person_games: list[dict], competition: dict) -> tuple[dict, bool]:
     """Per-person travel fields from the games the person is assigned to:
-    venue/location from the games' venue data (most common non-empty value),
-    arrival/departure from their first/last game date ± the competition's
-    offset days. Only returns keys it could actually derive, so callers can
-    layer it over the competition-level fallbacks.
+    venue/location from the games' venue data (distinct sedes in itinerary
+    order — a person can cover two hosts back to back), arrival/departure
+    from their first/last game date ± the competition's offset days.
+
+    Returns (derived, multi_sede): `derived` only holds keys it could
+    actually derive, so callers can layer it over the competition-level
+    fallbacks; `multi_sede` flags people covering more than one sede.
     """
     derived: dict = {}
+    ordered = sorted(person_games, key=lambda g: g.get("date") or "")
 
-    venue = _most_common(g.get("venue") for g in person_games)
-    if venue:
-        derived["venue"] = venue
+    venues: list[str] = []
+    seen_venues: set[str] = set()
+    for g in ordered:
+        v = (g.get("venue") or "").strip()
+        if v and v.lower() not in seen_venues:
+            seen_venues.add(v.lower())
+            venues.append(v)
+    if venues:
+        derived["venue"] = " / ".join(venues)
 
-    city = _most_common(g.get("city") for g in person_games)
-    country = _most_common(g.get("country") for g in person_games)
-    if not country and competition.get("is_national_team"):
-        # WCQ: the home team is the host country
-        country = _most_common(g.get("team_a") for g in person_games)
-    location = ", ".join(p for p in (city, country) if p)
+    pairs = sede_pairs(ordered, use_team_a=bool(competition.get("is_national_team")))
+    location = format_sedes(pairs)
     if location:
         derived["location"] = location
+    multi_sede = len(pairs) > 1 or len(venues) > 1
 
     dates = []
     for g in person_games:
@@ -919,7 +919,7 @@ def _derive_travel(person_games: list[dict], competition: dict) -> dict:
         dep_off = int(dep_off) if dep_off is not None else 1
         derived["arrival_date"] = (min(dates) - timedelta(days=arr_off)).isoformat()
         derived["departure_date"] = (max(dates) + timedelta(days=dep_off)).isoformat()
-    return derived
+    return derived, multi_sede
 
 
 # Travel fields the explicit "recalculate travel" action may overwrite.
@@ -1052,15 +1052,35 @@ def sync_assignments_to_nominations(
 
     created = 0
     updated = 0
+    multi_sede_pids: list[str] = []
     now_iso = datetime.now(timezone.utc).isoformat()
     for pid, info in by_person.items():
         sorted_dates = sorted(info["dates"])
-        game_dates = [{"label": f"Game {i + 1}", "date": d} for i, d in enumerate(sorted_dates)]
         person_games = [game_by_id[gid] for gid in info["game_ids"] if gid in game_by_id]
+        derived, multi_sede = _derive_travel(person_games, competition)
+        if multi_sede:
+            multi_sede_pids.append(pid)
+
+        # Multi-sede itinerary → tag each game date with its city so the
+        # letter reads as an itinerary ("Game 1 – Managua: Fri, Aug 28").
+        city_by_date: dict[str, str] = {}
+        if multi_sede:
+            for g in sorted(person_games, key=lambda g: g.get("date") or ""):
+                d, c = g.get("date"), (g.get("city") or "").strip()
+                if d and c and d not in city_by_date:
+                    city_by_date[d] = c
+        game_dates = [
+            {
+                "label": f"Game {i + 1} – {city_by_date[d]}" if city_by_date.get(d) else f"Game {i + 1}",
+                "date": d,
+            }
+            for i, d in enumerate(sorted_dates)
+        ]
+
         # Derived per-person travel wins over the competition-level fallbacks
         defaults = {
             **_build_default_overrides(competition, info["role"]),
-            **_derive_travel(person_games, competition),
+            **derived,
         }
 
         if pid in existing_by_pid:
@@ -1092,7 +1112,25 @@ def sync_assignments_to_nominations(
             supabase.table("nominations").insert(insert_record).execute()
             created += 1
 
-    return {"created": created, "updated": updated, "people": len(by_person)}
+    # Names of multi-sede people, so the UI can point at who to double-check
+    multi_names: list[str] = []
+    if multi_sede_pids:
+        people = (
+            supabase.table("personnel")
+            .select("id, name")
+            .in_("id", multi_sede_pids)
+            .execute()
+            .data
+        )
+        multi_names = sorted((p.get("name") or "") for p in people)
+
+    return {
+        "created": created,
+        "updated": updated,
+        "people": len(by_person),
+        "multi_sede": len(multi_sede_pids),
+        "multi_sede_names": multi_names,
+    }
 
 
 @router.post("/assignments/generate-pdfs", dependencies=[Depends(require_edit("nominations"))])
