@@ -168,7 +168,7 @@ export default function PublicAvailability() {
             {['es', 'en'].map(l => (
               <button key={l} onClick={() => setLang(l)}
                 className={`px-2 py-1 rounded text-2xs font-semibold transition-all ${
-                  lang === l ? 'bg-basketball-500 text-white' : 'text-ink-500 dark:text-ink-400 hover:text-ink-900 dark:hover:text-white'
+                  lang === l ? 'bg-basketball-700 text-white' : 'text-ink-500 dark:text-ink-400 hover:text-ink-900 dark:hover:text-white'
                 }`}>
                 {l.toUpperCase()}
               </button>

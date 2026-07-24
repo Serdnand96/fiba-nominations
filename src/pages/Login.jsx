@@ -56,13 +56,13 @@ export default function Login() {
           <div className="flex items-center justify-center gap-0.5 mb-6 bg-ink-100 dark:bg-navy-900 rounded-md p-0.5 max-w-[140px] mx-auto">
             <button onClick={() => setLang('es')}
               className={`flex-1 px-3 py-1.5 rounded text-xs font-semibold transition-all ${
-                lang === 'es' ? 'bg-basketball-500 text-white' : 'text-ink-500 dark:text-ink-400 hover:text-ink-900 dark:hover:text-white'
+                lang === 'es' ? 'bg-basketball-700 text-white' : 'text-ink-500 dark:text-ink-400 hover:text-ink-900 dark:hover:text-white'
               }`}>
               ES
             </button>
             <button onClick={() => setLang('en')}
               className={`flex-1 px-3 py-1.5 rounded text-xs font-semibold transition-all ${
-                lang === 'en' ? 'bg-basketball-500 text-white' : 'text-ink-500 dark:text-ink-400 hover:text-ink-900 dark:hover:text-white'
+                lang === 'en' ? 'bg-basketball-700 text-white' : 'text-ink-500 dark:text-ink-400 hover:text-ink-900 dark:hover:text-white'
               }`}>
               EN
             </button>
@@ -112,7 +112,7 @@ export default function Login() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full bg-basketball-500 hover:bg-basketball-600 active:bg-basketball-700 text-white font-semibold px-4 py-2.5 rounded-lg
+              className="w-full bg-basketball-700 hover:bg-basketball-800 active:bg-basketball-900 text-white font-semibold px-4 py-2.5 rounded-lg
                          transition-all duration-150 text-sm shadow-card disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {loading ? (

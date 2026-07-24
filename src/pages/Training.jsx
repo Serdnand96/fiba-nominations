@@ -398,7 +398,7 @@ export default function Training() {
       <div className="flex gap-1 mb-6 bg-fiba-surface rounded-lg p-1 w-fit">
         {[{ key: 'byDay', label: t('training.byDay') }, { key: 'byTeam', label: t('training.byTeam') }, { key: 'byTd', label: t('training.byTd') }].map(tb => (
           <button key={tb.key} onClick={() => setTab(tb.key)}
-            className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${tab === tb.key ? 'bg-fiba-accent text-white' : 'text-fiba-muted hover:text-ink-900 dark:text-white'}`}>
+            className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${tab === tb.key ? 'bg-basketball-700 text-white' : 'text-fiba-muted hover:text-ink-900 dark:text-white'}`}>
             {tb.label}
           </button>
         ))}

@@ -69,8 +69,8 @@ button:focus-visible, a:focus-visible, [role="button"]:focus-visible {
  * ────────────────────────────────────────────────────────────── */
 @layer components {
   .btn-fiba {
-    @apply bg-basketball-500 text-white font-semibold px-4 py-2.5 rounded-lg
-           hover:bg-basketball-600 transition-all duration-150
+    @apply bg-basketball-700 text-white font-semibold px-4 py-2.5 rounded-lg
+           hover:bg-basketball-800 transition-all duration-150
            disabled:opacity-50 disabled:cursor-not-allowed text-sm;
   }
   .btn-fiba-ghost {

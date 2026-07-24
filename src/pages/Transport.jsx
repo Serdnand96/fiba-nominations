@@ -485,7 +485,7 @@ export default function Transport() {
                         {canEdit && (
                           <div className="flex gap-2">
                             {driver && <button onClick={() => setAssigningVehicle(assigningVehicle === vid ? null : vid)} className="text-blue-200 hover:text-ink-900 dark:text-white text-xs">{lang === 'es' ? 'Cambiar' : 'Change'}</button>}
-                            <button onClick={() => openCreateTrip(vid)} className="bg-fiba-accent hover:bg-fiba-accent-hover text-white px-3 py-1 rounded text-xs font-medium">+ {lang === 'es' ? 'Viaje' : 'Trip'}</button>
+                            <button onClick={() => openCreateTrip(vid)} className="bg-basketball-700 hover:bg-basketball-800 text-white px-3 py-1 rounded text-xs font-medium">+ {lang === 'es' ? 'Viaje' : 'Trip'}</button>
                           </div>
                         )}
                       </div>

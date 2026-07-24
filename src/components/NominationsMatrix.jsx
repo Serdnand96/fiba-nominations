@@ -149,7 +149,7 @@ export default function NominationsMatrix({ nominations, personnel }) {
             <button key={o.key} onClick={() => setMode(o.key)}
               className={`px-3 py-1.5 text-sm font-medium transition-colors ${
                 mode === o.key
-                  ? 'bg-fiba-accent text-white'
+                  ? 'bg-basketball-700 text-white'
                   : 'text-fiba-muted hover:text-ink-900 dark:hover:text-white'
               }`}>
               {o.label}
@@ -170,7 +170,7 @@ export default function NominationsMatrix({ nominations, personnel }) {
             <button key={o.key} onClick={() => setRoleFilter(o.key)}
               className={`px-3 py-1.5 text-sm font-medium transition-colors ${
                 roleFilter === o.key
-                  ? 'bg-fiba-accent text-white'
+                  ? 'bg-basketball-700 text-white'
                   : 'text-fiba-muted hover:text-ink-900 dark:hover:text-white'
               }`}>
               {o.label}

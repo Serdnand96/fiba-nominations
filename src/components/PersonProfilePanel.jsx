@@ -225,7 +225,7 @@ export default function PersonProfilePanel({ person: initialPerson, onClose, onU
                 <>
                   <button onClick={() => fileRef.current?.click()} disabled={uploading}
                     title={person.photo_url ? t('profile.changePhoto') : t('profile.uploadPhoto')}
-                    className="absolute -bottom-1 -right-1 w-6 h-6 rounded-full bg-fiba-accent text-white flex items-center justify-center text-xs shadow hover:opacity-90 disabled:opacity-50">
+                    className="absolute -bottom-1 -right-1 w-6 h-6 rounded-full bg-basketball-700 text-white flex items-center justify-center text-xs shadow hover:opacity-90 disabled:opacity-50">
                     {uploading
                       ? <span className="animate-pulse">…</span>
                       : <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" /></svg>}
@@ -507,11 +507,11 @@ export default function PersonProfilePanel({ person: initialPerson, onClose, onU
             <form onSubmit={handleAvailSubmit} className="space-y-3">
               <div className="flex bg-fiba-surface rounded-lg p-0.5">
                 <button type="button" onClick={() => setAvailForm(f => ({ ...f, type: 'event_specific' }))}
-                  className={`flex-1 px-3 py-2 rounded-md text-xs font-medium transition-colors ${availForm.type === 'event_specific' ? 'bg-fiba-accent text-white' : 'text-fiba-muted'}`}>
+                  className={`flex-1 px-3 py-2 rounded-md text-xs font-medium transition-colors ${availForm.type === 'event_specific' ? 'bg-basketball-700 text-white' : 'text-fiba-muted'}`}>
                   {t('availability.eventSpecific')}
                 </button>
                 <button type="button" onClick={() => setAvailForm(f => ({ ...f, type: 'date_range' }))}
-                  className={`flex-1 px-3 py-2 rounded-md text-xs font-medium transition-colors ${availForm.type === 'date_range' ? 'bg-fiba-accent text-white' : 'text-fiba-muted'}`}>
+                  className={`flex-1 px-3 py-2 rounded-md text-xs font-medium transition-colors ${availForm.type === 'date_range' ? 'bg-basketball-700 text-white' : 'text-fiba-muted'}`}>
                   {t('availability.dateRange')}
                 </button>
               </div>

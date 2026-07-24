@@ -464,7 +464,7 @@ export default function Nominations() {
               <button key={o.key} onClick={() => setView(o.key)}
                 className={`px-3 py-1.5 text-sm font-medium transition-colors ${
                   view === o.key
-                    ? 'bg-fiba-accent text-white'
+                    ? 'bg-basketball-700 text-white'
                     : 'text-fiba-muted hover:text-ink-900 dark:hover:text-white'
                 }`}>
                 {o.label}

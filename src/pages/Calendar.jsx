@@ -254,11 +254,11 @@ export default function Calendar() {
       <div className="flex items-center gap-4 mb-4">
         <div className="flex bg-fiba-surface rounded-lg p-0.5">
           <button onClick={() => setView('year')}
-            className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${view === 'year' ? 'bg-fiba-accent text-white' : 'text-fiba-muted'}`}>
+            className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${view === 'year' ? 'bg-basketball-700 text-white' : 'text-fiba-muted'}`}>
             {t('calendar.year')}
           </button>
           <button onClick={() => setView('month')}
-            className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${view === 'month' ? 'bg-fiba-accent text-white' : 'text-fiba-muted'}`}>
+            className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${view === 'month' ? 'bg-basketball-700 text-white' : 'text-fiba-muted'}`}>
             {t('calendar.month')}
           </button>
         </div>
@@ -503,7 +503,7 @@ export default function Calendar() {
 
             <div className="p-6 border-t border-fiba-border">
               <button onClick={() => navigate(`/nominations?competition=${panelData?.id || selectedEvent.id}`)}
-                className="w-full bg-fiba-accent text-white px-4 py-2.5 rounded-lg text-sm font-medium hover:bg-fiba-accent-hover">
+                className="w-full bg-basketball-700 text-white px-4 py-2.5 rounded-lg text-sm font-medium hover:bg-basketball-800">
                 {t('calendar.generateNominations')}
               </button>
             </div>

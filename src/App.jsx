@@ -336,7 +336,7 @@ function LanguageSwitcher() {
         onClick={() => setLang('es')}
         className={`flex-1 px-2 py-1 rounded text-2xs font-semibold transition-all ${
           lang === 'es'
-            ? 'bg-basketball-500 text-white'
+            ? 'bg-basketball-700 text-white'
             : 'text-navy-300 hover:text-white'
         }`}
       >
@@ -346,7 +346,7 @@ function LanguageSwitcher() {
         onClick={() => setLang('en')}
         className={`flex-1 px-2 py-1 rounded text-2xs font-semibold transition-all ${
           lang === 'en'
-            ? 'bg-basketball-500 text-white'
+            ? 'bg-basketball-700 text-white'
             : 'text-navy-300 hover:text-white'
         }`}
       >
