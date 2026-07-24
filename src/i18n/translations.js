@@ -701,6 +701,10 @@ const translations = {
     trainingCourt: { en: 'Training Court', es: 'Cancha de Entrenamiento' },
     exportPdf: { en: 'Export PDF', es: 'Exportar PDF' },
     exportSchedule: { en: 'Game & Practice (Excel)', es: 'Game & Practice (Excel)' },
+    exportScheduleNoData: {
+      en: 'This competition has no games or training slots loaded yet. Add games in the Games module or training slots here, then try again.',
+      es: 'Esta competencia no tiene partidos ni entrenamientos cargados todavía. Carga partidos en el módulo de Juegos o slots de entrenamiento aquí y vuelve a intentar.',
+    },
     slotCreated: { en: 'Slot created', es: 'Slot creado' },
     slotUpdated: { en: 'Slot updated', es: 'Slot actualizado' },
     slotsImported: { en: 'slots imported', es: 'slots importados' },

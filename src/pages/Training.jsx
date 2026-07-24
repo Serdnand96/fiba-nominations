@@ -372,7 +372,10 @@ export default function Training() {
         <div className="flex gap-2">
           {competitionId && hasView('games') && (
             <button
-              onClick={() => downloadTrainingScheduleXlsx(competitionId, lang).catch(err => alert(err.message))}
+              onClick={() => downloadTrainingScheduleXlsx(competitionId, lang).catch(err =>
+                alert(err?.response?.status === 404
+                  ? t('training.exportScheduleNoData')
+                  : (err.detail || err.message)))}
               className="btn-fiba-ghost">
               {t('training.exportSchedule')}
             </button>

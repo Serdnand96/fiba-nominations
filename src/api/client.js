@@ -193,10 +193,21 @@ export const downloadTrainingPdf = async (type, params) => {
 // Game & Practice Schedule (official FIBA layout) as .xlsx — same
 // authenticated blob pattern as downloadTrainingPdf.
 export const downloadTrainingScheduleXlsx = async (competitionId, lang = 'es') => {
-  const resp = await api.get('/training/export/schedule-xlsx', {
-    params: { competition_id: competitionId, lang },
-    responseType: 'blob',
-  })
+  let resp
+  try {
+    resp = await api.get('/training/export/schedule-xlsx', {
+      params: { competition_id: competitionId, lang },
+      responseType: 'blob',
+    })
+  } catch (err) {
+    // With responseType blob the JSON error body arrives as a Blob and the
+    // backend detail gets lost — recover it so callers can show the reason.
+    const blob = err?.response?.data
+    if (blob instanceof Blob) {
+      try { err.detail = JSON.parse(await blob.text())?.detail } catch { /* keep generic message */ }
+    }
+    throw err
+  }
   const objectUrl = URL.createObjectURL(resp.data)
   const link = document.createElement('a')
   link.href = objectUrl
