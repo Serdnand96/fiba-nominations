@@ -6,6 +6,7 @@ import {
   getPersonnel, getGameAssignments, setGameAssignment, deleteGameAssignment,
   syncAssignmentsToNominations, generateAssignmentPDFs, updateCompetition,
   setTeamCountries, getCompetitionFlights, setFlightBooked,
+  getCompetitionCrew, addCrewMember, removeCrewMember,
 } from '../api/client'
 import { Icon } from '../lib/icons'
 import { useLanguage } from '../i18n/LanguageContext'
@@ -28,6 +29,17 @@ const EXTRA_SLOT = 'EXTRA'
 const STANDARD_SLOTS = ['TD', 'VGO', ...REF_SLOTS, ...CREW_SLOTS]
 // Personnel roles offered by the per-role sync menu (labels via rolesShort.*)
 const SYNC_ROLES = ['TD', 'VGO', 'REF', 'REF_INSTRUCTOR', 'VIDEO_OPERATOR']
+// Personnel role → per-game slot used when confirming a tournament crew member
+// on a single game. Referees take the first free crew slot (CC → U1 → U2).
+const SLOT_FOR_PERSONNEL_ROLE = {
+  TD: 'TD', VGO: 'VGO', REF_INSTRUCTOR: 'INSTR', VIDEO_OPERATOR: 'VO',
+}
+// Compact, language-neutral role codes for the crew chips (same vocabulary as
+// the per-game slot labels).
+const ROLE_CODE = {
+  TD: 'TD', VGO: 'VGO', REF: 'REF', REF_INSTRUCTOR: 'INSTR', VIDEO_OPERATOR: 'VO',
+}
+const roleCode = (role) => ROLE_CODE[(role || '').toUpperCase()] || (role || '')
 
 const EMPTY_FORM = {
   date: '', time: '', team_a: '', team_a_code: '', team_a_country: '',
@@ -62,6 +74,7 @@ export default function Games() {
   const [gameDates, setGameDates] = useState([])
   const [teams, setTeams] = useState([])
   const [assignments, setAssignments] = useState([]) // per-game TD/VGO assignments
+  const [crew, setCrew] = useState([]) // tournament crew (competition-level roster)
   const [flights, setFlights] = useState([]) // per-person flight-purchase check (competition-wide)
 
   // Filters
@@ -89,6 +102,12 @@ export default function Games() {
   const [savingDefaults, setSavingDefaults] = useState(false)
   const [defaultsMsg, setDefaultsMsg] = useState('')
   const [recalcingTravel, setRecalcingTravel] = useState(false)
+  // Tournament crew panel (tournament-fee competitions only)
+  const [showCrew, setShowCrew] = useState(false)
+  const [crewSearch, setCrewSearch] = useState('')
+  const [crewOptions, setCrewOptions] = useState([])
+  const [crewMsg, setCrewMsg] = useState('')
+  const [crewSaving, setCrewSaving] = useState(false)
   // Club country mapping panel (club competitions only)
   const [showTeamCountries, setShowTeamCountries] = useState(false)
   const [teamCountryDraft, setTeamCountryDraft] = useState({}) // team name → code
@@ -101,7 +120,11 @@ export default function Games() {
   const [refConflict, setRefConflict] = useState(null)
 
   const selectedComp = competitions.find(c => c.id === selectedCompId)
-  const supportsAssignments = ASSIGNMENT_TEMPLATES.has((selectedComp?.template_key || '').toUpperCase())
+  // Tournament fee → the crew is assigned once for the whole event and covers
+  // every game; per-game rows only record who was actually at the table.
+  const isTournament = (selectedComp?.fee_type || 'per_game') === 'tournament'
+  const supportsAssignments = isTournament
+    || ASSIGNMENT_TEMPLATES.has((selectedComp?.template_key || '').toUpperCase())
   const isNationalTeam = !!selectedComp?.is_national_team
   // Referee crew slots on every assignment-capable competition. The
   // neutrality rule differs: selections → country + group; clubs → only
@@ -174,19 +197,23 @@ export default function Games() {
     setFilterGroup('')
     try {
       const comp = competitions.find(c => c.id === selectedCompId)
-      const supportsAsg = ASSIGNMENT_TEMPLATES.has((comp?.template_key || '').toUpperCase())
-      const [g, d, te, asg, fl] = await Promise.all([
+      const tournament = (comp?.fee_type || 'per_game') === 'tournament'
+      const supportsAsg = tournament
+        || ASSIGNMENT_TEMPLATES.has((comp?.template_key || '').toUpperCase())
+      const [g, d, te, asg, fl, cw] = await Promise.all([
         getGames(selectedCompId),
         getGameDates(selectedCompId),
         getGameTeams(selectedCompId),
         supportsAsg ? getGameAssignments(selectedCompId) : Promise.resolve([]),
         supportsAsg ? getCompetitionFlights(selectedCompId) : Promise.resolve([]),
+        tournament ? getCompetitionCrew(selectedCompId) : Promise.resolve(null),
       ])
       setGames(g)
       setGameDates(d)
       setTeams(te)
       setAssignments(asg)
       setFlights(fl)
+      setCrew(cw?.crew || [])
       let finalGames = g
       let finalDates = d
 
@@ -241,18 +268,20 @@ export default function Games() {
 
   async function loadGames() {
     try {
-      const [g, d, te, asg, fl] = await Promise.all([
+      const [g, d, te, asg, fl, cw] = await Promise.all([
         getGames(selectedCompId),
         getGameDates(selectedCompId),
         getGameTeams(selectedCompId),
         supportsAssignments ? getGameAssignments(selectedCompId) : Promise.resolve([]),
         supportsAssignments ? getCompetitionFlights(selectedCompId) : Promise.resolve([]),
+        isTournament ? getCompetitionCrew(selectedCompId) : Promise.resolve(null),
       ])
       setGames(g)
       setGameDates(d)
       setTeams(te)
       setAssignments(asg)
       setFlights(fl)
+      setCrew(cw?.crew || [])
     } catch (e) {
       console.error(e)
     }
@@ -266,6 +295,83 @@ export default function Games() {
     } catch (e) {
       console.error(e)
     }
+  }
+
+  async function reloadCrew() {
+    if (!isTournament) return
+    try {
+      const cw = await getCompetitionCrew(selectedCompId)
+      setCrew(cw?.crew || [])
+    } catch (e) {
+      console.error(e)
+    }
+  }
+
+  // ── Tournament crew ──────────────────────────────────────────────────────
+
+  // Personnel available to join the crew: every role, minus who is already in.
+  useEffect(() => {
+    if (!showCrew || crewOptions.length > 0) return
+    let cancelled = false
+    getPersonnel()
+      .then(data => { if (!cancelled) setCrewOptions(data || []) })
+      .catch(() => { if (!cancelled) setCrewOptions([]) })
+    return () => { cancelled = true }
+  }, [showCrew])
+
+  async function handleAddCrew(person) {
+    setCrewSaving(true)
+    setCrewMsg('')
+    try {
+      const r = await addCrewMember(selectedCompId, person.id)
+      await reloadCrew()
+      setCrewSearch('')
+      // Neutrality at tournament level is informative: the referee joins the
+      // crew and simply can't be put on those games (blocked per game).
+      const warned = (r?.neutrality_warnings || []).length
+      setCrewMsg(warned > 0
+        ? t('games.crewNeutralityNote', { name: person.name, count: warned })
+        : t('games.crewAdded', { name: person.name }))
+    } catch (err) {
+      const detail = err.response?.data?.detail
+      setCrewMsg(typeof detail === 'string' ? detail : 'Error')
+    }
+    setCrewSaving(false)
+    setTimeout(() => setCrewMsg(''), 6000)
+  }
+
+  async function handleRemoveCrew(member) {
+    if (!window.confirm(t('games.crewRemoveConfirm', { name: member.personnel?.name || '' }))) return
+    try {
+      await removeCrewMember(member.id)
+      await reloadCrew()
+    } catch (err) {
+      const detail = err.response?.data?.detail
+      alert(typeof detail === 'string' ? detail : 'Error')
+    }
+  }
+
+  // Confirm/undo a crew member on one game. The crew already covers every
+  // game, so this only records who was actually at the table.
+  async function handleToggleCrewGame(game, member, current) {
+    if (current) {
+      await handleUnassign(current.id)
+      return
+    }
+    const person = member.personnel || {}
+    const role = (person.role || '').toUpperCase()
+    let slot = SLOT_FOR_PERSONNEL_ROLE[role]
+    if (role === 'REF') {
+      const taken = new Set(
+        assignments.filter(a => a.game_id === game.id).map(a => a.role))
+      slot = REF_SLOTS.find(s => !taken.has(s))
+      if (!slot) {
+        alert(t('games.crewRefSlotsFull'))
+        return
+      }
+    }
+    if (!slot) return
+    await handleAssign(game.id, person, slot)
   }
 
   // Conflict check used both before assigning (pop-up) and to mark
@@ -350,17 +456,21 @@ export default function Games() {
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [syncMenuOpen])
 
-  // Distinct assigned people per PERSONNEL role (drives the sync menu counts)
+  // Distinct people per PERSONNEL role (drives the sync menu counts). On a
+  // tournament the crew is what gets nominated, so it drives the counts even
+  // before anyone is confirmed on an individual game.
   const assignedByRole = useMemo(() => {
     const map = {}
-    for (const a of assignments) {
-      const r = (a.personnel?.role || '').toUpperCase()
-      if (!r) continue
+    const add = (role, pid) => {
+      const r = (role || '').toUpperCase()
+      if (!r || !pid) return
       if (!map[r]) map[r] = new Set()
-      map[r].add(a.personnel_id)
+      map[r].add(pid)
     }
+    for (const a of assignments) add(a.personnel?.role, a.personnel_id)
+    for (const m of crew) add(m.personnel?.role || m.role, m.personnel_id)
     return map
-  }, [assignments])
+  }, [assignments, crew])
 
   async function handleSyncNominations(roleFilter = null) {
     setSyncMenuOpen(false)
@@ -521,11 +631,23 @@ export default function Games() {
     return map
   }, [assignments])
 
+  // Per-game override rows keyed by person, so a game can carry more than one
+  // person on the same slot role (two TDs of the same crew).
+  const crewOverridesByGame = useMemo(() => {
+    const map = {}
+    for (const a of assignments) {
+      if (!map[a.game_id]) map[a.game_id] = {}
+      map[a.game_id][a.personnel_id] = a
+    }
+    return map
+  }, [assignments])
+
   const assignedCount = useMemo(() => {
     const people = new Set()
     for (const a of assignments) people.add(a.personnel_id)
+    for (const m of crew) people.add(m.personnel_id)
     return people.size
-  }, [assignments])
+  }, [assignments, crew])
 
   // personnel_id → flight booked?
   const flightByPersonnel = useMemo(() => {
@@ -540,8 +662,11 @@ export default function Games() {
     for (const a of assignments) {
       if (flightByPersonnel[a.personnel_id]) people.add(a.personnel_id)
     }
+    for (const m of crew) {
+      if (flightByPersonnel[m.personnel_id]) people.add(m.personnel_id)
+    }
     return people.size
-  }, [assignments, flightByPersonnel])
+  }, [assignments, crew, flightByPersonnel])
 
   // Handlers
   function openCreate() {
@@ -660,6 +785,16 @@ export default function Games() {
             <>
               {supportsAssignments && canEdit && (
                 <>
+                  {isTournament && (
+                    <button onClick={() => setShowCrew(s => !s)}
+                      className="btn-fiba-ghost relative"
+                      title={t('games.crewHint')}>
+                      {t('games.crew')}
+                      <span className="ml-1.5 inline-flex items-center justify-center min-w-[1.1rem] h-[1.1rem] px-1 rounded-full bg-fiba-accent/20 text-fiba-accent text-[10px] font-bold">
+                        {crew.length}
+                      </span>
+                    </button>
+                  )}
                   <button onClick={() => setShowDefaults(s => !s)}
                     className="btn-fiba-ghost"
                     title={t('games.editDefaultsHint')}>
@@ -667,7 +802,7 @@ export default function Games() {
                   </button>
                   <div className="relative" ref={syncMenuRef}>
                     <button onClick={() => setSyncMenuOpen(o => !o)}
-                      disabled={syncingNoms || assignments.length === 0}
+                      disabled={syncingNoms || assignedCount === 0}
                       className="btn-fiba-ghost disabled:opacity-40 flex items-center gap-1.5"
                       title={t('games.syncNominationsHint')}>
                       {syncingNoms ? t('games.syncing') : t('games.syncNominations')}
@@ -694,7 +829,7 @@ export default function Games() {
                       </div>
                     )}
                   </div>
-                  <button onClick={handleGeneratePdfs} disabled={generatingPdfs || assignments.length === 0}
+                  <button onClick={handleGeneratePdfs} disabled={generatingPdfs || assignedCount === 0}
                     className="btn-fiba disabled:opacity-40"
                     title={t('games.generatePdfsHint')}>
                     {generatingPdfs ? t('games.generating') : t('games.generatePdfs')}
@@ -803,6 +938,74 @@ export default function Games() {
         </div>
       )}
 
+      {/* Tournament crew panel — the roster that covers the whole event */}
+      {isTournament && showCrew && (
+        <div className="mb-6 bg-fiba-card border border-fiba-border rounded-lg p-5">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h3 className="text-sm font-bold text-ink-900 dark:text-white">{t('games.crewTitle')}</h3>
+              <p className="text-xs text-fiba-muted mt-0.5">
+                {t('games.crewSubtitle', { games: games.length })}
+              </p>
+            </div>
+            <button onClick={() => setShowCrew(false)}
+              className="text-fiba-muted hover:text-ink-900 dark:hover:text-white text-xs">×</button>
+          </div>
+
+          {crewMsg && (
+            <div className="mb-3 px-3 py-2 bg-blue-500/10 text-blue-400 rounded-lg text-xs">{crewMsg}</div>
+          )}
+
+          {crew.length === 0 ? (
+            <p className="text-sm text-fiba-muted mb-4">{t('games.crewEmpty')}</p>
+          ) : (
+            <div className="flex flex-wrap gap-2 mb-4">
+              {crew.map(m => (
+                <span key={m.id}
+                  className="inline-flex items-center gap-2 pl-2.5 pr-1.5 py-1 rounded-full bg-fiba-surface border border-fiba-border text-xs">
+                  <span className="font-medium text-ink-900 dark:text-white">{m.personnel?.name}</span>
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-fiba-muted">
+                    {roleCode(m.personnel?.role || m.role)}
+                  </span>
+                  {canEdit && (
+                    <button onClick={() => handleRemoveCrew(m)}
+                      className="text-fiba-muted hover:text-red-400 px-1"
+                      title={t('games.crewRemove')}>×</button>
+                  )}
+                </span>
+              ))}
+            </div>
+          )}
+
+          {canEdit && (
+            <div>
+              <label className="fiba-label">{t('games.crewAdd')}</label>
+              <input type="text" value={crewSearch} onChange={e => setCrewSearch(e.target.value)}
+                placeholder={t('games.crewSearchPlaceholder')}
+                className="fiba-input" />
+              {crewSearch.trim().length >= 2 && (
+                <div className="mt-2 max-h-52 overflow-y-auto border border-fiba-border rounded-lg divide-y divide-fiba-border">
+                  {crewOptions
+                    .filter(p => !crew.some(m => m.personnel_id === p.id))
+                    .filter(p => (p.name || '').toLowerCase().includes(crewSearch.trim().toLowerCase()))
+                    .slice(0, 20)
+                    .map(p => (
+                      <button key={p.id} onClick={() => handleAddCrew(p)} disabled={crewSaving}
+                        className="w-full flex items-center justify-between gap-2 px-3 py-2 text-left hover:bg-fiba-surface disabled:opacity-40">
+                        <span className="text-sm text-ink-900 dark:text-white">{p.name}</span>
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-fiba-muted">
+                          {roleCode(p.role)}
+                          {p.country ? ` · ${p.country}` : ''}
+                        </span>
+                      </button>
+                    ))}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Defaults panel — common nomination values for this competition */}
       {supportsAssignments && showDefaults && (
         <div className="mb-6 bg-fiba-card border border-fiba-border rounded-lg p-5">
@@ -896,7 +1099,7 @@ export default function Games() {
             </span>
             <div className="flex items-center gap-2 flex-shrink-0">
               <button onClick={handleRecalcTravel}
-                disabled={recalcingTravel || assignments.length === 0}
+                disabled={recalcingTravel || assignedCount === 0}
                 className="btn-fiba-ghost disabled:opacity-40"
                 title={t('games.recalcTravelHint')}>
                 {recalcingTravel ? t('games.recalcing') : t('games.recalcTravel')}
@@ -982,6 +1185,10 @@ export default function Games() {
                       supportsRefSlots={supportsRefSlots}
                       templateKey={(selectedComp?.template_key || '').toUpperCase()}
                       assignment={assignmentsByGame[game.id] || {}}
+                      isTournament={isTournament}
+                      crew={crew}
+                      crewOverrides={crewOverridesByGame[game.id] || {}}
+                      onToggleCrewGame={handleToggleCrewGame}
                       onAssign={handleAssign} onUnassign={handleUnassign}
                       refConflictFor={refConflictFor}
                       flightByPersonnel={flightByPersonnel}
@@ -1314,6 +1521,7 @@ function DateMultiFilter({ dates, selected, onChange, formatDate, t }) {
 function GameCard({
   game, canEdit, onEdit, onDelete, t,
   supportsAssignments = false, supportsRefSlots = false, templateKey = '', assignment = {},
+  isTournament = false, crew = [], crewOverrides = {}, onToggleCrewGame,
   onAssign, onUnassign, refConflictFor, flightByPersonnel = {}, onToggleFlight,
 }) {
   const displayCountry = game.country || (templateKey === 'WCQ' ? game.team_a : '') || ''
@@ -1325,6 +1533,9 @@ function GameCard({
     .filter(Boolean).join(' · ')
   const totalSlots = 2 + (supportsRefSlots ? REF_SLOTS.length + CREW_SLOTS.length : 0)
   const filledSlots = STANDARD_SLOTS.filter(r => assignment[r]).length
+  // Tournament: the crew covers every game, so the counter tracks how many of
+  // them were confirmed at the table for this one.
+  const confirmedCrew = crew.filter(m => crewOverrides[m.personnel_id]).length
 
   return (
     <div className={`bg-fiba-card rounded-lg border p-3 flex flex-col hover:shadow-sm transition-shadow ${
@@ -1337,14 +1548,21 @@ function GameCard({
         </span>
         <div className="flex items-center gap-1.5">
           {supportsAssignments && (
-            <span
-              className={`text-[10px] font-semibold tabular-nums ${
-                filledSlots === totalSlots ? 'text-emerald-500 dark:text-emerald-400' : 'text-fiba-muted'
-              }`}
-              title={t('games.assignedSlots', { filled: filledSlots, total: totalSlots })}
-            >
-              {filledSlots}/{totalSlots}
-            </span>
+            isTournament ? (
+              <span className="text-[10px] font-semibold tabular-nums text-fiba-muted"
+                title={t('games.crewCoversGame')}>
+                {confirmedCrew > 0 ? `${confirmedCrew}/${crew.length}` : crew.length}
+              </span>
+            ) : (
+              <span
+                className={`text-[10px] font-semibold tabular-nums ${
+                  filledSlots === totalSlots ? 'text-emerald-500 dark:text-emerald-400' : 'text-fiba-muted'
+                }`}
+                title={t('games.assignedSlots', { filled: filledSlots, total: totalSlots })}
+              >
+                {filledSlots}/{totalSlots}
+              </span>
+            )
           )}
           {isLive && (
             <span className="text-[10px] font-bold text-red-500 uppercase tracking-wider">LIVE</span>
@@ -1403,7 +1621,41 @@ function GameCard({
         </div>
       )}
 
-      {supportsAssignments && (
+      {/* Tournament: the crew covers this game by default. Clicking a chip
+          records who was actually at the table (an override, not a change of
+          who is nominated). */}
+      {supportsAssignments && isTournament && (
+        <div className="border-t border-fiba-border mt-2 pt-2">
+          {crew.length === 0 ? (
+            <p className="text-[11px] text-fiba-muted italic">{t('games.crewEmptyShort')}</p>
+          ) : (
+            <div className="flex flex-wrap gap-1">
+              {crew.map(m => {
+                const override = crewOverrides[m.personnel_id]
+                const person = m.personnel || {}
+                const roleLabel = roleCode(person.role || m.role)
+                return (
+                  <button key={m.id}
+                    onClick={canEdit ? () => onToggleCrewGame(game, m, override) : undefined}
+                    disabled={!canEdit}
+                    title={override ? t('games.crewConfirmedHint') : t('games.crewCoversHint')}
+                    className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] border transition-colors ${
+                      override
+                        ? 'border-fiba-accent/50 bg-fiba-accent/10 text-fiba-accent font-semibold'
+                        : 'border-fiba-border text-fiba-muted hover:text-ink-900 dark:hover:text-white'
+                    } ${canEdit ? 'cursor-pointer' : 'cursor-default'}`}>
+                    {override && <span aria-hidden="true">✓</span>}
+                    <span className="truncate max-w-[9rem]">{person.name}</span>
+                    <span className="font-bold uppercase tracking-wider opacity-70">{roleLabel}</span>
+                  </button>
+                )
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
+      {supportsAssignments && !isTournament && (
         <div className="border-t border-fiba-border mt-2 pt-2 flex flex-col gap-1.5">
           <AssignmentSlot role="TD" game={game} t={t} canEdit={canEdit}
             assignment={assignment.TD}

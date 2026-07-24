@@ -343,8 +343,8 @@ const translations = {
       es: 'Activa la restricción de neutralidad arbitral: un árbitro no puede dirigir partidos —ni grupos— donde participe su país.',
     },
     feeTypeHint: {
-      en: 'Determines the fee wording used on the nomination letter.',
-      es: 'Determina el texto de honorarios en la nominación.',
+      en: 'Determines the fee wording on the nomination letter and how personnel is assigned: with a tournament fee the crew is assigned once (Games → Tournament crew, or the Calendar panel) and covers every game and training session; with a per game fee people are assigned game by game.',
+      es: 'Determina el texto de honorarios en la nominación y cómo se asigna el personal: con tournament fee el crew se asigna una sola vez (Games → Crew del torneo, o el panel de Calendar) y cubre todos los partidos y entrenamientos; con per game fee se asigna partido por partido.',
     },
   },
 
@@ -682,6 +682,12 @@ const translations = {
     unassigned: { en: 'Unassigned', es: 'Sin asignar' },
     assignTd: { en: 'Assign TD', es: 'Asignar TD' },
     addTd: { en: 'Add TD', es: 'Agregar TD' },
+    showAllTds: { en: 'Show all TDs', es: 'Ver todos los TDs' },
+    showCrewOnly: { en: 'Show crew only', es: 'Ver solo el crew' },
+    crewCoversHint: {
+      en: 'Tournament crew: these are the TDs assigned to the whole competition.',
+      es: 'Crew del torneo: estos son los TDs asignados a toda la competencia.',
+    },
     currentTds: { en: 'Assigned TDs', es: 'TDs asignados' },
     assign: { en: 'Assign', es: 'Asignar' },
     tdAssigned: { en: 'TD assigned successfully', es: 'TD asignado exitosamente' },
@@ -855,6 +861,45 @@ const translations = {
     flightBooked: { en: 'Flight booked — click to mark as pending', es: 'Vuelo comprado — clic para marcar pendiente' },
     flightPending: { en: 'Flight not booked yet — click to mark as booked', es: 'Vuelo pendiente — clic para marcar comprado' },
     assignedSlots: { en: '{filled} of {total} roles assigned', es: '{filled} de {total} cargos asignados' },
+    // Tournament crew (fee_type = 'tournament'): assigned once for the whole
+    // event, covers every game and training session.
+    crew: { en: 'Tournament crew', es: 'Crew del torneo' },
+    crewHint: {
+      en: 'People assigned to the whole tournament: they cover every game and training session',
+      es: 'Personal asignado a todo el torneo: cubre todos los partidos y entrenamientos',
+    },
+    crewTitle: { en: 'Tournament crew', es: 'Crew del torneo' },
+    crewSubtitle: {
+      en: 'This competition has a tournament fee, so its crew covers all {games} games and the whole training schedule. Nominations are generated from this list.',
+      es: 'Esta competencia tiene tournament fee, así que su crew cubre los {games} partidos y todo el cronograma de entrenamientos. Las nominaciones se generan a partir de esta lista.',
+    },
+    crewEmpty: { en: 'No one assigned to this tournament yet.', es: 'Todavía no hay nadie asignado a este torneo.' },
+    crewEmptyShort: { en: 'No crew assigned', es: 'Sin crew asignado' },
+    crewAdd: { en: 'Add to the crew', es: 'Agregar al crew' },
+    crewSearchPlaceholder: { en: 'Search person...', es: 'Buscar persona...' },
+    crewRemove: { en: 'Remove from the crew', es: 'Quitar del crew' },
+    crewRemoveConfirm: {
+      en: 'Remove {name} from the tournament crew? They will stop covering the games and training sessions of this competition.',
+      es: '¿Quitar a {name} del crew del torneo? Dejará de cubrir los partidos y entrenamientos de esta competencia.',
+    },
+    crewAdded: { en: '{name} added to the crew', es: '{name} agregado al crew' },
+    crewNeutralityNote: {
+      en: '{name} added. Neutrality: they cannot work {count} game(s) of this tournament.',
+      es: '{name} agregado. Neutralidad: no puede dirigir {count} partido(s) de este torneo.',
+    },
+    crewRefSlotsFull: {
+      en: 'This game already has its three referee slots taken.',
+      es: 'Este partido ya tiene ocupados los tres cargos de árbitro.',
+    },
+    crewCoversGame: { en: 'Crew covering this game', es: 'Crew que cubre este partido' },
+    crewCoversHint: {
+      en: 'Covered by the tournament crew — click to confirm they worked this game',
+      es: 'Cubierto por el crew del torneo — clic para confirmar que trabajó este partido',
+    },
+    crewConfirmedHint: {
+      en: 'Confirmed on this game — click to undo',
+      es: 'Confirmado en este partido — clic para deshacer',
+    },
     syncNominations: { en: 'Sync to nominations', es: 'Sincronizar nominaciones' },
     syncAllRoles: { en: 'All roles', es: 'Todos los cargos' },
     syncNominationsHint: { en: 'Create/update competition-level nomination drafts from per-game assignments', es: 'Crear/actualizar borradores de nominación a partir de las asignaciones por juego' },

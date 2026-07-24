@@ -9,6 +9,7 @@ import os
 
 from api._lib.database import supabase
 from api._lib.auth import require_view, require_edit
+from api._lib.crew import get_competition, is_tournament_mode, list_crew
 
 router = APIRouter(prefix="/training", tags=["training"], dependencies=[Depends(require_view("training"))])
 
@@ -137,6 +138,23 @@ def _format_time(t: str) -> str:
 
 
 # ── Slots CRUD ───────────────────────────────────────────────────────────────
+
+@router.get("/crew")
+def list_training_crew(competition_id: str = Query(...)):
+    """Competition crew, so the assignment modal can offer the people actually
+    working this event instead of the whole personnel list. On tournament-fee
+    competitions the crew covers every slot (`covers_all_slots`); on per-game
+    competitions it is only a suggestion and the full list stays available.
+    """
+    competition = get_competition(competition_id)
+    if not competition:
+        raise HTTPException(404, "Competition not found")
+    return {
+        "fee_type": competition.get("fee_type") or "per_game",
+        "covers_all_slots": is_tournament_mode(competition),
+        "crew": list_crew(competition_id),
+    }
+
 
 @router.get("/slots")
 def list_slots(competition_id: str = Query(...)):

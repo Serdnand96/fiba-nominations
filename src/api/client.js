@@ -245,6 +245,17 @@ export const importGamesExcel = (file, competitionId) => {
   }).then(r => r.data)
 }
 
+// Tournament crew: competition-level roster. On fee_type='tournament' it
+// covers every game and training slot; per-game rows are only an override.
+export const getCompetitionCrew = (competitionId) =>
+  api.get('/games/crew/by-competition', { params: { competition_id: competitionId } }).then(r => r.data)
+export const addCrewMember = (competitionId, personnelId, role = null) =>
+  api.post('/games/crew', { competition_id: competitionId, personnel_id: personnelId, ...(role ? { role } : {}) }).then(r => r.data)
+export const removeCrewMember = (assignmentId) =>
+  api.delete(`/games/crew/${assignmentId}`).then(r => r.data)
+export const getTrainingCrew = (competitionId) =>
+  api.get('/training/crew', { params: { competition_id: competitionId } }).then(r => r.data)
+
 // Per-game TD/VGO/referee assignments (WCQ / BCLA / LSB)
 export const getGameAssignments = (competitionId) =>
   api.get('/games/assignments/by-competition', { params: { competition_id: competitionId } }).then(r => r.data)

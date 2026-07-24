@@ -13,6 +13,7 @@ from datetime import datetime, timedelta, timezone
 
 from api._lib.database import supabase
 from api._lib.auth import require_view, require_edit
+from api._lib.crew import get_competition, is_tournament_mode, list_crew
 from api._lib.net import safe_get
 from api._lib.roles import VALID_ROLES
 from api._lib.travel import sede_pairs, format_sedes
@@ -20,6 +21,8 @@ from api._lib.travel import sede_pairs, format_sedes
 router = APIRouter(prefix="/games", tags=["games"], dependencies=[Depends(require_view("games"))])
 
 # Templates that support per-game TD/VGO assignment from the Games page.
+# Tournament-fee competitions get the assignment workflow too, whatever their
+# template: there the crew is competition-level (see api/_lib/crew.py).
 ASSIGNMENT_TEMPLATES = {"WCQ", "BCLA", "LSB"}
 
 _MAX_UPLOAD_BYTES = 5 * 1024 * 1024
@@ -544,13 +547,15 @@ class AssignmentCreate(BaseModel):
 def _competition_supports_assignments(competition_id: str) -> bool:
     comp = (
         supabase.table("competitions")
-        .select("template_key")
+        .select("template_key, fee_type")
         .eq("id", competition_id)
         .execute()
         .data
     )
     if not comp:
         return False
+    if is_tournament_mode(comp[0]):
+        return True
     return (comp[0].get("template_key") or "").upper() in ASSIGNMENT_TEMPLATES
 
 
@@ -650,6 +655,105 @@ def _referee_conflict(game: dict, person: dict) -> dict | None:
     return None
 
 
+# ── Tournament crew (competition-level roster) ──────────────────────────────
+# On fee_type = 'tournament' competitions the crew covers every game and every
+# training slot; per-game rows are only an optional override. Editable from
+# here and from the Calendar panel — same table, same data.
+
+class CrewCreate(BaseModel):
+    competition_id: str
+    personnel_id: str
+    role: Optional[str] = None  # defaults to the person's own role
+
+
+@router.get("/crew/by-competition")
+def list_crew_by_competition(competition_id: str = Query(...)):
+    """Competition-level crew, with personnel joined. Includes the fee mode so
+    the client knows whether this roster covers every game (tournament) or is
+    just informative (per-game)."""
+    competition = get_competition(competition_id)
+    if not competition:
+        raise HTTPException(404, "Competition not found")
+    return {
+        "fee_type": competition.get("fee_type") or "per_game",
+        "covers_all_games": is_tournament_mode(competition),
+        "crew": list_crew(competition_id),
+    }
+
+
+@router.post("/crew", dependencies=[Depends(require_edit("games"))])
+def add_crew_member(data: CrewCreate):
+    competition = get_competition(data.competition_id)
+    if not competition:
+        raise HTTPException(404, "Competition not found")
+
+    person = (
+        supabase.table("personnel")
+        .select("id, name, role, country, country_code, nationalities")
+        .eq("id", data.personnel_id)
+        .execute()
+        .data
+    )
+    if not person:
+        raise HTTPException(404, "Personnel not found")
+    person = person[0]
+
+    role = (data.role or person.get("role") or "").strip().upper()
+    if role not in VALID_ROLES:
+        raise HTTPException(400, f"role must be one of {', '.join(VALID_ROLES)}")
+
+    # One row per person per competition (DB unique) — surface it as a 409
+    # instead of letting the insert blow up.
+    existing = (
+        supabase.table("competition_assignments")
+        .select("id, role")
+        .eq("competition_id", data.competition_id)
+        .eq("personnel_id", data.personnel_id)
+        .execute()
+        .data
+    )
+    if existing:
+        raise HTTPException(409, "This person is already in the crew")
+
+    record = {
+        "competition_id": data.competition_id,
+        "personnel_id": data.personnel_id,
+        "role": role,
+    }
+    created = supabase.table("competition_assignments").insert(record).execute().data[0]
+
+    # Referee neutrality at tournament level is informative, not a block: a
+    # referee can be part of the crew and simply not work the games of their
+    # own country (those are blocked per game, in create_assignment).
+    warnings = []
+    if role == "REF":
+        games = (
+            supabase.table("game_schedule")
+            .select("id, team_a, team_a_code, team_a_country, team_b, team_b_code, "
+                    "team_b_country, group_label, competition_id")
+            .eq("competition_id", data.competition_id)
+            .execute()
+            .data
+        ) or []
+        for g in games:
+            if _referee_conflict(g, person):
+                warnings.append(f"{g.get('team_a') or ''} vs {g.get('team_b') or ''}")
+    return {**created, "personnel": person, "neutrality_warnings": warnings}
+
+
+@router.delete("/crew/{assignment_id}", dependencies=[Depends(require_edit("games"))])
+def remove_crew_member(assignment_id: str):
+    result = (
+        supabase.table("competition_assignments")
+        .delete()
+        .eq("id", assignment_id)
+        .execute()
+    )
+    if not result.data:
+        raise HTTPException(404, "Crew assignment not found")
+    return {"ok": True}
+
+
 @router.get("/assignments/by-competition")
 def list_assignments_by_competition(competition_id: str = Query(...)):
     """All assignments for a competition's games, with personnel name/role joined."""
@@ -690,7 +794,11 @@ def create_assignment(data: AssignmentCreate):
     )
     if not game:
         raise HTTPException(404, "Game not found")
-    if not _competition_supports_assignments(game[0]["competition_id"]):
+    competition = get_competition(game[0]["competition_id"])
+    tournament = is_tournament_mode(competition)
+    if not competition or not (
+        tournament or (competition.get("template_key") or "").upper() in ASSIGNMENT_TEMPLATES
+    ):
         raise HTTPException(400, "This competition does not support per-game assignments")
 
     # Verify personnel role matches the slot (CC/U1/U2 → REF)
@@ -719,16 +827,23 @@ def create_assignment(data: AssignmentCreate):
         if conflict:
             raise HTTPException(status_code=409, detail=conflict)
 
-    # Upsert: one slot per (game_id, role)
-    existing = (
+    # Per-game competitions: one person per (game_id, role) — assigning again
+    # replaces whoever was there. Tournament competitions: the crew already
+    # covers every game, so a per-game row is an override that records who was
+    # actually at the table; several people may share a slot role (two TDs),
+    # and we only dedupe the exact same person.
+    existing_q = (
         supabase.table("game_assignments")
-        .select("id")
+        .select("*")
         .eq("game_id", data.game_id)
         .eq("role", role)
-        .execute()
-        .data
     )
+    if tournament:
+        existing_q = existing_q.eq("personnel_id", data.personnel_id)
+    existing = existing_q.execute().data
     record = {"game_id": data.game_id, "personnel_id": data.personnel_id, "role": role}
+    if existing and tournament:
+        return existing[0]
     if existing:
         result = (
             supabase.table("game_assignments")
@@ -866,6 +981,16 @@ _FEE_PREFIX_BY_SLOT = {
     "VO": "video_operator",
 }
 
+# Personnel role → competition fee-column prefix. Used by the tournament crew,
+# which is keyed by the person's own role instead of a per-game slot.
+_FEE_PREFIX_BY_PERSONNEL_ROLE = {
+    "TD": "td",
+    "VGO": "vgo",
+    "REF": "ref",
+    "REF_INSTRUCTOR": "ref_instructor",
+    "VIDEO_OPERATOR": "video_operator",
+}
+
 # Arrival/departure are NOT here: travel is per person (derived from each
 # person's assigned games + the competition's offset days). Location/venue
 # are also derived per person; the competition values act only as fallback
@@ -923,6 +1048,49 @@ def _derive_travel(person_games: list[dict], competition: dict) -> tuple[dict, b
     return derived, multi_sede
 
 
+def _derive_travel_from_training(competition_id: str, competition: dict) -> dict:
+    """Travel fallback for tournament competitions whose game schedule hasn't
+    been loaded yet: the training schedule already spans the whole event, so
+    its first/last day ± the competition's offsets bound the stay, and its
+    distinct venues stand in for the sede.
+    """
+    slots = (
+        supabase.table("training_slots")
+        .select("date, venue")
+        .eq("competition_id", competition_id)
+        .execute()
+        .data
+    ) or []
+    if not slots:
+        return {}
+
+    derived: dict = {}
+    venues: list[str] = []
+    seen: set[str] = set()
+    for s in sorted(slots, key=lambda s: s.get("date") or ""):
+        v = (s.get("venue") or "").strip()
+        if v and v.lower() not in seen:
+            seen.add(v.lower())
+            venues.append(v)
+    if venues:
+        derived["venue"] = " / ".join(venues)
+
+    dates = []
+    for s in slots:
+        try:
+            dates.append(datetime.strptime(s["date"], "%Y-%m-%d").date())
+        except (KeyError, TypeError, ValueError):
+            continue
+    if dates:
+        arr_off = competition.get("default_arrival_offset_days")
+        dep_off = competition.get("default_departure_offset_days")
+        arr_off = int(arr_off) if arr_off is not None else 1
+        dep_off = int(dep_off) if dep_off is not None else 1
+        derived["arrival_date"] = (min(dates) - timedelta(days=arr_off)).isoformat()
+        derived["departure_date"] = (max(dates) + timedelta(days=dep_off)).isoformat()
+    return derived
+
+
 # Travel fields the explicit "recalculate travel" action may overwrite.
 _TRAVEL_FIELDS = ("arrival_date", "departure_date", "venue", "location")
 
@@ -938,9 +1106,10 @@ def _build_default_overrides(competition: dict, role: str) -> dict:
         v = competition.get(src)
         if v is not None and v != "":
             overrides[dst] = v
-    # Role-aware fees. `role` is the assignment slot role; referee crew
-    # slots share the REF fee defaults.
-    prefix = _FEE_PREFIX_BY_SLOT.get(role)
+    # Role-aware fees. `role` is either a per-game assignment slot (referee
+    # crew slots share the REF defaults) or, on the tournament crew, the
+    # person's own personnel role.
+    prefix = _FEE_PREFIX_BY_SLOT.get(role) or _FEE_PREFIX_BY_PERSONNEL_ROLE.get(role)
     fee = competition.get(f"{prefix}_window_fee") if prefix else None
     inc = competition.get(f"{prefix}_incidentals") if prefix else None
     if fee is not None:
@@ -977,24 +1146,27 @@ def sync_assignments_to_nominations(
     `role` filters by PERSONNEL role (TD, VGO, REF, …): only those people's
     nominations are created/updated. Referees in CC/U1/U2 slots and TD/VGO
     people in the EXTRA slot are matched by their real role.
+
+    On tournament-fee competitions the source is the competition crew instead:
+    every crew member covers every game (per-game rows are only an override of
+    who was at the table), so they all get the full schedule. Competitions with
+    no games loaded yet fall back to the training schedule for travel dates.
     """
     role_filter = (role or "").strip().upper() or None
     if role_filter and role_filter not in VALID_ROLES:
         raise HTTPException(400, f"role must be one of {', '.join(VALID_ROLES)}")
 
-    if not _competition_supports_assignments(competition_id):
+    competition = get_competition(competition_id)
+    if not competition:
+        raise HTTPException(404, "Competition not found")
+    tournament = is_tournament_mode(competition)
+    if not (
+        tournament or (competition.get("template_key") or "").upper() in ASSIGNMENT_TEMPLATES
+    ):
         raise HTTPException(400, "This competition does not support per-game assignments")
 
-    comp = (
-        supabase.table("competitions")
-        .select("*")
-        .eq("id", competition_id)
-        .execute()
-        .data
-    )
-    if not comp:
-        raise HTTPException(404, "Competition not found")
-    competition = comp[0]
+    empty = {"created": 0, "updated": 0, "people": 0, "multi_sede": 0,
+             "multi_sede_names": [], "source": "crew" if tournament else "games"}
 
     games = (
         supabase.table("game_schedule")
@@ -1003,8 +1175,11 @@ def sync_assignments_to_nominations(
         .execute()
         .data
     )
-    if not games:
-        return {"created": 0, "updated": 0, "people": 0}
+    # Without games there is nothing to roll up on a per-game competition. A
+    # tournament crew still gets its letters — the travel comes from the
+    # training schedule.
+    if not games and not tournament:
+        return empty
     game_by_id = {g["id"]: g for g in games}
     game_id_to_date = {g["id"]: g["date"] for g in games}
 
@@ -1014,27 +1189,48 @@ def sync_assignments_to_nominations(
         .in_("game_id", list(game_id_to_date.keys()))
         .execute()
         .data
-    )
-    if not assignments:
-        return {"created": 0, "updated": 0, "people": 0}
+    ) if games else []
 
-    # Personnel name + role for everyone assigned: resolves EXTRA slots to
+    crew = list_crew(competition_id) if tournament else []
+    if not assignments and not crew:
+        return empty
+
+    # Personnel name + role for everyone involved: resolves EXTRA slots to
     # the person's real role, powers the per-role filter, and names the
     # multi-sede people in the response.
-    pids = list({a["personnel_id"] for a in assignments})
-    people = (
-        supabase.table("personnel")
-        .select("id, name, role")
-        .in_("id", pids)
-        .execute()
-        .data
-    )
-    person_by_id = {p["id"]: p for p in people}
-    role_by_pid = {p["id"]: (p.get("role") or "").upper() for p in people}
+    person_by_id = {m["personnel_id"]: m["personnel"] for m in crew}
+    pids = [pid for pid in {a["personnel_id"] for a in assignments} if pid not in person_by_id]
+    if pids:
+        for p in (
+            supabase.table("personnel")
+            .select("id, name, role")
+            .in_("id", pids)
+            .execute()
+            .data
+        ):
+            person_by_id[p["id"]] = p
+    role_by_pid = {pid: (p.get("role") or "").upper() for pid, p in person_by_id.items()}
 
-    # Group by personnel → (role from assignments, unique dates + games)
     by_person: dict[str, dict] = {}
+
+    # Tournament crew → the whole schedule, every member.
+    all_dates = {g["date"] for g in games if g.get("date")}
+    all_game_ids = set(game_by_id)
+    for member in crew:
+        pid = member["personnel_id"]
+        by_person[pid] = {
+            "role": role_by_pid.get(pid) or (member.get("role") or "").upper(),
+            "dates": set(all_dates),
+            "game_ids": set(all_game_ids),
+        }
+
+    # Per-game rows. On per-game competitions this is the only source; on
+    # tournament competitions it only adds people who are not in the crew
+    # (the crew already covers every game).
+    crew_pids = set(by_person)
     for a in assignments:
+        if a["personnel_id"] in crew_pids:
+            continue
         d = game_id_to_date.get(a["game_id"])
         if not d:
             continue
@@ -1057,8 +1253,7 @@ def sync_assignments_to_nominations(
             if role_by_pid.get(pid) == role_filter
         }
         if not by_person:
-            return {"created": 0, "updated": 0, "people": 0,
-                    "multi_sede": 0, "multi_sede_names": []}
+            return empty
 
     # Existing nominations for this competition
     existing = (
@@ -1073,11 +1268,18 @@ def sync_assignments_to_nominations(
     created = 0
     updated = 0
     multi_sede_pids: list[str] = []
+    # Tournament with no games loaded: the training schedule bounds the stay.
+    training_travel = (
+        _derive_travel_from_training(competition_id, competition)
+        if tournament and not games else {}
+    )
     now_iso = datetime.now(timezone.utc).isoformat()
     for pid, info in by_person.items():
         sorted_dates = sorted(info["dates"])
         person_games = [game_by_id[gid] for gid in info["game_ids"] if gid in game_by_id]
         derived, multi_sede = _derive_travel(person_games, competition)
+        if not derived:
+            derived = dict(training_travel)
         if multi_sede:
             multi_sede_pids.append(pid)
 
@@ -1105,7 +1307,9 @@ def sync_assignments_to_nominations(
 
         if pid in existing_by_pid:
             existing_nom = existing_by_pid[pid]
-            update_record = {"game_dates": game_dates}
+            # No games loaded → nothing to roll up; never blank out dates that
+            # were filled in by hand from Nominations.
+            update_record = {"game_dates": game_dates} if game_dates else {}
             # Only fill defaults where the nomination doesn't already have a value,
             # so manual edits made in Nominations are preserved.
             for k, v in defaults.items():
@@ -1118,8 +1322,9 @@ def sync_assignments_to_nominations(
                 for k in _TRAVEL_FIELDS:
                     if k in defaults:
                         update_record[k] = defaults[k]
-            supabase.table("nominations").update(update_record).eq("id", existing_nom["id"]).execute()
-            updated += 1
+            if update_record:
+                supabase.table("nominations").update(update_record).eq("id", existing_nom["id"]).execute()
+                updated += 1
         else:
             insert_record = {
                 "personnel_id": pid,
@@ -1142,6 +1347,7 @@ def sync_assignments_to_nominations(
         "people": len(by_person),
         "multi_sede": len(multi_sede_pids),
         "multi_sede_names": multi_names,
+        "source": "crew" if tournament else "games",
     }
 
 

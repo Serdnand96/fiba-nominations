@@ -18,6 +18,9 @@ const COMP_TYPES = [
   { key: 'AmeriCup', label: 'AmeriCup', color: '#993C1D' },
   { key: 'U-Series', label: 'U-Series', color: '#0F6E56' },
 ]
+// Roles the competition crew accepts (mirrors api/_lib/roles.py). On
+// tournament-fee competitions this roster covers every game and training slot.
+const CREW_ROLES = ['TD', 'VGO', 'REF', 'REF_INSTRUCTOR', 'VIDEO_OPERATOR']
 const TYPE_COLORS = Object.fromEntries(COMP_TYPES.filter(t => t.color).map(t => [t.key, t.color]))
 function getTypeColor(type) { return TYPE_COLORS[type] || '#6B7280' }
 
@@ -489,7 +492,7 @@ export default function Calendar() {
                           {filteredPersonnel.length === 0 ? (
                             <div className="px-3 py-2 text-sm text-fiba-muted">{t('calendar.noResults')}</div>
                           ) : filteredPersonnel.slice(0, 20).map(p => (
-                            <button key={p.id} onClick={() => { setSelectedPerson(p); setStaffSearch(''); setShowDropdown(false) }}
+                            <button key={p.id} onClick={() => { setSelectedPerson(p); setSelectedRole(p.role || 'TD'); setStaffSearch(''); setShowDropdown(false) }}
                               className="w-full text-left px-3 py-2 text-sm hover:bg-fiba-surface flex items-center justify-between">
                               <div className="flex items-center gap-2">
                                 {p.role === 'TD' && <AvailDot personnelId={p.id} />}
@@ -502,10 +505,13 @@ export default function Calendar() {
                       )}
                     </div>
                     <div className="flex gap-2">
+                      {/* Defaults to the person's own role — the crew feeds the
+                          nomination fees, which are resolved per role. */}
                       <select value={selectedRole} onChange={e => setSelectedRole(e.target.value)}
                         className="fiba-select">
-                        <option value="VGO">VGO</option>
-                        <option value="TD">TD</option>
+                        {CREW_ROLES.map(r => (
+                          <option key={r} value={r}>{t(`roles.${r}`)}</option>
+                        ))}
                       </select>
                       <button onClick={handleAssign} disabled={!selectedPerson || assigning}
                         className="btn-fiba flex-1 disabled:opacity-50">

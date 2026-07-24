@@ -62,6 +62,17 @@ legacy `fibaamericascloud.com`).
    separado — revisalo con el mismo checklist de permisos que cualquier
    otro módulo.
 
+8. **Hay dos formas de asignar personal, y las decide `competitions.fee_type`:**
+   - `per_game` → asignación **por partido** en `game_assignments` (un cargo
+     por juego), solo para templates WCQ/BCLA/LSB.
+   - `tournament` → el **crew del torneo** en `competition_assignments`
+     (helper: `api/_lib/crew.py`) cubre **todos** los partidos y todos los
+     slots de training, sin importar el template. Las filas por partido pasan
+     a ser un *override* opcional (quién estuvo realmente en la mesa) y ahí
+     sí puede haber más de una persona en el mismo cargo.
+   `sync-nominations` sale del crew en modo torneo y de `game_assignments` en
+   modo per-game. El crew se edita desde Games y desde el panel de Calendar.
+
 ---
 
 ## 🗺️ Mapa del repo

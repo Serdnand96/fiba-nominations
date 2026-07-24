@@ -5,6 +5,8 @@ from collections import Counter
 
 from api._lib.database import supabase
 from api._lib.auth import require_view, require_edit
+from api._lib.crew import list_crew
+from api._lib.roles import VALID_ROLES
 
 router = APIRouter(prefix="/calendar", tags=["calendar"], dependencies=[Depends(require_view("calendar"))])
 
@@ -87,31 +89,10 @@ def get_competition_detail(competition_id: str):
     if not comp.data:
         raise HTTPException(status_code=404, detail="Competition not found")
 
-    # Fetch assignments for this competition
-    assignments = (
-        supabase.table("competition_assignments")
-        .select("*")
-        .eq("competition_id", competition_id)
-        .execute()
-        .data
-    )
-
-    # Enrich assignments with personnel info (batch fetch)
-    personnel_ids = list({a["personnel_id"] for a in assignments})
-    personnel_map = {}
-    if personnel_ids:
-        all_p = supabase.table("personnel").select("*").execute().data
-        personnel_map = {p["id"]: p for p in all_p if p["id"] in set(personnel_ids)}
-
-    staff = []
-    for a in assignments:
-        entry = {**a}
-        if a["personnel_id"] in personnel_map:
-            entry["personnel"] = personnel_map[a["personnel_id"]]
-        staff.append(entry)
-
+    # The crew: on tournament-fee competitions this roster is what covers every
+    # game and training slot (see api/_lib/crew.py).
     result = comp.data[0]
-    result["assignments"] = staff
+    result["assignments"] = list_crew(competition_id)
     return result
 
 
@@ -166,25 +147,33 @@ def assign_staff(competition_id: str, data: AssignmentCreate):
     if not comp.data:
         raise HTTPException(status_code=404, detail="Competition not found")
 
-    # Check for duplicate assignment
+    role = (data.role or "").strip().upper()
+    if role not in VALID_ROLES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"role must be one of {', '.join(VALID_ROLES)}",
+        )
+
+    # One row per person per competition (DB unique) — checking by person, not
+    # by (person, role), so a second role for the same person is a clean 409
+    # instead of a constraint error.
     existing = (
         supabase.table("competition_assignments")
         .select("id")
         .eq("competition_id", competition_id)
         .eq("personnel_id", data.personnel_id)
-        .eq("role", data.role)
         .execute()
     )
     if existing.data:
         raise HTTPException(
             status_code=409,
-            detail="This person is already assigned with that role",
+            detail="This person is already assigned to this competition",
         )
 
     record = {
         "competition_id": competition_id,
         "personnel_id": data.personnel_id,
-        "role": data.role,
+        "role": role,
     }
     result = supabase.table("competition_assignments").insert(record).execute()
     return result.data[0]

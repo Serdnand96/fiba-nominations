@@ -7,7 +7,7 @@ import {
   getTrainingSlots, createTrainingSlot, updateTrainingSlot,
   deleteTrainingSlot, createTrainingAssignment, deleteTrainingAssignment,
   importTrainingExcel, previewTrainingExcel, downloadTrainingPdf,
-  downloadTrainingScheduleXlsx, checkTrainingConflicts,
+  downloadTrainingScheduleXlsx, checkTrainingConflicts, getTrainingCrew,
 } from '../api/client'
 import { readLastSearch, writeLastSearch } from '../lib/lastSearch'
 
@@ -48,6 +48,11 @@ export default function Training() {
   const [allSlots, setAllSlots] = useState([])
   const [tds, setTds] = useState([])
   const [availData, setAvailData] = useState([])
+  // Competition crew. On tournament-fee competitions it covers every session,
+  // so the assignment picker offers those people first.
+  const [crew, setCrew] = useState([])
+  const [crewCoversAll, setCrewCoversAll] = useState(false)
+  const [showAllTds, setShowAllTds] = useState(false)
 
   // By Day state
   const [selectedDate, setSelectedDate] = useState('')
@@ -126,12 +131,16 @@ export default function Training() {
 
   async function loadSlots() {
     try {
-      const [slots, avail] = await Promise.all([
+      const [slots, avail, cw] = await Promise.all([
         getTrainingSlots(competitionId),
         getCompetitionAvailability(competitionId).catch(() => []),
+        getTrainingCrew(competitionId).catch(() => null),
       ])
       setAllSlots(slots)
       setAvailData(avail)
+      setCrew(cw?.crew || [])
+      setCrewCoversAll(!!cw?.covers_all_slots)
+      setShowAllTds(false)
       // One-shot restore of the persisted last search, only for the
       // competition it was saved for; stale values are dropped silently.
       const saved = lastSearchRef.current
@@ -184,6 +193,22 @@ export default function Training() {
       return entry.status !== 'unavailable'
     })
   }, [tds, availData])
+
+  // TDs in the competition crew (the people actually working this event).
+  const crewTdIds = useMemo(
+    () => new Set(crew
+      .filter(m => ((m.personnel?.role || m.role || '').toUpperCase()) === 'TD')
+      .map(m => m.personnel_id)),
+    [crew],
+  )
+  // On a tournament the crew covers every session, so the picker defaults to
+  // it instead of the whole TD list. Falls back to everyone when the crew has
+  // no TDs yet, or when the user explicitly asks to see all.
+  const crewFilterActive = crewCoversAll && crewTdIds.size > 0 && !showAllTds
+  const pickerTds = useMemo(
+    () => (crewFilterActive ? availableTds.filter(td => crewTdIds.has(td.id)) : availableTds),
+    [availableTds, crewFilterActive, crewTdIds],
+  )
 
   // Helper for time overlap
   function toMin(t) { if (!t) return 0; const p = t.split(':'); return parseInt(p[0]) * 60 + parseInt(p[1]) }
@@ -574,8 +599,14 @@ export default function Training() {
                 <select value={selectedTd} onChange={e => setSelectedTd(e.target.value)}
                   className="fiba-select text-sm max-w-xs">
                   <option value="">{t('training.selectTd')}</option>
-                  {availableTds.map(td => <option key={td.id} value={td.id}>{td.name}{td.country ? ` (${td.country})` : ''}</option>)}
+                  {pickerTds.map(td => <option key={td.id} value={td.id}>{td.name}{td.country ? ` (${td.country})` : ''}</option>)}
                 </select>
+                {crewCoversAll && crewTdIds.size > 0 && (
+                  <button onClick={() => setShowAllTds(s => !s)}
+                    className="text-[11px] text-fiba-accent hover:underline">
+                    {crewFilterActive ? t('training.showAllTds') : t('training.showCrewOnly')}
+                  </button>
+                )}
                 {selectedTd && (
                   <button onClick={() => downloadTrainingPdf('competition', { competition_id: competitionId }).catch(err => alert(err.message))}
                     className="ml-auto px-3 py-1.5 border border-fiba-border rounded-lg text-sm text-fiba-accent hover:bg-fiba-surface">
@@ -724,11 +755,22 @@ export default function Training() {
             )}
             {canEdit && (
               <div>
-                <p className="text-xs font-medium text-fiba-muted mb-1">{t('training.addTd')}</p>
+                <div className="flex items-center justify-between mb-1">
+                  <p className="text-xs font-medium text-fiba-muted">{t('training.addTd')}</p>
+                  {crewCoversAll && crewTdIds.size > 0 && (
+                    <button onClick={() => setShowAllTds(s => !s)}
+                      className="text-[11px] text-fiba-accent hover:underline">
+                      {crewFilterActive ? t('training.showAllTds') : t('training.showCrewOnly')}
+                    </button>
+                  )}
+                </div>
+                {crewFilterActive && (
+                  <p className="text-[11px] text-fiba-muted mb-1.5">{t('training.crewCoversHint')}</p>
+                )}
                 <div className="flex gap-2 mb-2">
                   <select value={assignTdId} onChange={e => setAssignTdId(e.target.value)} className="fiba-select flex-1">
                     <option value="">{t('training.selectTd')}</option>
-                    {availableTds.filter(td => !assignedInModal.some(a => a.personnel_id === td.id)).map(td => (
+                    {pickerTds.filter(td => !assignedInModal.some(a => a.personnel_id === td.id)).map(td => (
                       <option key={td.id} value={td.id}>
                         {tdConflictsMap[td.id] ? '\u26A0\uFE0F ' : ''}{td.name}{td.country ? ` (${td.country})` : ''}
                       </option>
