@@ -191,12 +191,18 @@ export const downloadTrainingPdf = async (type, params) => {
   setTimeout(() => URL.revokeObjectURL(objectUrl), 1000)
 }
 // Game & Practice Schedule (official FIBA layout) as .xlsx — same
-// authenticated blob pattern as downloadTrainingPdf.
-export const downloadTrainingScheduleXlsx = async (competitionId, lang = 'es') => {
+// authenticated blob pattern as downloadTrainingPdf. `mainVenue`/`trainingVenue`
+// are optional overrides for the document header; omitted (or blank) values
+// are left out of the request so the backend falls back to its own
+// inference (main venue from games) / "TBC" (training venue) defaults.
+export const downloadTrainingScheduleXlsx = async (competitionId, lang = 'es', { mainVenue, trainingVenue } = {}) => {
   let resp
   try {
+    const params = { competition_id: competitionId, lang }
+    if (mainVenue) params.main_venue = mainVenue
+    if (trainingVenue) params.training_venue = trainingVenue
     resp = await api.get('/training/export/schedule-xlsx', {
-      params: { competition_id: competitionId, lang },
+      params,
       responseType: 'blob',
     })
   } catch (err) {

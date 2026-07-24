@@ -70,6 +70,13 @@ export default function Training() {
   const [assignTdId, setAssignTdId] = useState('')
   const [assignSaving, setAssignSaving] = useState(false)
 
+  // Export Schedule (Game & Practice Excel) modal
+  const [showExportModal, setShowExportModal] = useState(false)
+  const [exportLang, setExportLang] = useState(lang)
+  const [exportMainVenue, setExportMainVenue] = useState('')
+  const [exportTrainingVenue, setExportTrainingVenue] = useState('')
+  const [exportingSchedule, setExportingSchedule] = useState(false)
+
   // Import modal
   const [showImport, setShowImport] = useState(false)
   const [importCompId, setImportCompId] = useState('')
@@ -321,6 +328,29 @@ export default function Training() {
     setAssignSlot(null)
   }
 
+  function openExportModal() {
+    setExportLang(lang)
+    setExportMainVenue('')
+    setExportTrainingVenue('')
+    setShowExportModal(true)
+  }
+
+  async function handleExportSchedule() {
+    setExportingSchedule(true)
+    try {
+      await downloadTrainingScheduleXlsx(competitionId, exportLang, {
+        mainVenue: exportMainVenue.trim(),
+        trainingVenue: exportTrainingVenue.trim(),
+      })
+      setShowExportModal(false)
+    } catch (err) {
+      alert(err?.response?.status === 404
+        ? t('training.exportScheduleNoData')
+        : (err.detail || err.message))
+    }
+    setExportingSchedule(false)
+  }
+
   function openImport() {
     setShowImport(true); setImportCompId(competitionId); setImportSport('Basketball')
     setImportFile(null); setImportPreview(null); setImportResult(null)
@@ -371,12 +401,7 @@ export default function Training() {
         <h2 className="text-2xl font-bold text-ink-900 dark:text-white">{t('training.title')}</h2>
         <div className="flex gap-2">
           {competitionId && hasView('games') && (
-            <button
-              onClick={() => downloadTrainingScheduleXlsx(competitionId, lang).catch(err =>
-                alert(err?.response?.status === 404
-                  ? t('training.exportScheduleNoData')
-                  : (err.detail || err.message)))}
-              className="btn-fiba-ghost">
+            <button onClick={openExportModal} className="btn-fiba-ghost">
               {t('training.exportSchedule')}
             </button>
           )}
@@ -807,6 +832,47 @@ export default function Training() {
                 </div>
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* ── Export Schedule Modal ────────────────────────────────────── */}
+      {showExportModal && (
+        <div className="fiba-modal-overlay">
+          <div className="fiba-modal max-w-md p-6">
+            <div className="flex justify-between items-start mb-4">
+              <h3 className="text-lg font-bold text-ink-900 dark:text-white">{t('training.exportSchedule')}</h3>
+              <button onClick={() => setShowExportModal(false)} disabled={exportingSchedule} className="text-fiba-muted hover:text-ink-900 dark:text-white text-xl disabled:opacity-50">&times;</button>
+            </div>
+            <div className="space-y-3">
+              <div>
+                <label className="fiba-label">{t('training.exportLanguage')}</label>
+                <select value={exportLang} onChange={e => setExportLang(e.target.value)} className="fiba-select">
+                  <option value="es">Español</option>
+                  <option value="en">English</option>
+                </select>
+              </div>
+              <div>
+                <label className="fiba-label">{t('training.exportMainVenue')}</label>
+                <input type="text" value={exportMainVenue}
+                  onChange={e => setExportMainVenue(e.target.value)}
+                  className="fiba-input"
+                  placeholder={t('training.exportMainVenuePlaceholder')} />
+              </div>
+              <div>
+                <label className="fiba-label">{t('training.exportTrainingVenue')}</label>
+                <input type="text" value={exportTrainingVenue}
+                  onChange={e => setExportTrainingVenue(e.target.value)}
+                  className="fiba-input"
+                  placeholder={t('training.exportTrainingVenuePlaceholder')} />
+              </div>
+            </div>
+            <div className="flex justify-end gap-3 pt-4">
+              <button type="button" onClick={() => setShowExportModal(false)} disabled={exportingSchedule} className="px-4 py-2 text-sm text-fiba-muted disabled:opacity-50">{t('common.cancel')}</button>
+              <button onClick={handleExportSchedule} disabled={exportingSchedule} className="btn-fiba disabled:opacity-50">
+                {exportingSchedule ? t('training.exportGenerating') : t('training.exportDownload')}
+              </button>
+            </div>
           </div>
         </div>
       )}
