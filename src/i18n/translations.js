@@ -838,6 +838,7 @@ const translations = {
     flightPending: { en: 'Flight not booked yet — click to mark as booked', es: 'Vuelo pendiente — clic para marcar comprado' },
     assignedSlots: { en: '{filled} of {total} roles assigned', es: '{filled} de {total} cargos asignados' },
     syncNominations: { en: 'Sync to nominations', es: 'Sincronizar nominaciones' },
+    syncAllRoles: { en: 'All roles', es: 'Todos los cargos' },
     syncNominationsHint: { en: 'Create/update competition-level nomination drafts from per-game assignments', es: 'Crear/actualizar borradores de nominación a partir de las asignaciones por juego' },
     nominationsSynced: { en: '{created} created, {updated} updated ({people} people)', es: '{created} creadas, {updated} actualizadas ({people} personas)' },
     // Generate PDFs + competition-level defaults

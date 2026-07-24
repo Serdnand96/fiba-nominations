@@ -190,7 +190,6 @@ export const downloadTrainingPdf = async (type, params) => {
   document.body.removeChild(link)
   setTimeout(() => URL.revokeObjectURL(objectUrl), 1000)
 }
-
 // Games
 export const getGames = (competitionId) => api.get('/games', { params: { competition_id: competitionId } }).then(r => r.data)
 export const getGamesByDate = (competitionId, date) => api.get('/games/by-date', { params: { competition_id: competitionId, date } }).then(r => r.data)
@@ -223,10 +222,15 @@ export const setGameAssignment = (gameId, personnelId, role) =>
 export const deleteGameAssignment = (assignmentId) =>
   api.delete(`/games/assignments/${assignmentId}`).then(r => r.data)
 // overwriteTravel=true re-derives venue/location/arrival/departure per person
-// and overwrites them on existing nominations (the "recalculate travel" button)
-export const syncAssignmentsToNominations = (competitionId, overwriteTravel = false) =>
+// and overwrites them on existing nominations (the "recalculate travel" button).
+// role filters by personnel role (TD/VGO/REF/...) — only those people sync.
+export const syncAssignmentsToNominations = (competitionId, overwriteTravel = false, role = null) =>
   api.post('/games/assignments/sync-nominations', null, {
-    params: { competition_id: competitionId, ...(overwriteTravel ? { overwrite_travel: true } : {}) },
+    params: {
+      competition_id: competitionId,
+      ...(overwriteTravel ? { overwrite_travel: true } : {}),
+      ...(role ? { role } : {}),
+    },
   }).then(r => r.data)
 // Flight-purchase check (per person per competition)
 export const getCompetitionFlights = (competitionId) =>

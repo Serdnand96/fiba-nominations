@@ -14,6 +14,7 @@ from datetime import datetime, timedelta, timezone
 from api._lib.database import supabase
 from api._lib.auth import require_view, require_edit
 from api._lib.net import safe_get
+from api._lib.roles import VALID_ROLES
 from api._lib.travel import sede_pairs, format_sedes
 
 router = APIRouter(prefix="/games", tags=["games"], dependencies=[Depends(require_view("games"))])
@@ -953,6 +954,7 @@ def _build_default_overrides(competition: dict, role: str) -> dict:
 def sync_assignments_to_nominations(
     competition_id: str = Query(...),
     overwrite_travel: bool = Query(False),
+    role: Optional[str] = Query(None),
 ):
     """Roll up per-game assignments into competition-level nomination drafts.
 
@@ -971,7 +973,15 @@ def sync_assignments_to_nominations(
     overwrites arrival/departure/venue/location on EXISTING nominations with
     the freshly derived values — including manual edits of those 4 fields.
     Everything else keeps the fill-empty-only rule.
+
+    `role` filters by PERSONNEL role (TD, VGO, REF, …): only those people's
+    nominations are created/updated. Referees in CC/U1/U2 slots and TD/VGO
+    people in the EXTRA slot are matched by their real role.
     """
+    role_filter = (role or "").strip().upper() or None
+    if role_filter and role_filter not in VALID_ROLES:
+        raise HTTPException(400, f"role must be one of {', '.join(VALID_ROLES)}")
+
     if not _competition_supports_assignments(competition_id):
         raise HTTPException(400, "This competition does not support per-game assignments")
 
@@ -1008,19 +1018,19 @@ def sync_assignments_to_nominations(
     if not assignments:
         return {"created": 0, "updated": 0, "people": 0}
 
-    # EXTRA slots carry no fee role of their own — resolve them to the
-    # person's real role (TD or VGO) so fee defaults match their letter.
-    extra_pids = {a["personnel_id"] for a in assignments if a["role"] == _EXTRA_SLOT}
-    role_by_pid: dict[str, str] = {}
-    if extra_pids:
-        people = (
-            supabase.table("personnel")
-            .select("id, role")
-            .in_("id", list(extra_pids))
-            .execute()
-            .data
-        )
-        role_by_pid = {p["id"]: (p.get("role") or "").upper() for p in people}
+    # Personnel name + role for everyone assigned: resolves EXTRA slots to
+    # the person's real role, powers the per-role filter, and names the
+    # multi-sede people in the response.
+    pids = list({a["personnel_id"] for a in assignments})
+    people = (
+        supabase.table("personnel")
+        .select("id, name, role")
+        .in_("id", pids)
+        .execute()
+        .data
+    )
+    person_by_id = {p["id"]: p for p in people}
+    role_by_pid = {p["id"]: (p.get("role") or "").upper() for p in people}
 
     # Group by personnel → (role from assignments, unique dates + games)
     by_person: dict[str, dict] = {}
@@ -1039,6 +1049,16 @@ def sync_assignments_to_nominations(
         # fee defaults since TDs are senior. Deterministic enough.
         if entry["role"] != "TD" and slot_role == "TD":
             entry["role"] = "TD"
+
+    # Per-role sync: keep only people whose PERSONNEL role matches
+    if role_filter:
+        by_person = {
+            pid: info for pid, info in by_person.items()
+            if role_by_pid.get(pid) == role_filter
+        }
+        if not by_person:
+            return {"created": 0, "updated": 0, "people": 0,
+                    "multi_sede": 0, "multi_sede_names": []}
 
     # Existing nominations for this competition
     existing = (
@@ -1113,16 +1133,8 @@ def sync_assignments_to_nominations(
             created += 1
 
     # Names of multi-sede people, so the UI can point at who to double-check
-    multi_names: list[str] = []
-    if multi_sede_pids:
-        people = (
-            supabase.table("personnel")
-            .select("id, name")
-            .in_("id", multi_sede_pids)
-            .execute()
-            .data
-        )
-        multi_names = sorted((p.get("name") or "") for p in people)
+    multi_names = sorted(
+        (person_by_id.get(pid, {}).get("name") or "") for pid in multi_sede_pids)
 
     return {
         "created": created,

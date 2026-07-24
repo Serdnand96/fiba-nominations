@@ -26,6 +26,8 @@ const CREW_SLOTS = ['INSTR', 'VO']
 // official. Not part of the standard crew, so it doesn't count toward N/7.
 const EXTRA_SLOT = 'EXTRA'
 const STANDARD_SLOTS = ['TD', 'VGO', ...REF_SLOTS, ...CREW_SLOTS]
+// Personnel roles offered by the per-role sync menu (labels via rolesShort.*)
+const SYNC_ROLES = ['TD', 'VGO', 'REF', 'REF_INSTRUCTOR', 'VIDEO_OPERATOR']
 
 const EMPTY_FORM = {
   date: '', time: '', team_a: '', team_a_code: '', team_a_country: '',
@@ -79,6 +81,8 @@ export default function Games() {
   const [importMsg, setImportMsg] = useState('')
   const [syncingNoms, setSyncingNoms] = useState(false)
   const [nomMsg, setNomMsg] = useState('')
+  const [syncMenuOpen, setSyncMenuOpen] = useState(false)
+  const syncMenuRef = useRef(null)
   const [generatingPdfs, setGeneratingPdfs] = useState(false)
   const [showDefaults, setShowDefaults] = useState(false)
   const [defaults, setDefaults] = useState({})
@@ -337,12 +341,35 @@ export default function Games() {
     })
   }
 
-  async function handleSyncNominations() {
+  // Close the per-role sync menu on outside click
+  useEffect(() => {
+    function handleClickOutside(e) {
+      if (syncMenuRef.current && !syncMenuRef.current.contains(e.target)) setSyncMenuOpen(false)
+    }
+    if (syncMenuOpen) document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [syncMenuOpen])
+
+  // Distinct assigned people per PERSONNEL role (drives the sync menu counts)
+  const assignedByRole = useMemo(() => {
+    const map = {}
+    for (const a of assignments) {
+      const r = (a.personnel?.role || '').toUpperCase()
+      if (!r) continue
+      if (!map[r]) map[r] = new Set()
+      map[r].add(a.personnel_id)
+    }
+    return map
+  }, [assignments])
+
+  async function handleSyncNominations(roleFilter = null) {
+    setSyncMenuOpen(false)
     setSyncingNoms(true)
     setNomMsg('')
     try {
-      const r = await syncAssignmentsToNominations(selectedCompId)
+      const r = await syncAssignmentsToNominations(selectedCompId, false, roleFilter)
       let msg = t('games.nominationsSynced', { created: r.created, updated: r.updated, people: r.people })
+      if (roleFilter) msg = `${t(`rolesShort.${roleFilter}`)} · ${msg}`
       if (r.multi_sede > 0) msg += ` · ${multiSedeNote(r)}`
       setNomMsg(msg)
     } catch (err) {
@@ -638,11 +665,35 @@ export default function Games() {
                     title={t('games.editDefaultsHint')}>
                     {t('games.editDefaults')}
                   </button>
-                  <button onClick={handleSyncNominations} disabled={syncingNoms || assignments.length === 0}
-                    className="btn-fiba-ghost disabled:opacity-40"
-                    title={t('games.syncNominationsHint')}>
-                    {syncingNoms ? t('games.syncing') : t('games.syncNominations')}
-                  </button>
+                  <div className="relative" ref={syncMenuRef}>
+                    <button onClick={() => setSyncMenuOpen(o => !o)}
+                      disabled={syncingNoms || assignments.length === 0}
+                      className="btn-fiba-ghost disabled:opacity-40 flex items-center gap-1.5"
+                      title={t('games.syncNominationsHint')}>
+                      {syncingNoms ? t('games.syncing') : t('games.syncNominations')}
+                      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                      </svg>
+                    </button>
+                    {syncMenuOpen && (
+                      <div className="absolute right-0 z-40 mt-1 min-w-[12rem] bg-fiba-card border border-fiba-border rounded-lg shadow-lg py-1">
+                        <button onClick={() => handleSyncNominations()}
+                          className="w-full text-left px-3 py-1.5 text-xs font-medium text-ink-900 dark:text-white hover:bg-fiba-surface">
+                          {t('games.syncAllRoles')} ({assignedCount})
+                        </button>
+                        <div className="border-t border-fiba-border my-1" />
+                        {SYNC_ROLES.map(r => {
+                          const n = assignedByRole[r]?.size || 0
+                          return (
+                            <button key={r} onClick={() => handleSyncNominations(r)} disabled={n === 0}
+                              className="w-full text-left px-3 py-1.5 text-xs text-ink-900 dark:text-white hover:bg-fiba-surface disabled:opacity-40 disabled:cursor-default disabled:hover:bg-transparent">
+                              {t(`rolesShort.${r}`)} ({n})
+                            </button>
+                          )
+                        })}
+                      </div>
+                    )}
+                  </div>
                   <button onClick={handleGeneratePdfs} disabled={generatingPdfs || assignments.length === 0}
                     className="btn-fiba disabled:opacity-40"
                     title={t('games.generatePdfsHint')}>
