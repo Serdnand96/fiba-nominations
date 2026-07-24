@@ -1,6 +1,6 @@
 ---
 name: pdf-templates
-description: Estructura de generación de documentos y PDFs en fiba-nominations — templates .docx con placeholders docxtpl (Jinja2-en-Word), conversión a PDF con LibreOffice headless (soffice), y los dos caminos separados (cartas de nominación vs export de training schedule). Usar al tocar templates o formato de documentos generados.
+description: Estructura de generación de documentos en fiba-nominations — templates .docx con placeholders docxtpl (Jinja2-en-Word), conversión a PDF con LibreOffice headless (soffice), los dos caminos de PDF (cartas de nominación vs export de training schedule) y el export Excel del Game & Practice Schedule (openpyxl, sin conversión). Usar al tocar templates o formato de documentos generados.
 ---
 
 # Generación de documentos / PDFs (fiba-nominations)
@@ -13,7 +13,8 @@ description: Estructura de generación de documentos y PDFs en fiba-nominations 
 > cartas). Dependencias reales: `python-docx`, `docxtpl` (ver
 > `requirements.txt`).
 
-Hay **dos caminos de PDF completamente separados**.
+Hay **dos caminos de PDF completamente separados**, más un **tercer camino que
+genera Excel** (no PDF) para el Game & Practice Schedule.
 
 ---
 
@@ -111,6 +112,33 @@ Código: `api/_lib/routers/training.py::_generate_schedule_pdf`.
 - ⚠️ Este camino **no** tiene la rama `USE_LOCAL_LIBREOFFICE` del camino 1: es
   una inconsistencia conocida. Si querés PDF local acá, hay que portar la lógica
   de `document_generator._convert_to_pdf`.
+
+---
+
+## Camino 3 — Game & Practice Schedule (Excel, sin conversión)
+
+Código: `api/_lib/services/schedule_workbook.py`, servido por
+`training.py::export_schedule_xlsx` (`GET /training/export/schedule-xlsx`).
+
+- Genera el **cronograma combinado de partidos + entrenamientos** replicando el
+  template Excel oficial de FIBA (bloques por día, columnas Estadio / Sede de
+  Entrenamiento, divisor PARTIDOS ámbar, labels "DÍA DE PARTIDO ±N" /
+  "DÍA DE DESCANSO" / sufijos de fase, columna COMENTARIOS alimentada con los
+  `notes` de los slots).
+- **Escribe `.xlsx` directo con openpyxl** (único punto del backend que genera
+  Excel) y lo sirve como bytes — no pasa por LibreOffice ni CloudConvert.
+  Importante: el `soffice` del droplet **no tiene el filtro de Calc**
+  (solo convierte `.docx`), así que cualquier futuro xlsx→pdf requeriría
+  instalar `libreoffice-calc`.
+- Dos capas puras y testeables sin DB: `build_schedule_header()` +
+  `build_schedule_days()` arman la representación intermedia desde filas de
+  `competitions`/`game_schedule`/`training_slots`, y
+  `build_schedule_workbook()` la renderiza a bytes.
+- Permisos: el endpoint cuelga del router training (`require_view("training")`)
+  **y además** declara `require_view("games")` porque cruza datos del módulo
+  games.
+- i18n: `lang=es|en` (labels en `LABELS`); los overrides `main_venue` /
+  `training_venue` completan las cajas SEDE del header.
 
 ---
 

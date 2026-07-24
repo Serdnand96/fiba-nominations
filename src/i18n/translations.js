@@ -700,6 +700,7 @@ const translations = {
     notesPlaceholder: { en: 'Optional notes...', es: 'Notas opcionales...' },
     trainingCourt: { en: 'Training Court', es: 'Cancha de Entrenamiento' },
     exportPdf: { en: 'Export PDF', es: 'Exportar PDF' },
+    exportSchedule: { en: 'Game & Practice (Excel)', es: 'Game & Practice (Excel)' },
     slotCreated: { en: 'Slot created', es: 'Slot creado' },
     slotUpdated: { en: 'Slot updated', es: 'Slot actualizado' },
     slotsImported: { en: 'slots imported', es: 'slots importados' },

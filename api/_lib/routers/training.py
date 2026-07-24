@@ -1,8 +1,9 @@
-from fastapi import APIRouter, HTTPException, Query, UploadFile, File, Form, Depends
+from fastapi import APIRouter, HTTPException, Query, UploadFile, File, Form, Depends, Response
 from pydantic import BaseModel
 from typing import Optional, List
 from datetime import datetime
 import io
+import re
 import tempfile
 import os
 
@@ -544,6 +545,74 @@ async def preview_excel(
         raise HTTPException(400, "Unable to parse Excel file. Please check format and try again.")
 
     return {"total": len(slots), "preview": slots[:10]}
+
+
+# ── Game & Practice Schedule export (Excel, official FIBA layout) ────────────
+
+@router.get("/export/schedule-xlsx", dependencies=[Depends(require_view("games"))])
+def export_schedule_xlsx(
+    competition_id: str = Query(...),
+    lang: str = Query("es"),
+    sport: str = Query("Basketball"),
+    main_venue: Optional[str] = Query(None),
+    training_venue: Optional[str] = Query(None),
+):
+    """Combined games + practices schedule in the official FIBA Excel layout.
+
+    Crosses `training_slots` with `game_schedule` (hence the explicit extra
+    `games` view permission on top of the router-level `training` one) and
+    serves the generated .xlsx directly — no LibreOffice/CloudConvert step.
+    `main_venue` / `training_venue` override the header boxes; by default the
+    main venue is inferred from the games and the training venue shows TBC.
+    """
+    from api._lib.services.schedule_workbook import (
+        build_schedule_days, build_schedule_header, build_schedule_workbook,
+    )
+
+    if lang not in ("es", "en"):
+        lang = "es"
+
+    comp = supabase.table("competitions").select("*").eq("id", competition_id).execute().data
+    if not comp:
+        raise HTTPException(404, "Competition not found")
+    comp = comp[0]
+
+    games = (
+        supabase.table("game_schedule")
+        .select("*")
+        .eq("competition_id", competition_id)
+        .order("date")
+        .execute()
+        .data
+    )
+    slots = (
+        supabase.table("training_slots")
+        .select("*")
+        .eq("competition_id", competition_id)
+        .order("date")
+        .execute()
+        .data
+    )
+    # multi-sport events: keep only the requested sport (missing = Basketball)
+    games = [g for g in games if (g.get("sport") or "Basketball") == sport]
+    slots = [s for s in slots if (s.get("sport") or "Basketball") == sport]
+
+    if not games and not slots:
+        raise HTTPException(404, "No games or training slots for this competition")
+
+    try:
+        header = build_schedule_header(comp, games, main_venue, training_venue, lang)
+        days = build_schedule_days(games, slots, lang)
+        content = build_schedule_workbook(header, days, lang)
+    except Exception:
+        raise HTTPException(500, "Unable to generate schedule file")
+
+    safe_name = re.sub(r"[^A-Za-z0-9]+", "_", comp.get("name") or "competition").strip("_")[:60]
+    return Response(
+        content=content,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="game_practice_schedule_{safe_name or "competition"}.xlsx"'},
+    )
 
 
 # ── PDF export ───────────────────────────────────────────────────────────────

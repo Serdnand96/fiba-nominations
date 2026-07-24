@@ -7,7 +7,7 @@ import {
   getTrainingSlots, createTrainingSlot, updateTrainingSlot,
   deleteTrainingSlot, createTrainingAssignment, deleteTrainingAssignment,
   importTrainingExcel, previewTrainingExcel, downloadTrainingPdf,
-  checkTrainingConflicts,
+  downloadTrainingScheduleXlsx, checkTrainingConflicts,
 } from '../api/client'
 import { readLastSearch, writeLastSearch } from '../lib/lastSearch'
 
@@ -36,7 +36,7 @@ function loadLastSearch() {
 
 export default function Training() {
   const { t, lang } = useLanguage()
-  const { hasEdit } = useAuth()
+  const { hasEdit, hasView } = useAuth()
   const canEdit = hasEdit('training')
   const lastSearchRef = useRef(loadLastSearch()) // pending restore, consumed once
   const [tab, setTab] = useState(() => lastSearchRef.current?.tab || 'byDay')
@@ -370,6 +370,13 @@ export default function Training() {
       <div className="flex items-center justify-between mb-6">
         <h2 className="text-2xl font-bold text-ink-900 dark:text-white">{t('training.title')}</h2>
         <div className="flex gap-2">
+          {competitionId && hasView('games') && (
+            <button
+              onClick={() => downloadTrainingScheduleXlsx(competitionId, lang).catch(err => alert(err.message))}
+              className="btn-fiba-ghost">
+              {t('training.exportSchedule')}
+            </button>
+          )}
           {canEdit && (
             <button onClick={openImport} className="btn-fiba-ghost">
               {t('training.importExcel')}

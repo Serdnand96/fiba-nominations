@@ -190,6 +190,23 @@ export const downloadTrainingPdf = async (type, params) => {
   document.body.removeChild(link)
   setTimeout(() => URL.revokeObjectURL(objectUrl), 1000)
 }
+// Game & Practice Schedule (official FIBA layout) as .xlsx — same
+// authenticated blob pattern as downloadTrainingPdf.
+export const downloadTrainingScheduleXlsx = async (competitionId, lang = 'es') => {
+  const resp = await api.get('/training/export/schedule-xlsx', {
+    params: { competition_id: competitionId, lang },
+    responseType: 'blob',
+  })
+  const objectUrl = URL.createObjectURL(resp.data)
+  const link = document.createElement('a')
+  link.href = objectUrl
+  link.download = `game-practice-schedule-${Date.now()}.xlsx`
+  document.body.appendChild(link)
+  link.click()
+  document.body.removeChild(link)
+  setTimeout(() => URL.revokeObjectURL(objectUrl), 1000)
+}
+
 // Games
 export const getGames = (competitionId) => api.get('/games', { params: { competition_id: competitionId } }).then(r => r.data)
 export const getGamesByDate = (competitionId, date) => api.get('/games/by-date', { params: { competition_id: competitionId, date } }).then(r => r.data)
