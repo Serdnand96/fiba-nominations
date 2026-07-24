@@ -173,7 +173,8 @@ import { Icon } from '@/lib/icons'
 Iconos disponibles: Dashboard, Trophy, Users, Calendar, Whistle, Truck,
 Shield, Palette, Plus, Search, Filter, Download, Upload, Doc, Edit,
 Trash, More, Check, X, Chevron, ChevronDown, ArrowUp/Down/Right, Alert,
-Info, Bell, Clock, Globe, Mail, Pin, Moon, Sun, Cog, Logout, Eye, Lock.
+Info, Bell, Clock, Globe, Mail, Pin, Plane, Moon, Sun, Cog, Logout, Eye, Lock,
+History.
 
 Si necesitás otro: agregalo a `lib/icons.jsx` con la sintaxis
 `I(<><path d="…"/></>)` o instalá `@tabler/icons-react`.

@@ -18,6 +18,7 @@ export const Icon = {
   Calendar: I(<><rect x="4" y="5" width="16" height="16" rx="2"/><path d="M16 3v4"/><path d="M8 3v4"/><path d="M4 11h16"/></>),
   Whistle: I(<><path d="M14 8h7l-2 9a3 3 0 0 1-3 2H6a3 3 0 0 1-3-3v-2a3 3 0 0 1 3-3h8z"/><path d="M9 11v-3a4 4 0 0 1 8 0"/></>),
   Truck: I(<><path d="M3 6a1 1 0 0 1 1-1h9a1 1 0 0 1 1 1v11h-11z"/><path d="M14 8h4l3 3v6h-7"/><circle cx="7" cy="19" r="2"/><circle cx="17" cy="19" r="2"/></>),
+  Plane: I(<path d="M16 10h4a2 2 0 0 1 0 4h-4l-4 7h-3l2 -7h-4l-2 2h-3l2 -4l-2 -4h3l2 2h4l-2 -7h3z"/>),
   Shield: I(<><path d="M12 3l8 4v6c0 5-3.5 8.5-8 9c-4.5-.5-8-4-8-9v-6z"/><path d="M9 12l2 2l4-4"/></>),
   Plus: I(<><path d="M12 5v14"/><path d="M5 12h14"/></>),
   Search: I(<><circle cx="10" cy="10" r="7"/><path d="M21 21l-6-6"/></>),

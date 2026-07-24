@@ -5,8 +5,9 @@ import {
   syncGameResults, importGamesExcel, getCalendarCompetitions,
   getPersonnel, getGameAssignments, setGameAssignment, deleteGameAssignment,
   syncAssignmentsToNominations, generateAssignmentPDFs, updateCompetition,
-  setTeamCountries,
+  setTeamCountries, getCompetitionFlights, setFlightBooked,
 } from '../api/client'
+import { Icon } from '../lib/icons'
 import { useLanguage } from '../i18n/LanguageContext'
 import { useAuth } from '../contexts/AuthContext'
 import CompetitionSearch from '../components/CompetitionSearch'
@@ -55,6 +56,7 @@ export default function Games() {
   const [gameDates, setGameDates] = useState([])
   const [teams, setTeams] = useState([])
   const [assignments, setAssignments] = useState([]) // per-game TD/VGO assignments
+  const [flights, setFlights] = useState([]) // per-person flight-purchase check (competition-wide)
 
   // Filters
   const [filterDates, setFilterDates] = useState([]) // empty = all dates
@@ -164,16 +166,18 @@ export default function Games() {
     try {
       const comp = competitions.find(c => c.id === selectedCompId)
       const supportsAsg = ASSIGNMENT_TEMPLATES.has((comp?.template_key || '').toUpperCase())
-      const [g, d, te, asg] = await Promise.all([
+      const [g, d, te, asg, fl] = await Promise.all([
         getGames(selectedCompId),
         getGameDates(selectedCompId),
         getGameTeams(selectedCompId),
         supportsAsg ? getGameAssignments(selectedCompId) : Promise.resolve([]),
+        supportsAsg ? getCompetitionFlights(selectedCompId) : Promise.resolve([]),
       ])
       setGames(g)
       setGameDates(d)
       setTeams(te)
       setAssignments(asg)
+      setFlights(fl)
       let finalGames = g
       let finalDates = d
 
@@ -228,16 +232,18 @@ export default function Games() {
 
   async function loadGames() {
     try {
-      const [g, d, te, asg] = await Promise.all([
+      const [g, d, te, asg, fl] = await Promise.all([
         getGames(selectedCompId),
         getGameDates(selectedCompId),
         getGameTeams(selectedCompId),
         supportsAssignments ? getGameAssignments(selectedCompId) : Promise.resolve([]),
+        supportsAssignments ? getCompetitionFlights(selectedCompId) : Promise.resolve([]),
       ])
       setGames(g)
       setGameDates(d)
       setTeams(te)
       setAssignments(asg)
+      setFlights(fl)
     } catch (e) {
       console.error(e)
     }
@@ -287,6 +293,24 @@ export default function Games() {
         })
         return
       }
+      alert(typeof detail === 'string' ? detail : 'Error')
+    }
+  }
+
+  // Toggle "flight booked" for one person. Competition-wide, so every card
+  // where the person appears updates at once. Optimistic, reverted on error.
+  async function handleToggleFlight(personnelId, booked) {
+    setFlights(prev => [
+      ...prev.filter(f => f.personnel_id !== personnelId),
+      { personnel_id: personnelId, flight_booked: booked },
+    ])
+    try {
+      await setFlightBooked(selectedCompId, personnelId, booked)
+    } catch (err) {
+      try {
+        setFlights(await getCompetitionFlights(selectedCompId))
+      } catch { /* keep optimistic state if the refetch also fails */ }
+      const detail = err.response?.data?.detail
       alert(typeof detail === 'string' ? detail : 'Error')
     }
   }
@@ -437,6 +461,22 @@ export default function Games() {
     for (const a of assignments) people.add(a.personnel_id)
     return people.size
   }, [assignments])
+
+  // personnel_id → flight booked?
+  const flightByPersonnel = useMemo(() => {
+    const map = {}
+    for (const f of flights) map[f.personnel_id] = !!f.flight_booked
+    return map
+  }, [flights])
+
+  // Distinct assigned people with their flight already booked
+  const flightsBookedCount = useMemo(() => {
+    const people = new Set()
+    for (const a of assignments) {
+      if (flightByPersonnel[a.personnel_id]) people.add(a.personnel_id)
+    }
+    return people.size
+  }, [assignments, flightByPersonnel])
 
   // Handlers
   function openCreate() {
@@ -640,7 +680,7 @@ export default function Games() {
 
       {/* Stats row */}
       {games.length > 0 && (
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 lg:gap-6 mb-6">
+        <div className={`grid grid-cols-2 sm:grid-cols-3 ${supportsAssignments ? 'lg:grid-cols-6' : 'lg:grid-cols-4'} gap-3 lg:gap-6 mb-6`}>
           <div className="fiba-stat">
             <div className="text-2xl font-bold text-ink-900 dark:text-white">{games.length}</div>
             <div className="text-xs text-fiba-muted">{t('games.totalGames')}</div>
@@ -661,6 +701,14 @@ export default function Games() {
             <div className="fiba-stat">
               <div className="text-2xl font-bold text-fiba-accent">{assignedCount}</div>
               <div className="text-xs text-fiba-muted">{t('games.assignedPeople')}</div>
+            </div>
+          )}
+          {supportsAssignments && (
+            <div className="fiba-stat">
+              <div className={`text-2xl font-bold ${assignedCount > 0 && flightsBookedCount === assignedCount ? 'text-emerald-400' : 'text-ink-900 dark:text-white'}`}>
+                {flightsBookedCount}<span className="text-fiba-muted font-normal">/{assignedCount}</span>
+              </div>
+              <div className="text-xs text-fiba-muted">{t('games.withFlight')}</div>
             </div>
           )}
         </div>
@@ -825,7 +873,7 @@ export default function Games() {
             <h3 className="text-sm font-bold text-fiba-muted uppercase tracking-wider mb-4 px-1">{phase}</h3>
             {Object.entries(dateGroups).sort(([a], [b]) => a.localeCompare(b)).map(([date, dateGames]) => (
               <div key={date} className="mb-6">
-                <div className="text-xs font-semibold text-fiba-muted/60 uppercase mb-2 px-1">{formatDate(date)}</div>
+                <div className="text-xs font-bold text-ink-600 dark:text-ink-200 uppercase tracking-wide mb-2 px-1">{formatDate(date)}</div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
                   {dateGames.sort((a, b) => (a.time || '').localeCompare(b.time || '')).map(game => (
                     <GameCard key={game.id} game={game} canEdit={canEdit}
@@ -835,7 +883,9 @@ export default function Games() {
                       templateKey={(selectedComp?.template_key || '').toUpperCase()}
                       assignment={assignmentsByGame[game.id] || {}}
                       onAssign={handleAssign} onUnassign={handleUnassign}
-                      refConflictFor={refConflictFor} />
+                      refConflictFor={refConflictFor}
+                      flightByPersonnel={flightByPersonnel}
+                      onToggleFlight={handleToggleFlight} />
                   ))}
                 </div>
               </div>
@@ -1164,7 +1214,7 @@ function DateMultiFilter({ dates, selected, onChange, formatDate, t }) {
 function GameCard({
   game, canEdit, onEdit, onDelete, t,
   supportsAssignments = false, supportsRefSlots = false, templateKey = '', assignment = {},
-  onAssign, onUnassign, refConflictFor,
+  onAssign, onUnassign, refConflictFor, flightByPersonnel = {}, onToggleFlight,
 }) {
   const displayCountry = game.country || (templateKey === 'WCQ' ? game.team_a : '') || ''
   const isCompleted = game.status === 'completed'
@@ -1173,22 +1223,34 @@ function GameCard({
   const scoreB = game.score_b ?? '-'
   const locationLine = [game.venue, [game.city, displayCountry].filter(Boolean).join(', ')]
     .filter(Boolean).join(' · ')
+  const totalSlots = 2 + (supportsRefSlots ? REF_SLOTS.length + CREW_SLOTS.length : 0)
+  const filledSlots = Object.keys(assignment).length
 
   return (
-    <div className={`bg-fiba-card rounded-lg border border-fiba-border p-3 flex flex-col hover:shadow-sm transition-shadow ${
-      isLive ? 'border-red-500/50 ring-1 ring-red-500/20' : ''
+    <div className={`bg-fiba-card rounded-lg border p-3 flex flex-col hover:shadow-sm transition-shadow ${
+      isLive ? 'border-red-500/50 ring-1 ring-red-500/20' : 'border-fiba-border dark:border-navy-600'
     }`}>
       {/* Header: group + status + actions */}
       <div className="flex items-center justify-between gap-2 mb-1.5">
-        <span className="text-[10px] font-bold uppercase tracking-wider text-fiba-muted/60">
+        <span className="text-[10px] font-bold uppercase tracking-wider text-fiba-muted">
           {game.group_label ? `${t('games.group')} ${game.group_label}` : (game.phase || '')}
         </span>
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-1.5">
+          {supportsAssignments && (
+            <span
+              className={`text-[10px] font-semibold tabular-nums ${
+                filledSlots === totalSlots ? 'text-emerald-500 dark:text-emerald-400' : 'text-fiba-muted'
+              }`}
+              title={t('games.assignedSlots', { filled: filledSlots, total: totalSlots })}
+            >
+              {filledSlots}/{totalSlots}
+            </span>
+          )}
           {isLive && (
             <span className="text-[10px] font-bold text-red-500 uppercase tracking-wider">LIVE</span>
           )}
           {isCompleted && !isLive && (
-            <span className="text-[10px] text-fiba-muted/60 uppercase tracking-wider">Final</span>
+            <span className="text-[10px] font-semibold text-emerald-600/80 dark:text-emerald-400/80 uppercase tracking-wider">Final</span>
           )}
           {canEdit && (
             <>
@@ -1216,13 +1278,13 @@ function GameCard({
         <span className={`text-sm font-bold truncate ${isCompleted && game.score_a > game.score_b ? 'text-ink-900 dark:text-white' : 'text-ink-700 dark:text-gray-300'}`}>
           {game.team_a_code || game.team_a}
         </span>
-        <span className="text-xs text-fiba-muted/60 flex-shrink-0">vs</span>
+        <span className="text-xs text-fiba-muted flex-shrink-0">vs</span>
         <span className={`text-sm font-bold truncate ${isCompleted && game.score_b > game.score_a ? 'text-ink-900 dark:text-white' : 'text-ink-700 dark:text-gray-300'}`}>
           {game.team_b_code || game.team_b}
         </span>
         <span className="ml-auto flex-shrink-0 text-sm font-bold">
           {isCompleted || isLive ? (
-            <span className="text-ink-900 dark:text-white">{scoreA}<span className="text-fiba-border font-normal mx-1">-</span>{scoreB}</span>
+            <span className="text-ink-900 dark:text-white">{scoreA}<span className="text-fiba-muted font-normal mx-1">-</span>{scoreB}</span>
           ) : (
             <span className="text-fiba-accent">{game.time || '--:--'}</span>
           )}
@@ -1233,10 +1295,10 @@ function GameCard({
       {(locationLine || game.game_number) && (
         <div className="flex items-center gap-2 mt-0.5 min-w-0">
           {locationLine && (
-            <span className="text-[11px] text-fiba-muted/60 truncate" title={locationLine}>{locationLine}</span>
+            <span className="text-[11px] text-fiba-muted truncate" title={locationLine}>{locationLine}</span>
           )}
           {game.game_number && (
-            <span className="text-[11px] text-fiba-border flex-shrink-0 ml-auto">{game.game_number}</span>
+            <span className="font-mono text-[10px] text-fiba-muted/80 flex-shrink-0 ml-auto">{game.game_number}</span>
           )}
         </div>
       )}
@@ -1245,20 +1307,24 @@ function GameCard({
         <div className="border-t border-fiba-border mt-2 pt-2 flex flex-col gap-1.5">
           <AssignmentSlot role="TD" game={game} t={t} canEdit={canEdit}
             assignment={assignment.TD}
-            onAssign={onAssign} onUnassign={onUnassign} />
+            onAssign={onAssign} onUnassign={onUnassign}
+            flightByPersonnel={flightByPersonnel} onToggleFlight={onToggleFlight} />
           <AssignmentSlot role="VGO" game={game} t={t} canEdit={canEdit}
             assignment={assignment.VGO}
-            onAssign={onAssign} onUnassign={onUnassign} />
+            onAssign={onAssign} onUnassign={onUnassign}
+            flightByPersonnel={flightByPersonnel} onToggleFlight={onToggleFlight} />
           {supportsRefSlots && REF_SLOTS.map(slot => (
             <AssignmentSlot key={slot} role={slot} game={game} t={t} canEdit={canEdit}
               assignment={assignment[slot]}
               onAssign={onAssign} onUnassign={onUnassign}
-              refConflictFor={refConflictFor} />
+              refConflictFor={refConflictFor}
+              flightByPersonnel={flightByPersonnel} onToggleFlight={onToggleFlight} />
           ))}
           {supportsRefSlots && CREW_SLOTS.map(slot => (
             <AssignmentSlot key={slot} role={slot} game={game} t={t} canEdit={canEdit}
               assignment={assignment[slot]}
-              onAssign={onAssign} onUnassign={onUnassign} />
+              onAssign={onAssign} onUnassign={onUnassign}
+              flightByPersonnel={flightByPersonnel} onToggleFlight={onToggleFlight} />
           ))}
         </div>
       )}
@@ -1277,7 +1343,7 @@ const SLOT_PERSONNEL_ROLE = {
   INSTR: 'REF_INSTRUCTOR', VO: 'VIDEO_OPERATOR',
 }
 
-function AssignmentSlot({ role, game, assignment, canEdit, onAssign, onUnassign, refConflictFor, t }) {
+function AssignmentSlot({ role, game, assignment, canEdit, onAssign, onUnassign, refConflictFor, t, flightByPersonnel = {}, onToggleFlight }) {
   const [open, setOpen] = useState(false)
   const [search, setSearch] = useState('')
   const [coords, setCoords] = useState(null)
@@ -1347,11 +1413,12 @@ function AssignmentSlot({ role, game, assignment, canEdit, onAssign, onUnassign,
 
   const name = assignment?.personnel?.name
   const roleLabel = t(`games.role${role}`)
+  const flightBooked = assignment ? !!flightByPersonnel[assignment.personnel_id] : false
 
   return (
     <div className="flex-1 min-w-0" ref={triggerRef}>
       <div className="flex items-center gap-2">
-        <span className="text-[10px] font-bold uppercase tracking-wider text-fiba-muted/70 w-10">{role}</span>
+        <span className="text-[10px] font-bold uppercase tracking-wider text-fiba-muted w-10">{role}</span>
         {name ? (
           <div className="flex-1 flex items-center gap-1.5 min-w-0">
             <button
@@ -1363,11 +1430,26 @@ function AssignmentSlot({ role, game, assignment, canEdit, onAssign, onUnassign,
             >
               {name}
             </button>
+            {onToggleFlight && (
+              <button
+                type="button"
+                onClick={() => canEdit && onToggleFlight(assignment.personnel_id, !flightBooked)}
+                disabled={!canEdit}
+                className={`flex-shrink-0 leading-none transition-colors disabled:cursor-default ${
+                  flightBooked
+                    ? 'text-emerald-500 dark:text-emerald-400 hover:text-emerald-600 dark:hover:text-emerald-300'
+                    : 'text-fiba-muted/40 hover:text-fiba-accent'
+                } ${!canEdit && !flightBooked ? 'invisible' : ''}`}
+                title={flightBooked ? t('games.flightBooked') : t('games.flightPending')}
+              >
+                <Icon.Plane className="w-3.5 h-3.5" />
+              </button>
+            )}
             {canEdit && (
               <button
                 type="button"
                 onClick={() => onUnassign(assignment.id)}
-                className="text-fiba-muted/60 hover:text-red-400 text-xs leading-none"
+                className="text-fiba-muted hover:text-red-400 text-xs leading-none"
                 title={t('games.unassign')}
               >
                 ×
@@ -1379,7 +1461,7 @@ function AssignmentSlot({ role, game, assignment, canEdit, onAssign, onUnassign,
             type="button"
             onClick={() => canEdit && setOpen(o => !o)}
             disabled={!canEdit}
-            className="flex-1 text-left text-xs text-fiba-muted/60 hover:text-fiba-accent disabled:cursor-default disabled:hover:text-fiba-muted/60 italic"
+            className="flex-1 text-left text-xs text-fiba-muted/80 hover:text-fiba-accent disabled:cursor-default disabled:hover:text-fiba-muted/80 italic"
           >
             {canEdit ? t('games.assignRole', { role: roleLabel }) : t('games.unassigned')}
           </button>

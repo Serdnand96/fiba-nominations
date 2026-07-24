@@ -727,6 +727,75 @@ def create_assignment(data: AssignmentCreate):
     return result.data[0]
 
 
+# ── Flight-purchase check (per person per competition) ───────────────────────
+# The flight is to the competition venue, so the check is competition-scoped,
+# not per game: ticking it for a person covers every game they're assigned to.
+
+class FlightUpdate(BaseModel):
+    competition_id: str
+    personnel_id: str
+    flight_booked: bool
+
+
+@router.get("/flights/by-competition")
+def list_flights_by_competition(competition_id: str = Query(...)):
+    result = (
+        supabase.table("competition_flights")
+        .select("personnel_id, flight_booked, updated_at")
+        .eq("competition_id", competition_id)
+        .execute()
+    )
+    return result.data
+
+
+# POST (not PUT): a PUT /flights would be captured by the earlier PUT /{game_id}
+# route. Matches the POST /assignments and POST /team-countries upsert style.
+@router.post("/flights", dependencies=[Depends(require_edit("games"))])
+def set_flight_booked(data: FlightUpdate):
+    person = (
+        supabase.table("personnel")
+        .select("id")
+        .eq("id", data.personnel_id)
+        .execute()
+        .data
+    )
+    if not person:
+        raise HTTPException(404, "Personnel not found")
+    competition = (
+        supabase.table("competitions")
+        .select("id")
+        .eq("id", data.competition_id)
+        .execute()
+        .data
+    )
+    if not competition:
+        raise HTTPException(404, "Competition not found")
+
+    existing = (
+        supabase.table("competition_flights")
+        .select("id")
+        .eq("competition_id", data.competition_id)
+        .eq("personnel_id", data.personnel_id)
+        .execute()
+        .data
+    )
+    now = datetime.now(timezone.utc).isoformat()
+    if existing:
+        result = (
+            supabase.table("competition_flights")
+            .update({"flight_booked": data.flight_booked, "updated_at": now})
+            .eq("id", existing[0]["id"])
+            .execute()
+        )
+        return result.data[0]
+    result = supabase.table("competition_flights").insert({
+        "competition_id": data.competition_id,
+        "personnel_id": data.personnel_id,
+        "flight_booked": data.flight_booked,
+    }).execute()
+    return result.data[0]
+
+
 class TeamCountriesUpdate(BaseModel):
     competition_id: str
     # team name → FIBA country code ('' or null clears it)

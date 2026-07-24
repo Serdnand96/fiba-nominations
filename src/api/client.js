@@ -224,6 +224,11 @@ export const deleteGameAssignment = (assignmentId) =>
   api.delete(`/games/assignments/${assignmentId}`).then(r => r.data)
 export const syncAssignmentsToNominations = (competitionId) =>
   api.post('/games/assignments/sync-nominations', null, { params: { competition_id: competitionId } }).then(r => r.data)
+// Flight-purchase check (per person per competition)
+export const getCompetitionFlights = (competitionId) =>
+  api.get('/games/flights/by-competition', { params: { competition_id: competitionId } }).then(r => r.data)
+export const setFlightBooked = (competitionId, personnelId, flightBooked) =>
+  api.post('/games/flights', { competition_id: competitionId, personnel_id: personnelId, flight_booked: flightBooked }).then(r => r.data)
 export const generateAssignmentPDFs = (competitionId) =>
   api.post('/games/assignments/generate-pdfs', null, { params: { competition_id: competitionId }, timeout: 120000 }).then(r => r.data)
 
