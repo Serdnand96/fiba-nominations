@@ -776,6 +776,7 @@ const translations = {
     roleU2: { en: 'Umpire 2', es: 'Umpire 2' },
     roleINSTR: { en: 'Referee Instructor', es: 'Instructor de árbitros' },
     roleVO: { en: 'Video Operator', es: 'Video Operator' },
+    roleEXTRA: { en: 'Extra (TD/VGO)', es: 'Extra (TD/VGO)' },
     // Referee neutrality (national-team competitions)
     refNotEligible: { en: 'Not eligible — {detail}', es: 'No elegible — {detail}' },
     refConflictTitle: { en: 'Assignment not allowed', es: 'Asignación no permitida' },

@@ -22,6 +22,10 @@ const REF_SLOTS = ['CC', 'U1', 'U2']
 const REF_SLOT_SET = new Set(REF_SLOTS)
 // Instructor + Video Operator: nominated per game, no neutrality check.
 const CREW_SLOTS = ['INSTR', 'VO']
+// Optional extra official (TD or VGO) for venues with an additional table
+// official. Not part of the standard crew, so it doesn't count toward N/7.
+const EXTRA_SLOT = 'EXTRA'
+const STANDARD_SLOTS = ['TD', 'VGO', ...REF_SLOTS, ...CREW_SLOTS]
 
 const EMPTY_FORM = {
   date: '', time: '', team_a: '', team_a_code: '', team_a_country: '',
@@ -1224,7 +1228,7 @@ function GameCard({
   const locationLine = [game.venue, [game.city, displayCountry].filter(Boolean).join(', ')]
     .filter(Boolean).join(' · ')
   const totalSlots = 2 + (supportsRefSlots ? REF_SLOTS.length + CREW_SLOTS.length : 0)
-  const filledSlots = Object.keys(assignment).length
+  const filledSlots = STANDARD_SLOTS.filter(r => assignment[r]).length
 
   return (
     <div className={`bg-fiba-card rounded-lg border p-3 flex flex-col hover:shadow-sm transition-shadow ${
@@ -1326,6 +1330,13 @@ function GameCard({
               onAssign={onAssign} onUnassign={onUnassign}
               flightByPersonnel={flightByPersonnel} onToggleFlight={onToggleFlight} />
           ))}
+          {/* Optional extra official — only rendered for editors while empty */}
+          {(assignment[EXTRA_SLOT] || canEdit) && (
+            <AssignmentSlot role={EXTRA_SLOT} game={game} t={t} canEdit={canEdit}
+              assignment={assignment[EXTRA_SLOT]}
+              onAssign={onAssign} onUnassign={onUnassign}
+              flightByPersonnel={flightByPersonnel} onToggleFlight={onToggleFlight} />
+          )}
         </div>
       )}
     </div>
@@ -1341,6 +1352,7 @@ const SLOT_PERSONNEL_ROLE = {
   TD: 'TD', VGO: 'VGO',
   CC: 'REF', U1: 'REF', U2: 'REF',
   INSTR: 'REF_INSTRUCTOR', VO: 'VIDEO_OPERATOR',
+  EXTRA: 'TD/VGO', // display only — the EXTRA picker fetches both roles
 }
 
 function AssignmentSlot({ role, game, assignment, canEdit, onAssign, onUnassign, refConflictFor, t, flightByPersonnel = {}, onToggleFlight }) {
@@ -1360,8 +1372,14 @@ function AssignmentSlot({ role, game, assignment, canEdit, onAssign, onUnassign,
     if (!open || options.length > 0 || loadingOptions) return
     let cancelled = false
     setLoadingOptions(true)
-    getPersonnel({ role: personnelRole }).then(data => {
-      if (!cancelled) setOptions(data || [])
+    // The EXTRA slot takes either a TD or a VGO, so its picker merges both.
+    const fetchOptions = role === 'EXTRA'
+      ? Promise.all([getPersonnel({ role: 'TD' }), getPersonnel({ role: 'VGO' })])
+          .then(([tds, vgos]) => [...(tds || []), ...(vgos || [])]
+            .sort((a, b) => (a.name || '').localeCompare(b.name || '')))
+      : getPersonnel({ role: personnelRole }).then(data => data || [])
+    fetchOptions.then(data => {
+      if (!cancelled) setOptions(data)
     }).catch(() => {
       if (!cancelled) setOptions([])
     }).finally(() => {
@@ -1521,7 +1539,11 @@ function AssignmentSlot({ role, game, assignment, canEdit, onAssign, onUnassign,
                         })}
                       </div>
                     ) : (
-                      p.country && <div className="text-[10px] text-fiba-muted/60">{p.country}</div>
+                      (p.country || role === 'EXTRA') && (
+                        <div className="text-[10px] text-fiba-muted/70">
+                          {role === 'EXTRA' ? [p.role, p.country].filter(Boolean).join(' · ') : p.country}
+                        </div>
+                      )
                     )}
                   </button>
                 )

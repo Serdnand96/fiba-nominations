@@ -526,12 +526,17 @@ _SLOT_EXPECTED_ROLE = {
     "INSTR": "REF_INSTRUCTOR",
     "VO": "VIDEO_OPERATOR",
 }
+# Optional extra official (one per game): venues that carry an additional
+# table official. Accepts TD or VGO people; fees/letters use the person's
+# real role, not the slot.
+_EXTRA_SLOT = "EXTRA"
+_EXTRA_ALLOWED_ROLES = ("TD", "VGO")
 
 
 class AssignmentCreate(BaseModel):
     game_id: str
     personnel_id: str
-    role: str  # 'TD' | 'VGO' | 'CC' | 'U1' | 'U2'
+    role: str  # 'TD' | 'VGO' | 'CC' | 'U1' | 'U2' | 'INSTR' | 'VO' | 'EXTRA'
 
 
 def _competition_supports_assignments(competition_id: str) -> bool:
@@ -668,8 +673,9 @@ def list_assignments_by_competition(competition_id: str = Query(...)):
 @router.post("/assignments", dependencies=[Depends(require_edit("games"))])
 def create_assignment(data: AssignmentCreate):
     role = (data.role or "").upper()
-    if role not in _SLOT_EXPECTED_ROLE:
-        raise HTTPException(400, f"Role must be one of {', '.join(_SLOT_EXPECTED_ROLE)}")
+    if role not in _SLOT_EXPECTED_ROLE and role != _EXTRA_SLOT:
+        raise HTTPException(
+            400, f"Role must be one of {', '.join([*_SLOT_EXPECTED_ROLE, _EXTRA_SLOT])}")
 
     # Verify the game exists and its competition supports assignments
     game = (
@@ -695,9 +701,15 @@ def create_assignment(data: AssignmentCreate):
     )
     if not person:
         raise HTTPException(404, "Personnel not found")
-    expected_role = _SLOT_EXPECTED_ROLE[role]
-    if (person[0].get("role") or "").upper() != expected_role:
-        raise HTTPException(400, f"Personnel role does not match (expected {expected_role})")
+    person_role = (person[0].get("role") or "").upper()
+    if role == _EXTRA_SLOT:
+        if person_role not in _EXTRA_ALLOWED_ROLES:
+            raise HTTPException(
+                400, f"Extra slot takes {' or '.join(_EXTRA_ALLOWED_ROLES)} personnel")
+    else:
+        expected_role = _SLOT_EXPECTED_ROLE[role]
+        if person_role != expected_role:
+            raise HTTPException(400, f"Personnel role does not match (expected {expected_role})")
 
     # Referee neutrality — hard block, mirrored client-side as a pop-up.
     if role in REF_SLOTS:
@@ -932,17 +944,34 @@ def sync_assignments_to_nominations(competition_id: str = Query(...)):
     if not assignments:
         return {"created": 0, "updated": 0, "people": 0}
 
+    # EXTRA slots carry no fee role of their own — resolve them to the
+    # person's real role (TD or VGO) so fee defaults match their letter.
+    extra_pids = {a["personnel_id"] for a in assignments if a["role"] == _EXTRA_SLOT}
+    role_by_pid: dict[str, str] = {}
+    if extra_pids:
+        people = (
+            supabase.table("personnel")
+            .select("id, role")
+            .in_("id", list(extra_pids))
+            .execute()
+            .data
+        )
+        role_by_pid = {p["id"]: (p.get("role") or "").upper() for p in people}
+
     # Group by personnel → (role from assignments, sorted unique dates)
     by_person: dict[str, dict] = {}
     for a in assignments:
         d = game_id_to_date.get(a["game_id"])
         if not d:
             continue
-        entry = by_person.setdefault(a["personnel_id"], {"role": a["role"], "dates": set()})
+        slot_role = a["role"]
+        if slot_role == _EXTRA_SLOT:
+            slot_role = role_by_pid.get(a["personnel_id"], "VGO")
+        entry = by_person.setdefault(a["personnel_id"], {"role": slot_role, "dates": set()})
         entry["dates"].add(d)
         # If the same person has both roles across games (rare), prefer TD for
         # fee defaults since TDs are senior. Deterministic enough.
-        if entry["role"] != "TD" and a["role"] == "TD":
+        if entry["role"] != "TD" and slot_role == "TD":
             entry["role"] = "TD"
 
     # Existing nominations for this competition
