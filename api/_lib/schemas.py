@@ -67,6 +67,9 @@ class CompetitionUpdate(BaseModel):
     default_arrival_date: Optional[str] = None
     default_departure_date: Optional[str] = None
     default_confirmation_deadline: Optional[str] = None
+    # Travel offsets: arrival/departure derived per person from their games
+    default_arrival_offset_days: Optional[int] = None
+    default_departure_offset_days: Optional[int] = None
     td_window_fee: Optional[float] = None
     td_incidentals: Optional[float] = None
     vgo_window_fee: Optional[float] = None

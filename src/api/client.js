@@ -222,8 +222,12 @@ export const setGameAssignment = (gameId, personnelId, role) =>
   api.post('/games/assignments', { game_id: gameId, personnel_id: personnelId, role }).then(r => r.data)
 export const deleteGameAssignment = (assignmentId) =>
   api.delete(`/games/assignments/${assignmentId}`).then(r => r.data)
-export const syncAssignmentsToNominations = (competitionId) =>
-  api.post('/games/assignments/sync-nominations', null, { params: { competition_id: competitionId } }).then(r => r.data)
+// overwriteTravel=true re-derives venue/location/arrival/departure per person
+// and overwrites them on existing nominations (the "recalculate travel" button)
+export const syncAssignmentsToNominations = (competitionId, overwriteTravel = false) =>
+  api.post('/games/assignments/sync-nominations', null, {
+    params: { competition_id: competitionId, ...(overwriteTravel ? { overwrite_travel: true } : {}) },
+  }).then(r => r.data)
 // Flight-purchase check (per person per competition)
 export const getCompetitionFlights = (competitionId) =>
   api.get('/games/flights/by-competition', { params: { competition_id: competitionId } }).then(r => r.data)

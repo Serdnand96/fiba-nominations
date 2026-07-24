@@ -84,6 +84,7 @@ export default function Games() {
   const [defaults, setDefaults] = useState({})
   const [savingDefaults, setSavingDefaults] = useState(false)
   const [defaultsMsg, setDefaultsMsg] = useState('')
+  const [recalcingTravel, setRecalcingTravel] = useState(false)
   // Club country mapping panel (club competitions only)
   const [showTeamCountries, setShowTeamCountries] = useState(false)
   const [teamCountryDraft, setTeamCountryDraft] = useState({}) // team name → code
@@ -116,8 +117,8 @@ export default function Games() {
       default_letter_date: selectedComp.default_letter_date || '',
       default_location: selectedComp.default_location || '',
       default_venue: selectedComp.default_venue || '',
-      default_arrival_date: selectedComp.default_arrival_date || '',
-      default_departure_date: selectedComp.default_departure_date || '',
+      default_arrival_offset_days: selectedComp.default_arrival_offset_days ?? 1,
+      default_departure_offset_days: selectedComp.default_departure_offset_days ?? 1,
       default_confirmation_deadline: selectedComp.default_confirmation_deadline || '',
       td_window_fee: selectedComp.td_window_fee ?? '',
       td_incidentals: selectedComp.td_incidentals ?? '',
@@ -368,6 +369,9 @@ export default function Games() {
       for (const [k, v] of Object.entries(defaults)) {
         if (k.endsWith('_fee') || k.endsWith('_incidentals')) {
           payload[k] = v === '' || v === null ? null : Number(v)
+        } else if (k.endsWith('_offset_days')) {
+          // NOT NULL columns — an empty input just leaves the stored value
+          payload[k] = v === '' || v === null ? null : Math.max(0, parseInt(v, 10) || 0)
         } else {
           payload[k] = v === '' ? '' : v
         }
@@ -385,6 +389,24 @@ export default function Games() {
 
   function setDefaultField(field, value) {
     setDefaults(d => ({ ...d, [field]: value }))
+  }
+
+  // Explicit re-derive of venue/location/arrival/departure for everyone
+  // assigned — the only path that overwrites those fields on existing
+  // nominations (manual edits included), so it asks first.
+  async function handleRecalcTravel() {
+    if (!window.confirm(t('games.recalcTravelConfirm'))) return
+    setRecalcingTravel(true)
+    setDefaultsMsg('')
+    try {
+      const r = await syncAssignmentsToNominations(selectedCompId, true)
+      setDefaultsMsg(t('games.travelRecalced', { people: r.people }))
+    } catch (err) {
+      const detail = err.response?.data?.detail
+      setDefaultsMsg(typeof detail === 'string' ? detail : 'Error')
+    }
+    setRecalcingTravel(false)
+    setTimeout(() => setDefaultsMsg(''), 6000)
   }
 
   // Unique clubs of a club competition with their current country (from the
@@ -753,15 +775,15 @@ export default function Games() {
                 className="fiba-input" />
             </div>
             <div>
-              <label className="fiba-label">{t('games.arrivalDate')}</label>
-              <input type="date" value={defaults.default_arrival_date || ''}
-                onChange={e => setDefaultField('default_arrival_date', e.target.value)}
+              <label className="fiba-label">{t('games.arrivalOffset')}</label>
+              <input type="number" min="0" step="1" value={defaults.default_arrival_offset_days ?? ''}
+                onChange={e => setDefaultField('default_arrival_offset_days', e.target.value)}
                 className="fiba-input" />
             </div>
             <div>
-              <label className="fiba-label">{t('games.departureDate')}</label>
-              <input type="date" value={defaults.default_departure_date || ''}
-                onChange={e => setDefaultField('default_departure_date', e.target.value)}
+              <label className="fiba-label">{t('games.departureOffset')}</label>
+              <input type="number" min="0" step="1" value={defaults.default_departure_offset_days ?? ''}
+                onChange={e => setDefaultField('default_departure_offset_days', e.target.value)}
                 className="fiba-input" />
             </div>
             <div>
@@ -771,6 +793,9 @@ export default function Games() {
                 className="fiba-input" />
             </div>
           </div>
+          <p className="text-[11px] text-fiba-muted -mt-2 mb-5">
+            {t('games.travelDerivedHint')}
+          </p>
 
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
             {[
@@ -802,14 +827,22 @@ export default function Games() {
             ))}
           </div>
 
-          <div className="flex items-center justify-between mt-5">
+          <div className="flex items-center justify-between gap-3 mt-5">
             <span className="text-xs text-fiba-muted/70">
               {defaultsMsg || t('games.defaultsApplyHint')}
             </span>
-            <button onClick={handleSaveDefaults} disabled={savingDefaults}
-              className="btn-fiba disabled:opacity-50">
-              {savingDefaults ? t('games.saving') : t('games.saveDefaults')}
-            </button>
+            <div className="flex items-center gap-2 flex-shrink-0">
+              <button onClick={handleRecalcTravel}
+                disabled={recalcingTravel || assignments.length === 0}
+                className="btn-fiba-ghost disabled:opacity-40"
+                title={t('games.recalcTravelHint')}>
+                {recalcingTravel ? t('games.recalcing') : t('games.recalcTravel')}
+              </button>
+              <button onClick={handleSaveDefaults} disabled={savingDefaults}
+                className="btn-fiba disabled:opacity-50">
+                {savingDefaults ? t('games.saving') : t('games.saveDefaults')}
+              </button>
+            </div>
           </div>
         </div>
       )}

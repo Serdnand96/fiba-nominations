@@ -9,7 +9,8 @@ import re
 from fastapi import APIRouter, HTTPException, Query, UploadFile, File, Form, Depends
 from pydantic import BaseModel
 from typing import Optional, List
-from datetime import datetime, timezone
+from collections import Counter
+from datetime import datetime, timedelta, timezone
 
 from api._lib.database import supabase
 from api._lib.auth import require_view, require_edit
@@ -864,14 +865,65 @@ _FEE_PREFIX_BY_SLOT = {
     "VO": "video_operator",
 }
 
+# Arrival/departure are NOT here: travel is per person (derived from each
+# person's assigned games + the competition's offset days). Location/venue
+# are also derived per person; the competition values act only as fallback
+# for games without venue data.
 _SHARED_DEFAULT_FIELDS = (
     ("default_letter_date",           "letter_date"),
     ("default_location",              "location"),
     ("default_venue",                 "venue"),
-    ("default_arrival_date",          "arrival_date"),
-    ("default_departure_date",        "departure_date"),
     ("default_confirmation_deadline", "confirmation_deadline"),
 )
+
+
+def _most_common(values) -> str:
+    vals = [str(v).strip() for v in values if v and str(v).strip()]
+    if not vals:
+        return ""
+    return Counter(vals).most_common(1)[0][0]
+
+
+def _derive_travel(person_games: list[dict], competition: dict) -> dict:
+    """Per-person travel fields from the games the person is assigned to:
+    venue/location from the games' venue data (most common non-empty value),
+    arrival/departure from their first/last game date ± the competition's
+    offset days. Only returns keys it could actually derive, so callers can
+    layer it over the competition-level fallbacks.
+    """
+    derived: dict = {}
+
+    venue = _most_common(g.get("venue") for g in person_games)
+    if venue:
+        derived["venue"] = venue
+
+    city = _most_common(g.get("city") for g in person_games)
+    country = _most_common(g.get("country") for g in person_games)
+    if not country and competition.get("is_national_team"):
+        # WCQ: the home team is the host country
+        country = _most_common(g.get("team_a") for g in person_games)
+    location = ", ".join(p for p in (city, country) if p)
+    if location:
+        derived["location"] = location
+
+    dates = []
+    for g in person_games:
+        try:
+            dates.append(datetime.strptime(g["date"], "%Y-%m-%d").date())
+        except (KeyError, TypeError, ValueError):
+            continue
+    if dates:
+        arr_off = competition.get("default_arrival_offset_days")
+        dep_off = competition.get("default_departure_offset_days")
+        arr_off = int(arr_off) if arr_off is not None else 1
+        dep_off = int(dep_off) if dep_off is not None else 1
+        derived["arrival_date"] = (min(dates) - timedelta(days=arr_off)).isoformat()
+        derived["departure_date"] = (max(dates) + timedelta(days=dep_off)).isoformat()
+    return derived
+
+
+# Travel fields the explicit "recalculate travel" action may overwrite.
+_TRAVEL_FIELDS = ("arrival_date", "departure_date", "venue", "location")
 
 
 def _build_default_overrides(competition: dict, role: str) -> dict:
@@ -898,16 +950,27 @@ def _build_default_overrides(competition: dict, role: str) -> dict:
 
 
 @router.post("/assignments/sync-nominations", dependencies=[Depends(require_edit("nominations"))])
-def sync_assignments_to_nominations(competition_id: str = Query(...)):
+def sync_assignments_to_nominations(
+    competition_id: str = Query(...),
+    overwrite_travel: bool = Query(False),
+):
     """Roll up per-game assignments into competition-level nomination drafts.
 
     For each personnel_id assigned to one or more games in this competition:
       - collect distinct game dates,
-      - apply the competition's shared defaults (letter_date, venue, etc.) and
-        the role-aware fee defaults (TD vs VGO),
+      - derive their travel per person: venue/location from THEIR games (the
+        competition defaults are only fallback), arrival/departure from their
+        first/last game ± the competition's offset days,
+      - apply the truly shared defaults (letter_date, deadline) and the
+        role-aware fee defaults (TD vs VGO),
       - if a nomination already exists → update game_dates + any default that
         the nomination doesn't already have set,
       - else create a draft nomination with everything filled in.
+
+    `overwrite_travel=true` (the "recalculate travel" button) additionally
+    overwrites arrival/departure/venue/location on EXISTING nominations with
+    the freshly derived values — including manual edits of those 4 fields.
+    Everything else keeps the fill-empty-only rule.
     """
     if not _competition_supports_assignments(competition_id):
         raise HTTPException(400, "This competition does not support per-game assignments")
@@ -925,13 +988,14 @@ def sync_assignments_to_nominations(competition_id: str = Query(...)):
 
     games = (
         supabase.table("game_schedule")
-        .select("id, date")
+        .select("id, date, venue, city, country, team_a")
         .eq("competition_id", competition_id)
         .execute()
         .data
     )
     if not games:
         return {"created": 0, "updated": 0, "people": 0}
+    game_by_id = {g["id"]: g for g in games}
     game_id_to_date = {g["id"]: g["date"] for g in games}
 
     assignments = (
@@ -958,7 +1022,7 @@ def sync_assignments_to_nominations(competition_id: str = Query(...)):
         )
         role_by_pid = {p["id"]: (p.get("role") or "").upper() for p in people}
 
-    # Group by personnel → (role from assignments, sorted unique dates)
+    # Group by personnel → (role from assignments, unique dates + games)
     by_person: dict[str, dict] = {}
     for a in assignments:
         d = game_id_to_date.get(a["game_id"])
@@ -967,8 +1031,10 @@ def sync_assignments_to_nominations(competition_id: str = Query(...)):
         slot_role = a["role"]
         if slot_role == _EXTRA_SLOT:
             slot_role = role_by_pid.get(a["personnel_id"], "VGO")
-        entry = by_person.setdefault(a["personnel_id"], {"role": slot_role, "dates": set()})
+        entry = by_person.setdefault(
+            a["personnel_id"], {"role": slot_role, "dates": set(), "game_ids": set()})
         entry["dates"].add(d)
+        entry["game_ids"].add(a["game_id"])
         # If the same person has both roles across games (rare), prefer TD for
         # fee defaults since TDs are senior. Deterministic enough.
         if entry["role"] != "TD" and slot_role == "TD":
@@ -990,7 +1056,12 @@ def sync_assignments_to_nominations(competition_id: str = Query(...)):
     for pid, info in by_person.items():
         sorted_dates = sorted(info["dates"])
         game_dates = [{"label": f"Game {i + 1}", "date": d} for i, d in enumerate(sorted_dates)]
-        defaults = _build_default_overrides(competition, info["role"])
+        person_games = [game_by_id[gid] for gid in info["game_ids"] if gid in game_by_id]
+        # Derived per-person travel wins over the competition-level fallbacks
+        defaults = {
+            **_build_default_overrides(competition, info["role"]),
+            **_derive_travel(person_games, competition),
+        }
 
         if pid in existing_by_pid:
             existing_nom = existing_by_pid[pid]
@@ -1000,6 +1071,13 @@ def sync_assignments_to_nominations(competition_id: str = Query(...)):
             for k, v in defaults.items():
                 if existing_nom.get(k) in (None, ""):
                     update_record[k] = v
+            if overwrite_travel:
+                # Explicit recalc: refresh travel fields from the current
+                # schedule. Fields we couldn't derive (nor fall back for)
+                # keep their current value rather than being blanked.
+                for k in _TRAVEL_FIELDS:
+                    if k in defaults:
+                        update_record[k] = defaults[k]
             supabase.table("nominations").update(update_record).eq("id", existing_nom["id"]).execute()
             updated += 1
         else:

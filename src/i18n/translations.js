@@ -851,6 +851,23 @@ const translations = {
     defaultsTitle: { en: 'Common nomination values', es: 'Datos comunes de la nominación' },
     defaultsSubtitle: { en: 'These values are applied to every nomination generated from per-game assignments. Per-person edits in the Nominations page are kept.', es: 'Estos valores se aplican a cada nominación generada desde las asignaciones por juego. Los cambios manuales hechos en Nominations se respetan.' },
     defaultsShared: { en: 'Shared (all roles)', es: 'Compartidos (todos los roles)' },
+    arrivalOffset: { en: 'Arrival (days before 1st game)', es: 'Llegada (días antes del 1er juego)' },
+    departureOffset: { en: 'Departure (days after last game)', es: 'Salida (días después del último juego)' },
+    travelDerivedHint: {
+      en: 'Venue and travel dates are derived per person from their assigned games. Location/Venue above are only used as fallback when their games have no venue data.',
+      es: 'La sede y las fechas de viaje se calculan por persona a partir de sus juegos asignados. Location/Venue de arriba se usan solo como respaldo cuando sus juegos no tienen sede cargada.',
+    },
+    recalcTravel: { en: 'Recalculate travel', es: 'Recalcular viajes' },
+    recalcTravelHint: {
+      en: 'Re-derive venue and travel dates for everyone assigned, overwriting current values',
+      es: 'Volver a calcular sede y fechas de viaje de todos los asignados, sobrescribiendo los valores actuales',
+    },
+    recalcTravelConfirm: {
+      en: 'Recalculate venue and travel dates for everyone assigned? This overwrites the current values of those fields, including manual edits made in Nominations.',
+      es: '¿Recalcular sede y fechas de viaje de todos los asignados? Esto sobrescribe los valores actuales de esos campos, incluidas las ediciones manuales hechas en Nominations.',
+    },
+    recalcing: { en: 'Recalculating...', es: 'Recalculando...' },
+    travelRecalced: { en: 'Travel data recalculated for {people} people', es: 'Viajes recalculados para {people} personas' },
     defaultsTD: { en: 'TD fees', es: 'Honorarios TD' },
     defaultsVGO: { en: 'VGO fees', es: 'Honorarios VGO' },
     defaultsREF: { en: 'Referee fees', es: 'Honorarios árbitros' },
