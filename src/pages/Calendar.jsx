@@ -217,7 +217,11 @@ export default function Calendar() {
     )
   }
 
-  const monthGroups = groupByMonth(competitions)
+  function eventYear(ev) {
+    return ev.year || (ev.start_date ? new Date(ev.start_date + 'T00:00:00').getFullYear() : null)
+  }
+  const yearCompetitions = competitions.filter(ev => eventYear(ev) === calYear)
+  const monthGroups = groupByMonth(yearCompetitions)
   const filteredPersonnel = personnel.filter(p =>
     (p.name || '').toLowerCase().includes(staffSearch.toLowerCase())
   )
@@ -270,6 +274,18 @@ export default function Calendar() {
             </button>
             <span className="text-sm font-semibold text-ink-700 dark:text-gray-300 w-40 text-center">{MONTHS[calMonth]} {calYear}</span>
             <button onClick={nextMonth} className="p-1 rounded hover:bg-fiba-surface">
+              <svg className="w-5 h-5 text-fiba-muted" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
+            </button>
+          </div>
+        )}
+
+        {view === 'year' && (
+          <div className="flex items-center gap-2">
+            <button onClick={() => setCalYear(y => y - 1)} className="p-1 rounded hover:bg-fiba-surface">
+              <svg className="w-5 h-5 text-fiba-muted" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
+            </button>
+            <span className="text-sm font-semibold text-ink-700 dark:text-gray-300 w-20 text-center tabular-nums">{calYear}</span>
+            <button onClick={() => setCalYear(y => y + 1)} className="p-1 rounded hover:bg-fiba-surface">
               <svg className="w-5 h-5 text-fiba-muted" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
             </button>
           </div>
