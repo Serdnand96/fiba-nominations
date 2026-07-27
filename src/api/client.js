@@ -91,6 +91,40 @@ export const downloadPaymentAttachment = async (attId, filename) => {
   return resp.data
 }
 
+// Competition reports
+export const getReportTypes = () => api.get('/reports/types').then(r => r.data)
+export const getReportFacets = () => api.get('/reports/facets').then(r => r.data)
+export const getReports = (params) => api.get('/reports', { params }).then(r => r.data)
+export const createReport = (data) => api.post('/reports', data).then(r => r.data)
+export const updateReport = (id, data) => api.put(`/reports/${id}`, data).then(r => r.data)
+export const deleteReport = (id) => api.delete(`/reports/${id}`).then(r => r.data)
+export const getReportFiles = (reportId) => api.get(`/reports/${reportId}/files`).then(r => r.data)
+export const uploadReportFile = (reportId, file) => {
+  const fd = new FormData()
+  fd.append('file', file)
+  return api.post(`/reports/${reportId}/files`, fd, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  }).then(r => r.data)
+}
+export const deleteReportFile = (fileId) => api.delete(`/reports/files/${fileId}`).then(r => r.data)
+// Authenticated download — private bucket, returns a Blob.
+export const downloadReportFile = async (fileId, filename) => {
+  const params = filename ? `?filename=${encodeURIComponent(filename)}` : ''
+  const resp = await api.get(`/reports/files/${fileId}/download${params}`, { responseType: 'blob' })
+  return resp.data
+}
+
+// External staff evaluations
+export const getEvaluationCriteria = () => api.get('/evaluations/criteria').then(r => r.data)
+export const getEvaluationNominees = (competitionId) =>
+  api.get('/evaluations/nominees', { params: { competition_id: competitionId } }).then(r => r.data)
+export const getEvaluations = (params) => api.get('/evaluations', { params }).then(r => r.data)
+export const getPersonnelEvaluations = (personnelId) =>
+  api.get(`/evaluations/personnel/${personnelId}`).then(r => r.data)
+export const createEvaluation = (data) => api.post('/evaluations', data).then(r => r.data)
+export const updateEvaluation = (id, data) => api.put(`/evaluations/${id}`, data).then(r => r.data)
+export const deleteEvaluation = (id) => api.delete(`/evaluations/${id}`).then(r => r.data)
+
 // Calendar
 export const getCalendarCompetitions = (params) => api.get('/calendar/competitions', { params }).then(r => r.data)
 export const getCalendarCompetition = (id) => api.get(`/calendar/competitions/${id}`).then(r => r.data)

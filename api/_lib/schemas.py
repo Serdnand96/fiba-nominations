@@ -194,3 +194,46 @@ class PaymentUpdate(BaseModel):
     status: Optional[str] = None
     payment_date: Optional[str] = None
     bank_confirmation: Optional[str] = None
+
+
+# ─── COMPETITION REPORTS ──────────────────────────────────────────────────
+
+class CompetitionReportCreate(BaseModel):
+    competition_id: str
+    type_code: str
+    title: str
+    venue: Optional[str] = None
+    loc: Optional[str] = None       # Local Organizing Committee
+    report_date: Optional[str] = None
+    summary: Optional[str] = None
+
+
+class CompetitionReportUpdate(BaseModel):
+    type_code: Optional[str] = None
+    title: Optional[str] = None
+    venue: Optional[str] = None
+    loc: Optional[str] = None
+    report_date: Optional[str] = None
+    summary: Optional[str] = None
+
+
+# ─── EXTERNAL STAFF EVALUATIONS ───────────────────────────────────────────
+
+class StaffEvaluationCreate(BaseModel):
+    competition_id: str
+    personnel_id: str
+    evaluator_role: Optional[str] = "competition_lead"
+    scores: Optional[dict] = None   # {criterion: 1..5}, validated in the router
+    strengths: Optional[str] = None
+    improvements: Optional[str] = None
+    comments: Optional[str] = None
+    status: Optional[str] = "draft"
+
+
+class StaffEvaluationUpdate(BaseModel):
+    evaluator_role: Optional[str] = None
+    scores: Optional[dict] = None
+    strengths: Optional[str] = None
+    improvements: Optional[str] = None
+    comments: Optional[str] = None
+    status: Optional[str] = None

@@ -45,4 +45,7 @@ export const Icon = {
   Logout: I(<><path d="M14 8v-2a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h7a2 2 0 0 0 2-2v-2"/><path d="M9 12h12l-3-3"/><path d="M18 15l3-3"/></>),
   Eye: I(<><circle cx="12" cy="12" r="2"/><path d="M22 12c-2.667 4-6 6-10 6s-7.333-2-10-6c2.667-4 6-6 10-6s7.333 2 10 6"/></>),
   History: I(<><path d="M12 8v4l2 2"/><path d="M3.05 11a9 9 0 1 1 .5 4m-.5 5v-5h5"/></>),
+  Report: I(<><path d="M14 3v4a1 1 0 0 0 1 1h4"/><path d="M5 8a2 2 0 0 1 2-2h7l5 5v9a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2z"/><path d="M9 17v-3"/><path d="M12 17v-5"/><path d="M15 17v-2"/></>),
+  Star: I(<path d="M12 4l2.4 4.9l5.4.8l-3.9 3.8l.9 5.4l-4.8-2.5l-4.8 2.5l.9-5.4l-3.9-3.8l5.4-.8z"/>),
+  StarFilled: I(<path d="M12 4l2.4 4.9l5.4.8l-3.9 3.8l.9 5.4l-4.8-2.5l-4.8 2.5l.9-5.4l-3.9-3.8l5.4-.8z" fill="currentColor"/>),
 };

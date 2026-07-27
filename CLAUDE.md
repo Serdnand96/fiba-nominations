@@ -42,6 +42,9 @@ legacy `fibaamericascloud.com`).
    - `employees` → staff interno de FIBA (no se nomina, solo aparece en
      inventario para asignar activos)
 
+   El módulo **Evaluations** ("external staff") evalúa a `personnel`, no a
+   `employees` — el "externo" es respecto de FIBA, no del sistema.
+
 4. **`storage://nominations/X` paths** son una convención propia para
    referirse a objects en el bucket privado `nominations` de Supabase
    Storage. El backend los convierte a URLs autenticadas; el frontend

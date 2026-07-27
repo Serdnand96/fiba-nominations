@@ -3,7 +3,7 @@ import { getUsers, createUser, deleteUser, updateUserPassword, getUserPermission
 import { useLanguage } from '../i18n/LanguageContext'
 import { useAuth } from '../contexts/AuthContext'
 
-const MODULES = ['calendar', 'nominations', 'payments', 'personnel', 'competitions', 'templates', 'users', 'transport', 'availability', 'training', 'games', 'assets', 'loans', 'employees']
+const MODULES = ['calendar', 'nominations', 'payments', 'personnel', 'competitions', 'templates', 'users', 'transport', 'availability', 'training', 'games', 'assets', 'loans', 'employees', 'reports', 'evaluations']
 
 export default function Users() {
   const { t } = useLanguage()
