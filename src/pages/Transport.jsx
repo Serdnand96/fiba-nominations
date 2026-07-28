@@ -21,6 +21,28 @@ function formatTime(t) {
   return `${parts[0]}:${parts[1]}`
 }
 
+// "Venezuela vs Chile" — the teams come from game_schedule, so bracket
+// placeholders ("CF #1", "Equipo A SF#1") turn into real teams by themselves
+// once the crosses are resolved.
+function gameLabel(game) {
+  if (!game) return ''
+  return `${game.team_a || '?'} vs ${game.team_b || '?'}`
+}
+
+function gamePhase(game) {
+  if (!game) return ''
+  return [game.phase, game.group_label && `${game.group_label}`].filter(Boolean).join(' ')
+}
+
+const EMPTY_TRIPS = { vehicles: [], trips: [], vehicle_drivers: [], games: [] }
+
+// Una fila de la planilla de logística ("PICK UP … RETURN HOTEL") son dos
+// tramos del mismo partido: la ida y la vuelta.
+const TRIP_TYPE_LABELS = {
+  es: { pickup: 'Pick up', return: 'Retorno', transfer: 'Viaje' },
+  en: { pickup: 'Pick up', return: 'Return', transfer: 'Trip' },
+}
+
 // Last search (competition + tab + date), persisted across visits — same
 // pattern as Games.
 const LAST_SEARCH_KEY = 'fiba_transport_last_search'
@@ -58,7 +80,7 @@ export default function Transport() {
   // Data
   const [vehicles, setVehicles] = useState([])
   const [drivers, setDrivers] = useState([])
-  const [tripData, setTripData] = useState({ vehicles: [], trips: [], vehicle_drivers: [] })
+  const [tripData, setTripData] = useState(EMPTY_TRIPS)
   const [conflicts, setConflicts] = useState([])
   const [venues, setVenues] = useState([])
   const [passengers, setPassengers] = useState([])
@@ -69,6 +91,7 @@ export default function Transport() {
   const [tripForm, setTripForm] = useState({
     vehicle_id: '', trip_number: 1, departure_time: '', arrival_time: '',
     origin: '', destination: '', equipment: '', contact: '',
+    game_id: '', trip_type: 'transfer', notes: '',
   })
 
   const [showVehicleModal, setShowVehicleModal] = useState(false)
@@ -142,7 +165,7 @@ export default function Transport() {
   useEffect(() => {
     if (!eventId) {
       setVehicles([]); setDrivers([]); setVenues([]); setPassengers([])
-      setTripData({ vehicles: [], trips: [], vehicle_drivers: [] }); setConflicts([])
+      setTripData(EMPTY_TRIPS); setConflicts([])
       return
     }
     loadAll()
@@ -223,24 +246,41 @@ export default function Transport() {
   function openCreateTrip(vehicleId) {
     const existingTrips = tripsByVehicle[vehicleId]?.trips || []
     setEditingTrip(null)
-    setTripForm({ vehicle_id: vehicleId, trip_number: existingTrips.length + 1, departure_time: '', arrival_time: '', origin: '', destination: '', equipment: '', contact: '' })
+    setTripForm({ vehicle_id: vehicleId, trip_number: existingTrips.length + 1, departure_time: '', arrival_time: '', origin: '', destination: '', equipment: '', contact: '', game_id: '', trip_type: 'transfer', notes: '' })
     setShowTripModal(true)
   }
 
   function openEditTrip(trip) {
     setEditingTrip(trip)
-    setTripForm({ vehicle_id: trip.vehicle_id, trip_number: trip.trip_number, departure_time: formatTime(trip.departure_time), arrival_time: formatTime(trip.arrival_time) || '', origin: trip.origin, destination: trip.destination, equipment: trip.equipment || '', contact: trip.contact || '' })
+    setTripForm({ vehicle_id: trip.vehicle_id, trip_number: trip.trip_number, departure_time: formatTime(trip.departure_time), arrival_time: formatTime(trip.arrival_time) || '', origin: trip.origin, destination: trip.destination, equipment: trip.equipment || '', contact: trip.contact || '', game_id: trip.game_id || '', trip_type: trip.trip_type || 'transfer', notes: trip.notes || '' })
     setShowTripModal(true)
   }
 
   async function handleTripSubmit(e) {
     e.preventDefault()
-    const payload = { ...tripForm, date }
+    // game_id must go as null (not '') so the backend can clear the link.
+    const payload = { ...tripForm, date, game_id: tripForm.game_id || null }
     try {
       if (editingTrip) { const { vehicle_id, ...updates } = payload; await updateTransportTrip(editingTrip.id, updates) }
       else { await createTransportTrip(payload) }
       setShowTripModal(false); await loadTrips()
     } catch (err) { alert(err.response?.data?.detail || 'Error') }
+  }
+
+  // Picking the game pre-fills the leg: pickup leaves the hotel for the venue,
+  // return does the opposite. Times stay manual — the offsets logistics uses
+  // vary by day (they stagger the crews).
+  function selectTripGame(gameId) {
+    setTripForm(f => {
+      const game = (tripData.games || []).find(g => g.id === gameId)
+      const next = { ...f, game_id: gameId }
+      if (!game) return next
+      const venue = game.venue || venueNames.find(n => venues.find(v => v.name === n && v.type === 'venue')) || ''
+      const hotel = hotels[0] || ''
+      if (f.trip_type === 'pickup' && !f.origin && !f.destination) { next.origin = hotel; next.destination = venue }
+      if (f.trip_type === 'return' && !f.origin && !f.destination) { next.origin = venue; next.destination = hotel }
+      return next
+    })
   }
 
   async function handleDeleteTrip(trip) {
@@ -321,11 +361,15 @@ export default function Transport() {
     for (const group of orderedVehicles) {
       const { vehicle, trips, driver } = group
       const driverName = driver?.name || ''
-      html += `<div class="vehicle-block"><div class="vehicle-header">${esc(vehicle.name)}${driverName ? ` — ${esc(driverName)}` : ''}</div><table class="trip-table"><thead><tr><th>${lang === 'es' ? 'Viaje' : 'Trip'}</th><th>${lang === 'es' ? 'Hora' : 'Time'}</th><th>${lang === 'es' ? 'Partida' : 'Origin'}</th><th>${lang === 'es' ? 'Destino' : 'Destination'}</th><th>${lang === 'es' ? 'Equipo' : 'Equipment'}</th><th>${lang === 'es' ? 'Contacto' : 'Contact'}</th></tr></thead><tbody>`
-      if (trips.length === 0) html += `<tr><td colspan="6" style="text-align:center;color:#999;">${lang === 'es' ? 'Sin viajes' : 'No trips'}</td></tr>`
+      html += `<div class="vehicle-block"><div class="vehicle-header">${esc(vehicle.name)}${driverName ? ` — ${esc(driverName)}` : ''}</div><table class="trip-table"><thead><tr><th>${lang === 'es' ? 'Viaje' : 'Trip'}</th><th>${lang === 'es' ? 'Hora' : 'Time'}</th><th>${lang === 'es' ? 'Partida' : 'Origin'}</th><th>${lang === 'es' ? 'Destino' : 'Destination'}</th><th>${lang === 'es' ? 'Partido' : 'Game'}</th><th>${lang === 'es' ? 'Equipo' : 'Equipment'}</th><th>${lang === 'es' ? 'Contacto' : 'Contact'}</th><th>${lang === 'es' ? 'Comentarios' : 'Comments'}</th></tr></thead><tbody>`
+      if (trips.length === 0) html += `<tr><td colspan="8" style="text-align:center;color:#999;">${lang === 'es' ? 'Sin viajes' : 'No trips'}</td></tr>`
       for (const trip of trips) {
         const cls = conflictTripIds.has(trip.id) ? ' class="conflict"' : ''
-        html += `<tr${cls}><td>${lang === 'es' ? 'Viaje' : 'Trip'} ${trip.trip_number}</td><td>${formatTime(trip.departure_time)}</td><td>${esc(trip.origin)}</td><td>${esc(trip.destination)}</td><td>${esc(trip.equipment || '')}</td><td>${esc(trip.contact || '')}</td></tr>`
+        const label = TRIP_TYPE_LABELS[lang]?.[trip.trip_type] || (lang === 'es' ? 'Viaje' : 'Trip')
+        const game = trip.game
+          ? `${gameLabel(trip.game)}${trip.game.time ? ` (${formatTime(trip.game.time)})` : ''}`
+          : ''
+        html += `<tr${cls}><td>${esc(label)} ${trip.trip_number}</td><td>${formatTime(trip.departure_time)}</td><td>${esc(trip.origin)}</td><td>${esc(trip.destination)}</td><td>${esc(game)}</td><td>${esc(trip.equipment || '')}</td><td>${esc(trip.contact || '')}</td><td>${esc(trip.notes || '')}</td></tr>`
       }
       html += `</tbody></table></div>`
     }
@@ -505,18 +549,20 @@ export default function Transport() {
                       <table className="fiba-table">
                         <thead>
                           <tr>
-                            <th className="w-20">{lang === 'es' ? 'Viaje' : 'Trip'}</th>
+                            <th className="w-24">{lang === 'es' ? 'Viaje' : 'Trip'}</th>
                             <th className="w-16">{lang === 'es' ? 'Hora' : 'Time'}</th>
                             <th>{lang === 'es' ? 'Partida' : 'Origin'}</th>
                             <th>{lang === 'es' ? 'Destino' : 'Dest.'}</th>
+                            <th>{lang === 'es' ? 'Partido' : 'Game'}</th>
                             <th>{lang === 'es' ? 'Equipo' : 'Equip.'}</th>
                             <th>{lang === 'es' ? 'Contacto' : 'Contact'}</th>
+                            <th>{lang === 'es' ? 'Comentarios' : 'Comments'}</th>
                             <th className="w-20"></th>
                           </tr>
                         </thead>
                         <tbody>
                           {trips.length === 0 && (
-                            <tr><td colSpan={7} className="px-4 py-4 text-center text-fiba-border text-xs">
+                            <tr><td colSpan={9} className="px-4 py-4 text-center text-fiba-border text-xs">
                               {lang === 'es' ? 'Sin viajes programados' : 'No scheduled trips'}
                             </td></tr>
                           )}
@@ -524,15 +570,26 @@ export default function Transport() {
                             <tr key={trip.id} className={conflictTripIds.has(trip.id) ? 'bg-red-500/10' : ''}>
                               <td className="px-4 py-2 font-medium">
                                 {conflictTripIds.has(trip.id) && <span className="inline-block w-2 h-2 rounded-full bg-red-500 mr-1.5" title={lang === 'es' ? 'Conflicto' : 'Conflict'} />}
-                                {lang === 'es' ? 'Viaje' : 'Trip'} {trip.trip_number}
+                                {TRIP_TYPE_LABELS[lang]?.[trip.trip_type] || (lang === 'es' ? 'Viaje' : 'Trip')} {trip.trip_number}
                               </td>
                               <td className="px-4 py-2 font-mono text-xs">{formatTime(trip.departure_time)}</td>
                               <td className="px-4 py-2">{trip.origin}</td>
                               <td className="px-4 py-2">{trip.destination}</td>
                               <td className="px-4 py-2">
+                                {trip.game ? (
+                                  <div className="leading-tight">
+                                    <div className="text-xs">{gameLabel(trip.game)}</div>
+                                    <div className="text-[10px] text-fiba-muted">
+                                      {[formatTime(trip.game.time), gamePhase(trip.game)].filter(Boolean).join(' · ')}
+                                    </div>
+                                  </div>
+                                ) : <span className="text-fiba-muted text-xs">—</span>}
+                              </td>
+                              <td className="px-4 py-2">
                                 {trip.equipment && <span className="bg-fiba-surface text-fiba-muted px-1.5 py-0.5 rounded text-xs">{trip.equipment}</span>}
                               </td>
                               <td className="px-4 py-2 text-xs text-fiba-muted">{trip.contact}</td>
+                              <td className="px-4 py-2 text-xs text-fiba-muted max-w-[16rem]">{trip.notes}</td>
                               <td className="px-4 py-2">
                                 {canEdit && (
                                   <div className="flex gap-2">
@@ -670,9 +727,30 @@ export default function Transport() {
               <div className="fiba-modal max-w-lg p-6">
                 <h3 className="text-lg font-bold text-ink-900 dark:text-white mb-4">{editingTrip ? (lang === 'es' ? 'Editar Viaje' : 'Edit Trip') : (lang === 'es' ? 'Nuevo Viaje' : 'New Trip')}</h3>
                 <form onSubmit={handleTripSubmit} className="space-y-3">
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-3 gap-3">
+                    <div><label className="fiba-label">{lang === 'es' ? 'Tipo' : 'Type'}</label>
+                      <select value={tripForm.trip_type} onChange={e => setTripForm(f => ({ ...f, trip_type: e.target.value }))} className="fiba-select">
+                        <option value="pickup">{TRIP_TYPE_LABELS[lang]?.pickup || 'Pick up'}</option>
+                        <option value="return">{TRIP_TYPE_LABELS[lang]?.return || 'Return'}</option>
+                        <option value="transfer">{TRIP_TYPE_LABELS[lang]?.transfer || 'Transfer'}</option>
+                      </select>
+                    </div>
                     <div><label className="fiba-label">{lang === 'es' ? 'N° Viaje' : 'Trip #'}</label><input type="number" min={1} value={tripForm.trip_number} onChange={e => setTripForm(f => ({ ...f, trip_number: parseInt(e.target.value) || 1 }))} className="fiba-input" /></div>
                     <div><label className="fiba-label">{lang === 'es' ? 'Hora salida' : 'Departure time'}</label><input type="time" required value={tripForm.departure_time} onChange={e => setTripForm(f => ({ ...f, departure_time: e.target.value }))} className="fiba-input" /></div>
+                  </div>
+                  <div>
+                    <label className="fiba-label">{lang === 'es' ? 'Partido' : 'Game'}</label>
+                    <select value={tripForm.game_id} onChange={e => selectTripGame(e.target.value)} className="fiba-select">
+                      <option value="">{lang === 'es' ? 'Sin partido (traslado general)' : 'No game (general transfer)'}</option>
+                      {(tripData.games || []).map(g => (
+                        <option key={g.id} value={g.id}>
+                          {[formatTime(g.time), gameLabel(g), gamePhase(g)].filter(Boolean).join(' · ')}
+                        </option>
+                      ))}
+                    </select>
+                    {(tripData.games || []).length === 0 && (
+                      <p className="text-xs text-fiba-muted mt-1">{lang === 'es' ? 'No hay partidos cargados para esta fecha.' : 'No games loaded for this date.'}</p>
+                    )}
                   </div>
                   <div className="grid grid-cols-2 gap-3">
                     <div><label className="fiba-label">{lang === 'es' ? 'Partida' : 'Origin'}</label><input required list="venue-list" value={tripForm.origin} onChange={e => setTripForm(f => ({ ...f, origin: e.target.value }))} className="fiba-input" /></div>
@@ -684,6 +762,7 @@ export default function Transport() {
                     <div><label className="fiba-label">{lang === 'es' ? 'Contacto' : 'Contact'}</label><input value={tripForm.contact} onChange={e => setTripForm(f => ({ ...f, contact: e.target.value }))} className="fiba-input" /></div>
                     <div><label className="fiba-label">{lang === 'es' ? 'Hora llegada (est.)' : 'Arrival time (est.)'}</label><input type="time" value={tripForm.arrival_time} onChange={e => setTripForm(f => ({ ...f, arrival_time: e.target.value }))} className="fiba-input" /></div>
                   </div>
+                  <div><label className="fiba-label">{lang === 'es' ? 'Comentarios' : 'Comments'}</label><textarea rows={2} value={tripForm.notes} onChange={e => setTripForm(f => ({ ...f, notes: e.target.value }))} className="fiba-input" /></div>
                   <div className="flex justify-end gap-3 pt-2">
                     <button type="button" onClick={() => setShowTripModal(false)} className="px-4 py-2 text-sm text-fiba-muted">{lang === 'es' ? 'Cancelar' : 'Cancel'}</button>
                     <button type="submit" className="btn-fiba">{editingTrip ? (lang === 'es' ? 'Guardar' : 'Save') : (lang === 'es' ? 'Crear' : 'Create')}</button>

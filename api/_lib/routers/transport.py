@@ -39,6 +39,8 @@ class VehicleDriverAssign(BaseModel):
     driver_id: str
     date: str  # YYYY-MM-DD
 
+TRIP_TYPES = ("pickup", "return", "transfer")
+
 class TripCreate(BaseModel):
     vehicle_id: str
     date: str
@@ -50,6 +52,8 @@ class TripCreate(BaseModel):
     equipment: Optional[str] = None
     contact: Optional[str] = None
     notes: Optional[str] = None
+    game_id: Optional[str] = None
+    trip_type: str = "transfer"
 
 class TripUpdate(BaseModel):
     trip_number: Optional[int] = None
@@ -60,6 +64,8 @@ class TripUpdate(BaseModel):
     equipment: Optional[str] = None
     contact: Optional[str] = None
     notes: Optional[str] = None
+    game_id: Optional[str] = None
+    trip_type: Optional[str] = None
 
 class PassengerCreate(BaseModel):
     event_id: str
@@ -182,12 +188,44 @@ def assign_vehicle_driver(data: VehicleDriverAssign):
 
 # ── Trips ────────────────────────────────────────────────────────────────────
 
+GAME_FIELDS = "id,game_number,date,time,team_a,team_b,phase,group_label,venue"
+
+
+def _games_for_event(event_id: str, date: Optional[str] = None) -> list:
+    """Games of the competition this transport event belongs to."""
+    evt = supabase.table("transport_events").select("competition_id").eq("id", event_id).execute().data
+    competition_id = evt[0]["competition_id"] if evt else None
+    if not competition_id:
+        return []
+    q = supabase.table("game_schedule").select(GAME_FIELDS).eq("competition_id", competition_id)
+    if date:
+        q = q.eq("date", date)
+    return q.order("date").execute().data
+
+
+def _validate_game(game_id: Optional[str], vehicle_id: str):
+    """A trip may only point to a game of its own competition."""
+    if not game_id:
+        return
+    veh = supabase.table("transport_vehicles").select("event_id").eq("id", vehicle_id).execute().data
+    if not veh:
+        raise HTTPException(404, "Vehicle not found")
+    valid = {g["id"] for g in _games_for_event(veh[0]["event_id"])}
+    if game_id not in valid:
+        raise HTTPException(400, "Game does not belong to this competition")
+
+
 @router.get("/trips")
 def list_trips(event_id: str = Query(...), date: Optional[str] = Query(None)):
+    # Games of the date, so the UI can show/pick the game behind each trip
+    games = _games_for_event(event_id, date)
+    games.sort(key=lambda g: (g.get("time") or ""))
+    game_map = {g["id"]: g for g in games}
+
     # Get vehicles for the event
-    vehicles = supabase.table("transport_vehicles").select("id,name").eq("event_id", event_id).order("name").execute().data
+    vehicles = supabase.table("transport_vehicles").select("id,name,vehicle_type").eq("event_id", event_id).order("name").execute().data
     if not vehicles:
-        return {"vehicles": [], "trips": [], "vehicle_drivers": []}
+        return {"vehicles": [], "trips": [], "vehicle_drivers": [], "games": games}
 
     vids = [v["id"] for v in vehicles]
 
@@ -214,19 +252,38 @@ def list_trips(event_id: str = Query(...), date: Optional[str] = Query(None)):
     for a in vd:
         a["driver"] = driver_map.get(a["driver_id"])
 
-    return {"vehicles": vehicles, "trips": trips, "vehicle_drivers": vd}
+    # Enrich trips with the game they serve, so team names and phase stay live
+    # instead of being copied into free text.
+    for t in trips:
+        t["game"] = game_map.get(t.get("game_id"))
+
+    return {"vehicles": vehicles, "trips": trips, "vehicle_drivers": vd, "games": games}
 
 @router.post("/trips", dependencies=[Depends(require_edit("transport"))])
 def create_trip(data: TripCreate):
+    if data.trip_type not in TRIP_TYPES:
+        raise HTTPException(400, f"trip_type must be one of {', '.join(TRIP_TYPES)}")
+    _validate_game(data.game_id, data.vehicle_id)
     record = data.model_dump()
     result = supabase.table("transport_trips").insert(record).execute()
     return result.data[0]
 
 @router.put("/trips/{trip_id}", dependencies=[Depends(require_edit("transport"))])
 def update_trip(trip_id: str, data: TripUpdate):
-    updates = {k: v for k, v in data.model_dump().items() if v is not None}
+    # exclude_unset (not "is not None") so the client can explicitly clear
+    # game_id by sending null — omitted fields are still left untouched.
+    updates = data.model_dump(exclude_unset=True)
     if not updates:
         raise HTTPException(400, "No fields to update")
+    if updates.get("trip_type") is None:
+        updates.pop("trip_type", None)  # column is NOT NULL; nothing to clear
+    elif updates["trip_type"] not in TRIP_TYPES:
+        raise HTTPException(400, f"trip_type must be one of {', '.join(TRIP_TYPES)}")
+    existing = supabase.table("transport_trips").select("vehicle_id").eq("id", trip_id).execute().data
+    if not existing:
+        raise HTTPException(404, "Trip not found")
+    if "game_id" in updates:
+        _validate_game(updates["game_id"], existing[0]["vehicle_id"])
     r = supabase.table("transport_trips").update(updates).eq("id", trip_id).execute()
     if not r.data:
         raise HTTPException(404, "Trip not found")
