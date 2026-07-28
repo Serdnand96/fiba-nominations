@@ -1,6 +1,8 @@
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
+import json
 import os
+import re
 
 from api._lib.database import supabase
 from api._lib.auth import require_superadmin
@@ -22,6 +24,38 @@ def _get_admin_client():
     if not url or not service_key:
         raise RuntimeError("SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY must be set")
     return create_client(url, service_key)
+
+
+def _auth_error(exc: Exception, fallback: str) -> HTTPException:
+    """Turn a GoTrue admin error into an HTTPException with a usable message.
+
+    `_AuthAdmin` raises `Exception("Auth error <status>: <body>")`; the body is
+    normally `{"code": ..., "message": ...}`. GoTrue answers 500 when a trigger on
+    `auth.users` rejects the row (e.g. the email-domain allow-list), so without
+    unwrapping it the superadmin only ever sees a generic failure.
+    """
+    raw = str(exc)
+    m = re.match(r"Auth error (\d+): (.*)", raw, re.S)
+    if not m:
+        return HTTPException(status_code=500, detail=fallback)
+
+    status = int(m.group(1))
+    message = m.group(2)
+    try:
+        body = json.loads(message)
+        message = body.get("msg") or body.get("message") or body.get("error_description") or message
+    except (ValueError, AttributeError):
+        pass
+
+    low = message.lower()
+    if "already been registered" in low or "already exists" in low:
+        return HTTPException(status_code=409, detail="Este email ya está registrado")
+    if "not allowed" in low and "domain" in low:
+        # Check-constraint trigger on auth.users; a 500 here is a rejected input, not an outage.
+        return HTTPException(status_code=400, detail=message)
+    if status < 500:
+        return HTTPException(status_code=status, detail=message)
+    return HTTPException(status_code=500, detail=fallback)
 
 
 class UserCreate(BaseModel):
@@ -91,11 +125,10 @@ def create_user(payload: UserCreate):
             "email": res.user.email,
             "created_at": res.user.created_at if res.user.created_at else None,
         }
+    except HTTPException:
+        raise
     except Exception as e:
-        msg = str(e)
-        if "already been registered" in msg.lower() or "already exists" in msg.lower():
-            raise HTTPException(status_code=409, detail="Este email ya está registrado")
-        raise HTTPException(status_code=500, detail="Failed to create user")
+        raise _auth_error(e, "Failed to create user")
 
 
 @router.put("/{user_id}/password")
@@ -109,8 +142,8 @@ def update_user_password(user_id: str, payload: PasswordUpdate):
         return {"ok": True}
     except HTTPException:
         raise
-    except Exception:
-        raise HTTPException(status_code=500, detail="Failed to update password")
+    except Exception as e:
+        raise _auth_error(e, "Failed to update password")
 
 
 @router.delete("/{user_id}")
@@ -120,5 +153,5 @@ def delete_user(user_id: str):
         client = _get_admin_client()
         client.auth.admin.delete_user(user_id)
         return {"ok": True}
-    except Exception:
-        raise HTTPException(status_code=500, detail="Failed to delete user")
+    except Exception as e:
+        raise _auth_error(e, "Failed to delete user")
