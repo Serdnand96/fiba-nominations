@@ -6,14 +6,15 @@ import re
 
 from api._lib.database import supabase
 from api._lib.auth import require_superadmin
+# One module list for the whole backend: here it seeds the all-false rows on
+# user creation, there it builds the permission grid.
+from api._lib.routers.permissions import MODULES
 
 router = APIRouter(
     prefix="/users",
     tags=["users"],
     dependencies=[Depends(require_superadmin)],  # ALL endpoints superadmin-only
 )
-
-MODULES = ["calendar", "nominations", "personnel", "competitions", "templates", "users", "transport", "availability", "training"]
 
 
 def _get_admin_client():

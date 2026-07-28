@@ -146,6 +146,8 @@ export default function Users() {
   }
 
   function getModuleLabel(module) {
+    // The permission is called 'assets' but the nav module is "Inventory".
+    if (module === 'assets') return t('nav.inventory')
     return t(`nav.${module}`) || module
   }
 

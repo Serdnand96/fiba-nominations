@@ -6,10 +6,12 @@ from api._lib.auth import require_superadmin, _user_id, _is_superadmin_cached
 
 router = APIRouter(prefix="/permissions", tags=["permissions"])
 
-# Keep in sync with MODULES in src/pages/Users.jsx — a module missing here can
-# never be granted to a non-superadmin, because the permission grid is built
-# from what GET /permissions/{user_id} returns.
-MODULES = ["calendar", "nominations", "payments", "personnel", "competitions", "templates", "users", "transport", "availability", "training", "games", "assets", "loans", "employees", "reports", "evaluations"]
+# Keep in sync with MODULES in src/pages/Users.jsx AND with the CHECK on
+# user_permissions.module (migration 025). A module missing here can never be
+# granted to a non-superadmin, because the permission grid is built from what
+# GET /permissions/{user_id} returns; a module listed here but absent from the
+# CHECK fails the whole PUT against the constraint, mid-loop.
+MODULES = ["calendar", "nominations", "payments", "personnel", "competitions", "templates", "users", "logistics", "availability", "training", "games", "assets", "loans", "employees", "reports", "evaluations"]
 
 
 def is_superadmin(user_id: str) -> bool:
