@@ -95,7 +95,8 @@ grep -rn "@router\.\(post\|put\|patch\|delete\)" api/_lib/routers/  # ¿cada uno
 
 ## 6. Storage privado
 
-- Buckets `nominations` y `payments` son **privados**. Reglas:
+- Hay un único bucket **privado**: `nominations` (payments y reports guardan
+  bajo los prefijos `payments/…` / `reports/…` dentro de él). Reglas:
   - Nunca construir/devolver URLs públicas (`get_public_url`) para ellos.
   - Servir archivos solo por endpoints de descarga **autenticados** (blob+JWT).
   - Borrados que tocan storage van por la Storage API

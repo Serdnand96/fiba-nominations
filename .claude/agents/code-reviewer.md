@@ -40,9 +40,10 @@ Revisá calidad, seguridad y consistencia con las convenciones. Usá el skill
   es el credencial. Token inválido, inexistente o desactivado tienen que dar el
   **mismo 404**. Publica los datos completos (pasaporte incluido) por decisión
   del cliente; el único punto de recorte es `_redact()`.
-- **Storage privado.** Los buckets `nominations` y `payments` son privados:
-  ninguna URL pública, descargas solo por endpoint autenticado. Borrados que
-  tocan storage van por la Storage API, no por SQL directo.
+- **Storage privado.** Hay un único bucket privado, `nominations` (payments
+  y reports guardan bajo los prefijos `payments/…` / `reports/…` dentro de
+  él): ninguna URL pública, descargas solo por endpoint autenticado.
+  Borrados que tocan storage van por la Storage API, no por SQL directo.
 - **RLS.** Existe como defensa en profundidad en algunas tablas (migraciones
   006/007) pero NO es el control principal. No asumas que una tabla está
   protegida por RLS.

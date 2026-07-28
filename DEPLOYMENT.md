@@ -55,7 +55,7 @@ sleep 2
 sudo systemctl is-active fiba-api
 
 curl -fsS -o /dev/null -w "HTTPS %{http_code}\n" \
-  https://www.fibaamericascloud.com/
+  https://www.fibaapp.com/
 ```
 
 5. Si algún paso falla, GH Action falla → notificación
@@ -207,7 +207,8 @@ VITE_API_URL=/api
 # CORS
 CORS_ORIGINS=https://www.fibaapp.com,https://fibaapp.com
 
-# CloudConvert (NO se usa en prod, deshabilitado)
+# CloudConvert — solo lo usa el export del training schedule
+# (sin la key ese export sirve .docx; las cartas no la necesitan)
 # CLOUDCONVERT_API_KEY=
 ```
 
@@ -293,4 +294,7 @@ ssh fiba sudo systemctl is-active nginx
 - **Logs nginx:** `/var/log/nginx/{access,error}.log`
 - **Alertas de seguridad:** `/var/log/fiba-security-alerts.log`
   (poblado por cron `/etc/cron.d/fiba-security-scan` cada hora)
+- **Keepalive Supabase:** `/var/log/fiba-supabase-keepalive.log`
+  (cron diario `/etc/cron.d/fiba-supabase-keepalive` — evita el
+  auto-pause del plan Free)
 - **No hay alerting externo** (Sentry / Datadog) — pendiente

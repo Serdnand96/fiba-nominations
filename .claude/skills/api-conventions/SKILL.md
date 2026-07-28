@@ -114,9 +114,11 @@ módulos chicos como transport). En el endpoint:
 
 ## Storage
 
-- Buckets privados: `nominations`, `payments`. **Nunca** construyas ni devuelvas
-  URLs públicas (`get_public_url`) para ellos; serví los archivos por endpoints
-  de descarga autenticados (`FileResponse` / blob).
+- Bucket privado único: `nominations` (los adjuntos de payments y reports
+  viven ahí bajo los prefijos `payments/…` y `reports/…`; **no existe** un
+  bucket "payments"). **Nunca** construyas ni devuelvas URLs públicas
+  (`get_public_url`) para él; serví los archivos por endpoints de descarga
+  autenticados (`FileResponse` / blob).
 - Convención de paths: `storage://<bucket>/<key>`. En `nominations.py`,
   `_extract_storage_key()` normaliza 3 formatos
   (`storage://nominations/X`, `/storage/v1/object/public/nominations/X`,

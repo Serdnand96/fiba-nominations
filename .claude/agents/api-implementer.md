@@ -32,9 +32,11 @@ router existente parecido (`api/_lib/routers/`) y copiá su forma.
 - **Errores:** `raise HTTPException(status, detail)`. 404 cuando `.data` viene
   vacío, 400 sin campos para actualizar, 409 en duplicados, 413 en uploads
   grandes.
-- **Storage privado:** los buckets `nominations` y `payments` son privados.
-  Nunca devuelvas URLs públicas; serví vía endpoints de descarga autenticados.
-  Respetá la convención `storage://bucket/key` y su normalización.
+- **Storage privado:** hay un único bucket privado, `nominations`; los
+  adjuntos de payments y reports viven ahí bajo prefijos de key
+  (`payments/…`, `reports/…`). Nunca devuelvas URLs públicas; serví vía
+  endpoints de descarga autenticados. Respetá la convención
+  `storage://bucket/key` y su normalización.
 - **Módulo nuevo:** router en `api/_lib/routers/X.py`, importalo y montalo en
   `api/index.py`, y creá el permiso correspondiente en `user_permissions`.
 

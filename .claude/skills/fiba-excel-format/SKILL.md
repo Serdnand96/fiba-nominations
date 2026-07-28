@@ -1,17 +1,18 @@
 ---
 name: fiba-excel-format
-description: Mapeo de columnas y reglas de parsing/matching de los imports de planilla de fiba-nominations — el formato Excel multi-sport de FIBA del Training Schedule (training.py) y el import de roster de personnel (bulk_import.py). Usar para cualquier cambio de parsing/validación de Excel o CSV.
+description: Mapeo de columnas y reglas de parsing/matching de los imports de planilla de fiba-nominations — el formato Excel multi-sport de FIBA del Training Schedule (training.py), el import de roster de personnel (bulk_import.py) y los imports de logística, flight manifest y rooming list (logistics_import.py). Usar para cualquier cambio de parsing/validación de Excel o CSV.
 ---
 
 # Formatos de import — Excel/CSV (fiba-nominations)
 
-Hay **dos importers distintos**. No los confundas: viven en archivos separados,
+Hay **tres importers distintos**. No los confundas: viven en archivos separados,
 tienen formatos distintos y alimentan tablas distintas.
 
 | Import | Código | Endpoint | Tabla destino |
 |--------|--------|----------|---------------|
 | Training Schedule (multi-sport FIBA) | `api/_lib/routers/training.py::_parse_fiba_schedule` | `POST /api/training/import/excel` y `/import/preview` | `training_slots` |
 | Roster de personnel | `api/_lib/services/bulk_import.py::process_bulk_import` | `POST /api/personnel/import` | `personnel` |
+| Logística (flight manifest + rooming list) | `api/_lib/services/logistics_import.py` | `POST /api/logistics/import/{manifest,rooming}/{preview,commit}` | `logistics_participants`, `logistics_travel_legs`, `logistics_stays` |
 
 ---
 
@@ -89,7 +90,8 @@ filas con estado `current_date` + `in_partidos`.
 - Los índices de columna están **hardcodeados**; un off-by-one rompe el import
   en silencio (no tira error, simplemente no genera slots). Corré una planilla
   real de ejemplo antes/después de tocar índices.
-- Las horas de fin son fijas (90 min): si FIBA cambia la duración, es acá.
+- La hora de fin sale de la col E con fallback a inicio + 90 min: si FIBA
+  cambia la duración por defecto, es acá.
 - El parser es tolerante a errores por diseño: si `_parse_fiba_schedule` lanza,
   el endpoint devuelve 400 con un mensaje genérico (no filtra detalles del
   archivo).
@@ -127,3 +129,34 @@ Import genérico de oficiales. Detecta CSV vs XLSX por extensión.
   (1-indexed + header).
 
 Respuesta: `{ total, imported, skipped, errors: [{row, email, reason}] }`.
+
+---
+
+## 3) Logística — Flight Manifest y Rooming List (`logistics_import.py`)
+
+Importers del módulo Logística (`api/_lib/services/logistics_import.py`),
+expuestos en `api/_lib/routers/logistics.py`:
+
+- `POST /api/logistics/import/manifest/preview` → `read_manifest()`
+- `POST /api/logistics/import/manifest/commit` → `commit_manifest()`
+- `POST /api/logistics/import/rooming/preview` → `read_rooming()`
+- `POST /api/logistics/import/rooming/commit` → `commit_rooming()`
+
+Reglas de diseño (distintas de los otros dos importers):
+
+- **Dos pasos siempre**: el preview devuelve las filas clasificadas
+  (*vinculado* / *revisar* / *nuevo*) y el commit recién escribe. El
+  importador **nunca adivina**: un nombre dudoso se importa sin vincular y
+  se reporta como warning (las planillas reales traen typos —
+  `Guyo`/`Juyo`, `BUELVAS`/`Vuelvas` — y `Names`/`Last Name` invertidos en
+  varias filas).
+- **Matching difuso** contra `personnel` y `employees`
+  (`_similarity` / `_possible_duplicate`).
+- **Parseo tolerante** de fechas y horas (`parse_date` / `parse_time`).
+- Alimenta `logistics_participants` (padrón), `logistics_travel_legs`
+  (llegadas/salidas) y `logistics_stays` (hospedaje).
+- También exporta: `export_manifest_xlsx()` / `export_rooming_xlsx()`
+  (openpyxl directo, `GET /api/logistics/export/{manifest,rooming}.xlsx`).
+
+El mapeo fino de columnas vive en `logistics_import.py` — **leelo antes de
+tocar nada**; este resumen no reemplaza el código.

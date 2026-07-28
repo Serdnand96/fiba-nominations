@@ -125,8 +125,10 @@ Código: `api/_lib/services/schedule_workbook.py`, servido por
   Entrenamiento, divisor PARTIDOS ámbar, labels "DÍA DE PARTIDO ±N" /
   "DÍA DE DESCANSO" / sufijos de fase, columna COMENTARIOS alimentada con los
   `notes` de los slots).
-- **Escribe `.xlsx` directo con openpyxl** (único punto del backend que genera
-  Excel) y lo sirve como bytes — no pasa por LibreOffice ni CloudConvert.
+- **Escribe `.xlsx` directo con openpyxl** y lo sirve como bytes — no pasa
+  por LibreOffice ni CloudConvert. (No es el único Excel del backend:
+  Logística exporta manifest y rooming con openpyxl también —
+  `logistics_import.py::export_manifest_xlsx` / `export_rooming_xlsx`.)
   Importante: el `soffice` del droplet **no tiene el filtro de Calc**
   (solo convierte `.docx`), así que cualquier futuro xlsx→pdf requeriría
   instalar `libreoffice-calc`.

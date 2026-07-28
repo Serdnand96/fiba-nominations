@@ -171,10 +171,10 @@ import { Icon } from '@/lib/icons'
 ```
 
 Iconos disponibles: Dashboard, Trophy, Users, Calendar, Whistle, Truck,
-Shield, Palette, Plus, Search, Filter, Download, Upload, Doc, Edit,
-Trash, More, Check, X, Chevron, ChevronDown, ArrowUp/Down/Right, Alert,
-Info, Bell, Clock, Globe, Mail, Pin, Plane, Moon, Sun, Cog, Logout, Eye, Lock,
-History.
+Shield, Plus, Search, Download, Upload, Doc, Check, X, Chevron,
+ChevronDown, ArrowUp, ArrowDown, Alert, Info, Bell, Clock, Globe, Pin,
+Pushpin, PushpinFilled, Plane, Moon, Sun, Cog, Logout, Eye, History,
+Report, Star, StarFilled.
 
 Si necesitás otro: agregalo a `lib/icons.jsx` con la sintaxis
 `I(<><path d="…"/></>)` o instalá `@tabler/icons-react`.
@@ -186,13 +186,15 @@ Si necesitás otro: agregalo a `lib/icons.jsx` con la sintaxis
 Definido en `src/App.jsx` (`moduleIcon`):
 
 ```
-calendar     → Icon.Calendar       logistics    → Icon.Truck
-nominations  → Icon.Trophy         training     → Icon.Whistle
-personnel    → Icon.Users          games        → Icon.Globe
-competitions → Icon.Trophy         assets       → Icon.Dashboard
-templates    → Icon.Doc            loans        → Icon.Upload
-users        → Icon.Shield         scan         → Icon.Pin
-availability → Icon.Clock          employees    → Icon.Users
+calendar     → Icon.Calendar       training     → Icon.Whistle
+nominations  → Icon.Trophy         games        → Icon.Globe
+payments     → Icon.Doc            assets       → Icon.Dashboard
+personnel    → Icon.Users          loans        → Icon.Upload
+competitions → Icon.Trophy         scan         → Icon.Pin
+templates    → Icon.Doc            employees    → Icon.Users
+users        → Icon.Shield         reports      → Icon.Report
+availability → Icon.Clock          evaluations  → Icon.Star
+logistics    → Icon.Truck          activity     → Icon.History
 ```
 
 ---
@@ -215,19 +217,19 @@ etc.) cubrió 146 ocurrencias en `src/pages/*.jsx`. Lo que queda:
 3. **Cuando todas las páginas estén migradas:** flipear el default a
    light mode (ver "Modo oscuro" arriba).
 
-### Orden sugerido (por cantidad de markup dark-only)
+### Orden sugerido (por cantidad de markup dark-only, re-contado 2026-07-28)
 
 ```
-1. Training.jsx       (61 ocurrencias)
-2. Calendar.jsx       (53)
-3. Transport.jsx      (49)
-4. Personnel.jsx      (46)
-5. Nominations.jsx    (34)
-6. Games.jsx          (34)
-7. AssetDetail.jsx    (26)
-8. Availability.jsx   (23)
-9. Users.jsx          (20)
-10. resto (≤14 c/u)
+1. Availability.jsx        (57 ocurrencias)
+2. PublicAvailability.jsx  (48)
+3. PublicLogistics.jsx     (47)
+4. Games.jsx               (34)
+5. Nominations.jsx         (21)
+6. Training.jsx            (18)
+7. Calendar.jsx            (17)
+8. Evaluations.jsx         (11)
+9. Personnel.jsx           (10)
+10. resto (≤9 c/u)
 ```
 
 ---

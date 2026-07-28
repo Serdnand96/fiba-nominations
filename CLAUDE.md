@@ -115,6 +115,8 @@ fiba-nominations/
 ├── DEVELOPMENT.md             ← correr local
 ├── DESIGN_SYSTEM.md           ← tokens / componentes UI
 ├── SECURITY_RUNBOOK.md        ← acciones manuales pendientes (Supabase, DNS)
+├── PAYMENTS_MODULE.md         ← análisis del legacy vbills (histórico; la
+│                                 implementación final difiere — ver nota adentro)
 ├── .claude/                   ← subagentes + skills para sesiones de IA (ver abajo)
 │
 ├── api/                       ← FastAPI backend
@@ -139,7 +141,9 @@ fiba-nominations/
 │
 ├── public/favicon.png         ← monograma F + basketball seam
 ├── scripts/
-│   └── fiba-security-scan.sh  ← scanner horario de nginx logs (corre en droplet)
+│   ├── build_letter_templates.py  ← regenera los *_TPL.docx (correr si cambia el membrete)
+│   ├── fiba-security-scan.sh      ← scanner horario de nginx logs (corre en droplet)
+│   └── fiba-supabase-keepalive.sh ← ping diario a Supabase (evita el auto-pause del Free)
 ├── supabase/migrations/       ← schema SQL
 ├── verify_security.sh         ← smoke test post-deploy
 ├── .github/workflows/deploy.yml  ← CI/CD

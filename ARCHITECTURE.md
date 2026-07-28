@@ -82,8 +82,9 @@ separan `react-vendor`, `supabase`, `qrcode-scan`, `http`.
 ### i18n
 
 - `src/i18n/LanguageContext.jsx` — almacena `lang` (`es` | `en`) en
-  localStorage
-- `t(key)` para traducir; tablas en `src/i18n/es.js` y `en.js`
+  localStorage (`fiba-lang`)
+- `t(key)` para traducir; una sola tabla en `src/i18n/translations.js`
+  con `{ en, es }` por key
 
 ### API client
 
@@ -114,7 +115,7 @@ Tokens, componentes y migración cubiertos en
 - Bypasses del auth middleware:
   - `OPTIONS` (CORS preflight)
   - `/api` y `""` (health checks)
-  - `/api/public/*` (QR scan landing)
+  - `/api/public/*` (QR scan, disponibilidad autoservicio, logística pública)
 - **NO bypass para `/download` ni `/export/pdf`** — eso era el bug N1
   del pen-test, ya cerrado
 
@@ -123,13 +124,14 @@ Tokens, componentes y migración cubiertos en
 Uno por módulo:
 
 ```
-assets.py          competitions.py    games.py
-availability.py    employees.py       loans.py
-calendar.py        nominations.py     payments.py
-permissions.py     personnel.py       public_assets.py
-templates.py       training.py        transport.py
-logistics.py       public_logistics.py
-users.py
+activity.py        games.py           public_assets.py
+assets.py          loans.py           public_availability.py
+availability.py    logistics.py       public_logistics.py
+calendar.py        nominations.py     reports.py
+competitions.py    payments.py        templates.py
+employees.py       permissions.py     training.py
+evaluations.py     personnel.py       transport.py
+                                      users.py
 ```
 
 Cada router declara permisos vía dependencies:
@@ -150,7 +152,7 @@ def delete_user(...): ...
 - `require_view(module)` — el user del JWT tiene `can_view=true`
   en `user_permissions` para ese módulo, o es superadmin
 - `require_edit(module)` — análogo con `can_edit=true`
-- `require_superadmin` — solo si está marcado en `user_permissions`
+- `require_superadmin` — solo si `user_profiles.is_superadmin`
 - Caché de superadmin status en `request.state._is_superadmin` para
   evitar hits repetidos a la DB dentro de la misma request
 
@@ -163,12 +165,15 @@ agregaba dependencias innecesarias. Service-role key en
 
 ### PDF generation (`api/_lib/services/document_generator.py`)
 
-- Render del `.docx` con `python-docx` usando templates en `templates/`
+- Render del `.docx` con `docxtpl` (placeholders Jinja2) usando templates
+  en `templates/`
 - Conversión a PDF con LibreOffice headless (`soffice --convert-to pdf`)
 - Profile dir único por request (`-env:UserInstallation=file://<tmpdir>`)
   para evitar locks
-- CloudConvert quedó como fallback pero no se usa (env var
-  `CLOUDCONVERT_API_KEY` deshabilitada)
+- CloudConvert quedó como fallback deshabilitado **para las cartas**.
+  Ojo: el export del training schedule (`api/_lib/routers/training.py`)
+  es un camino aparte — arma el `.docx` con `python-docx` y convierte a
+  PDF solo vía CloudConvert (sin `CLOUDCONVERT_API_KEY`, sirve el `.docx`)
 
 ### Storage paths
 
@@ -200,7 +205,11 @@ Proyecto: `mckaplalscnvaanukrmz`. Schema inicial en
 | `games`            | Partidos del calendario                       |
 | `assets`           | Inventario (Macs, monitors, cámaras…)         |
 | `loans`            | Préstamos de assets a employees               |
-| `user_permissions` | `(user_id, module, can_view, can_edit, is_superadmin)` |
+| `payments` + `payment_*` | Pagos (1:1 con `nominations`), budgets, adjuntos |
+| `competition_reports` / `staff_evaluations` | Reportes de competencia y evaluaciones |
+| `activity_log`     | Auditoría de acciones (vista Activity, superadmin) |
+| `user_permissions` | `(user_id, module, can_view, can_edit)`       |
+| `user_profiles`    | Flag `is_superadmin`                          |
 
 ### RLS
 
@@ -244,5 +253,7 @@ Resumen — detalles en `SECURITY_RUNBOOK.md`.
 | Supabase       | DB + Auth + Storage                                   |
 | FIBA GDAP API  | Sync de partidos y resultados (desde `games.py`)      |
 | Let's Encrypt  | TLS para fibaapp.com + fibaamericascloud.com (4 SAN)  |
+| CloudConvert   | **Solo** el export del training schedule (`training.py`) |
 
-CloudConvert **NO** se usa en prod (reemplazado por LibreOffice local).
+Las cartas de nominación **no** usan CloudConvert (LibreOffice local);
+el único uso vivo es el export del training schedule.

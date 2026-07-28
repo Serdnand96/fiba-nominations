@@ -6,6 +6,15 @@
 >
 > Relevado: 21/07/2026, con sesión autenticada del usuario.
 
+> ⚠️ **Doc histórico — la implementación final difiere.** El módulo se
+> construyó con un modelo más simple que el propuesto acá: cada pago está
+> anclado **1:1 a una nominación** (`payments.nomination_id`, migraciones
+> `012_payments.sql` + `013_payments_airfare.sql`), el catálogo de budgets
+> es la tabla `payment_budgets`, y **no existen** ni la tabla `payees` ni
+> `competitions.kind`. El estado real vive en
+> `api/_lib/routers/payments.py` y `src/pages/Payments.jsx`; este archivo
+> queda como registro del relevamiento del legacy.
+
 ---
 
 ## 1. Qué es el sistema actual

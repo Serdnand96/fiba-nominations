@@ -141,10 +141,11 @@ FastAPI local sin CORS.
    <modulo>: Icon.<Algo>,
    ```
 
-6. **Traducciones** en `src/i18n/es.js` y `src/i18n/en.js`:
+6. **Traducciones** en `src/i18n/translations.js` (una sola tabla con
+   ambos idiomas por key):
 
    ```js
-   nav: { modulo: 'Mi Módulo' }
+   nav: { modulo: { en: 'My Module', es: 'Mi Módulo' } }
    ```
 
 7. **Permission** — insertar fila en `user_permissions` para los users
@@ -197,7 +198,7 @@ Si vas a agregar tests:
 - React DevTools (extensión Chrome)
 - Network tab para ver JWT en headers + responses
 - `localStorage.fiba_dark` para forzar light/dark mode
-- `localStorage.fiba_lang` para forzar idioma
+- `localStorage['fiba-lang']` para forzar idioma
 
 ### Backend
 

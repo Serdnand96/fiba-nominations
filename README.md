@@ -18,6 +18,7 @@ Sistema admin de FIBA Americas para gestión de nominaciones de oficiales
 | [`DEVELOPMENT.md`](DEVELOPMENT.md)     | Correr el stack local.                                        |
 | [`DESIGN_SYSTEM.md`](DESIGN_SYSTEM.md) | Tokens, componentes UI, modo oscuro, migración pendiente.     |
 | [`SECURITY_RUNBOOK.md`](SECURITY_RUNBOOK.md) | Acciones manuales pendientes del último pen-test.         |
+| [`PAYMENTS_MODULE.md`](PAYMENTS_MODULE.md) | Análisis del legacy vbills (histórico — la implementación final difiere). |
 
 ---
 
@@ -26,7 +27,8 @@ Sistema admin de FIBA Americas para gestión de nominaciones de oficiales
 - **Frontend:** React 18 + Vite + Tailwind 3 + IBM Plex
 - **Backend:** FastAPI (Python 3.11) + gunicorn + uvicorn workers
 - **DB / Auth / Storage:** Supabase (PostgreSQL + RLS, Auth, Storage)
-- **PDF generation:** python-docx → LibreOffice headless local
+- **PDF generation:** docxtpl → LibreOffice headless local (cartas);
+  el export de training schedule usa python-docx + CloudConvert
 - **Hosting:** DigitalOcean droplet ($16 plan, 2GB / 1vCPU)
 - **CI/CD:** GitHub Actions → SSH deploy
 - **TLS:** Let's Encrypt (4 dominios)
@@ -59,7 +61,9 @@ fiba-nominations/
 │
 ├── public/                   # estáticos (favicon, logos)
 ├── scripts/
-│   └── fiba-security-scan.sh # scanner horario de logs (corre en droplet)
+│   ├── build_letter_templates.py   # regenera los *_TPL.docx de las cartas
+│   ├── fiba-security-scan.sh       # scanner horario de logs (corre en droplet)
+│   └── fiba-supabase-keepalive.sh  # ping diario a Supabase (anti auto-pause)
 ├── supabase/migrations/      # schema SQL
 ├── templates/                # .docx templates
 ├── verify_security.sh        # smoke test post-deploy
@@ -119,6 +123,10 @@ inicial.
 | Loans          | `/loans`        | `loans`               |
 | Scan           | `/scan`         | (QR landing)          |
 | Employees      | `/employees`    | `employees` (staff interno) |
+| Payments       | `/payments`     | `payments` (1:1 con `nominations`) |
+| Reports        | `/reports`      | `competition_reports`  |
+| Evaluations    | `/evaluations`  | `staff_evaluations`    |
+| Activity       | `/activity`     | `activity_log` (solo superadmin) |
 
 ---
 
@@ -145,15 +153,19 @@ inicial.
 | País / Country    | No       | Free text                        |
 | Teléfono / Phone  | No       | Free text                        |
 | Pasaporte / Passport | No    | Free text                        |
-| Rol / Role        | Yes      | `VGO` / `TD`                     |
+| Rol / Role        | Yes      | `VGO` / `TD` / `REF` / `REF_INSTRUCTOR` / `VIDEO_OPERATOR` |
 
 ---
 
-## Estado actual (mayo 2026)
+## Estado actual (julio 2026)
 
 - ✅ Migración a DigitalOcean droplet completada
-- ✅ Reemplazado CloudConvert por LibreOffice local
-- ✅ Pen-test 3 rondas — H1-H9 + N1, N2, N3 cerrados
+- ✅ Cartas de nominación con LibreOffice local (CloudConvert queda solo
+  para el export de training schedule)
+- ✅ Pen-test 3 rondas — H1-H9 + N1, N2, N3 cerrados — y pasada de
+  hardening extra en julio 2026
 - ✅ Design system completo (navy + basketball orange + IBM Plex)
 - ✅ Scanner horario de alertas en `/var/log/fiba-security-alerts.log`
+- ✅ Módulos nuevos: Payments, Reports, Evaluations y Logística
+  (ex Transporte, con vista pública por token)
 - ⏳ Manuales pendientes: ver [`SECURITY_RUNBOOK.md`](SECURITY_RUNBOOK.md)
