@@ -156,6 +156,7 @@ export const deleteTransportDriver = (id) => api.delete(`/transport/drivers/${id
 export const getTransportVehicleDrivers = (eventId, date) => api.get('/transport/vehicle-drivers', { params: { event_id: eventId, date } }).then(r => r.data)
 export const assignTransportDriver = (data) => api.post('/transport/vehicle-drivers', data).then(r => r.data)
 export const getTransportTrips = (eventId, date) => api.get('/transport/trips', { params: { event_id: eventId, date } }).then(r => r.data)
+export const getTransportTripDates = (eventId) => api.get('/transport/trip-dates', { params: { event_id: eventId } }).then(r => r.data)
 export const createTransportTrip = (data) => api.post('/transport/trips', data).then(r => r.data)
 export const updateTransportTrip = (id, data) => api.put(`/transport/trips/${id}`, data).then(r => r.data)
 export const deleteTransportTrip = (id) => api.delete(`/transport/trips/${id}`).then(r => r.data)

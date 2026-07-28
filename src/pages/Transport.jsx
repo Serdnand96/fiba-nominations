@@ -5,7 +5,7 @@ import CompetitionSearch from '../components/CompetitionSearch'
 import { readLastSearch, writeLastSearch } from '../lib/lastSearch'
 import {
   getTransportEvents, getTransportVehicles, getTransportDrivers,
-  getTransportTrips, createTransportTrip, updateTransportTrip, deleteTransportTrip,
+  getTransportTrips, getTransportTripDates, createTransportTrip, updateTransportTrip, deleteTransportTrip,
   createTransportVehicle, updateTransportVehicle, deleteTransportVehicle,
   createTransportDriver, updateTransportDriver, deleteTransportDriver,
   assignTransportDriver, getTransportConflicts,
@@ -84,6 +84,11 @@ export default function Transport() {
   const [conflicts, setConflicts] = useState([])
   const [venues, setVenues] = useState([])
   const [passengers, setPassengers] = useState([])
+  // Fechas que tienen viajes. La competencia suele arrancar con un día de
+  // llegadas sin traslados, así que abrir en start_date muestra un día vacío
+  // y parece que no hay nada cargado.
+  const [tripDates, setTripDates] = useState([])
+  const autoJumpRef = useRef(false)
 
   // Modals
   const [showTripModal, setShowTripModal] = useState(false)
@@ -163,9 +168,10 @@ export default function Transport() {
   }, [competitionId, competitions])
 
   useEffect(() => {
+    autoJumpRef.current = false
     if (!eventId) {
       setVehicles([]); setDrivers([]); setVenues([]); setPassengers([])
-      setTripData(EMPTY_TRIPS); setConflicts([])
+      setTripData(EMPTY_TRIPS); setConflicts([]); setTripDates([])
       return
     }
     loadAll()
@@ -173,14 +179,24 @@ export default function Transport() {
 
   useEffect(() => { if (eventId && date) loadTrips() }, [date, eventId])
 
+  // Si la fecha en la que abrimos no tiene viajes, saltar a la primera que sí
+  // tenga. Una sola vez por evento, para no pelearle al usuario si después
+  // navega a propósito a un día vacío.
+  useEffect(() => {
+    if (!tripDates.length || autoJumpRef.current) return
+    autoJumpRef.current = true
+    if (!tripDates.some(d => d.date === date)) setDate(tripDates[0].date)
+  }, [tripDates])
+
   async function loadAll() {
     if (!eventId) return
     try {
-      const [v, d, ven, pass] = await Promise.all([
+      const [v, d, ven, pass, dates] = await Promise.all([
         getTransportVehicles(eventId), getTransportDrivers(eventId),
         getTransportVenues(eventId), getTransportPassengers(eventId),
+        getTransportTripDates(eventId),
       ])
-      setVehicles(v); setDrivers(d); setVenues(ven); setPassengers(pass)
+      setVehicles(v); setDrivers(d); setVenues(ven); setPassengers(pass); setTripDates(dates)
       if (date) await loadTrips()
     } catch (err) { console.error('Load error:', err) }
   }
@@ -193,6 +209,12 @@ export default function Transport() {
       const c = await getTransportConflicts(eventId, date)
       setConflicts(c)
     } catch (err) { console.error('Trip load error:', err) }
+  }
+
+  // Tras crear/borrar viajes el set de fechas con viajes puede cambiar.
+  async function refreshTripDates() {
+    if (!eventId) return
+    try { setTripDates(await getTransportTripDates(eventId)) } catch { /* no-op */ }
   }
 
   const minDate = selectedComp?.start_date || ''
@@ -263,7 +285,7 @@ export default function Transport() {
     try {
       if (editingTrip) { const { vehicle_id, ...updates } = payload; await updateTransportTrip(editingTrip.id, updates) }
       else { await createTransportTrip(payload) }
-      setShowTripModal(false); await loadTrips()
+      setShowTripModal(false); await loadTrips(); await refreshTripDates()
     } catch (err) { alert(err.response?.data?.detail || 'Error') }
   }
 
@@ -285,7 +307,7 @@ export default function Transport() {
 
   async function handleDeleteTrip(trip) {
     if (!confirm(lang === 'es' ? '¿Eliminar este viaje?' : 'Delete this trip?')) return
-    await deleteTransportTrip(trip.id); await loadTrips()
+    await deleteTransportTrip(trip.id); await loadTrips(); await refreshTripDates()
   }
 
   async function handleAssignDriver(vehicleId, driverId) {
@@ -471,6 +493,25 @@ export default function Transport() {
                   </span>
                 )}
               </div>
+
+              {/* Jornadas con viajes: sin esto, caer en un día vacío se lee
+                  como "no hay nada cargado". */}
+              {tripDates.length > 0 && (
+                <div className="flex flex-wrap items-center gap-2 mb-6">
+                  <span className="text-xs text-fiba-muted">{lang === 'es' ? 'Jornadas con viajes:' : 'Days with trips:'}</span>
+                  {tripDates.map(d => (
+                    <button key={d.date} onClick={() => setDate(d.date)}
+                      className={`px-2.5 py-1 rounded-full text-xs font-medium border transition-colors ${
+                        d.date === date
+                          ? 'bg-fiba-accent text-white border-fiba-accent'
+                          : 'border-fiba-border text-fiba-muted hover:text-ink-700 dark:hover:text-gray-200'
+                      }`}>
+                      {new Date(d.date + 'T12:00:00').toLocaleDateString(lang === 'es' ? 'es' : 'en-US', { day: 'numeric', month: 'short' })}
+                      <span className="opacity-60 ml-1">({d.count})</span>
+                    </button>
+                  ))}
+                </div>
+              )}
 
               {conflicts.length > 0 && (
                 <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-4 mb-2">

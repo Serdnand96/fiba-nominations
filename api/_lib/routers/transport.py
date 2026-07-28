@@ -259,6 +259,26 @@ def list_trips(event_id: str = Query(...), date: Optional[str] = Query(None)):
 
     return {"vehicles": vehicles, "trips": trips, "vehicle_drivers": vd, "games": games}
 
+@router.get("/trip-dates")
+def list_trip_dates(event_id: str = Query(...)):
+    """Dates that actually have trips, so the UI can land on one of them.
+
+    Without this the page opens on the competition's start_date, which is
+    often a travel/arrival day with no trips yet — it reads as "nothing was
+    loaded" even when the whole schedule is there.
+    """
+    vehicles = supabase.table("transport_vehicles").select("id").eq("event_id", event_id).execute().data
+    if not vehicles:
+        return []
+    vids = {v["id"] for v in vehicles}
+    trips = supabase.table("transport_trips").select("date,vehicle_id").order("date").execute().data
+    counts = {}
+    for t in trips:
+        if t["vehicle_id"] in vids:
+            counts[t["date"]] = counts.get(t["date"], 0) + 1
+    return [{"date": d, "count": c} for d, c in sorted(counts.items())]
+
+
 @router.post("/trips", dependencies=[Depends(require_edit("transport"))])
 def create_trip(data: TripCreate):
     if data.trip_type not in TRIP_TYPES:
