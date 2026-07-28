@@ -21,6 +21,7 @@ export default function Personnel() {
   const canEdit = hasEdit('personnel')
   const canEditAvail = hasEdit('availability')
   const [people, setPeople] = useState([])
+  const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [roleFilter, setRoleFilter] = useState('')
   const [sort, setSort] = useState({ key: null, dir: 'asc' })
@@ -240,7 +241,9 @@ export default function Personnel() {
               </tr>
             ))}
             {filtered.length === 0 && (
-              <tr><td colSpan={6} className="px-4 py-8 text-center text-fiba-muted/60">{t('personnel.noPersonnel')}</td></tr>
+              <tr><td colSpan={6} className="px-4 py-8 text-center text-fiba-muted/60">
+                {loading ? t('common.loading') : t('personnel.noPersonnel')}
+              </td></tr>
             )}
           </tbody>
         </table>
