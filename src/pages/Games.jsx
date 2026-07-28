@@ -380,7 +380,11 @@ export default function Games() {
     return findRefereeGameConflict(person, game, games, isNationalTeam)
   }
 
-  async function handleAssign(gameId, person, role) {
+  // `replacing` is the row the picker was opened from, when the slot was
+  // already filled. Per-game competitions update that row in place server
+  // side; on a tournament the API only dedupes the same person (a slot may
+  // legitimately hold two), so swapping a name has to drop the old row here.
+  async function handleAssign(gameId, person, role, replacing = null) {
     // Referee neutrality: hard block with pop-up before touching the API
     if (REF_SLOT_SET.has(role)) {
       const game = games.find(g => g.id === gameId)
@@ -392,6 +396,9 @@ export default function Games() {
     }
     try {
       await setGameAssignment(gameId, person.id, role)
+      if (isTournament && replacing && replacing.personnel_id !== person.id) {
+        await deleteGameAssignment(replacing.id)
+      }
       await reloadAssignments()
     } catch (err) {
       const detail = err.response?.data?.detail
@@ -638,6 +645,19 @@ export default function Games() {
     for (const a of assignments) {
       if (!map[a.game_id]) map[a.game_id] = {}
       map[a.game_id][a.personnel_id] = a
+    }
+    return map
+  }, [assignments])
+
+  // game_id → slot → rows. Same data as `assignmentsByGame`, but as a list:
+  // on a tournament the same slot can hold more than one person, so the card
+  // grid needs every row instead of the last one that overwrote the key.
+  const assignmentsBySlot = useMemo(() => {
+    const map = {}
+    for (const a of assignments) {
+      if (!map[a.game_id]) map[a.game_id] = {}
+      if (!map[a.game_id][a.role]) map[a.game_id][a.role] = []
+      map[a.game_id][a.role].push(a)
     }
     return map
   }, [assignments])
@@ -1185,6 +1205,7 @@ export default function Games() {
                       supportsRefSlots={supportsRefSlots}
                       templateKey={(selectedComp?.template_key || '').toUpperCase()}
                       assignment={assignmentsByGame[game.id] || {}}
+                      assignmentsBySlot={assignmentsBySlot[game.id] || {}}
                       isTournament={isTournament}
                       crew={crew}
                       crewOverrides={crewOverridesByGame[game.id] || {}}
@@ -1521,6 +1542,7 @@ function DateMultiFilter({ dates, selected, onChange, formatDate, t }) {
 function GameCard({
   game, canEdit, onEdit, onDelete, t,
   supportsAssignments = false, supportsRefSlots = false, templateKey = '', assignment = {},
+  assignmentsBySlot = {},
   isTournament = false, crew = [], crewOverrides = {}, onToggleCrewGame,
   onAssign, onUnassign, refConflictFor, flightByPersonnel = {}, onToggleFlight,
 }) {
@@ -1536,6 +1558,14 @@ function GameCard({
   // Tournament: the crew covers every game, so the counter tracks how many of
   // them were confirmed at the table for this one.
   const confirmedCrew = crew.filter(m => crewOverrides[m.personnel_id]).length
+  // Slot grid shown on every assignment-capable competition — on a tournament
+  // it is the per-game view of the crew (who took which position).
+  const slots = [
+    'TD', 'VGO',
+    ...(supportsRefSlots ? [...REF_SLOTS, ...CREW_SLOTS] : []),
+    // Optional extra official — only offered to editors while empty
+    ...((assignmentsBySlot[EXTRA_SLOT]?.length || canEdit) ? [EXTRA_SLOT] : []),
+  ]
 
   return (
     <div className={`bg-fiba-card rounded-lg border p-3 flex flex-col hover:shadow-sm transition-shadow ${
@@ -1655,36 +1685,28 @@ function GameCard({
         </div>
       )}
 
-      {supportsAssignments && !isTournament && (
+      {/* Per-game roles. On a tournament this is the breakdown of the crew
+          chips above: which position each person took on this game. */}
+      {supportsAssignments && (
         <div className="border-t border-fiba-border mt-2 pt-2 flex flex-col gap-1.5">
-          <AssignmentSlot role="TD" game={game} t={t} canEdit={canEdit}
-            assignment={assignment.TD}
-            onAssign={onAssign} onUnassign={onUnassign}
-            flightByPersonnel={flightByPersonnel} onToggleFlight={onToggleFlight} />
-          <AssignmentSlot role="VGO" game={game} t={t} canEdit={canEdit}
-            assignment={assignment.VGO}
-            onAssign={onAssign} onUnassign={onUnassign}
-            flightByPersonnel={flightByPersonnel} onToggleFlight={onToggleFlight} />
-          {supportsRefSlots && REF_SLOTS.map(slot => (
-            <AssignmentSlot key={slot} role={slot} game={game} t={t} canEdit={canEdit}
-              assignment={assignment[slot]}
-              onAssign={onAssign} onUnassign={onUnassign}
-              refConflictFor={refConflictFor}
-              flightByPersonnel={flightByPersonnel} onToggleFlight={onToggleFlight} />
-          ))}
-          {supportsRefSlots && CREW_SLOTS.map(slot => (
-            <AssignmentSlot key={slot} role={slot} game={game} t={t} canEdit={canEdit}
-              assignment={assignment[slot]}
-              onAssign={onAssign} onUnassign={onUnassign}
-              flightByPersonnel={flightByPersonnel} onToggleFlight={onToggleFlight} />
-          ))}
-          {/* Optional extra official — only rendered for editors while empty */}
-          {(assignment[EXTRA_SLOT] || canEdit) && (
-            <AssignmentSlot role={EXTRA_SLOT} game={game} t={t} canEdit={canEdit}
-              assignment={assignment[EXTRA_SLOT]}
-              onAssign={onAssign} onUnassign={onUnassign}
-              flightByPersonnel={flightByPersonnel} onToggleFlight={onToggleFlight} />
+          {isTournament && (
+            <span className="text-[10px] font-bold uppercase tracking-wider text-fiba-muted/70">
+              {t('games.perGameRoles')}
+            </span>
           )}
+          {slots.flatMap(slot => {
+            const rows = assignmentsBySlot[slot] || []
+            // Empty slot → a single row with the picker. A tournament slot can
+            // hold several people; the extra rows drop the label so the name
+            // column stays aligned.
+            return (rows.length ? rows : [null]).map((a, i) => (
+              <AssignmentSlot key={a ? a.id : slot} role={slot} game={game} t={t} canEdit={canEdit}
+                assignment={a} showLabel={i === 0}
+                onAssign={onAssign} onUnassign={onUnassign}
+                refConflictFor={REF_SLOT_SET.has(slot) ? refConflictFor : undefined}
+                flightByPersonnel={flightByPersonnel} onToggleFlight={onToggleFlight} />
+            ))
+          })}
         </div>
       )}
     </div>
@@ -1703,7 +1725,7 @@ const SLOT_PERSONNEL_ROLE = {
   EXTRA: 'TD/VGO', // display only — the EXTRA picker fetches both roles
 }
 
-function AssignmentSlot({ role, game, assignment, canEdit, onAssign, onUnassign, refConflictFor, t, flightByPersonnel = {}, onToggleFlight }) {
+function AssignmentSlot({ role, game, assignment, canEdit, onAssign, onUnassign, refConflictFor, t, flightByPersonnel = {}, onToggleFlight, showLabel = true }) {
   const [open, setOpen] = useState(false)
   const [search, setSearch] = useState('')
   const [coords, setCoords] = useState(null)
@@ -1784,7 +1806,9 @@ function AssignmentSlot({ role, game, assignment, canEdit, onAssign, onUnassign,
   return (
     <div className="flex-1 min-w-0" ref={triggerRef}>
       <div className="flex items-center gap-2">
-        <span className="text-[10px] font-bold uppercase tracking-wider text-fiba-muted w-10">{role}</span>
+        <span className="text-[10px] font-bold uppercase tracking-wider text-fiba-muted w-10">
+          {showLabel ? role : ''}
+        </span>
         {name ? (
           <div className="flex-1 flex items-center gap-1.5 min-w-0">
             <button
@@ -1865,7 +1889,7 @@ function AssignmentSlot({ role, game, assignment, canEdit, onAssign, onUnassign,
                     key={p.id}
                     type="button"
                     onClick={() => {
-                      onAssign(game.id, p, role)
+                      onAssign(game.id, p, role, assignment || null)
                       setOpen(false)
                       setSearch('')
                     }}

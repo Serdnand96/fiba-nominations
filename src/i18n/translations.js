@@ -1010,6 +1010,7 @@ const translations = {
       es: 'Este partido ya tiene ocupados los tres cargos de árbitro.',
     },
     crewCoversGame: { en: 'Crew covering this game', es: 'Crew que cubre este partido' },
+    perGameRoles: { en: 'Roles on this game', es: 'Cargos en este partido' },
     crewCoversHint: {
       en: 'Covered by the tournament crew — click to confirm they worked this game',
       es: 'Cubierto por el crew del torneo — clic para confirmar que trabajó este partido',
