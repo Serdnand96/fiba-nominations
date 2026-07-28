@@ -26,13 +26,15 @@ const CREW_SLOTS = ['INSTR', 'VO']
 // Optional extra official (TD or VGO) for venues with an additional table
 // official. Not part of the standard crew, so it doesn't count toward N/7.
 const EXTRA_SLOT = 'EXTRA'
-const STANDARD_SLOTS = ['TD', 'VGO', ...REF_SLOTS, ...CREW_SLOTS]
 // Personnel roles offered by the per-role sync menu (labels via rolesShort.*)
 const SYNC_ROLES = ['TD', 'VGO', 'REF', 'REF_INSTRUCTOR', 'VIDEO_OPERATOR']
-// Personnel role → per-game slot used when confirming a tournament crew member
-// on a single game. Referees take the first free crew slot (CC → U1 → U2).
-const SLOT_FOR_PERSONNEL_ROLE = {
-  TD: 'TD', VGO: 'VGO', REF_INSTRUCTOR: 'INSTR', VIDEO_OPERATOR: 'VO',
+// Assignment slot → personnel role to list in the picker. The referee crew
+// slots (CC/U1/U2) all draw from REF personnel.
+const SLOT_PERSONNEL_ROLE = {
+  TD: 'TD', VGO: 'VGO',
+  CC: 'REF', U1: 'REF', U2: 'REF',
+  INSTR: 'REF_INSTRUCTOR', VO: 'VIDEO_OPERATOR',
+  EXTRA: 'TD/VGO', // display only — the EXTRA picker fetches both roles
 }
 // Compact, language-neutral role codes for the crew chips (same vocabulary as
 // the per-game slot labels).
@@ -351,29 +353,6 @@ export default function Games() {
     }
   }
 
-  // Confirm/undo a crew member on one game. The crew already covers every
-  // game, so this only records who was actually at the table.
-  async function handleToggleCrewGame(game, member, current) {
-    if (current) {
-      await handleUnassign(current.id)
-      return
-    }
-    const person = member.personnel || {}
-    const role = (person.role || '').toUpperCase()
-    let slot = SLOT_FOR_PERSONNEL_ROLE[role]
-    if (role === 'REF') {
-      const taken = new Set(
-        assignments.filter(a => a.game_id === game.id).map(a => a.role))
-      slot = REF_SLOTS.find(s => !taken.has(s))
-      if (!slot) {
-        alert(t('games.crewRefSlotsFull'))
-        return
-      }
-    }
-    if (!slot) return
-    await handleAssign(game.id, person, slot)
-  }
-
   // Conflict check used both before assigning (pop-up) and to mark
   // non-eligible referees inside the picker dropdown.
   function refConflictFor(game, person) {
@@ -628,30 +607,23 @@ export default function Games() {
   // Stats
   const completedCount = games.filter(g => g.status === 'completed').length
 
-  // Build lookup: game_id → { TD: assignment, VGO: assignment }
-  const assignmentsByGame = useMemo(() => {
+  // Tournament: a game position can only be taken by someone already on the
+  // competition crew, so each picker lists the crew filtered by the slot's
+  // role instead of every person with that role in the database.
+  const crewSlotOptions = useMemo(() => {
+    if (!isTournament) return null
+    const people = crew.map(m => m.personnel).filter(Boolean)
     const map = {}
-    for (const a of assignments) {
-      if (!map[a.game_id]) map[a.game_id] = {}
-      map[a.game_id][a.role] = a
+    for (const slot of [...REF_SLOTS, ...CREW_SLOTS]) {
+      const role = SLOT_PERSONNEL_ROLE[slot]
+      map[slot] = people.filter(p => (p.role || '').toUpperCase() === role)
     }
     return map
-  }, [assignments])
+  }, [isTournament, crew])
 
-  // Per-game override rows keyed by person, so a game can carry more than one
-  // person on the same slot role (two TDs of the same crew).
-  const crewOverridesByGame = useMemo(() => {
-    const map = {}
-    for (const a of assignments) {
-      if (!map[a.game_id]) map[a.game_id] = {}
-      map[a.game_id][a.personnel_id] = a
-    }
-    return map
-  }, [assignments])
-
-  // game_id → slot → rows. Same data as `assignmentsByGame`, but as a list:
-  // on a tournament the same slot can hold more than one person, so the card
-  // grid needs every row instead of the last one that overwrote the key.
+  // game_id → slot → rows. A list rather than one row per slot: on a
+  // tournament the same slot can hold more than one person (an override
+  // recording who was actually at the table).
   const assignmentsBySlot = useMemo(() => {
     const map = {}
     for (const a of assignments) {
@@ -1204,12 +1176,9 @@ export default function Games() {
                       supportsAssignments={supportsAssignments}
                       supportsRefSlots={supportsRefSlots}
                       templateKey={(selectedComp?.template_key || '').toUpperCase()}
-                      assignment={assignmentsByGame[game.id] || {}}
                       assignmentsBySlot={assignmentsBySlot[game.id] || {}}
                       isTournament={isTournament}
-                      crew={crew}
-                      crewOverrides={crewOverridesByGame[game.id] || {}}
-                      onToggleCrewGame={handleToggleCrewGame}
+                      crewSlotOptions={crewSlotOptions}
                       onAssign={handleAssign} onUnassign={handleUnassign}
                       refConflictFor={refConflictFor}
                       flightByPersonnel={flightByPersonnel}
@@ -1541,9 +1510,9 @@ function DateMultiFilter({ dates, selected, onChange, formatDate, t }) {
 
 function GameCard({
   game, canEdit, onEdit, onDelete, t,
-  supportsAssignments = false, supportsRefSlots = false, templateKey = '', assignment = {},
+  supportsAssignments = false, supportsRefSlots = false, templateKey = '',
   assignmentsBySlot = {},
-  isTournament = false, crew = [], crewOverrides = {}, onToggleCrewGame,
+  isTournament = false, crewSlotOptions = null,
   onAssign, onUnassign, refConflictFor, flightByPersonnel = {}, onToggleFlight,
 }) {
   const displayCountry = game.country || (templateKey === 'WCQ' ? game.team_a : '') || ''
@@ -1553,19 +1522,21 @@ function GameCard({
   const scoreB = game.score_b ?? '-'
   const locationLine = [game.venue, [game.city, displayCountry].filter(Boolean).join(', ')]
     .filter(Boolean).join(' · ')
-  const totalSlots = 2 + (supportsRefSlots ? REF_SLOTS.length + CREW_SLOTS.length : 0)
-  const filledSlots = STANDARD_SLOTS.filter(r => assignment[r]).length
-  // Tournament: the crew covers every game, so the counter tracks how many of
-  // them were confirmed at the table for this one.
-  const confirmedCrew = crew.filter(m => crewOverrides[m.personnel_id]).length
-  // Slot grid shown on every assignment-capable competition — on a tournament
-  // it is the per-game view of the crew (who took which position).
-  const slots = [
-    'TD', 'VGO',
-    ...(supportsRefSlots ? [...REF_SLOTS, ...CREW_SLOTS] : []),
-    // Optional extra official — only offered to editors while empty
-    ...((assignmentsBySlot[EXTRA_SLOT]?.length || canEdit) ? [EXTRA_SLOT] : []),
-  ]
+  // Slots offered per game. On a tournament the TD/VGO of the crew already
+  // cover the whole event and are managed from the crew panel, so the grid is
+  // only the officiating positions — the referee desk fills those in per game.
+  const slots = isTournament
+    ? [...REF_SLOTS, ...CREW_SLOTS]
+    : [
+      'TD', 'VGO',
+      ...(supportsRefSlots ? [...REF_SLOTS, ...CREW_SLOTS] : []),
+      // Optional extra official — only offered to editors while empty
+      ...((assignmentsBySlot[EXTRA_SLOT]?.length || canEdit) ? [EXTRA_SLOT] : []),
+    ]
+  // EXTRA is an optional addition, so it doesn't count toward the total.
+  const countedSlots = slots.filter(s => s !== EXTRA_SLOT)
+  const totalSlots = countedSlots.length
+  const filledSlots = countedSlots.filter(s => assignmentsBySlot[s]?.length).length
 
   return (
     <div className={`bg-fiba-card rounded-lg border p-3 flex flex-col hover:shadow-sm transition-shadow ${
@@ -1578,21 +1549,14 @@ function GameCard({
         </span>
         <div className="flex items-center gap-1.5">
           {supportsAssignments && (
-            isTournament ? (
-              <span className="text-[10px] font-semibold tabular-nums text-fiba-muted"
-                title={t('games.crewCoversGame')}>
-                {confirmedCrew > 0 ? `${confirmedCrew}/${crew.length}` : crew.length}
-              </span>
-            ) : (
-              <span
-                className={`text-[10px] font-semibold tabular-nums ${
-                  filledSlots === totalSlots ? 'text-emerald-500 dark:text-emerald-400' : 'text-fiba-muted'
-                }`}
-                title={t('games.assignedSlots', { filled: filledSlots, total: totalSlots })}
-              >
-                {filledSlots}/{totalSlots}
-              </span>
-            )
+            <span
+              className={`text-[10px] font-semibold tabular-nums ${
+                filledSlots === totalSlots ? 'text-emerald-500 dark:text-emerald-400' : 'text-fiba-muted'
+              }`}
+              title={t('games.assignedSlots', { filled: filledSlots, total: totalSlots })}
+            >
+              {filledSlots}/{totalSlots}
+            </span>
           )}
           {isLive && (
             <span className="text-[10px] font-bold text-red-500 uppercase tracking-wider">LIVE</span>
@@ -1651,42 +1615,8 @@ function GameCard({
         </div>
       )}
 
-      {/* Tournament: the crew covers this game by default. Clicking a chip
-          records who was actually at the table (an override, not a change of
-          who is nominated). */}
-      {supportsAssignments && isTournament && (
-        <div className="border-t border-fiba-border mt-2 pt-2">
-          {crew.length === 0 ? (
-            <p className="text-[11px] text-fiba-muted italic">{t('games.crewEmptyShort')}</p>
-          ) : (
-            <div className="flex flex-wrap gap-1">
-              {crew.map(m => {
-                const override = crewOverrides[m.personnel_id]
-                const person = m.personnel || {}
-                const roleLabel = roleCode(person.role || m.role)
-                return (
-                  <button key={m.id}
-                    onClick={canEdit ? () => onToggleCrewGame(game, m, override) : undefined}
-                    disabled={!canEdit}
-                    title={override ? t('games.crewConfirmedHint') : t('games.crewCoversHint')}
-                    className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] border transition-colors ${
-                      override
-                        ? 'border-fiba-accent/50 bg-fiba-accent/10 text-fiba-accent font-semibold'
-                        : 'border-fiba-border text-fiba-muted hover:text-ink-900 dark:hover:text-white'
-                    } ${canEdit ? 'cursor-pointer' : 'cursor-default'}`}>
-                    {override && <span aria-hidden="true">✓</span>}
-                    <span className="truncate max-w-[9rem]">{person.name}</span>
-                    <span className="font-bold uppercase tracking-wider opacity-70">{roleLabel}</span>
-                  </button>
-                )
-              })}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Per-game roles. On a tournament this is the breakdown of the crew
-          chips above: which position each person took on this game. */}
+      {/* Per-game roles. On a tournament only the officiating positions: the
+          TD/VGO of the crew are competition-level and live in the chips. */}
       {supportsAssignments && (
         <div className="border-t border-fiba-border mt-2 pt-2 flex flex-col gap-1.5">
           {isTournament && (
@@ -1702,6 +1632,7 @@ function GameCard({
             return (rows.length ? rows : [null]).map((a, i) => (
               <AssignmentSlot key={a ? a.id : slot} role={slot} game={game} t={t} canEdit={canEdit}
                 assignment={a} showLabel={i === 0}
+                optionsOverride={crewSlotOptions?.[slot] || null}
                 onAssign={onAssign} onUnassign={onUnassign}
                 refConflictFor={REF_SLOT_SET.has(slot) ? refConflictFor : undefined}
                 flightByPersonnel={flightByPersonnel} onToggleFlight={onToggleFlight} />
@@ -1716,16 +1647,7 @@ function GameCard({
 
 // ── Per-game assignment slot (TD / VGO / referee crew) ─────────────────────
 
-// Assignment slot → personnel role to list in the picker. The referee crew
-// slots (CC/U1/U2) all draw from REF personnel.
-const SLOT_PERSONNEL_ROLE = {
-  TD: 'TD', VGO: 'VGO',
-  CC: 'REF', U1: 'REF', U2: 'REF',
-  INSTR: 'REF_INSTRUCTOR', VO: 'VIDEO_OPERATOR',
-  EXTRA: 'TD/VGO', // display only — the EXTRA picker fetches both roles
-}
-
-function AssignmentSlot({ role, game, assignment, canEdit, onAssign, onUnassign, refConflictFor, t, flightByPersonnel = {}, onToggleFlight, showLabel = true }) {
+function AssignmentSlot({ role, game, assignment, canEdit, onAssign, onUnassign, refConflictFor, t, flightByPersonnel = {}, onToggleFlight, showLabel = true, optionsOverride = null }) {
   const [open, setOpen] = useState(false)
   const [search, setSearch] = useState('')
   const [coords, setCoords] = useState(null)
@@ -1738,7 +1660,10 @@ function AssignmentSlot({ role, game, assignment, canEdit, onAssign, onUnassign,
   // Lazy-fetch personnel filtered by this slot's role the first time the
   // picker opens. Keeps assignment slots self-contained instead of relying on
   // a page-level prefetch that can race with the competition selector.
+  // `optionsOverride` short-circuits it: on a tournament the caller supplies
+  // the competition crew, which is the only pool a position can be filled from.
   useEffect(() => {
+    if (optionsOverride) return
     if (!open || options.length > 0 || loadingOptions) return
     let cancelled = false
     setLoadingOptions(true)
@@ -1756,7 +1681,7 @@ function AssignmentSlot({ role, game, assignment, canEdit, onAssign, onUnassign,
       if (!cancelled) setLoadingOptions(false)
     })
     return () => { cancelled = true }
-  }, [open, personnelRole])
+  }, [open, personnelRole, optionsOverride])
 
   // The compact card is narrow and sits inside a grid, so an in-tree dropdown
   // would be cramped or clipped by neighbors. We render into document.body via
@@ -1793,7 +1718,9 @@ function AssignmentSlot({ role, game, assignment, canEdit, onAssign, onUnassign,
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [open])
 
-  const filtered = options.filter(p => {
+  // Crew-supplied pool when there is one, otherwise whatever the fetch found.
+  const pool = optionsOverride || options
+  const filtered = pool.filter(p => {
     if (!search) return true
     const q = search.toLowerCase()
     return p.name?.toLowerCase().includes(q) || p.email?.toLowerCase().includes(q) || p.country?.toLowerCase().includes(q)
@@ -1875,9 +1802,11 @@ function AssignmentSlot({ role, game, assignment, canEdit, onAssign, onUnassign,
           <div className="overflow-y-auto" style={{ maxHeight: 240, minHeight: 40 }}>
             {loadingOptions ? (
               <div className="px-3 py-3 text-xs text-fiba-muted">{t('common.loading')}</div>
-            ) : options.length === 0 ? (
+            ) : pool.length === 0 ? (
               <div className="px-3 py-3 text-xs text-fiba-muted">
-                {t('games.noPersonnelForRole', { role: personnelRole })}
+                {optionsOverride
+                  ? t('games.noCrewForRole', { role: personnelRole })
+                  : t('games.noPersonnelForRole', { role: personnelRole })}
               </div>
             ) : filtered.length === 0 ? (
               <div className="px-3 py-3 text-xs text-fiba-muted">{t('games.noResults')}</div>
@@ -1923,7 +1852,7 @@ function AssignmentSlot({ role, game, assignment, canEdit, onAssign, onUnassign,
             )}
           </div>
           <div className="border-t border-fiba-border px-3 py-1 text-[10px] text-fiba-muted/70 flex justify-between">
-            <span>{t('games.optionsCount', { count: options.length })}</span>
+            <span>{t('games.optionsCount', { count: pool.length })}</span>
             {search && <span>{filtered.length} match</span>}
           </div>
         </div>,
