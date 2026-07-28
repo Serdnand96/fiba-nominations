@@ -28,6 +28,11 @@ const CREW_SLOTS = ['INSTR', 'VO']
 const EXTRA_SLOT = 'EXTRA'
 // Personnel roles offered by the per-role sync menu (labels via rolesShort.*)
 const SYNC_ROLES = ['TD', 'VGO', 'REF', 'REF_INSTRUCTOR', 'VIDEO_OPERATOR']
+// Crew roles shown as chips on a tournament card, mapped to the slot recorded
+// when one is confirmed on a game. Only TD/VGO: the officiating roles (REF,
+// REF_INSTRUCTOR, VIDEO_OPERATOR) get their own per-game positions instead.
+const CHIP_SLOT_FOR_ROLE = { TD: 'TD', VGO: 'VGO' }
+
 // Assignment slot → personnel role to list in the picker. The referee crew
 // slots (CC/U1/U2) all draw from REF personnel.
 const SLOT_PERSONNEL_ROLE = {
@@ -353,6 +358,19 @@ export default function Games() {
     }
   }
 
+  // Confirm/undo a TD/VGO of the crew on one game. They already cover every
+  // game, so this only records who was actually at the table.
+  async function handleToggleCrewGame(game, member, current) {
+    if (current) {
+      await handleUnassign(current.id)
+      return
+    }
+    const person = member.personnel || {}
+    const slot = CHIP_SLOT_FOR_ROLE[(person.role || '').toUpperCase()]
+    if (!slot) return
+    await handleAssign(game.id, person, slot)
+  }
+
   // Conflict check used both before assigning (pop-up) and to mark
   // non-eligible referees inside the picker dropdown.
   function refConflictFor(game, person) {
@@ -606,6 +624,24 @@ export default function Games() {
 
   // Stats
   const completedCount = games.filter(g => g.status === 'completed').length
+
+  // Crew members with no per-game slot (TD/VGO): they cover the whole event,
+  // so each card lists them as chips instead of as positions to fill.
+  const coveringCrew = useMemo(
+    () => crew.filter(m => CHIP_SLOT_FOR_ROLE[((m.personnel?.role || m.role) || '').toUpperCase()]),
+    [crew],
+  )
+
+  // Chip state per game, keyed by person: a game can carry more than one
+  // person on the same slot role (two TDs of the same crew).
+  const crewOverridesByGame = useMemo(() => {
+    const map = {}
+    for (const a of assignments) {
+      if (!map[a.game_id]) map[a.game_id] = {}
+      map[a.game_id][a.personnel_id] = a
+    }
+    return map
+  }, [assignments])
 
   // Tournament: a game position can only be taken by someone already on the
   // competition crew, so each picker lists the crew filtered by the slot's
@@ -1179,6 +1215,9 @@ export default function Games() {
                       assignmentsBySlot={assignmentsBySlot[game.id] || {}}
                       isTournament={isTournament}
                       crewSlotOptions={crewSlotOptions}
+                      coveringCrew={coveringCrew}
+                      crewOverrides={crewOverridesByGame[game.id] || {}}
+                      onToggleCrewGame={handleToggleCrewGame}
                       onAssign={handleAssign} onUnassign={handleUnassign}
                       refConflictFor={refConflictFor}
                       flightByPersonnel={flightByPersonnel}
@@ -1513,6 +1552,7 @@ function GameCard({
   supportsAssignments = false, supportsRefSlots = false, templateKey = '',
   assignmentsBySlot = {},
   isTournament = false, crewSlotOptions = null,
+  coveringCrew = [], crewOverrides = {}, onToggleCrewGame,
   onAssign, onUnassign, refConflictFor, flightByPersonnel = {}, onToggleFlight,
 }) {
   const displayCountry = game.country || (templateKey === 'WCQ' ? game.team_a : '') || ''
@@ -1611,6 +1651,44 @@ function GameCard({
           )}
           {game.game_number && (
             <span className="font-mono text-[10px] text-fiba-muted/80 flex-shrink-0 ml-auto">{game.game_number}</span>
+          )}
+        </div>
+      )}
+
+      {/* Tournament: the TD/VGO of the crew cover this game by default.
+          Clicking a chip records who was actually at the table (an override,
+          not a change of who is nominated). */}
+      {supportsAssignments && isTournament && (
+        <div className="border-t border-fiba-border mt-2 pt-2">
+          <span className="block text-[10px] font-bold uppercase tracking-wider text-fiba-muted/70 mb-1">
+            {t('games.crew')}
+          </span>
+          {coveringCrew.length === 0 ? (
+            <p className="text-[11px] text-fiba-muted italic">{t('games.crewEmptyShort')}</p>
+          ) : (
+            <div className="flex flex-wrap gap-1">
+              {coveringCrew.map(m => {
+                const override = crewOverrides[m.personnel_id]
+                const person = m.personnel || {}
+                return (
+                  <button key={m.id}
+                    onClick={canEdit ? () => onToggleCrewGame(game, m, override) : undefined}
+                    disabled={!canEdit}
+                    title={override ? t('games.crewConfirmedHint') : t('games.crewCoversHint')}
+                    className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] border transition-colors ${
+                      override
+                        ? 'border-fiba-accent/50 bg-fiba-accent/10 text-fiba-accent font-semibold'
+                        : 'border-fiba-border text-fiba-muted hover:text-ink-900 dark:hover:text-white'
+                    } ${canEdit ? 'cursor-pointer' : 'cursor-default'}`}>
+                    {override && <span aria-hidden="true">✓</span>}
+                    <span className="truncate max-w-[9rem]">{person.name}</span>
+                    <span className="font-bold uppercase tracking-wider opacity-70">
+                      {roleCode(person.role || m.role)}
+                    </span>
+                  </button>
+                )
+              })}
+            </div>
           )}
         </div>
       )}

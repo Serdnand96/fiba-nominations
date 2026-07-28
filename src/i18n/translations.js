@@ -996,6 +996,7 @@ const translations = {
       es: 'Esta competencia tiene tournament fee, así que su crew cubre los {games} partidos y todo el cronograma de entrenamientos. Las nominaciones se generan a partir de esta lista.',
     },
     crewEmpty: { en: 'No one assigned to this tournament yet.', es: 'Todavía no hay nadie asignado a este torneo.' },
+    crewEmptyShort: { en: 'No TD/VGO on the crew', es: 'Sin TD/VGO en el crew' },
     crewAdd: { en: 'Add to the crew', es: 'Agregar al crew' },
     crewSearchPlaceholder: { en: 'Search person...', es: 'Buscar persona...' },
     crewRemove: { en: 'Remove from the crew', es: 'Quitar del crew' },
@@ -1009,6 +1010,14 @@ const translations = {
       es: '{name} agregado. Neutralidad: no puede dirigir {count} partido(s) de este torneo.',
     },
     perGameRoles: { en: 'Officiating on this game', es: 'Arbitraje en este partido' },
+    crewCoversHint: {
+      en: 'Covered by the tournament crew — click to confirm they worked this game',
+      es: 'Cubierto por el crew del torneo — clic para confirmar que trabajó este partido',
+    },
+    crewConfirmedHint: {
+      en: 'Confirmed on this game — click to undo',
+      es: 'Confirmado en este partido — clic para deshacer',
+    },
     syncNominations: { en: 'Sync to nominations', es: 'Sincronizar nominaciones' },
     syncAllRoles: { en: 'All roles', es: 'Todos los cargos' },
     syncNominationsHint: { en: 'Create/update competition-level nomination drafts from per-game assignments', es: 'Crear/actualizar borradores de nominación a partir de las asignaciones por juego' },
