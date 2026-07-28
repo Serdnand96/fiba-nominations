@@ -6,7 +6,7 @@ from api._lib.routers import (
     personnel, competitions, nominations, users, calendar, transport,
     availability, permissions, training, games,
     assets, loans, public_assets, public_availability, employees, templates, payments,
-    activity, reports, evaluations,
+    activity, reports, evaluations, logistics, public_logistics,
 )
 
 app = FastAPI(title="FIBA Americas Administration API", docs_url=None, redoc_url=None)
@@ -42,6 +42,11 @@ async def add_security_headers(request: Request, call_next):
     # HSTS — the app is HTTPS-only in prod behind nginx; tell browsers to never
     # downgrade. Browsers ignore this header over plain HTTP (e.g. local dev).
     response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+    # Las vistas públicas se abren con un token secreto en la URL. Un link
+    # reenviado que termine en un buscador dejaría de ser secreto, así que se
+    # les pide explícitamente a los crawlers que no las indexen ni las sigan.
+    if request.url.path.startswith("/api/public/"):
+        response.headers["X-Robots-Tag"] = "noindex, nofollow, noarchive"
     return response
 
 
@@ -193,6 +198,8 @@ app.include_router(payments.router, prefix="/api")
 app.include_router(activity.router, prefix="/api")
 app.include_router(reports.router, prefix="/api")
 app.include_router(evaluations.router, prefix="/api")
+app.include_router(logistics.router, prefix="/api")
+app.include_router(public_logistics.router, prefix="/api")
 
 
 @app.get("/api")

@@ -12,6 +12,10 @@ import PublicAsset from './pages/PublicAsset'
 // links ever hit it, so it stays out of the main bundle)
 const PublicAvailability = lazy(() => import('./pages/PublicAvailability'))
 
+// Vista pública de logística (ruta sin auth, lazy: solo la abre quien recibe
+// el link compartido de una competencia)
+const PublicLogistics = lazy(() => import('./pages/PublicLogistics'))
+
 // Lazy-load every authenticated page so the initial bundle is small
 const Calendar     = lazy(() => import('./pages/Calendar'))
 const Nominations  = lazy(() => import('./pages/Nominations'))
@@ -19,7 +23,7 @@ const Personnel    = lazy(() => import('./pages/Personnel'))
 const Competitions = lazy(() => import('./pages/Competitions'))
 const Templates    = lazy(() => import('./pages/Templates'))
 const Users        = lazy(() => import('./pages/Users'))
-const Transport    = lazy(() => import('./pages/Transport'))
+const Logistics    = lazy(() => import('./pages/Logistics'))
 const Availability = lazy(() => import('./pages/Availability'))
 const Training     = lazy(() => import('./pages/Training'))
 const Games        = lazy(() => import('./pages/Games'))
@@ -43,7 +47,7 @@ const moduleIcon = {
   templates:    Icon.Doc,
   users:        Icon.Shield,
   availability: Icon.Clock,
-  transport:    Icon.Truck,
+  logistics:    Icon.Truck,
   training:     Icon.Whistle,
   games:        Icon.Globe,
   assets:       Icon.Dashboard,
@@ -138,6 +142,23 @@ export default function App() {
     )
   }
 
+  // Vista pública de logística: /logistica/<token>. Mismo criterio que la
+  // ruta de disponibilidad — el token es un secreto largo, así que el guard de
+  // longitud alcanza para distinguirla de cualquier ruta autenticada.
+  if (typeof window !== 'undefined' && /^\/logistica\/[A-Za-z0-9_-]{16,}$/.test(window.location.pathname)) {
+    return (
+      <Suspense fallback={
+        <div className="min-h-screen bg-ink-50 dark:bg-navy-950 flex items-center justify-center">
+          <div className="w-6 h-6 border-2 border-basketball-500 border-t-transparent rounded-full animate-spin" />
+        </div>
+      }>
+        <Routes>
+          <Route path="/logistica/:token" element={<PublicLogistics />} />
+        </Routes>
+      </Suspense>
+    )
+  }
+
   if (loading) {
     return (
       <div className="min-h-screen bg-ink-50 dark:bg-navy-950 flex items-center justify-center">
@@ -162,7 +183,7 @@ export default function App() {
     { to: '/templates',    label: t('nav.templates'),    module: 'templates' },
     { to: '/users',        label: t('nav.users'),        module: 'users' },
     { to: '/availability', label: t('nav.availability'), module: 'availability' },
-    { to: '/transport',    label: t('nav.transport'),    module: 'transport' },
+    { to: '/logistics',    label: t('nav.logistics'),    module: 'logistics' },
     { to: '/training',     label: t('nav.training'),     module: 'training' },
     { to: '/games',        label: t('nav.games'),        module: 'games' },
     { to: '/inventory',    label: t('nav.inventory'),    module: 'assets' },
@@ -316,7 +337,7 @@ export default function App() {
                 <Route path="/templates"       element={<PermissionGuard module="templates"><Templates /></PermissionGuard>} />
                 <Route path="/users"           element={<PermissionGuard module="users"><Users /></PermissionGuard>} />
                 <Route path="/availability"    element={<PermissionGuard module="availability"><Availability /></PermissionGuard>} />
-                <Route path="/transport"       element={<PermissionGuard module="transport"><Transport /></PermissionGuard>} />
+                <Route path="/logistics"       element={<PermissionGuard module="logistics"><Logistics /></PermissionGuard>} />
                 <Route path="/training"        element={<PermissionGuard module="training"><Training /></PermissionGuard>} />
                 <Route path="/games"           element={<PermissionGuard module="games"><Games /></PermissionGuard>} />
                 <Route path="/inventory"       element={<PermissionGuard module="assets"><Assets /></PermissionGuard>} />

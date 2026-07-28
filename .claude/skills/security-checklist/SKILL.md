@@ -1,6 +1,6 @@
 ---
 name: security-checklist
-description: Checklist de seguridad de fiba-nominations — autorización a nivel de app (el service_role bypassa RLS), permisos por usuario con require_view/require_edit/require_superadmin, guards de frontend que son solo UX, storage privado, y el estado real del módulo Transport (permisado, sin auth standalone). Usar al revisar cambios que tocan auth, permisos, datos o storage.
+description: Checklist de seguridad de fiba-nominations — autorización a nivel de app (el service_role bypassa RLS), permisos por usuario con require_view/require_edit/require_superadmin, guards de frontend que son solo UX, storage privado, el estado real del módulo Logística (permisado, sin auth standalone) y la vista pública por token. Usar al revisar cambios que tocan auth, permisos, datos o storage.
 ---
 
 # Checklist de seguridad (fiba-nominations)
@@ -58,17 +58,40 @@ grep -rn "@router\.\(post\|put\|patch\|delete\)" api/_lib/routers/  # ¿cada uno
 - **No asumas** que una tabla está protegida solo porque "tiene RLS". El control
   efectivo es la dependency de permiso del endpoint.
 
-## 5. Módulo Transport — corrección importante
+## 5. Módulo Logística (antes Transport) — corrección importante
 
-- Transport es un **módulo normal permisado**: sus endpoints usan
-  `require_view("transport")` / `require_edit("transport")`
-  (`api/_lib/routers/transport.py`), sus tablas son `transport_*`, y en el
-  frontend comparte el **mismo `AuthContext` y el mismo cliente de Supabase**
-  (`src/lib/supabase.js`) que todo el resto.
-- **No existe** una "Supabase Auth standalone" ni un aislamiento especial para
-  Transport en el código actual. Revisalo con **el mismo** checklist de permisos
-  que cualquier otro módulo; lo que hay que verificar es que cada endpoint de
-  transport lleve su dependency de permiso, no un supuesto sandbox separado.
+- Logística es un **módulo normal permisado**: todos sus endpoints usan
+  `require_view("logistics")` / `require_edit("logistics")`. Vive en **dos
+  routers** que comparten ese único permiso:
+  `api/_lib/routers/logistics.py` (padrón, manifest, hospedaje, comidas, links)
+  y `api/_lib/routers/transport.py` (vehículos, choferes, viajes; su prefijo de
+  URL sigue siendo `/transport`). En el frontend comparte el **mismo
+  `AuthContext` y el mismo cliente de Supabase** (`src/lib/supabase.js`) que
+  todo el resto.
+- **No existe** una "Supabase Auth standalone" ni un aislamiento especial.
+  Revisalo con **el mismo** checklist de permisos que cualquier otro módulo: lo
+  que hay que verificar es que cada endpoint lleve su dependency, no un supuesto
+  sandbox separado.
+- El permiso `transport` **ya no existe** (migración 025 lo renombró a
+  `logistics` en `user_permissions`). Un `require_view("transport")` que
+  sobreviva en el código es un endpoint al que nadie puede entrar.
+
+## 5b. Vista pública de logística
+
+- `api/_lib/routers/public_logistics.py` sirve **sin auth** bajo
+  `/api/public/logistics/{token}`. El token de `logistics_public_links` es el
+  único credencial.
+- Token inválido, inexistente o con `enabled = false` deben contestar **el mismo
+  404** (`_resolve_link`). Cualquier respuesta que distinga esos casos filtra
+  qué tokens existen.
+- **Por decisión explícita del cliente la vista publica los datos completos,
+  número de pasaporte incluido.** El único punto para recortar eso es
+  `_redact()`; si alguna vez hay que ocultar campos, se cambia ahí y no en los
+  cuatro endpoints.
+- Las respuestas bajo `/api/public/` llevan `X-Robots-Tag: noindex` (middleware
+  en `api/index.py`). Si agregás una vista pública nueva, cae bajo esa regla
+  sola — pero no la saques del prefijo `/api/public/`, porque ahí también viven
+  el bypass de auth y el rate limit por IP.
 
 ## 6. Storage privado
 

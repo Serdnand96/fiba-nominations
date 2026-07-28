@@ -164,10 +164,81 @@ export const getTransportConflicts = (eventId, date) => api.get('/transport/conf
 export const getTransportVenues = (eventId) => api.get('/transport/venues', { params: { event_id: eventId } }).then(r => r.data)
 export const createTransportVenue = (data) => api.post('/transport/venues', data).then(r => r.data)
 export const deleteTransportVenue = (id) => api.delete(`/transport/venues/${id}`).then(r => r.data)
-export const getTransportPassengers = (eventId) => api.get('/transport/passengers', { params: { event_id: eventId } }).then(r => r.data)
-export const createTransportPassenger = (data) => api.post('/transport/passengers', data).then(r => r.data)
-export const bulkCreateTransportPassengers = (passengers) => api.post('/transport/passengers/bulk', passengers).then(r => r.data)
-export const deleteTransportPassenger = (id) => api.delete(`/transport/passengers/${id}`).then(r => r.data)
+// Logística — padrón, manifest, hospedaje y comidas. Transporte (arriba) es la
+// otra mitad del mismo módulo y comparte el permiso 'logistics'.
+export const getLogisticsParticipants = (competitionId) => api.get('/logistics/participants', { params: { competition_id: competitionId } }).then(r => r.data)
+export const createLogisticsParticipant = (data) => api.post('/logistics/participants', data).then(r => r.data)
+export const updateLogisticsParticipant = (id, data) => api.put(`/logistics/participants/${id}`, data).then(r => r.data)
+export const deleteLogisticsParticipant = (id) => api.delete(`/logistics/participants/${id}`).then(r => r.data)
+export const seedLogisticsFromCrew = (competitionId) => api.post('/logistics/participants/from-crew', null, { params: { competition_id: competitionId } }).then(r => r.data)
+
+export const getLogisticsTravelLegs = (competitionId) => api.get('/logistics/travel-legs', { params: { competition_id: competitionId } }).then(r => r.data)
+export const createLogisticsTravelLeg = (data) => api.post('/logistics/travel-legs', data).then(r => r.data)
+export const updateLogisticsTravelLeg = (id, data) => api.put(`/logistics/travel-legs/${id}`, data).then(r => r.data)
+export const deleteLogisticsTravelLeg = (id) => api.delete(`/logistics/travel-legs/${id}`).then(r => r.data)
+export const getLogisticsMovements = (competitionId) => api.get('/logistics/movements', { params: { competition_id: competitionId } }).then(r => r.data)
+
+export const getLogisticsHotels = (competitionId) => api.get('/logistics/hotels', { params: { competition_id: competitionId } }).then(r => r.data)
+export const createLogisticsHotel = (data) => api.post('/logistics/hotels', data).then(r => r.data)
+export const updateLogisticsHotel = (id, data) => api.put(`/logistics/hotels/${id}`, data).then(r => r.data)
+export const deleteLogisticsHotel = (id) => api.delete(`/logistics/hotels/${id}`).then(r => r.data)
+
+export const getLogisticsRooming = (competitionId) => api.get('/logistics/rooming', { params: { competition_id: competitionId } }).then(r => r.data)
+export const createLogisticsStay = (data) => api.post('/logistics/stays', data).then(r => r.data)
+export const updateLogisticsStay = (id, data) => api.put(`/logistics/stays/${id}`, data).then(r => r.data)
+export const deleteLogisticsStay = (id) => api.delete(`/logistics/stays/${id}`).then(r => r.data)
+
+export const getLogisticsMeals = (competitionId) => api.get('/logistics/meals', { params: { competition_id: competitionId } }).then(r => r.data)
+export const createLogisticsMeal = (data) => api.post('/logistics/meals', data).then(r => r.data)
+export const updateLogisticsMeal = (id, data) => api.put(`/logistics/meals/${id}`, data).then(r => r.data)
+export const deleteLogisticsMeal = (id) => api.delete(`/logistics/meals/${id}`).then(r => r.data)
+
+// Link público de la competencia. La lectura también pide can_edit en el
+// backend: el token es un secreto, no un dato de consulta.
+export const getLogisticsLink = (competitionId) => api.get(`/logistics/link/${competitionId}`).then(r => r.data)
+export const rotateLogisticsLink = (competitionId) => api.post(`/logistics/link/${competitionId}/rotate`).then(r => r.data)
+export const toggleLogisticsLink = (competitionId, enabled) => api.put(`/logistics/link/${competitionId}/toggle`, null, { params: { enabled } }).then(r => r.data)
+
+// El QR sale del backend (bucket privado + JWT), así que se baja como blob y
+// se muestra vía object URL — nunca como <img src="/api/...">.
+export const getLogisticsLinkQr = async (competitionId) => {
+  const resp = await api.get(`/logistics/link/${competitionId}/qr.png`, { responseType: 'blob' })
+  return URL.createObjectURL(resp.data)
+}
+
+const uploadLogisticsSheet = (path, competitionId, file) => {
+  const form = new FormData()
+  form.append('file', file)
+  return api.post(path, form, {
+    params: { competition_id: competitionId },
+    headers: { 'Content-Type': 'multipart/form-data' },
+  }).then(r => r.data)
+}
+export const previewLogisticsManifest = (competitionId, file) => uploadLogisticsSheet('/logistics/import/manifest/preview', competitionId, file)
+export const commitLogisticsManifest = (competitionId, file) => uploadLogisticsSheet('/logistics/import/manifest/commit', competitionId, file)
+export const previewLogisticsRooming = (competitionId, file) => uploadLogisticsSheet('/logistics/import/rooming/preview', competitionId, file)
+export const commitLogisticsRooming = (competitionId, file) => uploadLogisticsSheet('/logistics/import/rooming/commit', competitionId, file)
+
+export const downloadLogisticsXlsx = async (kind, competitionId) => {
+  const resp = await api.get(`/logistics/export/${kind}.xlsx`, {
+    params: { competition_id: competitionId },
+    responseType: 'blob',
+  })
+  const objectUrl = URL.createObjectURL(resp.data)
+  const link = document.createElement('a')
+  link.href = objectUrl
+  link.download = kind === 'manifest' ? 'flight-manifest.xlsx' : 'rooming-list.xlsx'
+  document.body.appendChild(link)
+  link.click()
+  document.body.removeChild(link)
+  setTimeout(() => URL.revokeObjectURL(objectUrl), 1000)
+}
+
+// Vista pública de logística (sin auth, el token es el credencial)
+export const getPublicLogistics = (token) => api.get(`/public/logistics/${token}`).then(r => r.data)
+export const getPublicLogisticsTransport = (token, date) => api.get(`/public/logistics/${token}/transport`, { params: date ? { date } : {} }).then(r => r.data)
+export const getPublicLogisticsManifest = (token) => api.get(`/public/logistics/${token}/manifest`).then(r => r.data)
+export const getPublicLogisticsRooming = (token) => api.get(`/public/logistics/${token}/rooming`).then(r => r.data)
 
 // Permissions
 export const getUserPermissions = (userId) => api.get(`/permissions/${userId}`).then(r => r.data)

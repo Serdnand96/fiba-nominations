@@ -1,11 +1,15 @@
 from fastapi import APIRouter, HTTPException, Query, Depends
 from pydantic import BaseModel
-from typing import Optional, List
+from typing import Optional
 
 from api._lib.database import supabase
 from api._lib.auth import require_view, require_edit
 
-router = APIRouter(prefix="/transport", tags=["transport"], dependencies=[Depends(require_view("transport"))])
+# Transporte es una sección del módulo Logística, no un módulo propio: comparte
+# el permiso 'logistics' con el resto (padrón, manifest, hospedaje), que vive en
+# routers/logistics.py. El prefijo de la URL sigue siendo /transport porque es
+# interno y renombrarlo no cambia nada para el usuario.
+router = APIRouter(prefix="/transport", tags=["logistics"], dependencies=[Depends(require_view("logistics"))])
 
 
 # ── Schemas ──────────────────────────────────────────────────────────────────
@@ -67,12 +71,6 @@ class TripUpdate(BaseModel):
     game_id: Optional[str] = None
     trip_type: Optional[str] = None
 
-class PassengerCreate(BaseModel):
-    event_id: str
-    name: str
-    hotel: str
-    category: Optional[str] = None
-
 class VenueCreate(BaseModel):
     event_id: str
     name: str
@@ -85,7 +83,7 @@ class VenueCreate(BaseModel):
 def list_events():
     return supabase.table("transport_events").select("*").order("created_at").execute().data
 
-@router.post("/events", dependencies=[Depends(require_edit("transport"))])
+@router.post("/events", dependencies=[Depends(require_edit("logistics"))])
 def create_event(data: EventCreate):
     result = supabase.table("transport_events").insert(data.model_dump()).execute()
     return result.data[0]
@@ -112,12 +110,12 @@ def get_event(event_id: str):
 def list_vehicles(event_id: str = Query(...)):
     return supabase.table("transport_vehicles").select("*").eq("event_id", event_id).order("name").execute().data
 
-@router.post("/vehicles", dependencies=[Depends(require_edit("transport"))])
+@router.post("/vehicles", dependencies=[Depends(require_edit("logistics"))])
 def create_vehicle(data: VehicleCreate):
     result = supabase.table("transport_vehicles").insert(data.model_dump()).execute()
     return result.data[0]
 
-@router.put("/vehicles/{vehicle_id}", dependencies=[Depends(require_edit("transport"))])
+@router.put("/vehicles/{vehicle_id}", dependencies=[Depends(require_edit("logistics"))])
 def update_vehicle(vehicle_id: str, data: VehicleUpdate):
     updates = data.model_dump(exclude_none=True)
     if not updates:
@@ -127,7 +125,7 @@ def update_vehicle(vehicle_id: str, data: VehicleUpdate):
         raise HTTPException(404, "Vehicle not found")
     return r.data[0]
 
-@router.delete("/vehicles/{vehicle_id}", dependencies=[Depends(require_edit("transport"))])
+@router.delete("/vehicles/{vehicle_id}", dependencies=[Depends(require_edit("logistics"))])
 def delete_vehicle(vehicle_id: str):
     supabase.table("transport_vehicles").delete().eq("id", vehicle_id).execute()
     return {"ok": True}
@@ -139,12 +137,12 @@ def delete_vehicle(vehicle_id: str):
 def list_drivers(event_id: str = Query(...)):
     return supabase.table("transport_drivers").select("*").eq("event_id", event_id).order("name").execute().data
 
-@router.post("/drivers", dependencies=[Depends(require_edit("transport"))])
+@router.post("/drivers", dependencies=[Depends(require_edit("logistics"))])
 def create_driver(data: DriverCreate):
     result = supabase.table("transport_drivers").insert(data.model_dump()).execute()
     return result.data[0]
 
-@router.put("/drivers/{driver_id}", dependencies=[Depends(require_edit("transport"))])
+@router.put("/drivers/{driver_id}", dependencies=[Depends(require_edit("logistics"))])
 def update_driver(driver_id: str, data: DriverUpdate):
     updates = data.model_dump(exclude_none=True)
     if not updates:
@@ -154,7 +152,7 @@ def update_driver(driver_id: str, data: DriverUpdate):
         raise HTTPException(404, "Driver not found")
     return r.data[0]
 
-@router.delete("/drivers/{driver_id}", dependencies=[Depends(require_edit("transport"))])
+@router.delete("/drivers/{driver_id}", dependencies=[Depends(require_edit("logistics"))])
 def delete_driver(driver_id: str):
     supabase.table("transport_drivers").delete().eq("id", driver_id).execute()
     return {"ok": True}
@@ -177,7 +175,7 @@ def list_vehicle_drivers(event_id: str = Query(...), date: Optional[str] = Query
     # Filter to only vehicles in this event
     return [a for a in assignments if a["vehicle_id"] in vids]
 
-@router.post("/vehicle-drivers", dependencies=[Depends(require_edit("transport"))])
+@router.post("/vehicle-drivers", dependencies=[Depends(require_edit("logistics"))])
 def assign_vehicle_driver(data: VehicleDriverAssign):
     record = data.model_dump()
     # Upsert: remove existing assignment for vehicle+date, then insert
@@ -279,7 +277,7 @@ def list_trip_dates(event_id: str = Query(...)):
     return [{"date": d, "count": c} for d, c in sorted(counts.items())]
 
 
-@router.post("/trips", dependencies=[Depends(require_edit("transport"))])
+@router.post("/trips", dependencies=[Depends(require_edit("logistics"))])
 def create_trip(data: TripCreate):
     if data.trip_type not in TRIP_TYPES:
         raise HTTPException(400, f"trip_type must be one of {', '.join(TRIP_TYPES)}")
@@ -288,7 +286,7 @@ def create_trip(data: TripCreate):
     result = supabase.table("transport_trips").insert(record).execute()
     return result.data[0]
 
-@router.put("/trips/{trip_id}", dependencies=[Depends(require_edit("transport"))])
+@router.put("/trips/{trip_id}", dependencies=[Depends(require_edit("logistics"))])
 def update_trip(trip_id: str, data: TripUpdate):
     # exclude_unset (not "is not None") so the client can explicitly clear
     # game_id by sending null — omitted fields are still left untouched.
@@ -309,7 +307,7 @@ def update_trip(trip_id: str, data: TripUpdate):
         raise HTTPException(404, "Trip not found")
     return r.data[0]
 
-@router.delete("/trips/{trip_id}", dependencies=[Depends(require_edit("transport"))])
+@router.delete("/trips/{trip_id}", dependencies=[Depends(require_edit("logistics"))])
 def delete_trip(trip_id: str):
     supabase.table("transport_trips").delete().eq("id", trip_id).execute()
     return {"ok": True}
@@ -436,35 +434,17 @@ def _trips_overlap(a, b):
 def list_venues(event_id: str = Query(...)):
     return supabase.table("transport_venues").select("*").eq("event_id", event_id).order("type", desc=True).execute().data
 
-@router.post("/venues", dependencies=[Depends(require_edit("transport"))])
+@router.post("/venues", dependencies=[Depends(require_edit("logistics"))])
 def create_venue(data: VenueCreate):
     result = supabase.table("transport_venues").insert(data.model_dump()).execute()
     return result.data[0]
 
-@router.delete("/venues/{venue_id}", dependencies=[Depends(require_edit("transport"))])
+@router.delete("/venues/{venue_id}", dependencies=[Depends(require_edit("logistics"))])
 def delete_venue(venue_id: str):
     supabase.table("transport_venues").delete().eq("id", venue_id).execute()
     return {"ok": True}
 
 
-# ── Passengers ───────────────────────────────────────────────────────────────
-
-@router.get("/passengers")
-def list_passengers(event_id: str = Query(...)):
-    return supabase.table("transport_passengers").select("*").eq("event_id", event_id).order("category").execute().data
-
-@router.post("/passengers", dependencies=[Depends(require_edit("transport"))])
-def create_passenger(data: PassengerCreate):
-    result = supabase.table("transport_passengers").insert(data.model_dump()).execute()
-    return result.data[0]
-
-@router.post("/passengers/bulk", dependencies=[Depends(require_edit("transport"))])
-def bulk_create_passengers(passengers: List[PassengerCreate]):
-    records = [p.model_dump() for p in passengers]
-    result = supabase.table("transport_passengers").insert(records).execute()
-    return {"created": len(result.data)}
-
-@router.delete("/passengers/{passenger_id}", dependencies=[Depends(require_edit("transport"))])
-def delete_passenger(passenger_id: str):
-    supabase.table("transport_passengers").delete().eq("id", passenger_id).execute()
-    return {"ok": True}
+# Los pasajeros ya no viven acá: el padrón de la competencia es
+# logistics_participants (routers/logistics.py), que además es de donde salen
+# el manifest y la rooming list. La migración 025 copió las filas viejas.

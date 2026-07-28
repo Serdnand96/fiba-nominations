@@ -186,7 +186,7 @@ Si necesitás otro: agregalo a `lib/icons.jsx` con la sintaxis
 Definido en `src/App.jsx` (`moduleIcon`):
 
 ```
-calendar     → Icon.Calendar       transport    → Icon.Truck
+calendar     → Icon.Calendar       logistics    → Icon.Truck
 nominations  → Icon.Trophy         training     → Icon.Whistle
 personnel    → Icon.Users          games        → Icon.Globe
 competitions → Icon.Trophy         assets       → Icon.Dashboard

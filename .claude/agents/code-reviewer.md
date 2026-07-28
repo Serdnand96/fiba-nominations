@@ -30,11 +30,16 @@ Revisá calidad, seguridad y consistencia con las convenciones. Usá el skill
   dependency de permiso expone datos a cualquier usuario logueado → P0.
 - **Los guards del frontend son UX, no seguridad.** `hasView`/`hasEdit`/
   `PermissionGuard` solo esconden UI. El control real está en el backend.
-- **Módulo Transport.** Es un **módulo normal permisado** (`require_view`/
-  `require_edit("transport")`, tablas `transport_*`), comparte el mismo
-  `AuthContext` y cliente de Supabase que el resto. **No** tiene "Supabase Auth
-  standalone" — no existe tal aislamiento en el código; revisalo con el mismo
-  checklist de permisos que cualquier otro módulo.
+- **Módulo Logística** (antes Transport). Es un **módulo normal permisado**
+  (`require_view`/`require_edit("logistics")`), repartido en dos routers que
+  comparten ese permiso: `logistics.py` (padrón, manifest, hospedaje) y
+  `transport.py` (vehículos, viajes). Comparte el mismo `AuthContext` y cliente
+  de Supabase que el resto. **No** tiene "Supabase Auth standalone" — no existe
+  tal aislamiento en el código. El permiso `transport` ya no existe.
+- **Vista pública de logística.** `public_logistics.py` no lleva auth: el token
+  es el credencial. Token inválido, inexistente o desactivado tienen que dar el
+  **mismo 404**. Publica los datos completos (pasaporte incluido) por decisión
+  del cliente; el único punto de recorte es `_redact()`.
 - **Storage privado.** Los buckets `nominations` y `payments` son privados:
   ninguna URL pública, descargas solo por endpoint autenticado. Borrados que
   tocan storage van por la Storage API, no por SQL directo.

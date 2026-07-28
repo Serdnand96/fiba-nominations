@@ -13,7 +13,7 @@ const translations = {
     competitions: { en: 'Competitions', es: 'Competencias' },
     templates: { en: 'Templates', es: 'Templates' },
     users: { en: 'Users', es: 'Usuarios' },
-    transport: { en: 'Transport', es: 'Transporte' },
+    logistics: { en: 'Logistics', es: 'Logística' },
     availability: { en: 'Availability', es: 'Disponibilidad' },
     training: { en: 'Training', es: 'Entrenamientos' },
     games: { en: 'Games', es: 'Juegos' },

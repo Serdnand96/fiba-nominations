@@ -128,6 +128,7 @@ availability.py    employees.py       loans.py
 calendar.py        nominations.py     payments.py
 permissions.py     personnel.py       public_assets.py
 templates.py       training.py        transport.py
+logistics.py       public_logistics.py
 users.py
 ```
 
@@ -193,7 +194,8 @@ Proyecto: `mckaplalscnvaanukrmz`. Schema inicial en
 | `competitions`     | Torneos / eventos                             |
 | `nominations`      | Cartas de nominación generadas                |
 | `availability`     | Disponibilidad de TDs/VGOs                    |
-| `vehicles` / `trips` | Transporte                                  |
+| `vehicles` / `trips` | Transporte (sección de Logística)           |
+| `logistics_*`        | Padrón, manifest, hospedaje, comidas, links |
 | `training_*`       | Sesiones de training                          |
 | `games`            | Partidos del calendario                       |
 | `assets`           | Inventario (Macs, monitors, cámaras…)         |

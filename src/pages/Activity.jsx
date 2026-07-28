@@ -5,10 +5,12 @@ import { useLanguage } from '../i18n/LanguageContext'
 const PAGE_SIZE = 50
 
 // Modules that can appear in the log (router prefixes under /api).
+// `logistics` y `transport` son las dos mitades del mismo módulo: comparten el
+// permiso, pero siguen siendo dos prefijos distintos en la URL.
 const MODULE_OPTIONS = [
   'nominations', 'payments', 'personnel', 'competitions', 'templates',
-  'users', 'calendar', 'transport', 'availability', 'training', 'games',
-  'assets', 'loans', 'employees', 'permissions',
+  'users', 'calendar', 'logistics', 'transport', 'availability', 'training',
+  'games', 'assets', 'loans', 'employees', 'reports', 'evaluations', 'permissions',
 ]
 
 // HTTP method → semantic badge. POST also covers actions like generate or

@@ -8,7 +8,7 @@ const items = [
   { id:'officials',   label:'Colaboradores',     icon:<Icon.Users/> },
   { id:'availability',label:'TD Availability',   icon:<Icon.Calendar/> },
   { id:'training',    label:'Training Schedule', icon:<Icon.Whistle/> },
-  { id:'transport',   label:'Transport',         icon:<Icon.Truck/> },
+  { id:'logistics',   label:'Logística',         icon:<Icon.Truck/> },
 ];
 const admin = [
   { id:'permissions', label:'Permissions',       icon:<Icon.Shield/> },

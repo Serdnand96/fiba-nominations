@@ -1,7 +1,7 @@
 # FIBA Americas Administration System
 
 Sistema admin de FIBA Americas para gestión de nominaciones de oficiales
-(TDs / VGOs), training, transport, inventario, calendario y staff.
+(TDs / VGOs), training, logística, inventario, calendario y staff.
 
 **Producción:** https://www.fibaapp.com (redirect 301 desde el legacy
 `fibaamericascloud.com`).
@@ -112,7 +112,7 @@ inicial.
 | Templates      | `/templates`    | filesystem            |
 | Users          | `/users`        | `auth.users` + `user_permissions` |
 | Availability   | `/availability` | `availability`        |
-| Transport      | `/transport`    | `vehicles`, `trips`   |
+| Logística      | `/logistics`    | `logistics_*`, `transport_*` |
 | Training       | `/training`     | `training_*`          |
 | Games          | `/games`        | `games`               |
 | Inventory      | `/inventory`    | `assets`              |

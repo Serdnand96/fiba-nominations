@@ -8,7 +8,7 @@
 ## TL;DR
 
 Sistema admin de FIBA Americas para nominaciones de oficiales (TDs, VGOs),
-training, transport, inventory, etc. Stack:
+training, logística, inventory, etc. Stack:
 
 - **Frontend:** React + Vite + Tailwind, deployado como SPA estático
 - **Backend:** FastAPI (Python 3.11) con gunicorn + uvicorn workers
@@ -58,14 +58,40 @@ legacy `fibaamericascloud.com`).
    Tailwind nativo — ver `DESIGN_SYSTEM.md`. Si tocás colores, leelo
    primero.
 
-7. **El módulo Transport NO tiene "Supabase Auth standalone".** Es un
-   módulo permisado normal: `require_view/require_edit("transport")`,
-   tablas `transport_*`, y comparte el mismo `AuthContext` y cliente de
-   Supabase que todo el resto del sistema. No hay un sandbox de auth
-   separado — revisalo con el mismo checklist de permisos que cualquier
-   otro módulo.
+7. **Transport ya no es un módulo: es una sección de Logística.** Desde la
+   migración 025 el permiso se llama `logistics` (`transport` no existe más
+   en `user_permissions`) y el módulo tiene tres secciones:
+   - **Transporte** — vehículos, choferes, viajes. Sigue viviendo en
+     `api/_lib/routers/transport.py` con prefijo `/api/transport/*`: la URL
+     quedó igual porque es interna, solo cambió el permiso que exige.
+   - **Hospedaje** — hoteles, rooming list y comidas.
+   - **Travel Manifest** — llegadas y salidas de cada persona.
 
-8. **Hay dos formas de asignar personal, y las decide `competitions.fee_type`:**
+   Las dos últimas viven en `api/_lib/routers/logistics.py`. Todo cuelga de
+   `logistics_participants`, el padrón de quién viene a la competencia
+   (oficiales de `personnel`, staff de `employees`, VIPs y delegaciones sin
+   vínculo). **No hay "Supabase Auth standalone"** ni sandbox separado:
+   revisalo con el mismo checklist de permisos que cualquier otro módulo.
+
+   Ojo con dos cosas que se ven raras y son correctas:
+   - Las **noches** de la rooming list se derivan de `check_in`/`check_out`;
+     la grilla `1`/`OUT` del Excel es una vista, no una tabla. El total que
+     se le manda al hotel cuenta **habitaciones**, no personas: de una pareja
+     que comparte cuarto, solo una fila suma (`is_room_holder`).
+   - Los importadores de Excel (`services/logistics_import.py`) son de **dos
+     pasos** (preview → commit) y nunca adivinan: un nombre dudoso se importa
+     sin vincular y se reporta como warning. Las planillas vienen con typos
+     reales (`Guyo`/`Juyo`, `BUELVAS`/`Vuelvas`) y con `Names`/`Last Name`
+     invertidos en varias filas.
+
+8. **Hay una vista pública de logística, sin auth.** `/logistica/<token>`
+   (frontend) → `/api/public/logistics/<token>` (backend). Un link secreto por
+   competencia, rotable y desactivable desde el panel "Compartir".
+   **Publica los datos completos, número de pasaporte incluido** — fue una
+   decisión explícita del cliente. Si alguna vez hay que recortar, el único
+   lugar es `_redact()` en `public_logistics.py`.
+
+9. **Hay dos formas de asignar personal, y las decide `competitions.fee_type`:**
    - `per_game` → asignación **por partido** en `game_assignments` (un cargo
      por juego), solo para templates WCQ/BCLA/LSB.
    - `tournament` → el **crew del torneo** en `competition_assignments`
