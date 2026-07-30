@@ -26,9 +26,18 @@ JUSTIFY = WD_ALIGN_PARAGRAPH.JUSTIFY
 # body starts at and the fee style differ between WCQ and GENERIC.
 #   {{ x }}   plain value        {{r x }}  RichText (carries colour/bold)
 #   {%p %}    paragraph-level Jinja tag, removed on render
+#
+# The body carries both letter shapes, switched by `is_tournament` (derived
+# from the competition's fee_type in _letter_context). Per-game keeps the
+# historical layout: game list + host line, fees left after two blanks, five
+# blanks before the signature. Tournament mirrors the letters Competitions
+# writes by hand: a bold subject line, one intro sentence carrying venue +
+# competition span instead of the game list, fees centred after one blank,
+# and the signature right after the closing.
 def nomination_body(fee_style=None, blank_after_date=1):
-    # Blank-line counts mirror the positional builders exactly; they are the
-    # part a text-only diff cannot see, so they are spelled out here:
+    # Blank-line counts for the per-game branch mirror the positional builders
+    # exactly; they are the part a text-only diff cannot see, so they are
+    # spelled out here:
     #   date -> Dear      : GENERIC 1, WCQ 0 (its date sits at paras[1], Dear at [2])
     #   payment -> fees   : 2  (old: fee_idx = payment_idx + 3)
     #   last fee -> closing: 2 (old: closing_idx = fee_idx + len(fees) + 2)
@@ -36,43 +45,53 @@ def nomination_body(fee_style=None, blank_after_date=1):
         # (text, align, size_pt, style)
         ("{{r letter_date }}", RIGHT, 10, None),
         *[("", None, None, None)] * blank_after_date,
+        ("{%p if is_tournament %}", None, None, None),
+        ("{{r subject }}", None, None, None),
+        ("", None, None, None),
+        ("{%p endif %}", None, None, None),
         ("{{r greeting }}", None, None, None),
         ("", None, None, None),
-        ("We would like to inform that you have been nominated for the following "
-         "games of the {{ competition }}.", None, None, None),
+        ("{{r intro_paragraph }}", None, None, None),
         ("", None, None, None),
+        ("{%p if not is_tournament %}", None, None, None),
         ("{%p for game in game_dates %}", None, None, None),
         ("{{r game }}", CENTER, 10, None),
         ("{%p endfor %}", None, None, None),
         ("{{r host }}", CENTER, 10, None),
         ("", None, None, None),
+        ("{%p endif %}", None, None, None),
         ("{{r confirmation_paragraph }}", JUSTIFY, None, None),
         ("", None, None, None),
-        ("As soon as we receive your confirmation, we will make arrangements for "
-         "international flights to the host country and provide you with relevant "
-         "information in order for you to prepare the game and establish contact "
-         "with the Game Director of the Host National Federation.", None, None, None),
+        ("{{ travel_paragraph }}", None, None, None),
         ("", None, None, None),
         ("Below list the details of payment you will receive as {{ role }} "
          "assigned to the competition listed above:", None, None, None),
         ("", None, None, None),
+        ("{%p if is_tournament %}", None, None, None),
+        ("{%p for fee in payment_lines %}", None, None, None),
+        ("{{r fee }}", CENTER, 10, None),
+        ("{%p endfor %}", None, None, None),
+        ("{%p else %}", None, None, None),
         ("", None, None, None),
         ("{%p for fee in payment_lines %}", None, None, None),
         ("{{r fee }}", None, 10, fee_style),
         ("{%p endfor %}", None, None, None),
+        ("{%p endif %}", None, None, None),
         ("", None, None, None),
         ("", None, None, None),
-        ("We wish you the best in your preparation and accomplishment of your "
-         "assignment.", None, None, None),
-        # Gap before the signature. The positional builders sized this
+        ("{{ closing_paragraph }}", None, None, None),
+        # Gap before the signature. The per-game positional builders sized this
         # dynamically (`keep_empty = max(0, 30 - closing_idx - 2)`), which came
-        # out to 5-7 blank lines on a typical 1-3 game letter. A declarative
-        # template can't do that arithmetic, so it uses a fixed 5.
+        # out to 5-7 blank lines on a typical 1-3 game letter; the template
+        # uses a fixed 5. The tournament letter is shorter and the manual ones
+        # sign right below the closing, so it keeps 2.
+        ("", None, None, None),
+        ("", None, None, None),
+        ("{%p if not is_tournament %}", None, None, None),
         ("", None, None, None),
         ("", None, None, None),
         ("", None, None, None),
-        ("", None, None, None),
-        ("", None, None, None),
+        ("{%p endif %}", None, None, None),
     ]
 
 
@@ -324,6 +343,7 @@ def build(name, spec):
             pass
 
     paras = doc.paragraphs
+    src_para_count = len(paras)  # before any insertion, for the report below
 
     # Find the signature block by locating its scanned image rather than using
     # a fixed offset from the end — an offset silently eats the image when a
@@ -337,9 +357,17 @@ def build(name, spec):
     body = paras[spec["body_start"]:sig_start]
     content = spec["body"]
     if len(content) > len(body):
-        raise SystemExit(
-            f"{name}: template too short — need {len(content)} body paragraphs, "
-            f"have {len(body)}")
+        # The source has fewer paragraphs than the body needs: insert the
+        # missing ones right before the signature block, so the letterhead
+        # above and the signature below stay exactly where they are.
+        from docx.oxml.ns import qn
+        sig_element = paras[sig_start]._element
+        for _ in range(len(content) - len(body)):
+            sig_element.addprevious(doc.element.makeelement(qn("w:p"), {}))
+        paras = doc.paragraphs
+        images = [i for i, p in enumerate(paras) if "graphic" in p._p.xml]
+        sig_start = [i for i in images if i > spec["body_start"]][-1]
+        body = paras[spec["body_start"]:sig_start]
 
     for para, (text, align, size, style_name) in zip(body, content):
         for run in list(para.runs):
@@ -368,7 +396,7 @@ def build(name, spec):
 
     out = Document(str(dst))
     sig = [i for i, p in enumerate(out.paragraphs) if "graphic" in p._p.xml]
-    print(f"{name}: {src.name} ({len(paras)} paras) -> {dst.name} "
+    print(f"{name}: {src.name} ({src_para_count} paras) -> {dst.name} "
           f"({len(out.paragraphs)} paras), images at {sig}")
 
 

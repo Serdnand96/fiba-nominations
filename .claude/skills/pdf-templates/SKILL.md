@@ -47,9 +47,31 @@ más elaborado.
     `{%p for item in campo %}{{r item }}{%p endfor %}`
 - `_render_template()` usa `docxtpl.DocxTemplate(path).render(context)` y
   devuelve algo con `.save(path)`, igual que un `Document`.
+- **La carta de nominación tiene dos formas, según `fee_type`** (flag
+  `is_tournament` en el contexto; los `*_TPL.docx` de WCQ/GENERIC traen ambas
+  ramas con `{%p if is_tournament %}`):
+  - **per_game** → la forma histórica: lista de juegos centrada en rojo +
+    línea de sede, fees a la izquierda tras dos líneas en blanco, cierre
+    "...of your assignment.", 5 blancos antes de la firma.
+  - **tournament** → espeja las cartas manuales de Competitions: línea de
+    asunto en negrita (`subject`), UNA oración de intro con sede y rango de
+    fechas del torneo en negrita (`intro_paragraph`, rango = min/max de
+    `game_dates` vía `_fmt_date_range`, sin lista de juegos), rol
+    "FIBA Technical Delegate" en la confirmación, párrafo de viajes con
+    "at least 3 days before the game" + contacto de
+    logistics.americas@fiba.basketball (`travel_paragraph`), fees centradas
+    tras un blanco, cierre "...of your mission." (`closing_paragraph`) y la
+    firma pegada al cierre.
+  Los párrafos de intro/viajes/cierre ya no son texto fijo del `.docx`: son
+  placeholders que resuelve `_letter_context`. El email de confirmación de TD
+  es `competitions.americas@fiba.basketball` (con punto — el guion viejo era
+  un typo).
 - **Aliases legacy:** `LEGACY_FIELD_ALIASES` + `with_legacy_aliases()` mantienen
   funcionando nombres viejos de placeholders (`dear_line → greeting`, etc.), así
-  un `.docx` descargado con nombres antiguos sigue renderizando.
+  un `.docx` descargado con nombres antiguos sigue renderizando. Un `.docx`
+  subido con la forma vieja (texto fijo + loop de juegos) sigue renderizando
+  igual que antes — las ramas nuevas solo existen en los built-ins hasta que
+  se re-suba.
 
 ### Constantes de marca (respetalas)
 

@@ -41,7 +41,7 @@ def _role_label(role: str) -> str:
 
 CONFIRMATION_EMAIL = {
     "VGO": "vgo.americas@fiba.basketball",
-    "TD": "competitions-americas@fiba.basketball",
+    "TD": "competitions.americas@fiba.basketball",
     # Referees, instructors and video operators all confirm to the
     # Americas Referees inbox.
     "REF": "americas.refs@fiba.basketball",
@@ -124,6 +124,7 @@ PREVIEW_SAMPLE = {
     "role": "TD",
     "letter_date": "2026-01-15",
     "competition": "Sample Competition",
+    "competition_name": "Sample Competition",
     "year": 2026,
     "location": "Buenos Aires, Argentina",
     "venue": "Estadio Obras Sanitarias",
@@ -259,20 +260,45 @@ def _fmt_date(date_str: str) -> str:
             return date_str
 
 
+def _ordinal(day: int) -> str:
+    if 11 <= day <= 13:
+        return "th"
+    return {1: "st", 2: "nd", 3: "rd"}.get(day % 10, "th")
+
+
 def _fmt_deadline(date_str: str) -> str:
     """Format deadline: January 18th, 2026."""
     if not date_str:
         return ""
     try:
         dt = datetime.strptime(date_str, "%Y-%m-%d")
-        day = dt.day
-        if 11 <= day <= 13:
-            suffix = "th"
-        else:
-            suffix = {1: "st", 2: "nd", 3: "rd"}.get(day % 10, "th")
-        return dt.strftime(f"%B {day}{suffix}, %Y")
+        return dt.strftime(f"%B {dt.day}{_ordinal(dt.day)}, %Y")
     except Exception:
         return date_str
+
+
+def _fmt_date_range(start_str: str, end_str: str) -> str:
+    """Competition span for the tournament letter: "August 3rd to 9th, 2026".
+
+    Collapses the month/year when shared ("August 30th to September 5th, 2026",
+    "December 30th, 2026 to January 4th, 2027" otherwise). A single-day span
+    prints as one date.
+    """
+    try:
+        s = datetime.strptime(start_str, "%Y-%m-%d")
+        e = datetime.strptime(end_str, "%Y-%m-%d")
+    except Exception:
+        return ""
+    if (s.year, s.month, s.day) == (e.year, e.month, e.day):
+        return f"{s.strftime('%B')} {s.day}{_ordinal(s.day)}, {s.year}"
+    if (s.year, s.month) == (e.year, e.month):
+        return (f"{s.strftime('%B')} {s.day}{_ordinal(s.day)} to "
+                f"{e.day}{_ordinal(e.day)}, {s.year}")
+    if s.year == e.year:
+        return (f"{s.strftime('%B')} {s.day}{_ordinal(s.day)} to "
+                f"{e.strftime('%B')} {e.day}{_ordinal(e.day)}, {s.year}")
+    return (f"{s.strftime('%B')} {s.day}{_ordinal(s.day)}, {s.year} to "
+            f"{e.strftime('%B')} {e.day}{_ordinal(e.day)}, {e.year}")
 
 
 def _fee_label(fee_type: str | None) -> str:
@@ -368,10 +394,13 @@ def _letter_context(data: dict, font: str, date_color: str = DARK_HEX) -> dict:
         splits the run around a RichText insert and the trailing text comes
         back without an explicit colour, which would otherwise force us to
         repaint the document default and recolour the signature and footer.
+
+        Each part is (text, color) or (text, color, bold).
         """
         rt = RichText()
-        for text, color in parts:
-            rt.add(text, color=color, font=font)
+        for part in parts:
+            text, color, bold = part if len(part) == 3 else (*part, False)
+            rt.add(text, color=color, font=font, bold=bold)
         return rt
 
     games = []
@@ -385,6 +414,61 @@ def _letter_context(data: dict, font: str, date_color: str = DARK_HEX) -> dict:
     host_country = (data.get("host_country") or "").strip()
     host_line = ", ".join(p for p in (host_city, host_country) if p)
 
+    comp_name = data.get("competition_name", "")
+
+    # Tournament-fee letters mirror the letters Competitions writes by hand:
+    # no per-game list — one sentence carries the venue and the competition
+    # span — plus a bold subject line, the travel paragraph the manual letters
+    # include, and "mission" in the closing. Per-game letters keep the game
+    # list exactly as before.
+    is_tournament = (data.get("fee_type") or "per_game") == "tournament"
+
+    game_dates_sorted = sorted(
+        {(gd.get("date") or "").strip() for gd in data.get("game_dates") or []
+         if (gd.get("date") or "").strip()})
+    span = (_fmt_date_range(game_dates_sorted[0], game_dates_sorted[-1])
+            if game_dates_sorted else "")
+
+    if is_tournament:
+        intro_parts = [
+            ("We would like to inform that you have been nominated for the ",
+             DARK_HEX),
+            (comp_name, DARK_HEX, True),
+        ]
+        if host_line or span:
+            intro_parts.append((" to be held", DARK_HEX))
+            if host_line:
+                intro_parts.append((f" in {host_line}", DARK_HEX))
+            if span:
+                intro_parts.append((" from ", DARK_HEX))
+                intro_parts.append((span, DARK_HEX, True))
+        intro_parts.append((".", DARK_HEX))
+        intro_paragraph = rich_parts(*intro_parts)
+        confirmation_role = f"FIBA {role_label}"
+        travel_paragraph = (
+            "As soon as we receive your confirmation, we will make arrangements "
+            "for international flights to the host country at least 3 days "
+            "before the game and provide you with relevant information in order "
+            "for you to prepare the game and establish contact with the Game "
+            "Director of the Host National Federation. Should you have any "
+            "questions regarding travel arrangements, please contact "
+            "logistics.americas@fiba.basketball.")
+        closing_paragraph = ("We wish you the best in your preparation and "
+                             "accomplishment of your mission.")
+    else:
+        intro_paragraph = rich_parts(
+            ("We would like to inform that you have been nominated for the "
+             f"following games of the {comp_name}.", DARK_HEX))
+        confirmation_role = role_label
+        travel_paragraph = (
+            "As soon as we receive your confirmation, we will make arrangements "
+            "for international flights to the host country and provide you with "
+            "relevant information in order for you to prepare the game and "
+            "establish contact with the Game Director of the Host National "
+            "Federation.")
+        closing_paragraph = ("We wish you the best in your preparation and "
+                             "accomplishment of your assignment.")
+
     sig_name, sig_title, sig_org = SIGNATORIES.get(
         data.get("template_key", ""), SIGNATORIES["GENERIC"])
 
@@ -395,16 +479,28 @@ def _letter_context(data: dict, font: str, date_color: str = DARK_HEX) -> dict:
         # The built-in nomination templates carry a scanned signature in the
         # .docx and ignore this; an uploaded template can print it instead.
         "signature": f"{sig_name} {sig_title} {sig_org}".strip(),
+        "is_tournament": is_tournament,
+        # Always a RichText, even when the letter is per_game and the built-in
+        # templates drop it via {%p if is_tournament %}: placeholders_for()
+        # derives the tag from the sample value's type, and a plain "" here
+        # would advertise {{ subject }} — which docxtpl renders EMPTY (no
+        # error) the day the value is a RichText on a tournament letter.
+        "subject": rich(f"Nomination for the {comp_name}", bold=True),
         "greeting": _dear_line(data, font),
+        "intro_paragraph": intro_paragraph,
         "confirmation_paragraph": rich_parts(
             ("As per the FIBA Internal Regulations Book 3, please confirm to us "
-             f"your availability to fulfil your assignment as {role_label} by ", DARK_HEX),
+             f"your availability to fulfil your assignment as {confirmation_role} by ", DARK_HEX),
             (_fmt_deadline(data.get("confirmation_deadline", "")), RED_HEX),
             (".", DARK_HEX),
             (" Confirmation shall be sent to ", DARK_HEX),
             (CONFIRMATION_EMAIL.get(role, CONFIRMATION_EMAIL["VGO"]), DARK_HEX),
+            (".", DARK_HEX),
         ),
-        "competition": data.get("competition_name", ""),
+        "travel_paragraph": travel_paragraph,
+        "closing_paragraph": closing_paragraph,
+        "competition": comp_name,
+        "competition_span": span,
         "game_dates": games,
         "host": rich(host_line, bold=True, size=10) if host_line else "",
         "role": role_label,
@@ -635,6 +731,11 @@ def placeholders_for(template_key: str) -> list[dict]:
 
     out = []
     for name, value in sorted(context.items()):
+        # Booleans (is_tournament) exist for {%p if %} branches, not to be
+        # printed — advertising {{ is_tournament }} would invite a literal
+        # "True"/"False" in a letter.
+        if isinstance(value, bool):
+            continue
         if isinstance(value, list):
             first = value[0] if value else ""
             example = _richtext_text(first) if type(first).__name__ == "RichText" else str(first)
