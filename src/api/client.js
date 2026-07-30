@@ -68,8 +68,8 @@ export const getPaymentBudgets = () => api.get('/payments/budgets').then(r => r.
 export const getPaymentNominees = (competitionId) =>
   api.get('/payments/nominees', { params: { competition_id: competitionId } }).then(r => r.data)
 export const getPayments = (params) => api.get('/payments', { params }).then(r => r.data)
-export const getPaymentsSummary = (competitionId) =>
-  api.get('/payments/summary', { params: { competition_id: competitionId } }).then(r => r.data)
+export const getPaymentsSummary = (competitionId, budget) =>
+  api.get('/payments/summary', { params: { competition_id: competitionId, ...(budget ? { budget } : {}) } }).then(r => r.data)
 export const createPayment = (data) => api.post('/payments', data).then(r => r.data)
 export const updatePayment = (id, data) => api.put(`/payments/${id}`, data).then(r => r.data)
 export const deletePayment = (id) => api.delete(`/payments/${id}`).then(r => r.data)

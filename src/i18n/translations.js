@@ -181,6 +181,8 @@ const translations = {
     budget: { en: 'Budget', es: 'Presupuesto' },
     selectBudget: { en: 'Select budget...', es: 'Selecciona presupuesto...' },
     budgetRequired: { en: 'Please select a budget', es: 'Selecciona un presupuesto' },
+    allBudgets: { en: 'All budgets', es: 'Todos los presupuestos' },
+    noBudgetPayments: { en: 'No payments from this budget in this event.', es: 'No hay pagos de este presupuesto en este evento.' },
     amount: { en: 'Amount', es: 'Monto' },
     extra: { en: 'Extra', es: 'Extra' },
     airfare: { en: 'Airfare', es: 'Airfare' },

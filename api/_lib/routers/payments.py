@@ -142,12 +142,14 @@ def list_nominees(competition_id: str = Query(...)):
 
 
 # ─── Payments list ───────────────────────────────────────────────────────────
-@router.get("")
-def list_payments(
-    competition_id: Optional[str] = Query(None),
-    budget: Optional[str] = Query(None),
-    status: Optional[str] = Query(None),
-):
+def _fetch_payments(
+    competition_id: Optional[str] = None,
+    budget: Optional[str] = None,
+    status: Optional[str] = None,
+) -> list:
+    # Shared by the endpoints below. Endpoints must not call each other as plain
+    # functions: FastAPI Query() defaults leak through as truthy objects and
+    # become bogus filters (that bug kept /summary at $0.00).
     q = supabase.table("payments").select(
         "*, nominations(competition_id, total, personnel(name, role, country), competitions(name))"
     ).order("record_no")
@@ -162,10 +164,22 @@ def list_payments(
     return rows
 
 
+@router.get("")
+def list_payments(
+    competition_id: Optional[str] = Query(None),
+    budget: Optional[str] = Query(None),
+    status: Optional[str] = Query(None),
+):
+    return _fetch_payments(competition_id, budget, status)
+
+
 # ─── Totals for the footer ───────────────────────────────────────────────────
 @router.get("/summary")
-def payments_summary(competition_id: Optional[str] = Query(None)):
-    rows = list_payments(competition_id=competition_id)
+def payments_summary(
+    competition_id: Optional[str] = Query(None),
+    budget: Optional[str] = Query(None),
+):
+    rows = _fetch_payments(competition_id=competition_id, budget=budget)
     return {
         "count": len(rows),
         "amount": round(sum(float(r.get("amount") or 0) for r in rows), 2),

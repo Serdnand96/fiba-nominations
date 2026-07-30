@@ -30,6 +30,7 @@ export default function Payments() {
   const [competitions, setCompetitions] = useState([])
   const [budgets, setBudgets] = useState([])
   const [selectedCompId, setSelectedCompId] = useState('')
+  const [budgetFilter, setBudgetFilter] = useState('')
   const [nominees, setNominees] = useState([])
   const [summary, setSummary] = useState({ count: 0, amount: 0, extra: 0, total: 0 })
   const [loading, setLoading] = useState(false)
@@ -53,14 +54,14 @@ export default function Payments() {
     if (!compId) { setNominees([]); setSummary({ count: 0, amount: 0, extra: 0, total: 0 }); return }
     setLoading(true)
     try {
-      const [noms, sum] = await Promise.all([getPaymentNominees(compId), getPaymentsSummary(compId)])
+      const [noms, sum] = await Promise.all([getPaymentNominees(compId), getPaymentsSummary(compId, budgetFilter)])
       setNominees(noms)
       setSummary(sum)
     } catch (e) { console.error(e) }
     setLoading(false)
   }
 
-  useEffect(() => { loadEvent(selectedCompId) }, [selectedCompId])
+  useEffect(() => { loadEvent(selectedCompId) }, [selectedCompId, budgetFilter])
 
   const selectedComp = competitions.find(c => c.id === selectedCompId)
 
@@ -183,6 +184,12 @@ export default function Payments() {
     }
   }
 
+  // With a budget filter on, the table and money cards narrow to that budget;
+  // the Nominated / With payment cards keep counting the whole event.
+  const visibleNominees = useMemo(
+    () => budgetFilter ? nominees.filter(n => n.payment?.budget_code === budgetFilter) : nominees,
+    [nominees, budgetFilter]
+  )
   const paidCount = useMemo(() => nominees.filter(n => n.payment).length, [nominees])
 
   return (
@@ -199,6 +206,12 @@ export default function Payments() {
           onChange={setSelectedCompId}
           placeholder={t('payments.selectEvent')}
         />
+        {selectedCompId && (
+          <select value={budgetFilter} onChange={e => setBudgetFilter(e.target.value)} className="fiba-select">
+            <option value="">{t('payments.allBudgets')}</option>
+            {budgets.map(b => <option key={b.code} value={b.code}>{b.label}</option>)}
+          </select>
+        )}
       </div>
 
       {!selectedCompId ? (
@@ -244,7 +257,7 @@ export default function Payments() {
                   {loading && (
                     <tr><td colSpan={10} className="px-4 py-8 text-center text-fiba-muted/60">{t('app.loading')}</td></tr>
                   )}
-                  {!loading && nominees.map(n => {
+                  {!loading && visibleNominees.map(n => {
                     const p = n.payment
                     const budgetLabel = p ? (budgets.find(b => b.code === p.budget_code)?.label || p.budget_code) : '—'
                     return (
@@ -272,11 +285,13 @@ export default function Payments() {
                       </tr>
                     )
                   })}
-                  {!loading && nominees.length === 0 && (
-                    <tr><td colSpan={10} className="px-4 py-8 text-center text-fiba-muted/60">{t('payments.noNominees')}</td></tr>
+                  {!loading && visibleNominees.length === 0 && (
+                    <tr><td colSpan={10} className="px-4 py-8 text-center text-fiba-muted/60">
+                      {budgetFilter && nominees.length > 0 ? t('payments.noBudgetPayments') : t('payments.noNominees')}
+                    </td></tr>
                   )}
                 </tbody>
-                {nominees.length > 0 && (
+                {visibleNominees.length > 0 && (
                   <tfoot>
                     <tr className="border-t-2 border-fiba-border font-semibold">
                       <td className="px-4 py-3" colSpan={4}>{t('payments.total')}</td>
