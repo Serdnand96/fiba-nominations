@@ -388,7 +388,20 @@ export default function Nominations() {
     setLoading(false)
   }
 
+  // record_no of the payment attached to a nomination (PostgREST may embed
+  // the one-to-one payments relation as an object or a single-element array).
+  function paymentRecordOf(n) {
+    const p = n.payments
+    if (!p) return null
+    return Array.isArray(p) ? (p[0]?.record_no || null) : (p.record_no || null)
+  }
+
   async function handleDeleteNomination(nom) {
+    const record = paymentRecordOf(nom)
+    if (record) {
+      alert(t('nominations.deleteBlockedPayment', { record }))
+      return
+    }
     if (!confirm(t('nominations.confirmDelete', { name: nom.personnel?.name }))) return
     try {
       await deleteNomination(nom.id)
@@ -399,13 +412,34 @@ export default function Nominations() {
   }
 
   async function handleBulkDelete() {
-    const ids = [...selectedIds]
-    if (ids.length === 0) return
-    if (!confirm(t('nominations.confirmBulkDelete', { count: ids.length }))) return
+    const rows = nominations.filter(n => selectedIds.has(n.id))
+    if (rows.length === 0) return
+    const withPayment = rows.filter(n => paymentRecordOf(n))
+    const deletable = rows.filter(n => !paymentRecordOf(n))
+    if (deletable.length === 0) {
+      alert(t('nominations.bulkAllHavePayments', { count: withPayment.length }))
+      return
+    }
+    const msg = withPayment.length > 0
+      ? t('nominations.confirmBulkDeleteWithPayments', {
+          count: deletable.length,
+          blocked: withPayment.length,
+          records: withPayment.map(paymentRecordOf).join(', '),
+        })
+      : t('nominations.confirmBulkDelete', { count: deletable.length })
+    if (!confirm(msg)) return
     try {
-      await bulkDeleteNominations(ids)
+      const res = await bulkDeleteNominations(deletable.map(n => n.id))
       setSelectedIds(new Set())
       await load()
+      // Payments attached between page load and delete (another user/tab):
+      // the API refuses those rows even though the pre-check let them through.
+      if (res?.blocked?.length > 0) {
+        alert(t('nominations.bulkDeleteBlockedAfter', {
+          count: res.blocked.length,
+          records: res.blocked.map(b => b.record_no).join(', '),
+        }))
+      }
     } catch (err) {
       alert(t('nominations.errorDeletingBulk') + ': ' + (err.response?.data?.detail || err.message))
     }

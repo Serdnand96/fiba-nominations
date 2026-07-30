@@ -130,8 +130,10 @@ class ApprovalUpdate(BaseModel):
 
 @router.get("")
 def list_nominations():
+    # payments(record_no) lets the UI warn about the attached payment before a
+    # delete is even attempted (deletes are refused while a payment exists).
     result = supabase.table("nominations").select(
-        "*, personnel(name, role, email), competitions(name, template_key, year, fee_type)"
+        "*, personnel(name, role, email), competitions(name, template_key, year, fee_type), payments(record_no)"
     ).order("created_at", desc=True).execute()
     return result.data
 
@@ -333,8 +335,34 @@ def _delete_pdf_from_storage(pdf_path: str | None) -> None:
         logger.warning(f"[storage cleanup] could not remove {key}: {e}")
 
 
+def _payment_records_for(nomination_ids: list[str]) -> dict:
+    """record_no of the payment attached to each nomination, if any.
+
+    Deleting a nomination cascades to its payment (and the payment's
+    financial-control files), so deletes must refuse while a payment exists —
+    losing EP records silently is how EP-00001..5 vanished on 2026-07-30.
+    """
+    if not nomination_ids:
+        return {}
+    rows = (
+        supabase.table("payments")
+        .select("nomination_id, record_no")
+        .in_("nomination_id", nomination_ids)
+        .execute()
+        .data
+    ) or []
+    return {r["nomination_id"]: r["record_no"] for r in rows}
+
+
 @router.delete("/{nomination_id}", dependencies=[Depends(require_edit("nominations"))])
 def delete_nomination(nomination_id: str):
+    record_no = _payment_records_for([nomination_id]).get(nomination_id)
+    if record_no:
+        raise HTTPException(
+            status_code=409,
+            detail=f"This nomination has payment {record_no} attached — delete the payment first in the Payments module",
+        )
+
     # Pen-test N2: also clean up the PDF in Storage so a stale UUID can't be
     # used to download a deleted nomination's file.
     row = supabase.table("nominations").select("pdf_path").eq("id", nomination_id).execute().data
@@ -352,9 +380,14 @@ def delete_nomination(nomination_id: str):
 def bulk_delete_nominations(nomination_ids: list[str]):
     if len(nomination_ids) > _MAX_BULK:
         raise HTTPException(status_code=400, detail=f"Maximum {_MAX_BULK} items per request")
+    with_payment = _payment_records_for(nomination_ids)
     deleted = 0
     errors = []
+    blocked = []
     for nid in nomination_ids:
+        if nid in with_payment:
+            blocked.append({"id": nid, "record_no": with_payment[nid]})
+            continue
         try:
             row = supabase.table("nominations").select("pdf_path").eq("id", nid).execute().data
             pdf_path = row[0].get("pdf_path") if row else None
@@ -363,7 +396,7 @@ def bulk_delete_nominations(nomination_ids: list[str]):
             deleted += 1
         except Exception as e:
             errors.append({"id": nid, "error": str(e)})
-    return {"deleted": deleted, "errors": errors}
+    return {"deleted": deleted, "blocked": blocked, "errors": errors}
 
 
 @router.get("/{nomination_id}")

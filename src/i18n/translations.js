@@ -382,6 +382,22 @@ const translations = {
     },
     confirmDelete: { en: 'Delete nomination for {name}?', es: '¿Eliminar la nominación de {name}?' },
     confirmBulkDelete: { en: 'Delete {count} nomination(s)?', es: '¿Eliminar {count} nominación(es)?' },
+    deleteBlockedPayment: {
+      en: 'This nomination has payment {record} attached. Delete the payment first in the Payments module.',
+      es: 'Esta nominación tiene el pago {record} asociado. Elimina primero el pago desde el módulo de Pagos.',
+    },
+    confirmBulkDeleteWithPayments: {
+      en: '{count} nomination(s) will be deleted.\n{blocked} have payments attached ({records}) and will be kept — delete their payments first in the Payments module.\nContinue?',
+      es: 'Se eliminarán {count} nominación(es).\n{blocked} tienen pagos asociados ({records}) y se conservarán — elimina primero sus pagos desde el módulo de Pagos.\n¿Continuar?',
+    },
+    bulkAllHavePayments: {
+      en: 'All {count} selected nomination(s) have payments attached. Delete their payments first in the Payments module.',
+      es: 'Las {count} nominación(es) seleccionadas tienen pagos asociados. Elimina primero sus pagos desde el módulo de Pagos.',
+    },
+    bulkDeleteBlockedAfter: {
+      en: '{count} nomination(s) were kept because a payment was attached meanwhile ({records}).',
+      es: '{count} nominación(es) se conservaron porque se les asoció un pago mientras tanto ({records}).',
+    },
     errorDeleting: { en: 'Error deleting nomination', es: 'Error eliminando nominación' },
     errorDeletingBulk: { en: 'Error deleting nominations', es: 'Error eliminando nominaciones' },
     errorGenerating: { en: 'Error generating document', es: 'Error generando documento' },
