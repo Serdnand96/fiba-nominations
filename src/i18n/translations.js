@@ -397,6 +397,9 @@ const translations = {
     confDeclined: { en: 'Declined', es: 'Declinado' },
     errorUpdatingConfirmation: { en: 'Error updating confirmation', es: 'Error actualizando confirmación' },
     confirmationUpdatedAt: { en: 'Updated', es: 'Actualizado' },
+    cmApproval: { en: 'CM approval', es: 'Aprobación CM' },
+    cmApprovedOn: { en: 'Approved on {date}', es: 'Aprobada el {date}' },
+    errorUpdatingApproval: { en: 'Error updating approval', es: 'Error al actualizar la aprobación' },
 
     // Workload matrix view
     viewTable: { en: 'Table', es: 'Tabla' },

@@ -2,7 +2,7 @@ import logging
 import os
 import re
 from datetime import datetime, timezone
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, Request
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from typing import Optional
@@ -19,6 +19,13 @@ router = APIRouter(prefix="/nominations", tags=["nominations"], dependencies=[De
 _MAX_BULK = 100
 _SAFE_FILENAME_RE = re.compile(r'[^\w\s\-\.\(\)]')
 _VALID_CONFIRMATION_STATUSES = {"pending", "nominated", "confirmed", "declined"}
+
+
+def _user_id(request: Request) -> Optional[str]:
+    user = getattr(request.state, "user", None)
+    if isinstance(user, dict):
+        return user.get("id")
+    return None
 
 
 def _host_location_for_nomination(
@@ -115,6 +122,10 @@ def _host_location_for_nomination(
 class ConfirmationUpdate(BaseModel):
     status: str
     notes: Optional[str] = None
+
+
+class ApprovalUpdate(BaseModel):
+    approved: bool
 
 
 @router.get("")
@@ -261,6 +272,32 @@ def update_confirmation(nomination_id: str, payload: ConfirmationUpdate):
     }
     if payload.notes is not None:
         updates["confirmation_notes"] = payload.notes
+    result = (
+        supabase.table("nominations")
+        .update(updates)
+        .eq("id", nomination_id)
+        .execute()
+    )
+    if not result.data:
+        raise HTTPException(status_code=404, detail="Nomination not found")
+    return result.data[0]
+
+
+@router.patch("/{nomination_id}/approval", dependencies=[Depends(require_edit("nominations"))])
+def update_approval(nomination_id: str, payload: ApprovalUpdate, request: Request):
+    """Update the Competition Manager approval state for a nomination."""
+    if payload.approved:
+        updates = {
+            "cm_approved": True,
+            "cm_approved_at": datetime.now(timezone.utc).isoformat(),
+            "cm_approved_by": _user_id(request),
+        }
+    else:
+        updates = {
+            "cm_approved": False,
+            "cm_approved_at": None,
+            "cm_approved_by": None,
+        }
     result = (
         supabase.table("nominations")
         .update(updates)

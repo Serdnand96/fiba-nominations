@@ -51,6 +51,8 @@ export const bulkDeleteNominations = (ids) => api.delete('/nominations/bulk/dele
 export const generateNomination = (id) => api.post(`/nominations/${id}/generate`).then(r => r.data)
 export const updateNominationConfirmation = (id, status, notes = null) =>
   api.patch(`/nominations/${id}/confirmation`, { status, notes }).then(r => r.data)
+export const updateNominationApproval = (id, approved) =>
+  api.patch(`/nominations/${id}/approval`, { approved }).then(r => r.data)
 
 // Authenticated file download — fetches with JWT, returns a Blob the caller
 // turns into an object URL to trigger the browser save dialog. Replaces the

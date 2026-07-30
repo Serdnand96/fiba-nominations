@@ -4,7 +4,7 @@ import {
   getNominations, getPersonnel, getCompetitions, getGames,
   createNomination, createBulkNominations, generateNomination,
   bulkGenerateNominations, deleteNomination, bulkDeleteNominations,
-  downloadNominationBlob, updateNominationConfirmation,
+  downloadNominationBlob, updateNominationConfirmation, updateNominationApproval,
 } from '../api/client'
 import { roleLabel, roleBadgeClass } from '../lib/roles'
 import { countryName } from '../lib/countries'
@@ -159,6 +159,7 @@ export default function Nominations() {
       competition: n => n.competitions?.name,
       letter_date: n => n.letter_date,
       status: n => n.status,
+      cm_approved: n => n.cm_approved ? 1 : 0,
     }
     const get = accessors[sort.key]
     return [...rows].sort((a, b) => compareValues(get(a), get(b), sort.dir))
@@ -177,6 +178,20 @@ export default function Nominations() {
       setNominations(prev => prev.map(n => n.id === nom.id ? { ...n, ...updated } : n))
     } catch (err) {
       alert(t('nominations.errorUpdatingConfirmation') + ': ' + (err.response?.data?.detail || err.message))
+    }
+  }
+
+  async function handleApprovalChange(nom, approved) {
+    if (approved === !!nom.cm_approved) return
+    const previous = nom.cm_approved
+    // Optimistic update so the checkbox reacts immediately; reverted below on error.
+    setNominations(prev => prev.map(n => n.id === nom.id ? { ...n, cm_approved: approved } : n))
+    try {
+      const updated = await updateNominationApproval(nom.id, approved)
+      setNominations(prev => prev.map(n => n.id === nom.id ? { ...n, ...updated } : n))
+    } catch (err) {
+      setNominations(prev => prev.map(n => n.id === nom.id ? { ...n, cm_approved: previous } : n))
+      push({ type: 'error', title: t('nominations.errorUpdatingApproval'), body: err.response?.data?.detail || err.message })
     }
   }
 
@@ -546,12 +561,17 @@ export default function Nominations() {
               <SortHeader label={t('nominations.letterDate')} sortKey="letter_date" />
               <SortHeader label={t('nominations.status')} sortKey="status" />
               <th>{t('nominations.confirmation')}</th>
+              <SortHeader label={t('nominations.cmApproval')} sortKey="cm_approved" />
               <th>{t('nominations.action')}</th>
             </tr>
           </thead>
           <tbody>
             {filtered.map(n => (
-              <tr key={n.id} className={selectedIds.has(n.id) ? 'bg-fiba-accent/10' : ''}>
+              <tr key={n.id} className={
+                selectedIds.has(n.id)
+                  ? 'bg-fiba-accent/10'
+                  : n.cm_approved ? 'bg-success-50 dark:bg-success-500/10' : ''
+              }>
                 <td className="px-4 py-3">
                   <input type="checkbox" checked={selectedIds.has(n.id)} onChange={() => toggleTableSelect(n.id)} className="rounded" />
                 </td>
@@ -602,6 +622,16 @@ export default function Nominations() {
                     )
                   })()}
                 </td>
+                <td className="px-4 py-3 text-center"
+                  title={n.cm_approved_at ? t('nominations.cmApprovedOn', { date: new Date(n.cm_approved_at).toLocaleString() }) : ''}>
+                  <input
+                    type="checkbox"
+                    checked={!!n.cm_approved}
+                    disabled={!canEdit}
+                    onChange={e => handleApprovalChange(n, e.target.checked)}
+                    className="rounded border-ink-300 text-success-600 focus:ring-success-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                  />
+                </td>
                 <td className="px-4 py-3">
                   <div className="flex gap-2">
                     {n.status === 'generated' && (
@@ -634,7 +664,7 @@ export default function Nominations() {
               </tr>
             ))}
             {filtered.length === 0 && (
-              <tr><td colSpan={7} className="px-4 py-8 text-center text-fiba-muted/60">{t('nominations.noNominations')}</td></tr>
+              <tr><td colSpan={9} className="px-4 py-8 text-center text-fiba-muted/60">{t('nominations.noNominations')}</td></tr>
             )}
           </tbody>
         </table>
