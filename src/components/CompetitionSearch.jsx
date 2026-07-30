@@ -1,10 +1,15 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useSyncExternalStore } from 'react'
 import { Icon } from '../lib/icons.jsx'
 import { supabase } from '../lib/supabase'
+import { useAuth } from '../contexts/AuthContext'
+import { useLanguage } from '../i18n/LanguageContext'
 
 // localStorage is the offline cache; user_pinned_competitions in Supabase is the source of truth.
 // On mount we render the cache instantly, then reconcile against the server.
 const PINNED_CACHE_KEY = 'fiba_pinned_competitions'
+// Set once the localStorage-only pins have been pushed to Supabase. After that
+// the server is authoritative, so unpinning sticks and stale ids get pruned.
+const PINNED_MIGRATED_KEY = 'fiba_pinned_competitions_migrated'
 
 function loadCache() {
   try {
@@ -21,6 +26,66 @@ function writeCache(ids) {
   try { localStorage.setItem(PINNED_CACHE_KEY, JSON.stringify(ids)) } catch {}
 }
 
+// ── Shared pin store ────────────────────────────────────────────────────────
+// Several CompetitionSearch instances can be mounted at once (Reports renders
+// two). Keeping the list in a module-level store instead of per-component state
+// means a pin made in one dropdown shows up in the others, and no instance can
+// clobber another's writes with a stale snapshot.
+let pinnedIdsStore = loadCache()
+const pinListeners = new Set()
+
+function getPinnedIds() {
+  return pinnedIdsStore
+}
+
+function setPinnedIds(next) {
+  pinnedIdsStore = next
+  writeCache(next)
+  pinListeners.forEach(fn => fn())
+}
+
+function subscribePins(fn) {
+  pinListeners.add(fn)
+  return () => pinListeners.delete(fn)
+}
+
+function usePinnedIds() {
+  return useSyncExternalStore(subscribePins, getPinnedIds)
+}
+
+// Pull the authoritative list from Supabase. Pins are ordered by pinned_at so
+// the pinned block keeps a stable, predictable order.
+async function syncPinsFromServer(userId) {
+  const { data: rows, error } = await supabase
+    .from('user_pinned_competitions')
+    .select('competition_id, pinned_at')
+    .eq('user_id', userId)
+    .order('pinned_at', { ascending: true })
+  if (error) return
+
+  const remoteIds = (rows || []).map(r => r.competition_id)
+
+  // One-time migration of pins made before the Supabase-backed version (or
+  // while the session was still loading), then the server wins from here on.
+  let migrated = false
+  try { migrated = localStorage.getItem(PINNED_MIGRATED_KEY) === '1' } catch {}
+  if (!migrated) {
+    const localOnly = loadCache().filter(id => !remoteIds.includes(id))
+    if (localOnly.length > 0) {
+      const { error: insertError } = await supabase
+        .from('user_pinned_competitions')
+        .upsert(
+          localOnly.map(competition_id => ({ user_id: userId, competition_id })),
+          { onConflict: 'user_id,competition_id', ignoreDuplicates: true },
+        )
+      if (!insertError) remoteIds.push(...localOnly)
+    }
+    try { localStorage.setItem(PINNED_MIGRATED_KEY, '1') } catch {}
+  }
+
+  setPinnedIds(remoteIds)
+}
+
 /**
  * Searchable competition selector — replaces plain <select> dropdowns.
  *
@@ -34,9 +99,11 @@ function writeCache(ids) {
 export default function CompetitionSearch({ competitions, value, onChange, placeholder = 'Search competition...', className = '' }) {
   const [open, setOpen] = useState(false)
   const [search, setSearch] = useState('')
-  // Seed from cache for instant render; reconcile with Supabase below.
-  const [pinnedIds, setPinnedIds] = useState(() => loadCache())
-  const [userId, setUserId] = useState(null)
+  // Rendered from the shared store (seeded from cache), reconciled with Supabase below.
+  const pinnedIds = usePinnedIds()
+  const { user } = useAuth()
+  const { t } = useLanguage()
+  const userId = user?.id || null
   const wrapperRef = useRef(null)
   const inputRef = useRef(null)
 
@@ -54,46 +121,22 @@ export default function CompetitionSearch({ competitions, value, onChange, place
     return () => document.removeEventListener('mousedown', handleClick)
   }, [])
 
-  // Sync with Supabase: fetch the authoritative list and one-time-migrate
-  // any pre-existing cache entries from the localStorage-only version.
+  // Reconcile with Supabase once the session is available, and again whenever
+  // the dropdown is opened so pins made elsewhere (other tab/device) show up.
   useEffect(() => {
-    let cancelled = false
-    ;(async () => {
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user || cancelled) return
-      setUserId(user.id)
-
-      const { data: rows, error } = await supabase
-        .from('user_pinned_competitions')
-        .select('competition_id')
-        .eq('user_id', user.id)
-      if (error || cancelled) return
-
-      const remoteIds = (rows || []).map(r => r.competition_id)
-      const cachedIds = loadCache()
-      const missingInRemote = cachedIds.filter(id => !remoteIds.includes(id))
-
-      if (missingInRemote.length > 0) {
-        const toInsert = missingInRemote.map(competition_id => ({ user_id: user.id, competition_id }))
-        await supabase.from('user_pinned_competitions').insert(toInsert)
-        if (cancelled) return
-      }
-
-      const merged = Array.from(new Set([...remoteIds, ...missingInRemote]))
-      setPinnedIds(merged)
-      writeCache(merged)
-    })()
-    return () => { cancelled = true }
-  }, [])
+    if (!userId || !open) return
+    syncPinsFromServer(userId)
+  }, [userId, open])
 
   async function togglePin(compId, e) {
     e?.stopPropagation()
-    const wasPinned = pinnedIds.includes(compId)
-    const next = wasPinned ? pinnedIds.filter(id => id !== compId) : [...pinnedIds, compId]
+    const wasPinned = getPinnedIds().includes(compId)
     // Optimistic: update UI + cache immediately.
-    const prev = pinnedIds
-    setPinnedIds(next)
-    writeCache(next)
+    setPinnedIds(
+      wasPinned
+        ? getPinnedIds().filter(id => id !== compId)
+        : [...getPinnedIds(), compId],
+    )
 
     if (!userId) return // not authenticated yet — cache-only
 
@@ -105,12 +148,18 @@ export default function CompetitionSearch({ competitions, value, onChange, place
           .eq('competition_id', compId)
       : await supabase
           .from('user_pinned_competitions')
-          .insert({ user_id: userId, competition_id: compId })
+          .upsert(
+            { user_id: userId, competition_id: compId },
+            { onConflict: 'user_id,competition_id', ignoreDuplicates: true },
+          )
 
     if (error) {
-      // Revert on failure.
-      setPinnedIds(prev)
-      writeCache(prev)
+      // Revert just this pin, so a concurrent toggle on another row survives.
+      setPinnedIds(
+        wasPinned
+          ? [...getPinnedIds(), compId]
+          : getPinnedIds().filter(id => id !== compId),
+      )
     }
   }
 
@@ -122,14 +171,20 @@ export default function CompetitionSearch({ competitions, value, onChange, place
       || String(c.year || '').includes(q)
   })
 
-  // Pinned competitions sort to the top, preserving original order within each group.
+  // Pinned competitions sort to the top, in the order they were pinned;
+  // the rest keep their original order.
+  const pinOrder = new Map(pinnedIds.map((id, i) => [id, i]))
   const sorted = [...filtered].sort((a, b) => {
-    const ap = pinnedSet.has(a.id) ? 0 : 1
-    const bp = pinnedSet.has(b.id) ? 0 : 1
-    return ap - bp
+    const ap = pinOrder.has(a.id) ? 0 : 1
+    const bp = pinOrder.has(b.id) ? 0 : 1
+    if (ap !== bp) return ap - bp
+    if (ap === 0) return pinOrder.get(a.id) - pinOrder.get(b.id)
+    return 0
   })
-  const firstUnpinnedIdx = sorted.findIndex(c => !pinnedSet.has(c.id))
-  const hasPinnedAndUnpinned = !search && firstUnpinnedIdx > 0 && firstUnpinnedIdx < sorted.length
+  const pinnedCount = sorted.reduce((n, c) => n + (pinnedSet.has(c.id) ? 1 : 0), 0)
+  // Section headers only make sense when both groups are non-empty and we're
+  // not filtering (a search mixes matches from both).
+  const showSections = !search && pinnedCount > 0 && pinnedCount < sorted.length
 
   function handleSelect(comp) {
     onChange(comp.id)
@@ -187,16 +242,21 @@ export default function CompetitionSearch({ competitions, value, onChange, place
           {/* Options */}
           <div className="overflow-y-auto flex-1">
             {sorted.length === 0 ? (
-              <div className="px-4 py-3 text-sm text-fiba-muted text-center">No results</div>
+              <div className="px-4 py-3 text-sm text-fiba-muted text-center">{t('competitionSearch.noResults')}</div>
             ) : (
               sorted.map((c, idx) => {
                 const isPinned = pinnedSet.has(c.id)
                 const isSelected = c.id === value
                 return (
                   <div key={c.id}>
-                    {hasPinnedAndUnpinned && idx === firstUnpinnedIdx && (
+                    {showSections && idx === 0 && (
+                      <div className="px-4 py-1 text-[10px] uppercase tracking-wider text-fiba-muted bg-fiba-surface/50">
+                        {t('competitionSearch.pinnedSection')} ({pinnedCount})
+                      </div>
+                    )}
+                    {showSections && idx === pinnedCount && (
                       <div className="px-4 py-1 text-[10px] uppercase tracking-wider text-fiba-muted border-t border-fiba-border bg-fiba-surface/50">
-                        All competitions
+                        {t('competitionSearch.allSection')}
                       </div>
                     )}
                     <div
@@ -228,12 +288,13 @@ export default function CompetitionSearch({ competitions, value, onChange, place
                       <button
                         type="button"
                         onClick={(e) => togglePin(c.id, e)}
-                        title={isPinned ? 'Unpin' : 'Pin to top'}
-                        aria-label={isPinned ? 'Unpin competition' : 'Pin competition to top'}
+                        title={isPinned ? t('competitionSearch.unpin') : t('competitionSearch.pin')}
+                        aria-label={isPinned ? t('competitionSearch.unpin') : t('competitionSearch.pin')}
+                        aria-pressed={isPinned}
                         className={`flex-shrink-0 mr-2 p-1.5 rounded hover:bg-fiba-surface-2 transition-opacity ${
                           isPinned
                             ? 'text-fiba-accent opacity-100'
-                            : 'text-fiba-muted opacity-0 group-hover:opacity-100 focus:opacity-100'
+                            : 'text-fiba-muted opacity-40 hover:opacity-100 group-hover:opacity-100 focus:opacity-100'
                         }`}
                       >
                         {isPinned

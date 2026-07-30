@@ -1110,6 +1110,15 @@ const translations = {
     uploading: { en: 'Uploading...', es: 'Subiendo...' },
   },
 
+  // ===== Competition selector (CompetitionSearch) =====
+  competitionSearch: {
+    noResults: { en: 'No results', es: 'Sin resultados' },
+    pinnedSection: { en: 'Pinned', es: 'Fijadas' },
+    allSection: { en: 'All competitions', es: 'Todas las competencias' },
+    pin: { en: 'Pin to top', es: 'Fijar arriba' },
+    unpin: { en: 'Unpin', es: 'Quitar de fijadas' },
+  },
+
   // ===== Assets (Inventory) =====
   assets: {
     title: { en: 'Inventory', es: 'Inventario' },
