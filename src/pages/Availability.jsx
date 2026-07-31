@@ -7,6 +7,7 @@ import { useAuth } from '../contexts/AuthContext'
 import { Card } from '../components/ui/Card'
 import { Avatar } from '../components/ui/Avatar'
 import { Button } from '../components/ui/Button'
+import { InfoHint } from '../components/ui/Tooltip'
 
 // Personnel roles with a self-service availability roster (all of them).
 const ROLES = ['TD', 'VGO', 'REF', 'REF_INSTRUCTOR', 'VIDEO_OPERATOR']
@@ -199,13 +200,13 @@ export default function Availability() {
   const statCards = [
     { key: 'available',   label: t('availability.available'),    count: totals.available,   bar: 'bg-success-500' },
     { key: 'nominated',   label: t('availability.nominated'),    count: totals.nominated,   bar: 'bg-basketball-500' },
-    { key: 'restricted',  label: t('availability.restricted'),   count: totals.restricted,  bar: 'bg-warning-500' },
+    { key: 'restricted',  label: t('availability.restricted'),   count: totals.restricted,  bar: 'bg-warning-500', hint: t('availability.restrictedHint') },
     { key: 'unavailable', label: t('availability.unavailable'),  count: totals.unavailable, bar: 'bg-danger-500' },
   ]
 
   const legendItems = [
     { dot: STATUS_STYLES.available.dot,        label: t('availability.available') },
-    { dot: STATUS_STYLES.restricted.dot,       label: t('availability.restricted') },
+    { dot: STATUS_STYLES.restricted.dot,       label: t('availability.restricted'), hint: t('availability.restrictedHint') },
     { dot: STATUS_STYLES.unavailable.dot,      label: t('availability.unavailable') },
     { dot: NOMINATION_STYLES.nominated.dot,    label: t('availability.nominated') },
     { dot: NOMINATION_STYLES.confirmed.dot,    label: t('availability.confirmed') },
@@ -251,7 +252,10 @@ export default function Availability() {
             <div className="flex items-center gap-3">
               <div className={`w-1.5 h-10 rounded-full ${s.bar}`} />
               <div>
-                <div className="text-[12px] text-ink-500 dark:text-ink-400">{s.label}</div>
+                <div className="text-[12px] text-ink-500 dark:text-ink-400 flex items-center gap-1">
+                  {s.label}
+                  {s.hint && <InfoHint label={s.hint} />}
+                </div>
                 <div className="num text-[22px] font-semibold text-navy-900 dark:text-white leading-tight">
                   {s.count} <span className="text-xs font-normal text-ink-400 dark:text-ink-500">slots</span>
                 </div>
@@ -311,6 +315,7 @@ export default function Availability() {
                 <div key={idx} className="flex items-center gap-1.5">
                   <span className={`w-2 h-2 rounded-full ${it.dot}`} />
                   <span className="text-ink-600 dark:text-ink-300">{it.label}</span>
+                  {it.hint && <InfoHint label={it.hint} position="bottom" />}
                 </div>
               ))}
             </div>

@@ -7,6 +7,7 @@ import {
 import { useLanguage } from '../i18n/LanguageContext'
 import { ROLES, roleLabel, roleBadgeClass } from '../lib/roles'
 import { COUNTRIES, countryName, countryNameToCode } from '../lib/countries'
+import { InfoHint } from './ui/Tooltip'
 
 const STATUS_STYLES = {
   available: 'bg-emerald-500/20 text-emerald-400',
@@ -541,7 +542,10 @@ export default function PersonProfilePanel({ person: initialPerson, onClose, onU
               )}
 
               <div>
-                <label className="fiba-label">{t('availability.status')}</label>
+                <div className="flex items-center gap-1.5 mb-1.5">
+                  <label className="fiba-label !mb-0">{t('availability.status')}</label>
+                  <InfoHint label={t('availability.restrictedHint')} />
+                </div>
                 <select value={availForm.status} onChange={e => setAvailForm(f => ({ ...f, status: e.target.value }))} className="fiba-select">
                   <option value="available">{t('availability.available')}</option>
                   <option value="unavailable">{t('availability.unavailable')}</option>

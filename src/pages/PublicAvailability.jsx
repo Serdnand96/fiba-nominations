@@ -321,13 +321,16 @@ export default function PublicAvailability() {
                     </div>
                   </div>
                   {answer.status === 'restricted' && (
-                    <input
-                      type="text" value={answer.notes || ''}
-                      onChange={e => setEventNotes(c.id, e.target.value)}
-                      placeholder={t('publicAvailability.restrictionNote')}
-                      maxLength={500}
-                      className={`${inputCls} mt-2.5`}
-                    />
+                    <div className="mt-2.5">
+                      <p className="text-2xs text-ink-500 dark:text-ink-400 mb-1">{t('availability.restrictedHint')}</p>
+                      <input
+                        type="text" value={answer.notes || ''}
+                        onChange={e => setEventNotes(c.id, e.target.value)}
+                        placeholder={t('publicAvailability.restrictionNote')}
+                        maxLength={500}
+                        className={inputCls}
+                      />
+                    </div>
                   )}
                 </div>
               )

@@ -19,6 +19,7 @@ const CONFIRMATION_BADGES = {
 import { useLanguage } from '../i18n/LanguageContext'
 import { useAuth } from '../contexts/AuthContext'
 import { useToast } from '../components/ui/Toast'
+import { InfoHint } from '../components/ui/Tooltip'
 import NominationsMatrix from '../components/NominationsMatrix'
 import PersonProfilePanel from '../components/PersonProfilePanel'
 
@@ -566,17 +567,20 @@ export default function Nominations() {
       </div>
 
       {/* Search + filters */}
-      <div className="flex flex-wrap gap-3 mb-4">
+      <div className="flex flex-wrap items-center gap-3 mb-4">
         <input type="text" placeholder={t('nominations.searchNominations')} value={search}
           onChange={e => setSearch(e.target.value)} className="fiba-input w-full md:w-80" />
-        <select value={confirmationFilter} onChange={e => setConfirmationFilter(e.target.value)}
-          className="fiba-select !w-auto min-w-[180px] flex-shrink-0">
-          <option value="">{t('nominations.allConfirmations')}</option>
-          <option value="pending">{t('nominations.confPending')}</option>
-          <option value="nominated">{t('nominations.confNominated')}</option>
-          <option value="confirmed">{t('nominations.confConfirmed')}</option>
-          <option value="declined">{t('nominations.confDeclined')}</option>
-        </select>
+        <div className="flex items-center gap-1.5">
+          <select value={confirmationFilter} onChange={e => setConfirmationFilter(e.target.value)}
+            className="fiba-select !w-auto min-w-[180px] flex-shrink-0">
+            <option value="">{t('nominations.allConfirmations')}</option>
+            <option value="pending">{t('nominations.confPending')}</option>
+            <option value="nominated">{t('nominations.confNominated')}</option>
+            <option value="confirmed">{t('nominations.confConfirmed')}</option>
+            <option value="declined">{t('nominations.confDeclined')}</option>
+          </select>
+          <InfoHint label={t('nominations.pendingHint')} />
+        </div>
       </div>
 
       {/* Table */}
@@ -594,7 +598,12 @@ export default function Nominations() {
               <SortHeader label={t('nominations.competition')} sortKey="competition" />
               <SortHeader label={t('nominations.letterDate')} sortKey="letter_date" />
               <SortHeader label={t('nominations.status')} sortKey="status" />
-              <th>{t('nominations.confirmation')}</th>
+              <th>
+                <span className="inline-flex items-center gap-1.5">
+                  {t('nominations.confirmation')}
+                  <InfoHint label={t('nominations.pendingHint')} position="bottom" />
+                </span>
+              </th>
               <SortHeader label={t('nominations.cmApproval')} sortKey="cm_approved" />
               <th>{t('nominations.action')}</th>
             </tr>
@@ -633,12 +642,16 @@ export default function Nominations() {
                   {(() => {
                     const cs = n.confirmation_status || 'pending'
                     const labelKey = `conf${cs.charAt(0).toUpperCase()}${cs.slice(1)}`
+                    const titleParts = []
+                    if (cs === 'pending') titleParts.push(t('nominations.pendingHint'))
+                    if (n.confirmation_updated_at) titleParts.push(`${t('nominations.confirmationUpdatedAt')}: ${new Date(n.confirmation_updated_at).toLocaleString()}`)
+                    const titleText = titleParts.join(' · ') || undefined
                     if (canEdit) {
                       return (
                         <select
                           value={cs}
                           onChange={e => handleConfirmationChange(n, e.target.value)}
-                          title={n.confirmation_updated_at ? `${t('nominations.confirmationUpdatedAt')}: ${new Date(n.confirmation_updated_at).toLocaleString()}` : ''}
+                          title={titleText}
                           className={`text-xs font-medium rounded px-2 py-1 cursor-pointer focus:outline-none focus:ring-2 focus:ring-fiba-accent/40 ${CONFIRMATION_BADGES[cs]}`}
                         >
                           <option value="pending">{t('nominations.confPending')}</option>
@@ -650,7 +663,7 @@ export default function Nominations() {
                     }
                     return (
                       <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${CONFIRMATION_BADGES[cs]}`}
-                        title={n.confirmation_updated_at ? `${t('nominations.confirmationUpdatedAt')}: ${new Date(n.confirmation_updated_at).toLocaleString()}` : ''}>
+                        title={titleText}>
                         {t(`nominations.${labelKey}`)}
                       </span>
                     )

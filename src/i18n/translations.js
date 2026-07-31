@@ -408,6 +408,10 @@ const translations = {
     confirmationStatus: { en: 'Confirmation status', es: 'Estado de confirmación' },
     allConfirmations: { en: 'All confirmations', es: 'Todos los estados' },
     confPending: { en: 'Pending', es: 'Pendiente' },
+    pendingHint: {
+      en: 'Nominated, awaiting the official\'s confirmation or decline.',
+      es: 'Nominado, a la espera de que el oficial confirme o rechace.',
+    },
     confNominated: { en: 'Nominated', es: 'Nominado' },
     confConfirmed: { en: 'Confirmed', es: 'Confirmado' },
     confDeclined: { en: 'Declined', es: 'Declinado' },
@@ -682,6 +686,10 @@ const translations = {
     available: { en: 'Available', es: 'Disponible' },
     unavailable: { en: 'Unavailable', es: 'No disponible' },
     restricted: { en: 'Restricted', es: 'Con restricciones' },
+    restrictedHint: {
+      en: 'Available with limitations (specific dates or conditions).',
+      es: 'Disponible con limitaciones (fechas o condiciones específicas).',
+    },
     noData: { en: 'No availability data', es: 'Sin datos de disponibilidad' },
     legend: { en: 'Legend', es: 'Leyenda' },
     nominated: { en: 'Nominated', es: 'Nominado' },
@@ -1127,6 +1135,7 @@ const translations = {
     action: { en: 'Action', es: 'Acción' },
     delete: { en: 'Delete', es: 'Eliminar' },
     uploading: { en: 'Uploading...', es: 'Subiendo...' },
+    moreInfo: { en: 'More info', es: 'Más información' },
   },
 
   // ===== Competition selector (CompetitionSearch) =====
