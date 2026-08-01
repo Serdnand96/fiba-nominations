@@ -1012,19 +1012,18 @@ const translations = {
     flightBooked: { en: 'Flight booked — click to mark as pending', es: 'Vuelo comprado — clic para marcar pendiente' },
     flightPending: { en: 'Flight not booked yet — click to mark as booked', es: 'Vuelo pendiente — clic para marcar comprado' },
     assignedSlots: { en: '{filled} of {total} roles assigned', es: '{filled} de {total} cargos asignados' },
-    // Card density. The staff block is the tallest part of a game card, so it
-    // ships collapsed behind a summary strip and a "+".
+    // Card density. Only the officiating block collapses — TD/VGO stay on the
+    // card as they always were.
     densityCompact: { en: 'Compact', es: 'Compacto' },
     densityDetailed: { en: 'Detailed', es: 'Detallado' },
     densityHint: {
-      en: 'Show or hide the staff on every game card',
-      es: 'Mostrar u ocultar el staff en todos los cuadros de juego',
+      en: 'Show or hide the officiating crew (referees, instructor, video operator) on every game card',
+      es: 'Mostrar u ocultar el arbitraje (árbitros, instructor, video operator) en todos los cuadros de juego',
     },
-    staff: { en: 'Staff', es: 'Staff' },
-    showStaff: { en: 'Show staff', es: 'Ver staff' },
-    hideStaff: { en: 'Hide staff', es: 'Ocultar staff' },
+    officiating: { en: 'Officiating', es: 'Arbitraje' },
+    showOfficiating: { en: 'Show officiating', es: 'Ver arbitraje' },
+    hideOfficiating: { en: 'Hide officiating', es: 'Ocultar arbitraje' },
     slotEmpty: { en: 'Unassigned', es: 'Sin asignar' },
-    crewChip: { en: 'Crew', es: 'Crew' },
     cardMissingAlert: {
       en: '{count} role(s) still unassigned',
       es: 'Faltan {count} cargo(s) por asignar',

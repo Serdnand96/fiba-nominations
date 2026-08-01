@@ -24,6 +24,9 @@ const REF_SLOTS = ['CC', 'U1', 'U2']
 const REF_SLOT_SET = new Set(REF_SLOTS)
 // Instructor + Video Operator: nominated per game, no neutrality check.
 const CREW_SLOTS = ['INSTR', 'VO']
+// The officiating block — referees, instructor and video operator. This is the
+// part that collapses behind the card's "+"; TD/VGO stay always visible.
+const OFFICIATING_SLOT_SET = new Set([...REF_SLOTS, ...CREW_SLOTS])
 // Optional extra official (TD or VGO) for venues with an additional table
 // official. Not part of the standard crew, so it doesn't count toward N/7.
 const EXTRA_SLOT = 'EXTRA'
@@ -1885,6 +1888,13 @@ function GameCard({
   const totalSlots = countedSlots.length
   const filledSlots = countedSlots.filter(s => assignmentsBySlot[s]?.length).length
 
+  // Only the officiating positions collapse. The table crew (TD/VGO, plus the
+  // optional EXTRA, which is also a TD or VGO) stays on the card as it always
+  // was — that's the part the competition desk reads at a glance.
+  const officiatingSlots = slots.filter(s => OFFICIATING_SLOT_SET.has(s))
+  const tableSlots = slots.filter(s => !OFFICIATING_SLOT_SET.has(s))
+  const officiatingFilled = officiatingSlots.filter(s => assignmentsBySlot[s]?.length).length
+
   // A collapsed card must still show what's wrong, otherwise hiding the staff
   // is just a way of not finding out. A referee already sitting on a game they
   // are no longer neutral for (teams changed, or the row predates the check)
@@ -1905,6 +1915,21 @@ function GameCard({
   const alertTitle = conflictingRefs.length > 0
     ? t('games.cardConflictAlert', { names: conflictingRefs.join(', ') })
     : t('games.cardMissingAlert', { count: totalSlots - filledSlots })
+
+  // One row per person on a slot, or a single empty row with the picker. A
+  // tournament slot can hold several people; the extra rows drop the label so
+  // the name column stays aligned.
+  const renderSlots = (list) => list.flatMap(slot => {
+    const rows = assignmentsBySlot[slot] || []
+    return (rows.length ? rows : [null]).map((a, i) => (
+      <AssignmentSlot key={a ? a.id : slot} role={slot} game={game} t={t} canEdit={canEdit}
+        assignment={a} showLabel={i === 0}
+        optionsOverride={crewSlotOptions?.[slot] || null}
+        onAssign={onAssign} onUnassign={onUnassign}
+        refConflictFor={REF_SLOT_SET.has(slot) ? refConflictFor : undefined}
+        flightByPersonnel={flightByPersonnel} onToggleFlight={onToggleFlight} />
+    ))
+  })
 
   return (
     <div className={`bg-fiba-card rounded-lg border p-3 flex flex-col hover:shadow-sm transition-shadow ${
@@ -1991,44 +2016,10 @@ function GameCard({
         </div>
       )}
 
-      {/* Collapsed: one strip instead of up to eight rows. Filled positions in
-          ink, empty ones greyed, so "who is missing" reads without expanding. */}
-      {supportsAssignments && !expanded && (
-        <button type="button" onClick={() => setExpanded(true)}
-          className="border-t border-fiba-border mt-2 pt-2 flex items-center gap-1.5 text-left w-full group"
-          title={t('games.showStaff')}>
-          <span className="flex flex-wrap items-center gap-1 min-w-0 flex-1">
-            {isTournament && (
-              <span className={`text-[10px] font-bold uppercase tracking-wider px-1 rounded ${
-                coveringCrew.length > 0
-                  ? 'text-fiba-accent bg-fiba-accent/10'
-                  : 'text-fiba-muted/40 border border-dashed border-fiba-border'
-              }`}>
-                {t('games.crewChip')} {coveringCrew.length > 0 ? coveringCrew.length : '—'}
-              </span>
-            )}
-            {countedSlots.map(slot => (
-              <span key={slot}
-                className={`text-[10px] font-bold uppercase tracking-wider px-1 rounded ${
-                  assignmentsBySlot[slot]?.length
-                    ? 'text-ink-700 dark:text-gray-300 bg-fiba-surface'
-                    : 'text-fiba-muted/40 border border-dashed border-fiba-border'
-                }`}
-                title={(assignmentsBySlot[slot] || []).map(a => a.personnel?.name).filter(Boolean).join(', ') || t('games.slotEmpty')}>
-                {slot}
-              </span>
-            ))}
-          </span>
-          <span className="flex-shrink-0 w-5 h-5 flex items-center justify-center rounded text-fiba-muted group-hover:text-fiba-accent group-hover:bg-fiba-surface transition-colors">
-            <Icon.Plus className="w-3.5 h-3.5" />
-          </span>
-        </button>
-      )}
-
       {/* Tournament: the TD/VGO of the crew cover this game by default.
           Clicking a chip records who was actually at the table (an override,
           not a change of who is nominated). */}
-      {supportsAssignments && expanded && isTournament && (
+      {supportsAssignments && isTournament && (
         <div className="border-t border-fiba-border mt-2 pt-2">
           <span className="block text-[10px] font-bold uppercase tracking-wider text-fiba-muted/70 mb-1">
             {t('games.crew')}
@@ -2063,35 +2054,63 @@ function GameCard({
         </div>
       )}
 
-      {/* Per-game roles. On a tournament only the officiating positions: the
-          TD/VGO of the crew are competition-level and live in the chips. */}
-      {supportsAssignments && expanded && (
+      {/* Table crew (TD / VGO / the optional EXTRA). Always on the card — this
+          is what the competition desk reads at a glance. */}
+      {supportsAssignments && tableSlots.length > 0 && (
         <div className="border-t border-fiba-border mt-2 pt-2 flex flex-col gap-1.5">
-          <div className="flex items-center justify-between gap-2">
-            <span className="text-[10px] font-bold uppercase tracking-wider text-fiba-muted/70">
-              {isTournament ? t('games.perGameRoles') : t('games.staff')}
-            </span>
-            <button type="button" onClick={() => setExpanded(false)}
-              className="w-5 h-5 flex items-center justify-center rounded text-fiba-muted hover:text-fiba-accent hover:bg-fiba-surface transition-colors"
-              title={t('games.hideStaff')}>
-              <Icon.Minus className="w-3.5 h-3.5" />
-            </button>
-          </div>
-          {slots.flatMap(slot => {
-            const rows = assignmentsBySlot[slot] || []
-            // Empty slot → a single row with the picker. A tournament slot can
-            // hold several people; the extra rows drop the label so the name
-            // column stays aligned.
-            return (rows.length ? rows : [null]).map((a, i) => (
-              <AssignmentSlot key={a ? a.id : slot} role={slot} game={game} t={t} canEdit={canEdit}
-                assignment={a} showLabel={i === 0}
-                optionsOverride={crewSlotOptions?.[slot] || null}
-                onAssign={onAssign} onUnassign={onUnassign}
-                refConflictFor={REF_SLOT_SET.has(slot) ? refConflictFor : undefined}
-                flightByPersonnel={flightByPersonnel} onToggleFlight={onToggleFlight} />
-            ))
-          })}
+          {renderSlots(tableSlots)}
         </div>
+      )}
+
+      {/* Officiating (referees, instructor, video operator). Collapsed by
+          default: it's the tallest block and only the referee desk fills it. */}
+      {supportsAssignments && officiatingSlots.length > 0 && (
+        !expanded ? (
+          <button type="button" onClick={() => setExpanded(true)}
+            className="border-t border-fiba-border mt-2 pt-2 flex items-center gap-1.5 text-left w-full group"
+            title={t('games.showOfficiating')}>
+            <span className="text-[10px] font-bold uppercase tracking-wider text-fiba-muted/70 flex-shrink-0">
+              {t('games.officiating')}
+            </span>
+            {/* Codes rather than names: at a glance it's "which positions are
+                still open", which is what the strip has to answer. */}
+            <span className="flex flex-wrap items-center gap-1 min-w-0 flex-1">
+              {officiatingSlots.map(slot => (
+                <span key={slot}
+                  className={`text-[10px] font-bold uppercase tracking-wider px-1 rounded ${
+                    assignmentsBySlot[slot]?.length
+                      ? 'text-ink-700 dark:text-gray-300 bg-fiba-surface'
+                      : 'text-fiba-muted/40 border border-dashed border-fiba-border'
+                  }`}
+                  title={(assignmentsBySlot[slot] || []).map(a => a.personnel?.name).filter(Boolean).join(', ') || t('games.slotEmpty')}>
+                  {slot}
+                </span>
+              ))}
+            </span>
+            <span className="flex-shrink-0 flex items-center gap-1 text-fiba-muted group-hover:text-fiba-accent transition-colors">
+              <span className="text-[10px] font-semibold tabular-nums">
+                {officiatingFilled}/{officiatingSlots.length}
+              </span>
+              <span className="w-5 h-5 flex items-center justify-center rounded group-hover:bg-fiba-surface transition-colors">
+                <Icon.Plus className="w-3.5 h-3.5" />
+              </span>
+            </span>
+          </button>
+        ) : (
+          <div className="border-t border-fiba-border mt-2 pt-2 flex flex-col gap-1.5">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-fiba-muted/70">
+                {t('games.perGameRoles')}
+              </span>
+              <button type="button" onClick={() => setExpanded(false)}
+                className="w-5 h-5 flex items-center justify-center rounded text-fiba-muted hover:text-fiba-accent hover:bg-fiba-surface transition-colors"
+                title={t('games.hideOfficiating')}>
+                <Icon.Minus className="w-3.5 h-3.5" />
+              </button>
+            </div>
+            {renderSlots(officiatingSlots)}
+          </div>
+        )
       )}
     </div>
   )
