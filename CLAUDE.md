@@ -123,6 +123,16 @@ legacy `fibaamericascloud.com`).
     compensatorios. **Los feriados no se cuentan** (no hay calendario de
     feriados y varía por país de la persona).
 
+    Los días compensatorios llevan **permiso propio `comp_days`** (migración
+    030). Es el único permiso que **no** corresponde a una página: no tiene
+    ruta ni entrada de sidebar, gobierna una columna dentro de Employees y solo
+    usa `can_view`. El backend recorta `weekend_days` de la respuesta con
+    `has_view()` (la variante de `auth.py` que devuelve bool en vez de tirar
+    403, para permisos que recortan datos en lugar de cerrar un endpoint).
+    Al agregar un permiso hay que tocar **tres** lugares: el CHECK de
+    `user_permissions.module`, `MODULES` en `permissions.py` y `MODULES` en
+    `src/pages/Users.jsx`.
+
 ---
 
 ## 🗺️ Mapa del repo
