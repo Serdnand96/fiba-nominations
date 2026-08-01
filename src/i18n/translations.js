@@ -1012,6 +1012,60 @@ const translations = {
     flightBooked: { en: 'Flight booked — click to mark as pending', es: 'Vuelo comprado — clic para marcar pendiente' },
     flightPending: { en: 'Flight not booked yet — click to mark as booked', es: 'Vuelo pendiente — clic para marcar comprado' },
     assignedSlots: { en: '{filled} of {total} roles assigned', es: '{filled} de {total} cargos asignados' },
+    // Card density. The staff block is the tallest part of a game card, so it
+    // ships collapsed behind a summary strip and a "+".
+    densityCompact: { en: 'Compact', es: 'Compacto' },
+    densityDetailed: { en: 'Detailed', es: 'Detallado' },
+    densityHint: {
+      en: 'Show or hide the staff on every game card',
+      es: 'Mostrar u ocultar el staff en todos los cuadros de juego',
+    },
+    staff: { en: 'Staff', es: 'Staff' },
+    showStaff: { en: 'Show staff', es: 'Ver staff' },
+    hideStaff: { en: 'Hide staff', es: 'Ocultar staff' },
+    slotEmpty: { en: 'Unassigned', es: 'Sin asignar' },
+    crewChip: { en: 'Crew', es: 'Crew' },
+    cardMissingAlert: {
+      en: '{count} role(s) still unassigned',
+      es: 'Faltan {count} cargo(s) por asignar',
+    },
+    cardConflictAlert: {
+      en: 'Neutrality conflict: {names}',
+      es: 'Conflicto de neutralidad: {names}',
+    },
+    // Staffing plan: FIBA staff on site. Not nominated — no letter, no fee.
+    staffing: { en: 'Staffing Plan', es: 'Staffing Plan' },
+    staffingHint: {
+      en: 'FIBA staff working this event. They are not nominated: no letter and no fee.',
+      es: 'Staff de FIBA que trabaja en este evento. No se nominan: no llevan carta ni honorarios.',
+    },
+    staffingTitle: { en: 'Staffing Plan', es: 'Staffing Plan' },
+    staffingSubtitle: {
+      en: 'FIBA employees designated to this competition, with the role they cover on site. Separate from the crew: these people are not nominated and never reach the letters or the payments.',
+      es: 'Empleados de FIBA designados a esta competencia, con la función que cubren en el evento. Va aparte del crew: estas personas no se nominan y nunca llegan a las cartas ni a los pagos.',
+    },
+    staffingEmpty: {
+      en: 'No FIBA staff designated to this competition yet.',
+      es: 'Todavía no hay staff de FIBA designado a esta competencia.',
+    },
+    staffingPerson: { en: 'Person', es: 'Persona' },
+    staffingSearchPlaceholder: { en: 'Search employee...', es: 'Buscar empleado...' },
+    staffingUseTyped: { en: 'Not on the list — add "{name}"', es: 'No está en la lista — agregar "{name}"' },
+    staffingExternalTag: { en: 'External', es: 'Externo' },
+    staffingRole: { en: 'Role at the event', es: 'Función en el evento' },
+    staffingRolePlaceholder: { en: 'e.g. Competition Manager', es: 'ej. Competition Manager' },
+    staffingStart: { en: 'From', es: 'Desde' },
+    staffingEnd: { en: 'To', es: 'Hasta' },
+    staffingAdd: { en: 'Add', es: 'Agregar' },
+    staffingAdded: { en: '{name} added to the staffing plan', es: '{name} agregado al staffing plan' },
+    staffingRemove: { en: 'Remove from the staffing plan', es: 'Quitar del staffing plan' },
+    staffingRemoveConfirm: {
+      en: 'Remove {name} from the staffing plan?',
+      es: '¿Quitar a {name} del staffing plan?',
+    },
+    staffingStatus_planned: { en: 'Planned', es: 'Planificado' },
+    staffingStatus_confirmed: { en: 'Confirmed', es: 'Confirmado' },
+    staffingStatus_cancelled: { en: 'Cancelled', es: 'Cancelado' },
     // Tournament crew (fee_type = 'tournament'): assigned once for the whole
     // event, covers every game and training session.
     crew: { en: 'Tournament crew', es: 'Crew del torneo' },

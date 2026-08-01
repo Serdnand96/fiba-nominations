@@ -767,9 +767,12 @@ def list_assignments_by_competition(competition_id: str = Query(...)):
     if not games:
         return []
     game_ids = [g["id"] for g in games]
+    # country_code / nationalities travel with the row so the card can flag an
+    # already-assigned referee who became non-neutral (teams changed after the
+    # assignment, or the row predates the neutrality check).
     result = (
         supabase.table("game_assignments")
-        .select("*, personnel(id, name, role, email)")
+        .select("*, personnel(id, name, role, email, country, country_code, nationalities)")
         .in_("game_id", game_ids)
         .execute()
     )

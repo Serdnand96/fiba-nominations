@@ -7,6 +7,7 @@ import {
   syncAssignmentsToNominations, generateAssignmentPDFs, updateCompetition,
   setTeamCountries, getCompetitionFlights, setFlightBooked,
   getCompetitionCrew, addCrewMember, removeCrewMember,
+  getStaffing, getStaffingCandidates, addStaffing, updateStaffing, removeStaffing,
 } from '../api/client'
 import { Icon } from '../lib/icons'
 import { useLanguage } from '../i18n/LanguageContext'
@@ -33,6 +34,17 @@ const SYNC_ROLES = ['TD', 'VGO', 'REF', 'REF_INSTRUCTOR', 'VIDEO_OPERATOR']
 // REF_INSTRUCTOR, VIDEO_OPERATOR) get their own per-game positions instead.
 const CHIP_SLOT_FOR_ROLE = { TD: 'TD', VGO: 'VGO' }
 
+// Staffing plan: FIBA staff designated to the event. These people are NOT
+// nominated — no letter, no fee — so they live in their own table, apart from
+// the crew (see migration 029).
+const STAFFING_STATUSES = ['planned', 'confirmed', 'cancelled']
+// Suggestions only: event_role is free text, the same way the logistics roster
+// takes whatever the organization writes.
+const STAFFING_ROLE_SUGGESTIONS = [
+  'Competition Manager', 'Operations', 'Media Officer', 'Communications',
+  'Marketing', 'Statistics / IT', 'Medical', 'Local Organizer',
+]
+
 // Assignment slot → personnel role to list in the picker. The referee crew
 // slots (CC/U1/U2) all draw from REF personnel.
 const SLOT_PERSONNEL_ROLE = {
@@ -58,6 +70,19 @@ const EMPTY_FORM = {
 // Last Games search (competition + filters), persisted so returning to the
 // page restores it instead of forcing the user to rebuild the same search.
 const LAST_SEARCH_KEY = 'fiba_games_last_search'
+
+// Cards open or collapsed by default. The staff block is the tallest part of a
+// card, so the grid ships collapsed and the referee desk — who does need every
+// position on screen while assigning — flips it once and it sticks.
+const DETAILED_KEY = 'fiba_games_detailed'
+
+function loadDetailed() {
+  try {
+    return localStorage.getItem(DETAILED_KEY) === '1'
+  } catch {
+    return false
+  }
+}
 
 function loadLastSearch() {
   const parsed = readLastSearch(LAST_SEARCH_KEY)
@@ -87,6 +112,9 @@ export default function Games() {
   // Filters
   const [filterDates, setFilterDates] = useState([]) // empty = all dates
   const [filterGroup, setFilterGroup] = useState('')
+  // Cards start collapsed: the summary strip says who is missing, the card's
+  // own "+" opens one, this toggle opens them all.
+  const [detailed, setDetailed] = useState(() => loadDetailed())
 
   // UI state
   const [loading, setLoading] = useState(false)
@@ -115,6 +143,16 @@ export default function Games() {
   const [crewOptions, setCrewOptions] = useState([])
   const [crewMsg, setCrewMsg] = useState('')
   const [crewSaving, setCrewSaving] = useState(false)
+  // Staffing plan panel (FIBA staff — any competition, tournament or not)
+  const [staffing, setStaffing] = useState([])
+  const [showStaffing, setShowStaffing] = useState(false)
+  const [staffCandidates, setStaffCandidates] = useState([])
+  const [staffSearch, setStaffSearch] = useState('')
+  const [staffPicked, setStaffPicked] = useState(null) // employee, or null = external
+  const [staffDropdownOpen, setStaffDropdownOpen] = useState(false)
+  const [staffForm, setStaffForm] = useState({ event_role: '', start_date: '', end_date: '' })
+  const [staffMsg, setStaffMsg] = useState('')
+  const [staffSaving, setStaffSaving] = useState(false)
   // Club country mapping panel (club competitions only)
   const [showTeamCountries, setShowTeamCountries] = useState(false)
   const [teamCountryDraft, setTeamCountryDraft] = useState({}) // team name → code
@@ -191,6 +229,12 @@ export default function Games() {
       group: filterGroup,
     })
   }, [selectedCompId, filterDates, filterGroup])
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(DETAILED_KEY, detailed ? '1' : '0')
+    } catch { /* private mode — the preference just doesn't survive the session */ }
+  }, [detailed])
 
   // Load games when competition changes
   useEffect(() => {
@@ -352,6 +396,85 @@ export default function Games() {
     try {
       await removeCrewMember(member.id)
       await reloadCrew()
+    } catch (err) {
+      const detail = err.response?.data?.detail
+      alert(typeof detail === 'string' ? detail : 'Error')
+    }
+  }
+
+  // ── Staffing plan (FIBA staff) ───────────────────────────────────────────
+
+  useEffect(() => {
+    if (!selectedCompId) { setStaffing([]); return }
+    let cancelled = false
+    getStaffing(selectedCompId)
+      .then(data => { if (!cancelled) setStaffing(data || []) })
+      .catch(() => { if (!cancelled) setStaffing([]) })
+    return () => { cancelled = true }
+  }, [selectedCompId])
+
+  // Candidates come from /staffing/candidates, not /employees: planning a
+  // competition shouldn't require the `employees` permission.
+  useEffect(() => {
+    if (!showStaffing || staffCandidates.length > 0) return
+    let cancelled = false
+    getStaffingCandidates()
+      .then(data => { if (!cancelled) setStaffCandidates(data || []) })
+      .catch(() => { if (!cancelled) setStaffCandidates([]) })
+    return () => { cancelled = true }
+  }, [showStaffing])
+
+  async function reloadStaffing() {
+    setStaffing(await getStaffing(selectedCompId))
+  }
+
+  async function handleAddStaffing() {
+    const role = staffForm.event_role.trim()
+    const external = staffPicked ? null : staffSearch.trim()
+    if (!role || (!staffPicked && !external)) return
+    setStaffSaving(true)
+    setStaffMsg('')
+    try {
+      await addStaffing({
+        competition_id: selectedCompId,
+        employee_id: staffPicked?.id || null,
+        external_name: external || null,
+        event_role: role,
+        start_date: staffForm.start_date || null,
+        end_date: staffForm.end_date || null,
+      })
+      await reloadStaffing()
+      setStaffPicked(null)
+      setStaffSearch('')
+      setStaffForm({ event_role: '', start_date: '', end_date: '' })
+      setStaffMsg(t('games.staffingAdded', { name: staffPicked?.name || external }))
+    } catch (err) {
+      const detail = err.response?.data?.detail
+      setStaffMsg(typeof detail === 'string' ? detail : 'Error')
+    }
+    setStaffSaving(false)
+    setTimeout(() => setStaffMsg(''), 6000)
+  }
+
+  async function handleUpdateStaffing(entry, patch) {
+    // Optimistic: the row is a select/date input, waiting on the round-trip
+    // makes it feel stuck.
+    setStaffing(rows => rows.map(r => (r.id === entry.id ? { ...r, ...patch } : r)))
+    try {
+      await updateStaffing(entry.id, patch)
+    } catch (err) {
+      await reloadStaffing()
+      const detail = err.response?.data?.detail
+      setStaffMsg(typeof detail === 'string' ? detail : 'Error')
+      setTimeout(() => setStaffMsg(''), 6000)
+    }
+  }
+
+  async function handleRemoveStaffing(entry) {
+    if (!window.confirm(t('games.staffingRemoveConfirm', { name: entry.display_name }))) return
+    try {
+      await removeStaffing(entry.id)
+      await reloadStaffing()
     } catch (err) {
       const detail = err.response?.data?.detail
       alert(typeof detail === 'string' ? detail : 'Error')
@@ -864,6 +987,18 @@ export default function Games() {
                   </button>
                 </>
               )}
+              {/* Staffing plan: independent of the assignment workflow — any
+                  competition can have FIBA staff on site. */}
+              <button onClick={() => setShowStaffing(s => !s)}
+                className="btn-fiba-ghost relative"
+                title={t('games.staffingHint')}>
+                {t('games.staffing')}
+                {staffing.length > 0 && (
+                  <span className="ml-1.5 inline-flex items-center justify-center min-w-[1.1rem] h-[1.1rem] px-1 rounded-full bg-fiba-accent/20 text-fiba-accent text-[10px] font-bold">
+                    {staffing.length}
+                  </span>
+                )}
+              </button>
               {isClubComp && canEdit && games.length > 0 && (
                 <button onClick={() => setShowTeamCountries(s => !s)}
                   className="btn-fiba-ghost relative"
@@ -927,6 +1062,15 @@ export default function Games() {
               <option key={g} value={g}>{g}</option>
             ))}
           </select>
+        )}
+
+        {supportsAssignments && games.length > 0 && (
+          <button type="button" onClick={() => setDetailed(d => !d)}
+            className={`fiba-select flex items-center gap-2 ${detailed ? 'text-fiba-accent' : ''}`}
+            title={t('games.densityHint')}>
+            <Icon.ChevronDown className={`w-3.5 h-3.5 flex-shrink-0 transition-transform ${detailed ? 'rotate-180' : ''}`} />
+            <span>{detailed ? t('games.densityDetailed') : t('games.densityCompact')}</span>
+          </button>
         )}
       </div>
 
@@ -1029,6 +1173,162 @@ export default function Games() {
                     ))}
                 </div>
               )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Staffing plan — FIBA staff on site. Deliberately apart from the crew:
+          these people are not nominated, so they never reach the letters, the
+          nomination sync or the payments. */}
+      {showStaffing && (
+        <div className="mb-6 bg-fiba-card border border-fiba-border rounded-lg p-5">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h3 className="text-sm font-bold text-ink-900 dark:text-white">{t('games.staffingTitle')}</h3>
+              <p className="text-xs text-fiba-muted mt-0.5">{t('games.staffingSubtitle')}</p>
+            </div>
+            <button onClick={() => setShowStaffing(false)}
+              className="text-fiba-muted hover:text-ink-900 dark:hover:text-white text-xs">×</button>
+          </div>
+
+          {staffMsg && (
+            <div className="mb-3 px-3 py-2 bg-blue-500/10 text-blue-400 rounded-lg text-xs">{staffMsg}</div>
+          )}
+
+          {staffing.length === 0 ? (
+            <p className="text-sm text-fiba-muted mb-4">{t('games.staffingEmpty')}</p>
+          ) : (
+            <div className="mb-5 divide-y divide-fiba-border border border-fiba-border rounded-lg">
+              {staffing.map(entry => (
+                <div key={entry.id} className="flex flex-wrap items-center gap-x-3 gap-y-2 px-3 py-2">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className="text-sm font-medium text-ink-900 dark:text-white truncate">
+                        {entry.display_name}
+                      </span>
+                      {!entry.employee_id && (
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-fiba-muted/70 border border-fiba-border rounded px-1">
+                          {t('games.staffingExternalTag')}
+                        </span>
+                      )}
+                    </div>
+                    <div className="text-[11px] text-fiba-muted truncate">
+                      {[entry.event_role, entry.employee?.department].filter(Boolean).join(' · ')}
+                    </div>
+                  </div>
+
+                  <select value={entry.status} disabled={!canEdit}
+                    onChange={e => handleUpdateStaffing(entry, { status: e.target.value })}
+                    className={`fiba-select !w-auto text-xs ${
+                      entry.status === 'confirmed' ? 'text-emerald-500 dark:text-emerald-400'
+                        : entry.status === 'cancelled' ? 'text-fiba-muted line-through' : ''
+                    }`}>
+                    {STAFFING_STATUSES.map(s => (
+                      <option key={s} value={s}>{t(`games.staffingStatus_${s}`)}</option>
+                    ))}
+                  </select>
+
+                  <div className="flex items-center gap-1">
+                    <input type="date" value={entry.start_date || ''} disabled={!canEdit}
+                      onChange={e => handleUpdateStaffing(entry, { start_date: e.target.value })}
+                      title={t('games.staffingStart')}
+                      className="fiba-input !w-auto text-xs" />
+                    <span className="text-fiba-muted text-xs">–</span>
+                    <input type="date" value={entry.end_date || ''} disabled={!canEdit}
+                      onChange={e => handleUpdateStaffing(entry, { end_date: e.target.value })}
+                      title={t('games.staffingEnd')}
+                      className="fiba-input !w-auto text-xs" />
+                  </div>
+
+                  {canEdit && (
+                    <button onClick={() => handleRemoveStaffing(entry)}
+                      className="text-fiba-muted hover:text-red-400 px-1"
+                      title={t('games.staffingRemove')}>×</button>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {canEdit && (
+            <div className="grid gap-3 md:grid-cols-[minmax(0,2fr)_minmax(0,2fr)_auto_auto_auto] md:items-end">
+              <div>
+                <label className="fiba-label">{t('games.staffingPerson')}</label>
+                {staffPicked ? (
+                  <div className="flex items-center gap-2 h-[42px] px-3 rounded-lg border border-fiba-border bg-fiba-surface">
+                    <span className="text-sm text-ink-900 dark:text-white truncate">{staffPicked.name}</span>
+                    <button onClick={() => setStaffPicked(null)}
+                      className="ml-auto text-fiba-muted hover:text-red-400 text-xs">×</button>
+                  </div>
+                ) : (
+                  <div className="relative">
+                    <input type="text" value={staffSearch}
+                      onChange={e => { setStaffSearch(e.target.value); setStaffDropdownOpen(true) }}
+                      onFocus={() => setStaffDropdownOpen(true)}
+                      placeholder={t('games.staffingSearchPlaceholder')}
+                      className="fiba-input" />
+                    {staffDropdownOpen && staffSearch.trim().length >= 2 && (
+                      <div className="absolute z-30 mt-1 w-full max-h-52 overflow-y-auto bg-fiba-card border border-fiba-border rounded-lg shadow-lg divide-y divide-fiba-border">
+                        {staffCandidates
+                          .filter(p => (p.name || '').toLowerCase().includes(staffSearch.trim().toLowerCase()))
+                          .slice(0, 15)
+                          .map(p => (
+                            <button key={p.id}
+                              onClick={() => {
+                                setStaffPicked(p)
+                                setStaffSearch('')
+                                setStaffDropdownOpen(false)
+                                // El cargo interno es el default razonable de
+                                // la función en el evento; se puede pisar.
+                                setStaffForm(f => ({ ...f, event_role: f.event_role || p.position || '' }))
+                              }}
+                              className="w-full flex items-center justify-between gap-2 px-3 py-2 text-left hover:bg-fiba-surface">
+                              <span className="text-sm text-ink-900 dark:text-white truncate">{p.name}</span>
+                              <span className="text-[10px] text-fiba-muted truncate">{p.position || p.department || ''}</span>
+                            </button>
+                          ))}
+                        {/* El staff local o temporal no tiene legajo: se carga
+                            con el nombre tipeado. */}
+                        <button onClick={() => { setStaffPicked(null); setStaffDropdownOpen(false) }}
+                          className="w-full px-3 py-2 text-left text-xs text-fiba-muted hover:bg-fiba-surface">
+                          {t('games.staffingUseTyped', { name: staffSearch.trim() })}
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              <div>
+                <label className="fiba-label">{t('games.staffingRole')}</label>
+                <input type="text" list="staffing-roles" value={staffForm.event_role}
+                  onChange={e => setStaffForm(f => ({ ...f, event_role: e.target.value }))}
+                  placeholder={t('games.staffingRolePlaceholder')}
+                  className="fiba-input" />
+                <datalist id="staffing-roles">
+                  {STAFFING_ROLE_SUGGESTIONS.map(r => <option key={r} value={r} />)}
+                </datalist>
+              </div>
+
+              <div>
+                <label className="fiba-label">{t('games.staffingStart')}</label>
+                <input type="date" value={staffForm.start_date}
+                  onChange={e => setStaffForm(f => ({ ...f, start_date: e.target.value }))}
+                  className="fiba-input !w-auto" />
+              </div>
+              <div>
+                <label className="fiba-label">{t('games.staffingEnd')}</label>
+                <input type="date" value={staffForm.end_date}
+                  onChange={e => setStaffForm(f => ({ ...f, end_date: e.target.value }))}
+                  className="fiba-input !w-auto" />
+              </div>
+
+              <button onClick={handleAddStaffing}
+                disabled={staffSaving || !staffForm.event_role.trim() || (!staffPicked && staffSearch.trim().length < 2)}
+                className="btn-fiba disabled:opacity-40">
+                {staffSaving ? t('games.saving') : t('games.staffingAdd')}
+              </button>
             </div>
           )}
         </div>
@@ -1220,6 +1520,7 @@ export default function Games() {
                       onToggleCrewGame={handleToggleCrewGame}
                       onAssign={handleAssign} onUnassign={handleUnassign}
                       refConflictFor={refConflictFor}
+                      defaultExpanded={detailed}
                       flightByPersonnel={flightByPersonnel}
                       onToggleFlight={handleToggleFlight} />
                   ))}
@@ -1553,8 +1854,14 @@ function GameCard({
   assignmentsBySlot = {},
   isTournament = false, crewSlotOptions = null,
   coveringCrew = [], crewOverrides = {}, onToggleCrewGame,
-  onAssign, onUnassign, refConflictFor, flightByPersonnel = {}, onToggleFlight,
+  onAssign, onUnassign, refConflictFor, defaultExpanded = false,
+  flightByPersonnel = {}, onToggleFlight,
 }) {
+  // Staff is collapsed by default; the global Compacto/Detallado toggle drives
+  // every card, and this one's "+" overrides it for a single game.
+  const [expanded, setExpanded] = useState(defaultExpanded)
+  useEffect(() => { setExpanded(defaultExpanded) }, [defaultExpanded])
+
   const displayCountry = game.country || (templateKey === 'WCQ' ? game.team_a : '') || ''
   const isCompleted = game.status === 'completed'
   const isLive = game.status === 'live'
@@ -1578,6 +1885,27 @@ function GameCard({
   const totalSlots = countedSlots.length
   const filledSlots = countedSlots.filter(s => assignmentsBySlot[s]?.length).length
 
+  // A collapsed card must still show what's wrong, otherwise hiding the staff
+  // is just a way of not finding out. A referee already sitting on a game they
+  // are no longer neutral for (teams changed, or the row predates the check)
+  // raises the same flag the picker would.
+  const conflictingRefs = useMemo(() => {
+    if (!refConflictFor) return []
+    const names = []
+    for (const slot of REF_SLOTS) {
+      for (const a of assignmentsBySlot[slot] || []) {
+        const person = a.personnel
+        if (person && refConflictFor(game, person)) names.push(person.name)
+      }
+    }
+    return names
+  }, [assignmentsBySlot, game, refConflictFor])
+
+  const hasAlert = supportsAssignments && (filledSlots < totalSlots || conflictingRefs.length > 0)
+  const alertTitle = conflictingRefs.length > 0
+    ? t('games.cardConflictAlert', { names: conflictingRefs.join(', ') })
+    : t('games.cardMissingAlert', { count: totalSlots - filledSlots })
+
   return (
     <div className={`bg-fiba-card rounded-lg border p-3 flex flex-col hover:shadow-sm transition-shadow ${
       isLive ? 'border-red-500/50 ring-1 ring-red-500/20' : 'border-fiba-border dark:border-navy-600'
@@ -1588,6 +1916,14 @@ function GameCard({
           {game.group_label ? `${t('games.group')} ${game.group_label}` : (game.phase || '')}
         </span>
         <div className="flex items-center gap-1.5">
+          {hasAlert && (
+            <span
+              className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${
+                conflictingRefs.length > 0 ? 'bg-red-500' : 'bg-amber-500'
+              }`}
+              title={alertTitle}
+            />
+          )}
           {supportsAssignments && (
             <span
               className={`text-[10px] font-semibold tabular-nums ${
@@ -1655,10 +1991,44 @@ function GameCard({
         </div>
       )}
 
+      {/* Collapsed: one strip instead of up to eight rows. Filled positions in
+          ink, empty ones greyed, so "who is missing" reads without expanding. */}
+      {supportsAssignments && !expanded && (
+        <button type="button" onClick={() => setExpanded(true)}
+          className="border-t border-fiba-border mt-2 pt-2 flex items-center gap-1.5 text-left w-full group"
+          title={t('games.showStaff')}>
+          <span className="flex flex-wrap items-center gap-1 min-w-0 flex-1">
+            {isTournament && (
+              <span className={`text-[10px] font-bold uppercase tracking-wider px-1 rounded ${
+                coveringCrew.length > 0
+                  ? 'text-fiba-accent bg-fiba-accent/10'
+                  : 'text-fiba-muted/40 border border-dashed border-fiba-border'
+              }`}>
+                {t('games.crewChip')} {coveringCrew.length > 0 ? coveringCrew.length : '—'}
+              </span>
+            )}
+            {countedSlots.map(slot => (
+              <span key={slot}
+                className={`text-[10px] font-bold uppercase tracking-wider px-1 rounded ${
+                  assignmentsBySlot[slot]?.length
+                    ? 'text-ink-700 dark:text-gray-300 bg-fiba-surface'
+                    : 'text-fiba-muted/40 border border-dashed border-fiba-border'
+                }`}
+                title={(assignmentsBySlot[slot] || []).map(a => a.personnel?.name).filter(Boolean).join(', ') || t('games.slotEmpty')}>
+                {slot}
+              </span>
+            ))}
+          </span>
+          <span className="flex-shrink-0 w-5 h-5 flex items-center justify-center rounded text-fiba-muted group-hover:text-fiba-accent group-hover:bg-fiba-surface transition-colors">
+            <Icon.Plus className="w-3.5 h-3.5" />
+          </span>
+        </button>
+      )}
+
       {/* Tournament: the TD/VGO of the crew cover this game by default.
           Clicking a chip records who was actually at the table (an override,
           not a change of who is nominated). */}
-      {supportsAssignments && isTournament && (
+      {supportsAssignments && expanded && isTournament && (
         <div className="border-t border-fiba-border mt-2 pt-2">
           <span className="block text-[10px] font-bold uppercase tracking-wider text-fiba-muted/70 mb-1">
             {t('games.crew')}
@@ -1695,13 +2065,18 @@ function GameCard({
 
       {/* Per-game roles. On a tournament only the officiating positions: the
           TD/VGO of the crew are competition-level and live in the chips. */}
-      {supportsAssignments && (
+      {supportsAssignments && expanded && (
         <div className="border-t border-fiba-border mt-2 pt-2 flex flex-col gap-1.5">
-          {isTournament && (
+          <div className="flex items-center justify-between gap-2">
             <span className="text-[10px] font-bold uppercase tracking-wider text-fiba-muted/70">
-              {t('games.perGameRoles')}
+              {isTournament ? t('games.perGameRoles') : t('games.staff')}
             </span>
-          )}
+            <button type="button" onClick={() => setExpanded(false)}
+              className="w-5 h-5 flex items-center justify-center rounded text-fiba-muted hover:text-fiba-accent hover:bg-fiba-surface transition-colors"
+              title={t('games.hideStaff')}>
+              <Icon.Minus className="w-3.5 h-3.5" />
+            </button>
+          </div>
           {slots.flatMap(slot => {
             const rows = assignmentsBySlot[slot] || []
             // Empty slot → a single row with the picker. A tournament slot can

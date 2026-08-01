@@ -364,6 +364,19 @@ export const removeCrewMember = (assignmentId) =>
 export const getTrainingCrew = (competitionId) =>
   api.get('/training/crew', { params: { competition_id: competitionId } }).then(r => r.data)
 
+// Staffing plan — empleados FIBA designados a la competencia. No se nominan:
+// van por su propia tabla, aparte del crew (ver migración 029).
+export const getStaffing = (competitionId) =>
+  api.get('/staffing/by-competition', { params: { competition_id: competitionId } }).then(r => r.data)
+export const getStaffingCandidates = (search = '') =>
+  api.get('/staffing/candidates', { params: search ? { search } : {} }).then(r => r.data)
+export const addStaffing = (payload) =>
+  api.post('/staffing', payload).then(r => r.data)
+export const updateStaffing = (id, payload) =>
+  api.put(`/staffing/${id}`, payload).then(r => r.data)
+export const removeStaffing = (id) =>
+  api.delete(`/staffing/${id}`).then(r => r.data)
+
 // Per-game TD/VGO/referee assignments (WCQ / BCLA / LSB)
 export const getGameAssignments = (competitionId) =>
   api.get('/games/assignments/by-competition', { params: { competition_id: competitionId } }).then(r => r.data)
