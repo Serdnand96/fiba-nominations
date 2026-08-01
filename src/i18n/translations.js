@@ -1155,6 +1155,10 @@ const translations = {
   permissions: {
     canView: { en: 'Can View', es: 'Puede ver' },
     canEdit: { en: 'Can Edit', es: 'Puede editar' },
+    viewOnlyModule: {
+      en: 'This permission only governs viewing — there is nothing to edit.',
+      es: 'Este permiso solo controla la vista — no hay nada que editar.',
+    },
     savePermissions: { en: 'Save Permissions', es: 'Guardar permisos' },
     saving: { en: 'Saving...', es: 'Guardando...' },
     permissionsUpdated: { en: 'Permissions updated', es: 'Permisos actualizados' },
@@ -1291,6 +1295,9 @@ const translations = {
     tripsSource_logistics: { en: 'Logistics', es: 'Logística' },
     // Compensation days: sábados y domingos caídos dentro de los viajes.
     compDays: { en: 'Comp. days', es: 'Días comp.' },
+    // Etiqueta del permiso en la grilla de Usuarios. No es una página, así que
+    // no puede salir de nav.* como el resto de los módulos.
+    compDaysPermission: { en: 'Compensation days', es: 'Días compensatorios' },
     compDaysCount: { en: '{count} wknd', es: '{count} finde' },
     compDaysHint: {
       en: 'Weekend days (Sat/Sun) inside the {year} trips — the basis for compensation days. Public holidays are not counted.',

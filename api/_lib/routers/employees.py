@@ -2,10 +2,10 @@
 from datetime import date, timedelta
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException, Query, Depends
+from fastapi import APIRouter, HTTPException, Query, Request, Depends
 
 from api._lib.database import supabase
-from api._lib.auth import require_view, require_edit
+from api._lib.auth import require_view, require_edit, has_view
 from api._lib.schemas import EmployeeCreate, EmployeeUpdate
 
 router = APIRouter(prefix="/employees", tags=["employees"], dependencies=[Depends(require_view("employees"))])
@@ -192,8 +192,15 @@ def _collect_trips(year: Optional[int] = None) -> dict:
     return trips
 
 
+# Los días compensatorios llevan su propio permiso (`comp_days`, migración
+# 030): son insumo de RRHH y no todo el que administra empleados tiene por qué
+# verlos. Se recortan de la respuesta, no se esconden solo en el front — un
+# guard de UI es UX, no control de acceso.
+_COMP_DAYS_MODULE = "comp_days"
+
+
 @router.get("/trip-counts")
-def employee_trip_counts(year: Optional[int] = Query(None)):
+def employee_trip_counts(request: Request, year: Optional[int] = Query(None)):
     """Viajes por empleado, para la columna de la tabla.
 
     Declarado ANTES de `/{employee_id}`: FastAPI resuelve por orden y si no
@@ -210,11 +217,15 @@ def employee_trip_counts(year: Optional[int] = Query(None)):
         emp_id = trip["employee_id"]
         counts[emp_id] = counts.get(emp_id, 0) + 1
         weekend_days[emp_id] = weekend_days.get(emp_id, 0) + trip.get("weekend_days", 0)
-    return {"year": year, "counts": counts, "weekend_days": weekend_days, "years": years}
+
+    payload = {"year": year, "counts": counts, "years": years}
+    if has_view(request, _COMP_DAYS_MODULE):
+        payload["weekend_days"] = weekend_days
+    return payload
 
 
 @router.get("/{employee_id}/trips")
-def employee_trips(employee_id: str, year: Optional[int] = Query(None)):
+def employee_trips(employee_id: str, request: Request, year: Optional[int] = Query(None)):
     """Detalle de los viajes de un empleado: qué eventos y cuántos días."""
     employee = supabase.table("employees").select("id, name").eq("id", employee_id).execute()
     if not employee.data:
@@ -225,15 +236,13 @@ def employee_trips(employee_id: str, year: Optional[int] = Query(None)):
         if emp_id == employee_id
     ]
     rows.sort(key=lambda t: (t.get("start_date") or "", t.get("competition_name") or ""), reverse=True)
-    return {
-        "year": year,
-        "totals": {
-            "trips": len(rows),
-            "days": sum(t["days"] for t in rows),
-            "weekend_days": sum(t["weekend_days"] for t in rows),
-        },
-        "trips": rows,
-    }
+
+    totals = {"trips": len(rows), "days": sum(t["days"] for t in rows)}
+    if has_view(request, _COMP_DAYS_MODULE):
+        totals["weekend_days"] = sum(t["weekend_days"] for t in rows)
+    else:
+        rows = [{k: v for k, v in t.items() if k != "weekend_days"} for t in rows]
+    return {"year": year, "totals": totals, "trips": rows}
 
 
 @router.get("/{employee_id}")

@@ -3,7 +3,10 @@ import { getUsers, createUser, deleteUser, updateUserPassword, getUserPermission
 import { useLanguage } from '../i18n/LanguageContext'
 import { useAuth } from '../contexts/AuthContext'
 
-const MODULES = ['calendar', 'nominations', 'payments', 'personnel', 'competitions', 'templates', 'users', 'logistics', 'availability', 'training', 'games', 'assets', 'loans', 'employees', 'reports', 'evaluations']
+const MODULES = ['calendar', 'nominations', 'payments', 'personnel', 'competitions', 'templates', 'users', 'logistics', 'availability', 'training', 'games', 'assets', 'loans', 'employees', 'reports', 'evaluations', 'comp_days']
+// Permisos que gobiernan un dato, no una página: solo tienen sentido en "ver".
+// Marcar "editar" no haría nada, así que el checkbox va deshabilitado.
+const VIEW_ONLY_MODULES = new Set(['comp_days'])
 
 export default function Users() {
   const { t } = useLanguage()
@@ -148,6 +151,9 @@ export default function Users() {
   function getModuleLabel(module) {
     // The permission is called 'assets' but the nav module is "Inventory".
     if (module === 'assets') return t('nav.inventory')
+    // No es una página, así que no tiene entrada en el sidebar de dónde sacar
+    // el nombre: gobierna la columna de días compensatorios de Empleados.
+    if (module === 'comp_days') return t('employees.compDaysPermission')
     return t(`nav.${module}`) || module
   }
 
@@ -335,8 +341,10 @@ export default function Users() {
                         </td>
                         <td className="px-3 py-2 text-center">
                           <input type="checkbox" checked={p.can_edit}
+                            disabled={VIEW_ONLY_MODULES.has(p.module)}
+                            title={VIEW_ONLY_MODULES.has(p.module) ? t('permissions.viewOnlyModule') : undefined}
                             onChange={() => toggleEdit(p.module)}
-                            className="rounded border-fiba-border" />
+                            className="rounded border-fiba-border disabled:opacity-30" />
                         </td>
                       </tr>
                     ))}

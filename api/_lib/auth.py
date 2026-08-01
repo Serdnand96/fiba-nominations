@@ -68,6 +68,18 @@ def _has_permission(request: Request, user_id: Optional[str], module: str, actio
     return bool(res and res[0].get(col))
 
 
+def has_view(request: Request, module: str) -> bool:
+    """¿El caller tiene can_view sobre `module`? Sin levantar excepción.
+
+    Para permisos que no cierran un endpoint entero sino que recortan lo que
+    devuelve (hoy: `comp_days` sobre los días compensatorios en employees.py).
+    Los superadmin pasan siempre, igual que en require_view.
+    """
+    if not getattr(request.state, "user", None):
+        return False
+    return _has_permission(request, _user_id(request), module, "view")
+
+
 def require_superadmin(request: Request):
     """Dependency that allows only superadmins."""
     if not _is_superadmin_cached(request, _user_id(request)):

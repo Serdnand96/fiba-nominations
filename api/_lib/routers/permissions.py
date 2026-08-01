@@ -11,7 +11,9 @@ router = APIRouter(prefix="/permissions", tags=["permissions"])
 # granted to a non-superadmin, because the permission grid is built from what
 # GET /permissions/{user_id} returns; a module listed here but absent from the
 # CHECK fails the whole PUT against the constraint, mid-loop.
-MODULES = ["calendar", "nominations", "payments", "personnel", "competitions", "templates", "users", "logistics", "availability", "training", "games", "assets", "loans", "employees", "reports", "evaluations"]
+# `comp_days` no es una página: gobierna la columna de días compensatorios
+# dentro de Employees. Solo se usa su can_view (migración 030).
+MODULES = ["calendar", "nominations", "payments", "personnel", "competitions", "templates", "users", "logistics", "availability", "training", "games", "assets", "loans", "employees", "reports", "evaluations", "comp_days"]
 
 
 def is_superadmin(user_id: str) -> bool:
