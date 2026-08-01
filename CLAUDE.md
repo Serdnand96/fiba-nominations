@@ -118,7 +118,10 @@ legacy `fibaamericascloud.com`).
     `logistics_participants` y deduplicando por competencia: **un viaje = una
     competencia**, aunque la persona cubra dos funciones en el mismo evento. No
     agregar una columna contador a `employees` — habría que recalcularla en
-    cada alta, baja y cambio de año.
+    cada alta, baja y cambio de año. La columna "Días comp." sale del mismo
+    cálculo: sábados y domingos **dentro del tramo** de cada viaje, base de los
+    compensatorios. **Los feriados no se cuentan** (no hay calendario de
+    feriados y varía por país de la persona).
 
 ---
 
