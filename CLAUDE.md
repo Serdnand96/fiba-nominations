@@ -112,6 +112,14 @@ legacy `fibaamericascloud.com`).
     las tablas. Permiso: `games`. El picker sale de `/staffing/candidates` y no
     de `/employees`, para no exigir el permiso `employees` a quien planifica.
 
+    **Los viajes por año del empleado son derivados, no guardados.** La columna
+    "Viajes" de Empleados (`/employees/trip-counts` y `/employees/{id}/trips`)
+    se calcula al leer, sumando `competition_staffing` **y**
+    `logistics_participants` y deduplicando por competencia: **un viaje = una
+    competencia**, aunque la persona cubra dos funciones en el mismo evento. No
+    agregar una columna contador a `employees` — habría que recalcularla en
+    cada alta, baja y cambio de año.
+
 ---
 
 ## 🗺️ Mapa del repo
