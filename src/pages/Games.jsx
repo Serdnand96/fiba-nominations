@@ -1066,7 +1066,7 @@ export default function Games() {
 
         {supportsAssignments && games.length > 0 && (
           <button type="button" onClick={() => setDetailed(d => !d)}
-            className={`fiba-select flex items-center gap-2 ${detailed ? 'text-fiba-accent' : ''}`}
+            className={`fiba-select !w-auto flex items-center gap-2 ${detailed ? 'text-fiba-accent' : ''}`}
             title={t('games.densityHint')}>
             <Icon.ChevronDown className={`w-3.5 h-3.5 flex-shrink-0 transition-transform ${detailed ? 'rotate-180' : ''}`} />
             <span>{detailed ? t('games.densityDetailed') : t('games.densityCompact')}</span>
