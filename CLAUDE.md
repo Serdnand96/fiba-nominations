@@ -102,6 +102,16 @@ legacy `fibaamericascloud.com`).
    `sync-nominations` sale del crew en modo torneo y de `game_assignments` en
    modo per-game. El crew se edita desde Games y desde el panel de Calendar.
 
+10. **El "Staffing Plan" NO es el crew.** `competition_staffing` (migración
+    029, router `staffing.py`, panel en Games) registra a los **empleados FIBA**
+    que trabajan un evento — `employees`, no `personnel`. Está deliberadamente
+    fuera de `competition_assignments` porque esa tabla alimenta
+    `sync-nominations`, las cartas y los fees: **un empleado FIBA no se nomina
+    ni cobra window fee**. Si algún día hay que cruzarlos, el puente correcto es
+    sembrar `logistics_participants` con `category = 'fiba_staff'`, no unificar
+    las tablas. Permiso: `games`. El picker sale de `/staffing/candidates` y no
+    de `/employees`, para no exigir el permiso `employees` a quien planifica.
+
 ---
 
 ## 🗺️ Mapa del repo
