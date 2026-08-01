@@ -45,6 +45,13 @@
      modal anchors to this div instead of the viewport (appears mid-page, clipped). */
   .screen-enter { animation: screenIn 240ms cubic-bezier(.2,.7,.2,1) backwards; }
   @keyframes screenIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+
+  /* Side panels. Vivía duplicada en un <style> dentro de Calendar y de
+     PersonProfilePanel, así que Payments, Reports y Evaluations solo animaban
+     si antes se había montado alguna de esas dos. Acá vale para todas.
+     Sin fill-mode, por el mismo motivo que screenIn. */
+  .animate-slide-in { animation: slideIn 250ms ease-out; }
+  @keyframes slideIn { from { transform: translateX(100%); } to { transform: translateX(0); } }
 }
 
 /* Scrollbars */

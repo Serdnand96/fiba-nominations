@@ -366,6 +366,13 @@ export const getTrainingCrew = (competitionId) =>
 
 // Staffing plan — empleados FIBA designados a la competencia. No se nominan:
 // van por su propia tabla, aparte del crew (ver migración 029).
+// Viajes por año de cada empleado. No hay contador guardado: se derivan del
+// staffing plan y del padrón de logística (ver employees.py).
+export const getEmployeeTripCounts = (year) =>
+  api.get('/employees/trip-counts', { params: year ? { year } : {} }).then(r => r.data)
+export const getEmployeeTrips = (employeeId, year) =>
+  api.get(`/employees/${employeeId}/trips`, { params: year ? { year } : {} }).then(r => r.data)
+
 export const getStaffing = (competitionId) =>
   api.get('/staffing/by-competition', { params: { competition_id: competitionId } }).then(r => r.data)
 export const getStaffingCandidates = (search = '') =>

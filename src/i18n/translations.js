@@ -1272,6 +1272,23 @@ const translations = {
   // ===== Employees =====
   employees: {
     title: { en: 'Employees', es: 'Empleados' },
+    // Viajes del año. Derivados, no guardados: ver employees.py.
+    trips: { en: 'Trips', es: 'Viajes' },
+    tripsDays: { en: 'Days away', es: 'Días de viaje' },
+    tripsDaysCount: { en: '{count} d', es: '{count} d' },
+    tripsYearOption: { en: 'Trips {year}', es: 'Viajes {year}' },
+    tripsYearHint: {
+      en: 'Year counted in the Trips column',
+      es: 'Año que cuenta la columna Viajes',
+    },
+    tripsOpen: { en: 'See the {year} trips', es: 'Ver los viajes de {year}' },
+    tripsEmpty: { en: 'No trips recorded this year.', es: 'Sin viajes registrados este año.' },
+    tripsSource: {
+      en: 'Counted from the staffing plan and the logistics roster. One competition = one trip.',
+      es: 'Se cuentan desde el staffing plan y el padrón de logística. Una competencia = un viaje.',
+    },
+    tripsSource_staffing: { en: 'Staffing plan', es: 'Staffing plan' },
+    tripsSource_logistics: { en: 'Logistics', es: 'Logística' },
     newEmployee: { en: '+ New employee', es: '+ Nuevo empleado' },
     editEmployee: { en: 'Edit employee', es: 'Editar empleado' },
     name: { en: 'Name', es: 'Nombre' },

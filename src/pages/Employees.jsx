@@ -1,5 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
-import { getEmployees, createEmployee, updateEmployee, deleteEmployee } from '../api/client'
+import {
+  getEmployees, createEmployee, updateEmployee, deleteEmployee,
+  getEmployeeTripCounts, getEmployeeTrips,
+} from '../api/client'
 import { useLanguage } from '../i18n/LanguageContext'
 import { useAuth } from '../contexts/AuthContext'
 
@@ -24,7 +27,16 @@ export default function Employees() {
   const [form, setForm] = useState(EMPTY_FORM)
   const [saving, setSaving] = useState(false)
 
+  // Viajes del año. El número no está guardado en el empleado: sale de sumar
+  // sus designaciones (staffing plan) y su presencia en el padrón de logística.
+  const [tripYear, setTripYear] = useState(new Date().getFullYear())
+  const [tripCounts, setTripCounts] = useState({})
+  const [tripYears, setTripYears] = useState([])
+  const [tripPanel, setTripPanel] = useState(null) // { employee, data, loading }
+
   useEffect(() => { load() }, [])
+
+  useEffect(() => { loadTripCounts() }, [tripYear])
 
   async function load() {
     setLoading(true)
@@ -33,6 +45,32 @@ export default function Employees() {
     } catch (e) { console.error(e) }
     setLoading(false)
   }
+
+  async function loadTripCounts() {
+    try {
+      const r = await getEmployeeTripCounts(tripYear)
+      setTripCounts(r.counts || {})
+      setTripYears(r.years || [])
+    } catch (e) { console.error(e) }
+  }
+
+  async function openTrips(employee) {
+    setTripPanel({ employee, data: null, loading: true })
+    try {
+      const data = await getEmployeeTrips(employee.id, tripYear)
+      setTripPanel({ employee, data, loading: false })
+    } catch (e) {
+      console.error(e)
+      setTripPanel({ employee, data: null, loading: false })
+    }
+  }
+
+  // El selector ofrece los años con datos más el actual, para no quedar en un
+  // año vacío cuando todavía no se cargó nada.
+  const yearOptions = useMemo(() => {
+    const current = new Date().getFullYear()
+    return [...new Set([current, tripYear, ...tripYears])].sort((a, b) => b - a)
+  }, [tripYears, tripYear])
 
   const filtered = useMemo(() => {
     return employees.filter(e => {
@@ -141,6 +179,13 @@ export default function Employees() {
           <option value="">{t('employees.allDepartments')}</option>
           {departmentOptions.map(d => <option key={d} value={d}>{d}</option>)}
         </select>
+        <select value={tripYear} onChange={e => setTripYear(Number(e.target.value))}
+          className="fiba-select !w-auto min-w-[120px] flex-shrink-0"
+          title={t('employees.tripsYearHint')}>
+          {yearOptions.map(y => (
+            <option key={y} value={y}>{t('employees.tripsYearOption', { year: y })}</option>
+          ))}
+        </select>
       </div>
 
       <div className="rounded-xl border border-fiba-border overflow-hidden">
@@ -153,6 +198,7 @@ export default function Employees() {
               <th>{t('employees.position')}</th>
               <th>{t('employees.department')}</th>
               <th>{t('employees.phone')}</th>
+              <th>{t('employees.trips')}</th>
               <th>{t('common.status')}</th>
               <th>{t('common.action')}</th>
             </tr>
@@ -165,6 +211,17 @@ export default function Employees() {
                 <td className="px-4 py-3 text-sm">{e.position || '—'}</td>
                 <td className="px-4 py-3 text-sm">{e.department || '—'}</td>
                 <td className="px-4 py-3 text-sm">{e.phone || '—'}</td>
+                <td className="px-4 py-3">
+                  {tripCounts[e.id] ? (
+                    <button onClick={() => openTrips(e)}
+                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-semibold bg-fiba-accent/15 text-fiba-accent hover:bg-fiba-accent/25 transition-colors"
+                      title={t('employees.tripsOpen', { year: tripYear })}>
+                      {tripCounts[e.id]}
+                    </button>
+                  ) : (
+                    <span className="text-fiba-muted/50 text-sm">—</span>
+                  )}
+                </td>
                 <td className="px-4 py-3">
                   <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${e.active ? 'bg-emerald-500/20 text-emerald-400' : 'bg-gray-500/20 text-ink-500 dark:text-gray-400'}`}>
                     {e.active ? t('employees.active') : t('employees.inactive')}
@@ -183,12 +240,94 @@ export default function Employees() {
               </tr>
             ))}
             {filtered.length === 0 && (
-              <tr><td colSpan={7} className="px-4 py-8 text-center text-fiba-muted">{t('employees.noEmployees')}</td></tr>
+              <tr><td colSpan={8} className="px-4 py-8 text-center text-fiba-muted">{t('employees.noEmployees')}</td></tr>
             )}
           </tbody>
         </table>
         </div>
       </div>
+
+      {/* Detalle de viajes — qué eventos, no solo cuántos. */}
+      {tripPanel && (
+        <>
+          <div className="fixed inset-0 bg-black/40 z-40" onClick={() => setTripPanel(null)} />
+          <div className="fixed top-0 right-0 h-full w-full max-w-md bg-fiba-card border-l border-fiba-border z-50 flex flex-col animate-slide-in">
+            <div className="flex items-start justify-between p-6 border-b border-fiba-border">
+              <div className="min-w-0">
+                <h3 className="text-lg font-bold text-ink-900 dark:text-white truncate">{tripPanel.employee.name}</h3>
+                <p className="text-xs text-fiba-muted mt-0.5">
+                  {[tripPanel.employee.position, tripPanel.employee.department].filter(Boolean).join(' · ') || '—'}
+                </p>
+              </div>
+              <button onClick={() => setTripPanel(null)}
+                className="p-1.5 rounded hover:bg-fiba-surface text-fiba-muted hover:text-ink-900 dark:hover:text-white">×</button>
+            </div>
+
+            <div className="px-6 py-3 border-b border-fiba-border bg-fiba-surface/50">
+              <h4 className="text-sm font-semibold text-ink-700 dark:text-gray-300">
+                {t('employees.tripsYearOption', { year: tripYear })}
+              </h4>
+              <p className="text-xs text-fiba-muted/60">{t('employees.tripsSource')}</p>
+            </div>
+
+            <div className="flex-1 overflow-auto p-6">
+              {tripPanel.loading ? (
+                <div className="text-center py-8 text-fiba-muted text-sm">{t('common.loading')}</div>
+              ) : !tripPanel.data || tripPanel.data.trips.length === 0 ? (
+                <div className="text-center py-8 text-fiba-muted text-sm">{t('employees.tripsEmpty')}</div>
+              ) : (
+                <>
+                  <div className="grid grid-cols-2 gap-4 mb-4">
+                    <div className="fiba-stat">
+                      <p className="text-xs text-fiba-muted">{t('employees.trips')}</p>
+                      <p className="text-2xl font-bold text-ink-900 dark:text-white">{tripPanel.data.totals.trips}</p>
+                    </div>
+                    <div className="fiba-stat">
+                      <p className="text-xs text-fiba-muted">{t('employees.tripsDays')}</p>
+                      <p className="text-2xl font-bold text-ink-900 dark:text-white">
+                        {tripPanel.data.totals.days || '—'}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    {tripPanel.data.trips.map(trip => (
+                      <div key={`${trip.competition_id}-${trip.source}`}
+                        className="border border-fiba-border rounded-lg p-3">
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="min-w-0">
+                            <p className="text-sm font-medium text-ink-900 dark:text-white truncate">
+                              {trip.competition_name || '—'}
+                            </p>
+                            <p className="text-xs text-fiba-muted">
+                              {trip.start_date || '—'}
+                              {trip.end_date && trip.end_date !== trip.start_date ? ` — ${trip.end_date}` : ''}
+                            </p>
+                          </div>
+                          <span className="shrink-0 text-sm font-semibold text-fiba-accent">
+                            {trip.days > 0 ? t('employees.tripsDaysCount', { count: trip.days }) : '—'}
+                          </span>
+                        </div>
+                        <div className="flex flex-wrap items-center gap-1.5 mt-2">
+                          {trip.event_role && (
+                            <span className="px-2 py-0.5 rounded text-xs bg-fiba-surface text-fiba-muted">
+                              {trip.event_role}
+                            </span>
+                          )}
+                          {/* De dónde salió el viaje: designación cargada, o
+                              solo presencia en el manifiesto de logística. */}
+                          <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider border border-fiba-border text-fiba-muted/70">
+                            {t(`employees.tripsSource_${trip.source}`)}
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        </>
+      )}
 
       {showForm && (
         <div className="fiba-modal-overlay">
