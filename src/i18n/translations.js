@@ -1289,6 +1289,13 @@ const translations = {
     },
     tripsSource_staffing: { en: 'Staffing plan', es: 'Staffing plan' },
     tripsSource_logistics: { en: 'Logistics', es: 'Logística' },
+    // Compensation days: sábados y domingos caídos dentro de los viajes.
+    compDays: { en: 'Comp. days', es: 'Días comp.' },
+    compDaysCount: { en: '{count} wknd', es: '{count} finde' },
+    compDaysHint: {
+      en: 'Weekend days (Sat/Sun) inside the {year} trips — the basis for compensation days. Public holidays are not counted.',
+      es: 'Días de fin de semana (sáb/dom) dentro de los viajes de {year} — la base de los días compensatorios. Los feriados no se cuentan.',
+    },
     newEmployee: { en: '+ New employee', es: '+ Nuevo empleado' },
     editEmployee: { en: 'Edit employee', es: 'Editar empleado' },
     name: { en: 'Name', es: 'Nombre' },

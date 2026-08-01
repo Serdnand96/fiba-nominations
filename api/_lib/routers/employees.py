@@ -1,5 +1,5 @@
 """Internal staff (employees) — separate from TDs/VGOs in `personnel`."""
-from datetime import date
+from datetime import date, timedelta
 from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Query, Depends
@@ -65,16 +65,45 @@ def _trip_year(start: Optional[str], comp: dict) -> Optional[int]:
     return comp.get("year")
 
 
-def _trip_days(start: Optional[str], end: Optional[str]) -> int:
-    """Días del viaje, inclusive. 0 cuando no hay fechas — no se inventa 1."""
+def _span(start: Optional[str], end: Optional[str]) -> Optional[tuple[date, date]]:
+    """Tramo del viaje como fechas, o None si falta alguna o están al revés."""
     if not start or not end:
-        return 0
+        return None
     try:
         d0 = date.fromisoformat(str(start)[:10])
         d1 = date.fromisoformat(str(end)[:10])
     except ValueError:
+        return None
+    return (d0, d1) if d1 >= d0 else None
+
+
+def _trip_days(start: Optional[str], end: Optional[str]) -> int:
+    """Días del viaje, inclusive. 0 cuando no hay fechas — no se inventa 1."""
+    span = _span(start, end)
+    return (span[1] - span[0]).days + 1 if span else 0
+
+
+def _weekend_days(start: Optional[str], end: Optional[str]) -> int:
+    """Sábados y domingos dentro del viaje → base de los compensation days.
+
+    Se cuenta el fin de semana que cae DENTRO del tramo, esté la persona
+    trabajando o viajando: para el cómputo de compensatorios el criterio es
+    haber estado fuera de casa. Feriados no entran — no hay calendario de
+    feriados en el sistema y varía por país de la persona.
+    """
+    span = _span(start, end)
+    if not span:
         return 0
-    return max((d1 - d0).days + 1, 0)
+    d0, d1 = span
+    total = (d1 - d0).days + 1
+    # Cada semana completa aporta exactamente 2; solo el resto hay que mirarlo
+    # día por día.
+    full_weeks, rest = divmod(total, 7)
+    count = full_weeks * 2
+    for i in range(rest):
+        if (d0 + timedelta(days=full_weeks * 7 + i)).weekday() >= 5:  # sáb=5, dom=6
+            count += 1
+    return count
 
 
 _TRIP_COMP = "competitions(name, year, start_date, end_date)"
@@ -116,6 +145,7 @@ def _collect_trips(year: Optional[int] = None) -> dict:
             "start_date": start,
             "end_date": end,
             "days": _trip_days(start, end),
+            "weekend_days": _weekend_days(start, end),
             "source": "logistics",
         }
 
@@ -155,6 +185,7 @@ def _collect_trips(year: Optional[int] = None) -> dict:
             "start_date": start,
             "end_date": end,
             "days": _trip_days(start, end),
+            "weekend_days": _weekend_days(start, end),
             "source": "staffing",
         }
 
@@ -172,11 +203,14 @@ def employee_trip_counts(year: Optional[int] = Query(None)):
     years = sorted({t["year"] for t in all_trips.values() if t.get("year")}, reverse=True)
 
     counts: dict = {}
+    weekend_days: dict = {}
     for trip in all_trips.values():
         if year is not None and trip.get("year") != year:
             continue
-        counts[trip["employee_id"]] = counts.get(trip["employee_id"], 0) + 1
-    return {"year": year, "counts": counts, "years": years}
+        emp_id = trip["employee_id"]
+        counts[emp_id] = counts.get(emp_id, 0) + 1
+        weekend_days[emp_id] = weekend_days.get(emp_id, 0) + trip.get("weekend_days", 0)
+    return {"year": year, "counts": counts, "weekend_days": weekend_days, "years": years}
 
 
 @router.get("/{employee_id}/trips")
@@ -193,7 +227,11 @@ def employee_trips(employee_id: str, year: Optional[int] = Query(None)):
     rows.sort(key=lambda t: (t.get("start_date") or "", t.get("competition_name") or ""), reverse=True)
     return {
         "year": year,
-        "totals": {"trips": len(rows), "days": sum(t["days"] for t in rows)},
+        "totals": {
+            "trips": len(rows),
+            "days": sum(t["days"] for t in rows),
+            "weekend_days": sum(t["weekend_days"] for t in rows),
+        },
         "trips": rows,
     }
 

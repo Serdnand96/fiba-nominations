@@ -31,6 +31,8 @@ export default function Employees() {
   // sus designaciones (staffing plan) y su presencia en el padrón de logística.
   const [tripYear, setTripYear] = useState(new Date().getFullYear())
   const [tripCounts, setTripCounts] = useState({})
+  // Sábados y domingos caídos dentro de los viajes → base de los compensatorios.
+  const [compDays, setCompDays] = useState({})
   const [tripYears, setTripYears] = useState([])
   const [tripPanel, setTripPanel] = useState(null) // { employee, data, loading }
 
@@ -50,6 +52,7 @@ export default function Employees() {
     try {
       const r = await getEmployeeTripCounts(tripYear)
       setTripCounts(r.counts || {})
+      setCompDays(r.weekend_days || {})
       setTripYears(r.years || [])
     } catch (e) { console.error(e) }
   }
@@ -199,6 +202,7 @@ export default function Employees() {
               <th>{t('employees.department')}</th>
               <th>{t('employees.phone')}</th>
               <th>{t('employees.trips')}</th>
+              <th>{t('employees.compDays')}</th>
               <th>{t('common.status')}</th>
               <th>{t('common.action')}</th>
             </tr>
@@ -223,6 +227,16 @@ export default function Employees() {
                   )}
                 </td>
                 <td className="px-4 py-3">
+                  {compDays[e.id] ? (
+                    <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-blue-500/15 text-blue-400"
+                      title={t('employees.compDaysHint', { year: tripYear })}>
+                      {compDays[e.id]}
+                    </span>
+                  ) : (
+                    <span className="text-fiba-muted/50 text-sm">—</span>
+                  )}
+                </td>
+                <td className="px-4 py-3">
                   <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${e.active ? 'bg-emerald-500/20 text-emerald-400' : 'bg-gray-500/20 text-ink-500 dark:text-gray-400'}`}>
                     {e.active ? t('employees.active') : t('employees.inactive')}
                   </span>
@@ -240,7 +254,7 @@ export default function Employees() {
               </tr>
             ))}
             {filtered.length === 0 && (
-              <tr><td colSpan={8} className="px-4 py-8 text-center text-fiba-muted">{t('employees.noEmployees')}</td></tr>
+              <tr><td colSpan={9} className="px-4 py-8 text-center text-fiba-muted">{t('employees.noEmployees')}</td></tr>
             )}
           </tbody>
         </table>
@@ -277,7 +291,7 @@ export default function Employees() {
                 <div className="text-center py-8 text-fiba-muted text-sm">{t('employees.tripsEmpty')}</div>
               ) : (
                 <>
-                  <div className="grid grid-cols-2 gap-4 mb-4">
+                  <div className="grid grid-cols-3 gap-3 mb-4">
                     <div className="fiba-stat">
                       <p className="text-xs text-fiba-muted">{t('employees.trips')}</p>
                       <p className="text-2xl font-bold text-ink-900 dark:text-white">{tripPanel.data.totals.trips}</p>
@@ -286,6 +300,12 @@ export default function Employees() {
                       <p className="text-xs text-fiba-muted">{t('employees.tripsDays')}</p>
                       <p className="text-2xl font-bold text-ink-900 dark:text-white">
                         {tripPanel.data.totals.days || '—'}
+                      </p>
+                    </div>
+                    <div className="fiba-stat">
+                      <p className="text-xs text-fiba-muted">{t('employees.compDays')}</p>
+                      <p className="text-2xl font-bold text-blue-400">
+                        {tripPanel.data.totals.weekend_days || '—'}
                       </p>
                     </div>
                   </div>
@@ -303,9 +323,17 @@ export default function Employees() {
                               {trip.end_date && trip.end_date !== trip.start_date ? ` — ${trip.end_date}` : ''}
                             </p>
                           </div>
-                          <span className="shrink-0 text-sm font-semibold text-fiba-accent">
-                            {trip.days > 0 ? t('employees.tripsDaysCount', { count: trip.days }) : '—'}
-                          </span>
+                          <div className="shrink-0 text-right">
+                            <span className="block text-sm font-semibold text-fiba-accent">
+                              {trip.days > 0 ? t('employees.tripsDaysCount', { count: trip.days }) : '—'}
+                            </span>
+                            {trip.weekend_days > 0 && (
+                              <span className="block text-xs font-semibold text-blue-400"
+                                title={t('employees.compDaysHint', { year: tripYear })}>
+                                {t('employees.compDaysCount', { count: trip.weekend_days })}
+                              </span>
+                            )}
+                          </div>
                         </div>
                         <div className="flex flex-wrap items-center gap-1.5 mt-2">
                           {trip.event_role && (
