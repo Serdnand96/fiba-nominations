@@ -177,6 +177,42 @@ async def auth_middleware(request: Request, call_next):
     return await call_next(request)
 
 
+# ── Errores de Postgres → 4xx con mensaje ───────────────────────────────────
+# El backend pega a PostgREST y cualquier violación de integridad llegaba como
+# Exception pelada: 500 sin `detail`, y el panel mostraba un "Error" mudo (así
+# se veía el varchar(10) del rol del crew, migración 031). Acá se traducen los
+# SQLSTATE que son culpa del dato enviado, no del servidor.
+#
+# El mensaje al cliente es genérico a propósito — nombres de columnas y de
+# constraints se quedan en el log del servidor, no viajan en la respuesta.
+import logging as _logging
+from api._lib.database import SupabaseError as _SupabaseError
+
+_log = _logging.getLogger("fiba.api")
+
+_PG_ERRORS = {
+    "23505": (409, "This record already exists."),            # unique_violation
+    "23503": (409, "A related record is missing or still in use."),  # foreign_key
+    "23514": (400, "A value is not allowed here."),           # check_violation
+    "23502": (400, "A required field is missing."),           # not_null_violation
+    "22001": (400, "A value is too long for this field."),    # string too long
+    "22P02": (400, "A value has an invalid format."),         # invalid_text_repr
+    "22007": (400, "An invalid date or time was sent."),      # invalid datetime
+    "22008": (400, "An invalid date or time was sent."),      # datetime overflow
+}
+
+
+@app.exception_handler(_SupabaseError)
+async def supabase_error_handler(request: Request, exc: _SupabaseError):
+    status, detail = _PG_ERRORS.get(exc.pg_code or "", (500, "Internal server error"))
+    # El detalle crudo (columna, constraint, hint) solo al log.
+    _log.error(
+        "Supabase %s on %s %s — pg_code=%s: %s",
+        exc.status_code, request.method, request.url.path, exc.pg_code, exc.body,
+    )
+    return JSONResponse(status_code=status, content={"detail": detail})
+
+
 # Mount all routers under /api prefix (nginx proxies /api/* to this app)
 app.include_router(personnel.router, prefix="/api")
 app.include_router(competitions.router, prefix="/api")

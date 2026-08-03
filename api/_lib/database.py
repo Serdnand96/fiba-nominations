@@ -21,6 +21,27 @@ _HTTP_UPLOAD = httpx.Client(
 )
 
 
+class SupabaseError(Exception):
+    """A PostgREST/Postgres error, with the parts needed to answer the client.
+
+    Subclasses Exception on purpose: the routers that already do a broad
+    `except Exception` keep working, and `str()` renders the same text this
+    used to raise, so existing logs read the same. What it adds is the
+    Postgres SQLSTATE (`pg_code`), which lets `api/index.py` turn a data
+    violation into a 4xx with a readable message instead of a bare 500.
+    """
+
+    def __init__(self, status_code: int, body: str, payload: dict | None = None):
+        super().__init__(f"Supabase error {status_code}: {body}")
+        self.status_code = status_code
+        self.body = body
+        payload = payload or {}
+        self.pg_code = payload.get("code")
+        self.pg_message = payload.get("message")
+        self.pg_details = payload.get("details")
+        self.pg_hint = payload.get("hint")
+
+
 class _SupabaseResult:
     """Mimics the result object from supabase-py."""
     def __init__(self, data: list):
@@ -118,7 +139,15 @@ class _QueryBuilder:
             raise ValueError(f"Unknown method: {self._method}")
 
         if resp.status_code >= 400:
-            raise Exception(f"Supabase error {resp.status_code}: {resp.text}")
+            try:
+                payload = resp.json()
+            except ValueError:
+                payload = None
+            raise SupabaseError(
+                resp.status_code,
+                resp.text,
+                payload if isinstance(payload, dict) else None,
+            )
 
         data = resp.json() if resp.text else []
         if isinstance(data, dict):
