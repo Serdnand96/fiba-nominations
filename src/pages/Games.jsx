@@ -62,6 +62,9 @@ const ROLE_CODE = {
   TD: 'TD', VGO: 'VGO', REF: 'REF', REF_INSTRUCTOR: 'INSTR', VIDEO_OPERATOR: 'VO',
 }
 const roleCode = (role) => ROLE_CODE[(role || '').toUpperCase()] || (role || '')
+// Orden de las columnas del panel de crew: primero la mesa, después el cuerpo
+// arbitral. Cualquier rol que no esté acá se muestra igual, al final.
+const CREW_ROLE_ORDER = ['TD', 'VGO', 'REF_INSTRUCTOR', 'REF', 'VIDEO_OPERATOR']
 
 const EMPTY_FORM = {
   date: '', time: '', team_a: '', team_a_code: '', team_a_country: '',
@@ -758,6 +761,25 @@ export default function Games() {
     [crew],
   )
 
+  // Crew grouped by role for the panel. Un solo wrap de chips con nombres de
+  // largos distintos se lee como un párrafo: pasado el docena de personas no
+  // hay forma de contar cuántos árbitros hay. Cada rol va en su columna.
+  const crewByRole = useMemo(() => {
+    const groups = new Map()
+    for (const m of crew) {
+      const role = ((m.personnel?.role || m.role) || '').toUpperCase() || 'OTHER'
+      if (!groups.has(role)) groups.set(role, [])
+      groups.get(role).push(m)
+    }
+    for (const list of groups.values()) {
+      list.sort((a, b) => (a.personnel?.name || '').localeCompare(b.personnel?.name || ''))
+    }
+    // Roles fuera del orden conocido van al final, no se pierden.
+    return [...groups.entries()].sort(
+      (a, b) => (CREW_ROLE_ORDER.indexOf(a[0]) + 1 || 99) - (CREW_ROLE_ORDER.indexOf(b[0]) + 1 || 99),
+    )
+  }, [crew])
+
   // Chip state per game, keyed by person: a game can carry more than one
   // person on the same slot role (two TDs of the same crew).
   const crewOverridesByGame = useMemo(() => {
@@ -1134,26 +1156,42 @@ export default function Games() {
           {crew.length === 0 ? (
             <p className="text-sm text-fiba-muted mb-4">{t('games.crewEmpty')}</p>
           ) : (
-            <div className="flex flex-wrap gap-2 mb-4">
-              {crew.map(m => (
-                <span key={m.id}
-                  className="inline-flex items-center gap-2 pl-2.5 pr-1.5 py-1 rounded-full bg-fiba-surface border border-fiba-border text-xs">
-                  <span className="font-medium text-ink-900 dark:text-white">{m.personnel?.name}</span>
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-fiba-muted">
-                    {roleCode(m.personnel?.role || m.role)}
-                  </span>
-                  {canEdit && (
-                    <button onClick={() => handleRemoveCrew(m)}
-                      className="text-fiba-muted hover:text-red-400 px-1"
-                      title={t('games.crewRemove')}>×</button>
-                  )}
-                </span>
-              ))}
+            <div className="grid gap-x-8 gap-y-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 mb-5">
+              {crewByRole.map(([role, members]) => {
+                // Los árbitros son casi siempre el grueso del crew: si su lista
+                // marcara la altura de la fila, las columnas de TD/VGO
+                // quedarían con medio panel en blanco al lado.
+                const wide = members.length > 8
+                return (
+                  <div key={role} className={wide ? 'sm:col-span-2 lg:col-span-3 xl:col-span-4' : ''}>
+                    <div className="flex items-baseline justify-between gap-2 mb-1.5 pb-1.5 border-b border-fiba-border">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-fiba-muted">
+                        {ROLE_CODE[role] ? t(`rolesShort.${role}`) : role}
+                      </span>
+                      <span className="num text-[10px] text-fiba-muted">{members.length}</span>
+                    </div>
+                    <ul className={wide ? 'gap-x-8 sm:columns-2 lg:columns-3 xl:columns-4' : ''}>
+                      {members.map(m => (
+                        <li key={m.id}
+                          className="group flex items-center justify-between gap-2 rounded px-1.5 py-1 break-inside-avoid hover:bg-fiba-surface">
+                          <span className="text-sm text-ink-900 dark:text-white truncate"
+                            title={m.personnel?.name}>{m.personnel?.name}</span>
+                          {canEdit && (
+                            <button onClick={() => handleRemoveCrew(m)}
+                              className="shrink-0 px-1 leading-none text-fiba-muted opacity-50 hover:opacity-100 hover:text-red-400 group-hover:opacity-100"
+                              title={t('games.crewRemove')}>×</button>
+                          )}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )
+              })}
             </div>
           )}
 
           {canEdit && (
-            <div>
+            <div className="max-w-md border-t border-fiba-border pt-4">
               <label className="fiba-label">{t('games.crewAdd')}</label>
               <input type="text" value={crewSearch} onChange={e => setCrewSearch(e.target.value)}
                 placeholder={t('games.crewSearchPlaceholder')}
