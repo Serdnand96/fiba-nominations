@@ -1174,8 +1174,9 @@ export default function Games() {
                       {members.map(m => (
                         <li key={m.id}
                           className="group flex items-center justify-between gap-2 rounded px-1.5 py-1 break-inside-avoid hover:bg-fiba-surface">
-                          <span className="text-sm text-ink-900 dark:text-white truncate"
-                            title={m.personnel?.name}>{m.personnel?.name}</span>
+                          <span className="min-w-0 text-sm leading-snug text-ink-900 dark:text-white break-words">
+                            {m.personnel?.name}
+                          </span>
                           {canEdit && (
                             <button onClick={() => handleRemoveCrew(m)}
                               className="shrink-0 px-1 leading-none text-fiba-muted opacity-50 hover:opacity-100 hover:text-red-400 group-hover:opacity-100"
