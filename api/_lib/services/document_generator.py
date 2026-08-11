@@ -17,6 +17,22 @@ from docx.oxml.ns import qn
 OUTPUT_DIR = Path(tempfile.gettempdir()) / "fiba_generated"
 TEMPLATES_DIR = Path(__file__).resolve().parent.parent.parent.parent / "templates"
 
+
+def _sandboxed_jinja_env():
+    """Entorno Jinja sandboxeado para renderizar plantillas .docx.
+
+    Las plantillas de carta se suben por el módulo Templates (permiso
+    `templates:edit`), así que son input semi-confiable. docxtpl usa Jinja2
+    estándar por default, donde una expresión como
+    `{{ ''.__class__.__mro__[1].__subclasses__() }}` logra RCE al renderizar.
+    El SandboxedEnvironment bloquea el acceso a atributos internos y a
+    callables peligrosos, cerrando el salto de "editar plantillas" a
+    "ejecutar código en el droplet". Se pasa a DocxTemplate.render(jinja_env=…).
+    """
+    from jinja2.sandbox import SandboxedEnvironment
+
+    return SandboxedEnvironment()
+
 # FIBA brand colors
 COLOR_DARK = RGBColor(0x2A, 0x2A, 0x2A)
 COLOR_RED = RGBColor(0xED, 0x00, 0x00)
@@ -175,7 +191,7 @@ def validate_template(template_key: str, data: bytes) -> dict:
                     "error": f"Not a readable .docx template: {type(exc).__name__}"}
 
         try:
-            tpl.render(context)
+            tpl.render(context, jinja_env=_sandboxed_jinja_env())
         except Exception as exc:
             # Jinja syntax errors and bad expressions land here.
             return {"ok": False, "unknown": [], "unused": [],
@@ -854,7 +870,7 @@ def _render_template(path, context: dict):
     from docxtpl import DocxTemplate
 
     tpl = DocxTemplate(str(path))
-    tpl.render(with_legacy_aliases(context))
+    tpl.render(with_legacy_aliases(context), jinja_env=_sandboxed_jinja_env())
     return tpl
 
 

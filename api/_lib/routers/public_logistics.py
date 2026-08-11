@@ -8,8 +8,9 @@ así el endpoint no revela qué tokens existen. El bypass de auth y el rate
 limit de /api/public/* viven en api/index.py.
 
 Sobre el contenido: por decisión del cliente la página replica la planilla
-completa, número de pasaporte incluido. Si alguna vez hay que ocultarlo, el
-único lugar a tocar es _redact().
+completa, número de pasaporte incluido. TODOS los endpoints pasan sus filas
+por _redact(): si alguna vez hay que ocultar un campo, se toca `_REDACT_FIELDS`
+y nada más.
 """
 from typing import Optional
 
@@ -57,14 +58,32 @@ def _competition(competition_id: str) -> dict:
     return rows[0]
 
 
-def _redact(row: dict) -> dict:
-    """Punto único de recorte de la vista pública.
+# Campos internos que NO salen a la vista pública, por tipo de fila. El resto
+# se publica tal cual —decisión del cliente: la planilla completa, pasaporte
+# incluido, y la página muestra a propósito teléfono/notas de hotel, notas de
+# traslado y teléfono del chofer—. Estos son los que la UI nunca renderiza y
+# que solo salían porque los endpoints hacían select("*")/`**row`: el email
+# comercial del hotel, el contacto interno del traslado y timestamps.
+_REDACT_FIELDS = {
+    "hotel": {"email", "competition_id", "created_at", "updated_at"},
+    "meal": {"competition_id", "created_at", "updated_at"},
+    "trip": {"contact", "created_at", "updated_at"},
+    # El manifiesto se arma con un dict explícito (ver get_manifest), así que
+    # el cliente ya eligió exactamente qué publicar; acá no se recorta nada más.
+    "participant": set(),
+}
 
-    Hoy no recorta nada: el cliente eligió publicar la planilla tal cual. Está
-    acá para que ocultar el pasaporte sea un cambio de una línea y no una
-    cacería por cuatro endpoints.
+
+def _redact(row: dict, kind: str = "participant") -> dict:
+    """Punto ÚNICO de recorte de la vista pública.
+
+    Todos los endpoints (overview, transport, manifest, rooming) pasan sus
+    filas por acá. Para ocultar algo mañana, tocar `_REDACT_FIELDS` y nada más.
     """
-    return row
+    if row is None:
+        return row
+    drop = _REDACT_FIELDS.get(kind, set())
+    return {k: v for k, v in row.items() if k not in drop} if drop else row
 
 
 # ---------------------------------------------------------------------------
@@ -99,8 +118,8 @@ def get_overview(token: str):
     )
     return {
         "competition": _competition(competition_id),
-        "hotels": hotels,
-        "meals": meals,
+        "hotels": [_redact(h, "hotel") for h in hotels],
+        "meals": [_redact(m, "meal") for m in meals],
         "participant_count": len(participants),
     }
 
@@ -182,7 +201,7 @@ def get_transport(token: str, date: Optional[str] = Query(None)):
     out = []
     for t in sorted(trips, key=lambda t: (t.get("date") or "", t.get("departure_time") or "")):
         out.append({
-            **t,
+            **_redact(t, "trip"),
             "vehicle": vehicle_by_id.get(t["vehicle_id"]),
             "driver": driver_for.get((t["vehicle_id"], t.get("date"))),
             "game": game_by_id.get(t.get("game_id")),

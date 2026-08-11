@@ -586,7 +586,7 @@ def _parse_fiba_schedule(content: bytes, competition_id: str, sport: str) -> lis
 
 # ── Excel preview (parse without importing) ──────────────────────────────────
 
-@router.post("/import/preview")
+@router.post("/import/preview", dependencies=[Depends(require_edit("training"))])
 async def preview_excel(
     file: UploadFile = File(...),
     competition_id: str = Form(...),

@@ -513,19 +513,23 @@ def download_nomination(nomination_id: str, filename: str = None):
     storage_object_url = None
 
     if doc_path.startswith("storage://"):
-        # New format: storage://<bucket>/<path>
+        # New format: storage://<bucket>/<path>. Nomination PDFs always live in
+        # the private `nominations` bucket; pin it here so a stray bucket name in
+        # the stored path can never redirect the authenticated fetch elsewhere.
         rest = doc_path[len("storage://"):]
         bucket, _, key = rest.partition("/")
-        storage_object_url = f"{SUPABASE_URL}/storage/v1/object/{bucket}/{key}"
+        if bucket != "nominations":
+            raise HTTPException(status_code=404, detail="Document not available")
+        storage_object_url = f"{SUPABASE_URL}/storage/v1/object/nominations/{key}"
     elif doc_path.startswith("http") and "/storage/v1/object/public/nominations/" in doc_path:
         # Legacy format: rewrite the public URL to the authenticated path.
         # Same key, but the bucket is now private — use /object/{bucket}/{path}
         # with service_role.
         key = doc_path.split("/storage/v1/object/public/nominations/", 1)[1]
         storage_object_url = f"{SUPABASE_URL}/storage/v1/object/nominations/{key}"
-    elif doc_path.startswith("http"):
-        # Some other http URL (shouldn't happen). Fall back to passthrough fetch.
-        storage_object_url = doc_path
+    # No hay passthrough genérico de http: nunca reenviar el service_role key a
+    # una URL arbitraria (SSRF + fuga de credencial). Cualquier otro doc_path cae
+    # a "documento no disponible" abajo.
 
     if storage_object_url:
         try:

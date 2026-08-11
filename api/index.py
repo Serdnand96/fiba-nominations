@@ -22,7 +22,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=_allowed_origins,
     allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["Authorization", "Content-Type"],
 )
 
@@ -72,10 +72,19 @@ _rl_buckets: dict[str, deque] = {}
 
 def _client_ip(request: Request) -> str:
     # nginx fronts the app in prod; the socket peer is localhost, so prefer
-    # the forwarded client address.
+    # the forwarded client address. Trust only headers nginx sets itself:
+    # X-Real-IP is $remote_addr (the real socket peer, not client-controllable).
+    # X-Forwarded-For is built with $proxy_add_x_forwarded_for, which *appends*
+    # the real IP to whatever the client sent — so a client that ships
+    # "X-Forwarded-For: 1.2.3.4" controls the first hop. Never trust [0]; take
+    # the last hop (the one nginx appended) instead. This feeds the public
+    # rate limiter and the audit log, so a spoofable value would bypass both.
+    real_ip = request.headers.get("x-real-ip", "").strip()
+    if real_ip:
+        return real_ip
     xff = request.headers.get("x-forwarded-for", "")
     if xff:
-        return xff.split(",")[0].strip()
+        return xff.split(",")[-1].strip()
     return request.client.host if request.client else "unknown"
 
 
@@ -194,6 +203,7 @@ _PG_ERRORS = {
     "23505": (409, "This record already exists."),            # unique_violation
     "23503": (409, "A related record is missing or still in use."),  # foreign_key
     "23514": (400, "A value is not allowed here."),           # check_violation
+    "23001": (409, "This record is protected and can't be deleted while related records exist."),  # restrict_violation (e.g. nomination with a payment attached)
     "23502": (400, "A required field is missing."),           # not_null_violation
     "22001": (400, "A value is too long for this field."),    # string too long
     "22P02": (400, "A value has an invalid format."),         # invalid_text_repr
