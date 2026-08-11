@@ -19,6 +19,7 @@ import {
   getRevenues, createRevenue, updateRevenue, deleteRevenue,
   getBudgetLines, createBudgetLine, updateBudgetLine, deleteBudgetLine,
   projectBudget, getBudgetSummary, getCompetitionCost,
+  getFeeSchedule, applyFeeSchedule,
 } from '../api/client'
 import { useLanguage } from '../i18n/LanguageContext'
 import { useToast } from '../components/ui/Toast'
@@ -27,6 +28,26 @@ import { Icon } from '../lib/icons'
 
 const TABS = ['dashboard', 'plan', 'expenses', 'recurring', 'revenues', 'vendors']
 const GENERAL = '__general__'   // clave de la columna "sin evento" en la matriz
+
+// Tipos de evento del sheet `Fees Breakdown`. NO es template_key: son ejes
+// distintos — dos competencias con el mismo template pueden pagar distinto.
+const EVENT_TYPES = [
+  'single_game_mens_qualifiers', 'single_game_other',
+  'tournament_6d_youth', 'tournament_6d_senior',
+  'tournament_8d_youth', 'tournament_8d_senior',
+  'womens_americup', 'americup',
+]
+const EVENT_TYPE_LABEL = {
+  single_game_mens_qualifiers: 'Single game — Men’s Qualifiers',
+  single_game_other: 'Single game — otros',
+  tournament_6d_youth: 'Torneo ≤6 días (Youth)',
+  tournament_6d_senior: 'Torneo ≤6 días (Senior)',
+  tournament_8d_youth: 'Torneo ≤8 días (Youth)',
+  tournament_8d_senior: 'Torneo ≤8 días (Senior)',
+  womens_americup: 'FIBA Women’s AmeriCup',
+  americup: 'FIBA AmeriCup',
+}
+const ROLE_LABEL = { td: 'TD', vgo: 'VGO', ref: 'Árbitro', ref_instructor: 'Ref. Instructor', video_operator: 'Video Op.' }
 
 const EXPENSE_STATUSES = ['draft', 'approved', 'paid', 'rejected', 'cancelled']
 const STATUS_BADGE = {
@@ -231,7 +252,7 @@ function RollupTable({ title, rows, t, onRowClick }) {
   )
 }
 
-function DashboardTab({ t, push, departments, competitions }) {
+function DashboardTab({ t, push, canEdit, departments, competitions }) {
   const thisYear = new Date().getFullYear()
   const [year, setYear] = useState(2027)
   const [department, setDepartment] = useState('')
@@ -383,6 +404,101 @@ function DashboardTab({ t, push, departments, competitions }) {
           </>
         )}
       </div>
+
+      <FeesPanel t={t} push={push} canEdit={canEdit} competitions={competitions} />
+    </div>
+  )
+}
+
+/** Tarifario: la grilla oficial y la acción de aplicarla a un evento. */
+function FeesPanel({ t, push, canEdit, competitions }) {
+  const [fees, setFees] = useState([])
+  const [eventType, setEventType] = useState('womens_americup')
+  const [target, setTarget] = useState('')
+  const [overwrite, setOverwrite] = useState(false)
+  const [applying, setApplying] = useState(false)
+
+  useEffect(() => { getFeeSchedule().then(setFees).catch(e => console.error(e)) }, [])
+
+  const grid = useMemo(() => {
+    const roles = [...new Set(fees.map(f => f.role_prefix))]
+    return roles.map(r => ({
+      role: r,
+      row: fees.find(f => f.role_prefix === r && f.event_type === eventType),
+    })).filter(x => x.row)
+  }, [fees, eventType])
+
+  async function handleApply() {
+    if (!target) return
+    setApplying(true)
+    try {
+      const res = await applyFeeSchedule({
+        competition_id: target, fee_event_type: eventType, overwrite,
+      })
+      const done = res.applied.map(a => ROLE_LABEL[a.role] || a.role).join(', ')
+      push({
+        type: 'success',
+        title: res.applied.length
+          ? `${t('budget.applied')}: ${done}`
+          : `0 — ${res.skipped.length} ${t('budget.alreadySet')}`,
+      })
+    } catch (e) {
+      push({ type: 'error', title: e?.response?.data?.detail || t('common.error') })
+    }
+    setApplying(false)
+  }
+
+  return (
+    <div className="rounded-xl border border-fiba-border p-5 mt-6">
+      <h3 className="font-semibold text-ink-900 dark:text-white">{t('budget.fees')}</h3>
+      <p className="text-xs text-fiba-muted mt-0.5 mb-1">{t('budget.feesHint')}</p>
+      <p className="text-xs text-amber-500 mb-4 flex items-center gap-1.5">
+        <Icon.Alert className="w-3.5 h-3.5 flex-shrink-0" /> {t('budget.feesPerCity')}
+      </p>
+
+      <div className="flex flex-wrap gap-3 mb-4">
+        <select value={eventType} onChange={e => setEventType(e.target.value)}
+          className="fiba-select !w-auto min-w-[240px]">
+          {EVENT_TYPES.map(v => <option key={v} value={v}>{EVENT_TYPE_LABEL[v]}</option>)}
+        </select>
+      </div>
+
+      <table className="text-sm mb-5">
+        <thead>
+          <tr className="text-left text-2xs font-semibold uppercase tracking-wider text-fiba-muted border-b border-fiba-border">
+            <th className="pr-8 py-2">{t('budget.role')}</th>
+            <th className="pr-8 py-2 text-right">{t('budget.fee')}</th>
+            <th className="py-2 text-right">{t('budget.incidentals')}</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-fiba-border">
+          {grid.map(g => (
+            <tr key={g.role}>
+              <td className="pr-8 py-2 text-ink-900 dark:text-white">{ROLE_LABEL[g.role] || g.role}</td>
+              <td className="pr-8 py-2 text-right font-medium text-ink-900 dark:text-white">${money(g.row.fee)}</td>
+              <td className="py-2 text-right text-fiba-muted">${money(g.row.incidentals)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+
+      {canEdit && (
+        <div className="flex flex-wrap items-center gap-3 pt-4 border-t border-fiba-border">
+          <select value={target} onChange={e => setTarget(e.target.value)}
+            className="fiba-select !w-auto min-w-[260px]">
+            <option value="">{t('budget.pickEvent')}</option>
+            {competitions.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </select>
+          <label className="flex items-center gap-2 text-sm text-fiba-muted cursor-pointer">
+            <input type="checkbox" checked={overwrite} onChange={() => setOverwrite(v => !v)}
+              className="rounded border-fiba-border" />
+            {t('budget.overwriteFees')}
+          </label>
+          <button onClick={handleApply} disabled={!target || applying} className="btn-fiba">
+            {applying ? t('common.loading') : t('budget.apply')}
+          </button>
+        </div>
+      )}
     </div>
   )
 }

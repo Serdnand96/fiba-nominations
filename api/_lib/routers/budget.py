@@ -45,6 +45,8 @@ from api._lib.schemas import (
     BudgetProject,
     ExpenseCreate,
     ExpenseUpdate,
+    FeeScheduleApply,
+    FeeScheduleUpdate,
     HeadcountPut,
     RecurringCreate,
     RecurringGenerate,
@@ -937,17 +939,202 @@ def put_headcount(data: HeadcountPut):
             if existing:
                 supabase.table("budget_headcount").delete().eq("id", existing[0]["id"]).execute()
             continue
+        payload = {"headcount": item.headcount, "account_code": item.account_code}
         if existing:
-            supabase.table("budget_headcount").update({"headcount": item.headcount}) \
-                .eq("id", existing[0]["id"]).execute()
+            supabase.table("budget_headcount").update(payload).eq("id", existing[0]["id"]).execute()
         else:
             supabase.table("budget_headcount").insert({
                 "year": data.year,
                 "competition_id": item.competition_id,
                 "role_label": item.role_label,
-                "headcount": item.headcount,
+                **payload,
             }).execute()
     return {"ok": True}
+
+
+@router.post("/headcount/generate", dependencies=[Depends(require_edit("budget"))])
+def generate_travel_lines(request: Request, year: int = Query(...),
+                          department: str = Query("competitions"),
+                          replace_manual: bool = Query(False)):
+    """Convierte el headcount en líneas de presupuesto de viaje.
+
+    Replica lo que el Excel hace entre los sheets `Staffing (travel)` y
+    `Breakdown`: headcount × costo de vuelo promedio → la línea de travel de
+    ese rol. En 2027 son 235 persona-evento × $1.050.
+
+    Las líneas nacen con `source = 'calculated'` y se REGENERAN en cada corrida.
+    Las que alguien editó a mano ya pasaron a 'manual' (lo hace
+    update_budget_line) y se dejan intactas: el recálculo nunca pisa un ajuste
+    humano.
+
+    ⚠️ RIESGO DE DOBLE CONTEO, y por eso el chequeo de conflictos. Las líneas de
+    travel del Excel de Competitions (COMP-12 Technical Delegate Travel, COMP-14
+    TV Graphics Operator Travel, COMP-19 FA Staff Travel…) YA SON headcount ×
+    costo de vuelo: así las calculó quien armó la planilla. Generar encima de un
+    año que ya tiene esas líneas cargadas a mano duplicaría el presupuesto de
+    viaje. Por defecto esos pares (cuenta, competencia) se saltean y se
+    reportan; `replace_manual` los borra y los reemplaza por la versión
+    calculada.
+    """
+    _assert_can_edit(request, department)
+
+    rows = supabase.table("budget_headcount").select("*").eq("year", year).execute().data or []
+    rows = [r for r in rows if r.get("account_code") and r.get("headcount")]
+    if not rows:
+        raise HTTPException(status_code=404, detail=f"No headcount with an account for {year}")
+
+    a = supabase.table("budget_assumptions").select("avg_flight_cost").eq("year", year).execute().data
+    flight = float(a[0]["avg_flight_cost"]) if a else 1050.0
+
+    # Solo se borran las calculadas: las manuales sobreviven al regenerado.
+    old = supabase.table("budget_lines").select("id, source") \
+        .eq("year", year).eq("department_code", department) \
+        .eq("source", "calculated").execute().data or []
+    for o in old:
+        supabase.table("budget_lines").delete().eq("id", o["id"]).execute()
+
+    # Pares (cuenta, competencia) que ya tienen una línea manual: son las que
+    # duplicarían el presupuesto de viaje.
+    manual = supabase.table("budget_lines").select("id, account_code, competition_id") \
+        .eq("year", year).eq("department_code", department) \
+        .eq("source", "manual").execute().data or []
+    taken = {(m["account_code"], m["competition_id"]): m["id"] for m in manual}
+
+    made, conflicts = [], []
+    for r in rows:
+        key = (r["account_code"], r.get("competition_id"))
+        if key in taken:
+            if not replace_manual:
+                conflicts.append({"account_code": key[0], "competition_id": key[1],
+                                  "role_label": r["role_label"], "headcount": r["headcount"]})
+                continue
+            supabase.table("budget_lines").delete().eq("id", taken[key]).execute()
+            taken.pop(key)
+        amount = round(float(r["headcount"]) * flight, 2)
+        made.append({
+            "year": year,
+            "department_code": department,
+            "account_code": r["account_code"],
+            "competition_id": r.get("competition_id"),
+            "kind": "expense",
+            "description": f"{r['role_label']} — {r['headcount']} × ${flight:,.0f}",
+            "qty": r["headcount"],
+            "monthly_amount": None,
+            "amount": amount,
+            "escalation_pct": 0,
+            "source": "calculated",
+            "notes": None,
+            "series_id": None,
+            "created_by": _user_id(request),
+        })
+    # series_id lo pone el default de la columna; mandarlo en NULL lo violaría.
+    for m in made:
+        m.pop("series_id")
+    for i in range(0, len(made), 100):
+        supabase.table("budget_lines").insert(made[i:i + 100]).execute()
+
+    return {
+        "created": len(made), "replaced": len(old),
+        "avg_flight_cost": flight,
+        "total": round(sum(m["amount"] for m in made), 2),
+        # Salteadas para no duplicar: ya hay una línea manual en ese par.
+        "skipped_conflicts": conflicts,
+    }
+
+
+# ─── Tarifario de fees ───────────────────────────────────────────────────────
+@router.get("/fee-schedule")
+def list_fee_schedule(event_type: Optional[str] = Query(None)):
+    q = supabase.table("fee_schedule").select("*").eq("active", True).order("event_type")
+    if event_type:
+        q = q.eq("event_type", event_type)
+    return q.execute().data or []
+
+
+@router.put("/fee-schedule", dependencies=[Depends(require_superadmin)])
+def put_fee_schedule(data: FeeScheduleUpdate):
+    """Reemplaza el tarifario. Solo superadmin: es la tarifa oficial de FIBA."""
+    for item in data.items:
+        existing = (
+            supabase.table("fee_schedule").select("id")
+            .eq("role_prefix", item.role_prefix).eq("event_type", item.event_type)
+            .execute().data
+        )
+        payload = {"fee": item.fee, "incidentals": item.incidentals,
+                   "active": item.active, "notes": item.notes}
+        if existing:
+            supabase.table("fee_schedule").update(payload).eq("id", existing[0]["id"]).execute()
+        else:
+            supabase.table("fee_schedule").insert({
+                "role_prefix": item.role_prefix, "event_type": item.event_type, **payload,
+            }).execute()
+    return {"ok": True, "count": len(data.items)}
+
+
+@router.post(
+    "/fee-schedule/apply",
+    dependencies=[Depends(require_edit("budget")), Depends(require_edit("competitions"))],
+)
+def apply_fee_schedule(data: FeeScheduleApply):
+    """Copia el tarifario a los defaults de fee de una competencia.
+
+    Exige edición de `budget` **y** de `competitions`: escribe en la tabla
+    `competitions`, que es de otro módulo, y esos valores terminan en las
+    cartas y los pagos. Tener presupuesto no debería alcanzar para cambiarle
+    el fee a un evento.
+
+    NO crea una segunda fuente de verdad: escribe en las mismas columnas
+    `{prefix}_window_fee` / `_incidentals` que `sync-nominations` ya lee (ver
+    `_build_default_overrides` en games.py). Después quedan editables por
+    competencia — el tarifario es el default, no una imposición.
+
+    Por defecto no pisa lo ya cargado: si alguien ajustó el fee de un evento a
+    mano, aplicar el tarifario no se lo borra. `overwrite` fuerza.
+
+    OJO: `incidentals` del tarifario es POR CIUDAD. Para un evento multi-sede
+    hay que multiplicarlo a mano — el sistema no sabe cuántas sedes tiene.
+    """
+    comp = supabase.table("competitions").select("*").eq("id", data.competition_id).execute().data
+    if not comp:
+        raise HTTPException(status_code=404, detail="Competition not found")
+    comp = comp[0]
+
+    event_type = data.fee_event_type or comp.get("fee_event_type")
+    if not event_type:
+        raise HTTPException(
+            status_code=400,
+            detail="The competition has no fee_event_type — pass one to set it",
+        )
+
+    tariffs = (
+        supabase.table("fee_schedule").select("*")
+        .eq("event_type", event_type).eq("active", True).execute().data
+    ) or []
+    if not tariffs:
+        raise HTTPException(status_code=404, detail=f"No fee schedule for '{event_type}'")
+
+    updates: dict = {}
+    if event_type != comp.get("fee_event_type"):
+        updates["fee_event_type"] = event_type
+    applied, skipped = [], []
+    for tf in tariffs:
+        p = tf["role_prefix"]
+        fee_col, inc_col = f"{p}_window_fee", f"{p}_incidentals"
+        if comp.get(fee_col) is not None and not data.overwrite:
+            skipped.append(p)
+            continue
+        updates[fee_col] = tf["fee"]
+        updates[inc_col] = tf["incidentals"]
+        applied.append({"role": p, "fee": tf["fee"], "incidentals": tf["incidentals"]})
+
+    if updates:
+        supabase.table("competitions").update(updates).eq("id", data.competition_id).execute()
+
+    return {
+        "event_type": event_type, "applied": applied, "skipped": skipped,
+        # Aviso explícito: no se multiplica por sedes.
+        "incidentals_are_per_city": True,
+    }
 
 
 @router.get("/assumptions/{year}")

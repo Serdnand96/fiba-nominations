@@ -152,6 +152,10 @@ export const getBudgetSummary = (params) => api.get('/budget/summary', { params 
 // Costo total del evento. NO está recortado por departamento a propósito: el
 // scoping rige cargar y editar, no leer la cifra de una competencia.
 export const getCompetitionCost = (id) => api.get(`/budget/competitions/${id}/cost`).then(r => r.data)
+// Tarifario: rellena competitions.{prefix}_window_fee/_incidentals, que es lo
+// que sync-nominations ya lee. No es una segunda fuente de verdad.
+export const getFeeSchedule = (params) => api.get('/budget/fee-schedule', { params }).then(r => r.data)
+export const applyFeeSchedule = (data) => api.post('/budget/fee-schedule/apply', data).then(r => r.data)
 export const getHeadcount = (year) => api.get('/budget/headcount', { params: { year } }).then(r => r.data)
 export const putHeadcount = (data) => api.put('/budget/headcount', data).then(r => r.data)
 export const getAssumptions = (year) => api.get(`/budget/assumptions/${year}`).then(r => r.data)

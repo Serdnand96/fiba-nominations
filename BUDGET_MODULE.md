@@ -1,8 +1,11 @@
 # BUDGET_MODULE.md — Diseño del módulo de Presupuesto y Gastos
 
-> Estado: **fases 1 a 4 implementadas** (agosto 2026) — migraciones 033-036
-> **aplicadas a prod**, `api/_lib/routers/budget.py` (28 endpoints),
-> `src/pages/Budget.jsx` (6 pestañas). Fase 5 pendiente (ver §7).
+> Estado: **completo** (agosto 2026) — las 5 fases implementadas, migraciones
+> 033-037 **aplicadas a prod**, `api/_lib/routers/budget.py` (31 endpoints),
+> `src/pages/Budget.jsx` (6 pestañas).
+>
+> Queda pendiente de terceros: el plan de cuentas de Finance y los gastos
+> históricos 2026 (ver §11).
 >
 > **Datos cargados:** los presupuestos 2027 de IT (2027-2030) y de Competitions
 > están importados — ver §10.
@@ -485,7 +488,7 @@ colores) e i18n ES/EN.
 | **2** ✅ | Migración **035**: presupuesto (`budget_lines`), matriz, lista, proyección | Presupuestado vs. comprometido vs. ejecutado. |
 | **3** ✅ | Migración **036**: permisos por departamento + payments consume presupuesto | Designados con acceso acotado. |
 | **4** ✅ | Recurrentes (panel del mes), dashboard, vista de costo del evento | Cierra el reporting. |
-| **5** | Migración **037**: tarifario + headcount calculado + import histórico 2026 | Circuito completo presupuesto ↔ nominación ↔ pago. |
+| **5** ✅ | Migración **037**: tarifario + headcount calculado | Circuito completo presupuesto ↔ nominación ↔ pago. El import histórico 2026 sigue pendiente: faltan los archivos. |
 
 ---
 
@@ -591,7 +594,49 @@ $267.000 de TV Production cuelgan de LSB y WBLA, que son de los no importados.
 
 ---
 
-## 11. Pendientes
+## 11. Tarifario y headcount (fase 5)
+
+### El tarifario NO es una segunda fuente de verdad
+
+El sistema ya resolvía fees por rol antes de este módulo: cada competencia tiene
+`{td,vgo,ref,ref_instructor,video_operator}_window_fee` y `_incidentals`
+(migraciones 003 y 016), que `sync-nominations` copia a cada nominación en
+`_build_default_overrides` (games.py). `POST /budget/fee-schedule/apply`
+**rellena esas mismas columnas** — no las reemplaza ni agrega un camino
+paralelo. Después quedan editables por competencia: el tarifario es el default.
+
+Por eso ese endpoint exige edición de **`budget` y de `competitions`**: escribe
+en la tabla de otro módulo, y esos valores terminan en las cartas y los pagos.
+Tener presupuesto no debería alcanzar para cambiarle el fee a un evento.
+
+⚠️ **`incidentals` es POR CIUDAD** ("Incidentals x City" en el Excel). Se copia
+tal cual; para un evento multi-sede hay que multiplicarlo a mano. El sistema no
+sabe cuántas sedes tiene una competencia y multiplicar por una cuenta inventada
+sería peor que dejarlo explícito. La UI lo advierte en ámbar.
+
+`fee_event_type` es un eje **distinto** de `template_key`: dos competencias con
+el mismo template pueden estar en escalones de fee distintos.
+
+### Headcount → líneas de travel: cuidado con el doble conteo
+
+`POST /budget/headcount/generate` replica lo que el Excel hace entre
+`Staffing (travel)` y `Breakdown`: headcount × costo de vuelo promedio.
+
+⚠️ **Las líneas de travel del Excel YA SON eso.** COMP-12, COMP-14, COMP-19 y
+COMP-20 se calcularon así en la planilla, así que generar sobre un año que ya
+las tiene cargadas duplicaría el presupuesto de viaje. El endpoint detecta los
+pares (cuenta, competencia) que ya tienen una línea `manual`, los saltea y los
+devuelve en `skipped_conflicts`; `replace_manual=true` los reemplaza.
+
+Sobre 2027 esto da 65 conflictos y 8 líneas nuevas — y esas 8 son un hallazgo
+real: el sheet `Staffing` lista gente viajando a los dos "U18 Qualifier 2" pero
+el `Breakdown` les presupuestó **$0** en FA Staff Travel y TV Graphics Travel.
+Es una inconsistencia del Excel de origen, no del sistema. Se revirtieron para
+que lo importado siga cuadrando con la planilla.
+
+---
+
+## 12. Pendientes
 
 - **Plan de cuentas oficial de Finance.** Hasta que llegue, los códigos de
   Competitions son `COMP-01`…`COMP-28` con `pending_mapping = true`.

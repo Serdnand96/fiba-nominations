@@ -391,6 +391,25 @@ const translations = {
     pickEvent: { en: 'Pick an event...', es: 'Elige un evento...' },
     noSummary: { en: 'Nothing loaded for this year', es: 'Nada cargado para este año' },
 
+    // Tarifario (fase 5)
+    fees: { en: 'Fee schedule', es: 'Tarifario' },
+    feesHint: {
+      en: 'Official fee per role and event type. Applying it fills the event’s fee defaults, the same ones nominations already read — they stay editable per event.',
+      es: 'Fee oficial por rol y tipo de evento. Aplicarlo completa los defaults del evento, los mismos que ya leen las nominaciones, y quedan editables por evento.',
+    },
+    feesPerCity: {
+      en: 'Incidentals are PER CITY. Multiply by hand for a multi-venue event — the system does not know how many venues it has.',
+      es: 'Los incidentals son POR CIUDAD. Para un evento multi-sede hay que multiplicarlos a mano: el sistema no sabe cuántas sedes tiene.',
+    },
+    eventType: { en: 'Event type', es: 'Tipo de evento' },
+    apply: { en: 'Apply', es: 'Aplicar' },
+    applied: { en: 'Applied to', es: 'Aplicado a' },
+    alreadySet: { en: 'kept (already had a value)', es: 'conservados (ya tenían valor)' },
+    overwriteFees: { en: 'Overwrite existing fees', es: 'Pisar los fees ya cargados' },
+    role: { en: 'Role', es: 'Rol' },
+    fee: { en: 'Fee', es: 'Fee' },
+    incidentals: { en: 'Incidentals', es: 'Incidentals' },
+
     // Errores
     required: { en: 'Fill in the required fields', es: 'Completa los campos obligatorios' },
   },

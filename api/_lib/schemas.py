@@ -392,6 +392,27 @@ class HeadcountItem(BaseModel):
     competition_id: Optional[str] = None
     role_label: str
     headcount: int
+    account_code: Optional[str] = None   # a qué línea de travel alimenta
+
+
+class FeeScheduleItem(BaseModel):
+    role_prefix: str                     # td | vgo | ref | ref_instructor | video_operator
+    event_type: str
+    fee: float
+    incidentals: float = 0
+    active: bool = True
+    notes: Optional[str] = None
+
+
+class FeeScheduleUpdate(BaseModel):
+    items: list[FeeScheduleItem]
+
+
+class FeeScheduleApply(BaseModel):
+    """Copia el tarifario a los defaults de fee de una competencia."""
+    competition_id: str
+    fee_event_type: Optional[str] = None   # None → usa el que ya tiene
+    overwrite: bool = False                # pisar los valores ya cargados
 
 
 class HeadcountPut(BaseModel):
