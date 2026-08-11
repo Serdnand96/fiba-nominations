@@ -367,6 +367,30 @@ const translations = {
     },
     readOnlyDept: { en: 'Read only', es: 'Solo lectura' },
 
+    // Dashboard y costo del evento (fase 4)
+    tabDashboard: { en: 'Overview', es: 'Resumen' },
+    byDepartment: { en: 'By department', es: 'Por departamento' },
+    byAccount: { en: 'By account', es: 'Por cuenta' },
+    byCompetition: { en: 'By event', es: 'Por evento' },
+    overBudget: { en: 'Over budget', es: 'Sobregirado' },
+    used: { en: 'used', es: 'usado' },
+    eventCost: { en: 'Event cost', es: 'Costo del evento' },
+    eventCostHint: {
+      en: 'Every department, whatever your access — the scoping applies to loading and editing, not to reading an event total.',
+      es: 'Todos los departamentos, sea cual sea tu acceso: el recorte aplica a cargar y editar, no a leer el total de un evento.',
+    },
+    personFees: { en: 'Person fees', es: 'Fees de personas' },
+    airfare: { en: 'Airfare', es: 'Pasajes' },
+    eventExpenses: { en: 'Event expenses', es: 'Gastos del evento' },
+    peopleCount: { en: 'People', es: 'Personas' },
+    airfareApart: {
+      en: 'Airfare is settled with the travel agency and is not part of what the person is paid.',
+      es: 'Los pasajes se liquidan con la agencia y no son parte de lo que cobra la persona.',
+    },
+    nobody: { en: 'Nobody nominated yet', es: 'Nadie nominado todavía' },
+    pickEvent: { en: 'Pick an event...', es: 'Elige un evento...' },
+    noSummary: { en: 'Nothing loaded for this year', es: 'Nada cargado para este año' },
+
     // Errores
     required: { en: 'Fill in the required fields', es: 'Completa los campos obligatorios' },
   },

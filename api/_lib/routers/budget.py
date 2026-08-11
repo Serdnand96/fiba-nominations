@@ -794,6 +794,123 @@ def budget_summary(request: Request, year: int = Query(...), department: Optiona
     }
 
 
+@router.get("/competitions/{competition_id}/cost")
+def competition_cost(competition_id: str, request: Request):
+    """Costo total de una competencia: pagos a personas + airfare + gastos.
+
+    ⚠️ EXCEPCIÓN EXPLÍCITA al recorte por departamento — este endpoint NO llama
+    a _scoped(). Es deliberado y fue decisión del cliente: el scoping rige
+    cargar y editar, no leer el costo de un evento. Una competencia cruza
+    departamentos (la línea de TV Production es de Comms dentro del presupuesto
+    de Competitions), así que sin el desglose entero la cifra no sirve para
+    reportar. Quien tiene el módulo `budget` ve el evento completo.
+
+    Junta las tres fuentes que hoy están separadas:
+      - `payments`  → fees de las personas nominadas, + airfare aparte
+      - `expenses`  → gasto del evento sin persona (shipping, branding, seguros)
+      - `budget_lines` → contra qué se compara
+
+    El airfare va como línea propia y NO dentro del fee: en `payments` el total
+    es amount + extra y el vuelo se liquida con la agencia (migración 013).
+    """
+    comp = supabase.table("competitions").select("id, name, year, subzone, tier") \
+        .eq("id", competition_id).execute().data
+    if not comp:
+        raise HTTPException(status_code=404, detail="Competition not found")
+    comp = comp[0]
+
+    lines = supabase.table("budget_lines").select(
+        "amount, department_code, account_code, kind"
+    ).eq("competition_id", competition_id).execute().data or []
+
+    expenses = supabase.table("expenses").select(
+        "amount, status, department_code, account_code, description"
+    ).eq("competition_id", competition_id).execute().data or []
+
+    noms = supabase.table("nominations").select("id").eq("competition_id", competition_id) \
+        .execute().data or []
+    pays = []
+    if noms:
+        pays = supabase.table("payments").select(
+            "total, airfare, status, department_code, account_code, "
+            "nominations(personnel(name, role))"
+        ).in_("nomination_id", [n["id"] for n in noms]).execute().data or []
+
+    def _n(row, field="amount") -> float:
+        return float(row.get(field) or 0)
+
+    budgeted = round(sum(_n(l) for l in lines if l.get("kind") == "expense"), 2)
+    exp_paid = round(sum(_n(e) for e in expenses if e.get("status") == "paid"), 2)
+    exp_open = round(sum(_n(e) for e in expenses if e.get("status") == "approved"), 2)
+    fees_paid = round(sum(_n(p, "total") for p in pays if p.get("status") == "completed"), 2)
+    fees_open = round(sum(_n(p, "total") for p in pays
+                          if p.get("status") in ("new", "in_process", "split")), 2)
+    airfare = round(sum(_n(p, "airfare") for p in pays), 2)
+
+    executed = round(exp_paid + fees_paid, 2)
+
+    # Desglose por departamento, con las tres fuentes juntas.
+    by_dept: dict = {}
+
+    def _entry(code):
+        return by_dept.setdefault(code or "—", {
+            "department_code": code, "budgeted": 0.0, "executed": 0.0, "committed": 0.0,
+        })
+
+    for l in lines:
+        if l.get("kind") == "expense":
+            _entry(l.get("department_code"))["budgeted"] += _n(l)
+    for e in expenses:
+        entry = _entry(e.get("department_code"))
+        if e.get("status") == "paid":
+            entry["executed"] += _n(e)
+        elif e.get("status") == "approved":
+            entry["committed"] += _n(e)
+    for p in pays:
+        entry = _entry(p.get("department_code"))
+        if p.get("status") == "completed":
+            entry["executed"] += _n(p, "total")
+        elif p.get("status") in ("new", "in_process", "split"):
+            entry["committed"] += _n(p, "total")
+
+    labels = {d["code"]: d["label"] for d in
+              (supabase.table("departments").select("code, label").execute().data or [])}
+    dept_rows = []
+    for code, e in by_dept.items():
+        for f in ("budgeted", "executed", "committed"):
+            e[f] = round(e[f], 2)
+        e["label"] = labels.get(e["department_code"], e["department_code"] or "—")
+        e["remaining"] = round(e["budgeted"] - e["executed"], 2)
+        dept_rows.append(e)
+    dept_rows.sort(key=lambda e: -max(e["budgeted"], e["executed"]))
+
+    people = []
+    for p in pays:
+        person = ((p.pop("nominations", None) or {}).get("personnel")) or {}
+        people.append({
+            "name": person.get("name"), "role": person.get("role"),
+            "total": p.get("total"), "airfare": p.get("airfare"), "status": p.get("status"),
+        })
+    people.sort(key=lambda r: (r["name"] or "").lower())
+
+    return {
+        "competition": comp,
+        "scoped": False,   # la UI lo dice: acá se ve el evento completo
+        "totals": {
+            "budgeted": budgeted,
+            "executed": executed,
+            "committed": round(exp_open + fees_open, 2),
+            "remaining": round(budgeted - executed, 2),
+            "person_fees": round(fees_paid + fees_open, 2),
+            "airfare": airfare,
+            "event_expenses": round(exp_paid + exp_open, 2),
+            "people_count": len(people),
+        },
+        "by_department": dept_rows,
+        "people": people,
+    }
+
+
 # ─── Headcount y supuestos (base de las líneas calculadas — UI en fase 5) ────
 @router.get("/headcount")
 def list_headcount(year: int = Query(...)):

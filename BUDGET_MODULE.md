@@ -1,8 +1,11 @@
 # BUDGET_MODULE.md — Diseño del módulo de Presupuesto y Gastos
 
-> Estado: **fases 1, 2 y 3 implementadas** (agosto 2026) — migraciones 033-036
-> **aplicadas a prod**, `api/_lib/routers/budget.py` (27 endpoints),
-> `src/pages/Budget.jsx` (5 pestañas). Fases 4-5 pendientes (ver §7).
+> Estado: **fases 1 a 4 implementadas** (agosto 2026) — migraciones 033-036
+> **aplicadas a prod**, `api/_lib/routers/budget.py` (28 endpoints),
+> `src/pages/Budget.jsx` (6 pestañas). Fase 5 pendiente (ver §7).
+>
+> **Datos cargados:** los presupuestos 2027 de IT (2027-2030) y de Competitions
+> están importados — ver §10.
 >
 > El permiso `budget` **no está sembrado a nadie**: igual que `payments`, hasta
 > que un admin lo otorgue en Usuarios solo lo ve el superadmin.
@@ -481,7 +484,7 @@ colores) e i18n ES/EN.
 | **1** ✅ | Migraciones **033-034** + router `budget.py` + catálogos + gastos + ingresos + proveedores + página | Se pueden cargar gastos por departamento, con o sin evento. Es el pedido original. |
 | **2** ✅ | Migración **035**: presupuesto (`budget_lines`), matriz, lista, proyección | Presupuestado vs. comprometido vs. ejecutado. |
 | **3** ✅ | Migración **036**: permisos por departamento + payments consume presupuesto | Designados con acceso acotado. |
-| **4** | Recurrentes (panel del mes), dashboard, vista de costo del evento | Cierra el reporting. |
+| **4** ✅ | Recurrentes (panel del mes), dashboard, vista de costo del evento | Cierra el reporting. |
 | **5** | Migración **037**: tarifario + headcount calculado + import histórico 2026 | Circuito completo presupuesto ↔ nominación ↔ pago. |
 
 ---
@@ -531,7 +534,64 @@ escritura):
 
 ---
 
-## 9. Pendientes
+## 9. Vista de costo del evento
+
+`GET /budget/competitions/{id}/cost` junta las tres fuentes que hoy viven
+separadas:
+
+| Fuente | Qué aporta |
+|--------|-----------|
+| `payments` → `nominations` | fees de las personas nominadas |
+| `payments.airfare` | pasajes, **línea aparte** — se liquidan con la agencia y no son parte de lo que cobra la persona (migración 013) |
+| `expenses` | gasto del evento sin persona: shipping, branding, seguros |
+| `budget_lines` | contra qué se compara |
+
+⚠️ **Es la única excepción al recorte por departamento**: no llama a `_scoped()`
+y muestra todos los departamentos, sea cual sea el acceso del caller. Fue
+decisión explícita del cliente — el scoping rige cargar y editar, no leer el
+total de un evento, y una competencia cruza departamentos. Sigue detrás de
+`require_view("budget")` a nivel de router. La excepción está anotada en el
+auditor de scope para que no se confunda con un olvido.
+
+---
+
+## 10. Datos cargados
+
+Importados el 2026-08-11 desde los Excel (ver la memoria `budget-source-files`
+para las rutas). El importador es de **dos pasos** como el resto del repo
+(preview → `--commit`) e **idempotente**: marca las filas en `notes` y las borra
+antes de reinsertar.
+
+| Origen | Filas | 2027 |
+|--------|-------|------|
+| `FIBA_IT_Budget_2027-2030` | 92 (4 años × 23 líneas) | $215.015 |
+| `CompsDraftBudget2027` | 168 | $970.416 |
+
+El departamento sale de la **línea**, no de la planilla: `COMP-15` y `COMP-16`
+(Comms Expenses, TV Production) van a `comms` y `COMP-26` (IT on Events) a `it`,
+aunque estén dentro del presupuesto de Competitions. Por eso IT 2027 da $269.015
+— sus propios $215.015 más $54.000 que salen del presupuesto de Competitions.
+
+### Lo que quedó afuera ⚠️
+
+**$563.416 de $1.533.832** no se importó porque 4 columnas del Excel no tienen
+un match seguro con la tabla `competitions`. **No se mandaron a "General"** a
+propósito: General es una columna real del Excel ($166.500) y ensuciarla
+arruinaría el reporte.
+
+| Columna del Excel | Monto | Por qué |
+|---|---|---|
+| Liga Sudamericana | $323.316 | El Excel presupuesta la temporada; la base la modela en 6 fases (Group A-D, QFs, Finals) |
+| Women's Basketball League Americas (WBLA) | $112.400 | La base solo tiene "WBLA – Final 4" |
+| Draws (AmeriCup Q & AmeriCup W) | $82.900 | No es una competencia, es el evento del sorteo |
+| Liga Sudamericana Femenina | $44.800 | Igual que LSB: el Excel es la temporada, la base son 3 fases |
+
+Esto también explica que Comms figure con solo $20.000: $235.000 de sus
+$267.000 de TV Production cuelgan de LSB y WBLA, que son de los no importados.
+
+---
+
+## 11. Pendientes
 
 - **Plan de cuentas oficial de Finance.** Hasta que llegue, los códigos de
   Competitions son `COMP-01`…`COMP-28` con `pending_mapping = true`.

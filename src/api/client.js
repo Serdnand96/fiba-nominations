@@ -149,6 +149,9 @@ export const deleteBudgetLine = (id) => api.delete(`/budget/lines/${id}`).then(r
 export const projectBudget = (data) => api.post('/budget/lines/project', data).then(r => r.data)
 export const getLineSeries = (seriesId) => api.get(`/budget/lines/series/${seriesId}`).then(r => r.data)
 export const getBudgetSummary = (params) => api.get('/budget/summary', { params }).then(r => r.data)
+// Costo total del evento. NO está recortado por departamento a propósito: el
+// scoping rige cargar y editar, no leer la cifra de una competencia.
+export const getCompetitionCost = (id) => api.get(`/budget/competitions/${id}/cost`).then(r => r.data)
 export const getHeadcount = (year) => api.get('/budget/headcount', { params: { year } }).then(r => r.data)
 export const putHeadcount = (data) => api.put('/budget/headcount', data).then(r => r.data)
 export const getAssumptions = (year) => api.get(`/budget/assumptions/${year}`).then(r => r.data)
