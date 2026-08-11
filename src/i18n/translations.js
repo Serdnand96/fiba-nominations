@@ -1193,6 +1193,16 @@ const translations = {
     delete: { en: 'Delete', es: 'Eliminar' },
     uploading: { en: 'Uploading...', es: 'Subiendo...' },
     moreInfo: { en: 'More info', es: 'Más información' },
+    close: { en: 'Close', es: 'Cerrar' },
+    signOut: { en: 'Sign out', es: 'Cerrar sesión' },
+    openMenu: { en: 'Open menu', es: 'Abrir menú' },
+    toggleTheme: { en: 'Toggle theme', es: 'Cambiar tema' },
+    expand: { en: 'Expand', es: 'Expandir' },
+    collapse: { en: 'Collapse', es: 'Contraer' },
+    operations: { en: 'Operations', es: 'Operación' },
+    superadmin: { en: 'Superadmin', es: 'Superadmin' },
+    user: { en: 'User', es: 'Usuario' },
+    noEditPermission: { en: 'You don\'t have edit permission', es: 'No tenés permiso de edición' },
   },
 
   // ===== Competition selector (CompetitionSearch) =====

@@ -77,8 +77,8 @@ export default {
       boxShadow: {
         'card':         '0 1px 2px 0 rgba(16, 24, 40, 0.04), 0 1px 3px 0 rgba(16, 24, 40, 0.06)',
         'pop':          '0 8px 16px -4px rgba(12, 35, 64, 0.10), 0 20px 40px -8px rgba(12, 35, 64, 0.16)',
-        'focus':        '0 0 0 4px rgba(51, 90, 154, 0.20)',
-        'focus-accent': '0 0 0 4px rgba(245, 124, 42, 0.25)',
+        'focus':        '0 0 0 3px rgba(51, 90, 154, 0.85)',
+        'focus-accent': '0 0 0 3px rgba(245, 124, 42, 0.90)',
       },
       borderRadius: {
         'sm': '4px',

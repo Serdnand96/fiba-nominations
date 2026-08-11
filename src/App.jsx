@@ -234,8 +234,8 @@ export default function App() {
         {/* Navigation */}
         <nav className="flex-1 overflow-y-auto p-2 space-y-0.5">
           {!sidebarCollapsed && (
-            <div className="text-2xs font-semibold text-navy-400 uppercase tracking-wider px-2.5 mb-1.5 mt-1">
-              Operación
+            <div className="text-2xs font-semibold text-navy-300 uppercase tracking-wider px-2.5 mb-1.5 mt-1">
+              {t('common.operations')}
             </div>
           )}
           {navItems.map(item => {
@@ -277,7 +277,7 @@ export default function App() {
           <button
             onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
             className="hidden md:flex w-full items-center justify-center py-1.5 text-navy-300 hover:text-white transition-colors"
-            title={sidebarCollapsed ? 'Expand' : 'Collapse'}
+            title={sidebarCollapsed ? t('common.expand') : t('common.collapse')}
           >
             <svg className={`w-4 h-4 transition-transform ${sidebarCollapsed ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" />
@@ -293,8 +293,8 @@ export default function App() {
           {/* Mobile hamburger */}
           <button
             onClick={() => setMobileOpen(true)}
-            aria-label="Open menu"
-            className="md:hidden p-1.5 -ml-1.5 rounded-md text-ink-600 dark:text-ink-300 hover:bg-ink-100 dark:hover:bg-navy-800"
+            aria-label={t('common.openMenu')}
+            className="md:hidden p-2.5 -ml-1.5 rounded-md text-ink-600 dark:text-ink-300 hover:bg-ink-100 dark:hover:bg-navy-800"
           >
             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
@@ -310,8 +310,8 @@ export default function App() {
           <div className="flex items-center gap-1">
             <button
               onClick={() => setDark(d => !d)}
-              aria-label="Toggle theme"
-              title="Toggle theme"
+              aria-label={t('common.toggleTheme')}
+              title={t('common.toggleTheme')}
               className="w-9 h-9 inline-flex items-center justify-center rounded-md text-ink-600 dark:text-ink-300 hover:bg-ink-100 dark:hover:bg-navy-800 transition-colors"
             >
               {dark ? <Icon.Sun className="w-[18px] h-[18px]" /> : <Icon.Moon className="w-[18px] h-[18px]" />}
@@ -387,8 +387,9 @@ function LanguageSwitcher() {
 
 function UserCard({ collapsed }) {
   const { signOut, user, isSuperadmin } = useAuth()
+  const { t } = useLanguage()
   const initial = (user.email || '?')[0].toUpperCase()
-  const role = isSuperadmin ? 'Superadmin' : 'Usuario'
+  const role = isSuperadmin ? t('common.superadmin') : t('common.user')
 
   if (collapsed) {
     return (
@@ -398,7 +399,8 @@ function UserCard({ collapsed }) {
         </div>
         <button
           onClick={signOut}
-          title="Cerrar sesión"
+          title={t('common.signOut')}
+          aria-label={t('common.signOut')}
           className="text-navy-300 hover:text-white"
         >
           <Icon.Logout className="w-4 h-4" />
