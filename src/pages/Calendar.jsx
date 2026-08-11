@@ -50,6 +50,19 @@ function getEventsForDay(events, year, month, day) {
   })
 }
 
+// Definida FUERA de Calendar: adentro se redefinía en cada render, y como el
+// buscador de personal cambia estado en cada tecla, React desmontaba/remontaba
+// todos los puntitos de disponibilidad visibles (con pérdida de foco).
+function AvailDot({ avail, t }) {
+  const status = avail?.status || 'no_data'
+  const colors = { available: 'bg-green-500', unavailable: 'bg-red-500', restricted: 'bg-yellow-500', no_data: 'bg-gray-500' }
+  const labels = { available: t('availability.available'), unavailable: t('availability.unavailable'), restricted: t('availability.restricted'), no_data: t('availability.noData') }
+  return (
+    <span className={`inline-block w-2.5 h-2.5 rounded-full ${colors[status]} shrink-0`}
+      title={avail?.notes ? `${labels[status]}: ${avail.notes}` : labels[status]} />
+  )
+}
+
 export default function Calendar() {
   const navigate = useNavigate()
   const { t, lang } = useLanguage()
@@ -207,17 +220,6 @@ export default function Calendar() {
   function handleTypeChange(type) {
     const tmpl = TEMPLATE_MAP[type] || 'GENERIC'
     setEventForm(f => ({ ...f, competition_type: type, template_key: tmpl }))
-  }
-
-  function AvailDot({ personnelId }) {
-    const avail = availabilityMap[personnelId]
-    const status = avail?.status || 'no_data'
-    const colors = { available: 'bg-green-500', unavailable: 'bg-red-500', restricted: 'bg-yellow-500', no_data: 'bg-gray-500' }
-    const labels = { available: t('availability.available'), unavailable: t('availability.unavailable'), restricted: t('availability.restricted'), no_data: t('availability.noData') }
-    return (
-      <span className={`inline-block w-2.5 h-2.5 rounded-full ${colors[status]} shrink-0`}
-        title={avail?.notes ? `${labels[status]}: ${avail.notes}` : labels[status]} />
-    )
   }
 
   function eventYear(ev) {
@@ -462,7 +464,7 @@ export default function Calendar() {
                       {panelData.assignments.map(a => (
                         <div key={a.id} className="flex items-center justify-between bg-fiba-surface/50 rounded-lg px-3 py-2">
                           <div className="flex items-center gap-2">
-                            {a.personnel?.id && a.role === 'TD' && <AvailDot personnelId={a.personnel.id} />}
+                            {a.personnel?.id && a.role === 'TD' && <AvailDot avail={availabilityMap[a.personnel.id]} t={t} />}
                             <span className="text-sm font-medium text-ink-900 dark:text-white">{a.personnel?.name || 'Staff'}</span>
                             <span className={`inline-block px-1.5 py-0.5 rounded text-xs font-medium ${a.role === 'VGO' ? 'bg-purple-500/20 text-purple-400' : 'bg-emerald-500/20 text-emerald-400'}`}>{a.role}</span>
                           </div>
@@ -495,7 +497,7 @@ export default function Calendar() {
                             <button key={p.id} onClick={() => { setSelectedPerson(p); setSelectedRole(p.role || 'TD'); setStaffSearch(''); setShowDropdown(false) }}
                               className="w-full text-left px-3 py-2 text-sm hover:bg-fiba-surface flex items-center justify-between">
                               <div className="flex items-center gap-2">
-                                {p.role === 'TD' && <AvailDot personnelId={p.id} />}
+                                {p.role === 'TD' && <AvailDot avail={availabilityMap[p.id]} t={t} />}
                                 <span>{p.name}</span>
                               </div>
                               <span className={`text-xs px-1.5 py-0.5 rounded ${p.role === 'VGO' ? 'bg-purple-500/20 text-purple-400' : 'bg-emerald-500/20 text-emerald-400'}`}>{p.role}</span>

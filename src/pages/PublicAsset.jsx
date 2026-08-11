@@ -4,11 +4,13 @@ import { getPublicAsset } from '../api/client'
 import { useLanguage } from '../i18n/LanguageContext'
 import { camel } from '../lib/utils'
 
+// Tonos dark-aware: -700 sobre la card blanca (claro), -400 sobre navy (oscuro).
+// Los -400 sueltos daban ~1.5-2.5:1 sobre blanco.
 const STATUS_LABEL = {
-  available:   { color: 'text-emerald-400', icon: '✓' },
-  in_use:      { color: 'text-blue-400', icon: '→' },
-  maintenance: { color: 'text-yellow-400', icon: '⚙' },
-  retired:     { color: 'text-ink-500 dark:text-gray-400', icon: '✕' },
+  available:   { color: 'text-success-700 dark:text-success-400', icon: '✓' },
+  in_use:      { color: 'text-info-700 dark:text-info-400', icon: '→' },
+  maintenance: { color: 'text-warning-700 dark:text-warning-400', icon: '⚙' },
+  retired:     { color: 'text-ink-500 dark:text-ink-400', icon: '✕' },
 }
 
 export default function PublicAsset() {

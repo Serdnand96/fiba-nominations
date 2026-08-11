@@ -26,6 +26,7 @@ export default function Personnel() {
   const [roleFilter, setRoleFilter] = useState('')
   const [sort, setSort] = useState({ key: null, dir: 'asc' })
   const [showModal, setShowModal] = useState(false)
+  const [saving, setSaving] = useState(false)
   const [editing, setEditing] = useState(null)
   const [showImport, setShowImport] = useState(false)
   const [form, setForm] = useState({ name: '', email: '', country: '', country_code: '', nationalities: [], phone: '', passport: '', role: 'VGO' })
@@ -143,13 +144,21 @@ export default function Personnel() {
 
   async function handleSubmit(e) {
     e.preventDefault()
-    if (editing) {
-      await updatePersonnel(editing.id, form)
-    } else {
-      await createPersonnel(form)
+    if (saving) return  // evitar doble submit (doble Enter / doble click)
+    setSaving(true)
+    try {
+      if (editing) {
+        await updatePersonnel(editing.id, form)
+      } else {
+        await createPersonnel(form)
+      }
+      setShowModal(false)
+      await load()
+    } catch (err) {
+      push({ type: 'error', title: err?.response?.data?.detail || t('common.error') })
+    } finally {
+      setSaving(false)
     }
-    setShowModal(false)
-    await load()
   }
 
   function openProfile(person) {
@@ -308,8 +317,8 @@ export default function Personnel() {
               </select>
               <div className="flex justify-end gap-3 pt-2">
                 <button type="button" onClick={() => setShowModal(false)} className="px-4 py-2 text-sm text-fiba-muted">{t('personnel.cancel')}</button>
-                <button type="submit" className="btn-fiba">
-                  {editing ? t('personnel.save') : t('personnel.add')}
+                <button type="submit" disabled={saving} className="btn-fiba disabled:opacity-60 disabled:cursor-not-allowed">
+                  {saving ? t('common.saving') : (editing ? t('personnel.save') : t('personnel.add'))}
                 </button>
               </div>
             </form>
@@ -415,18 +424,21 @@ function ImportView({ onClose }) {
 
         {tab === 'upload' && (
           <div>
-            <div
+            {/* button real: alcanzable y operable por teclado. Antes era un div
+                con onClick + input display:none → imposible importar sin mouse. */}
+            <button
+              type="button"
               onDragOver={e => { e.preventDefault(); setDragOver(true) }}
               onDragLeave={() => setDragOver(false)}
               onDrop={handleDrop}
               onClick={() => inputRef.current?.click()}
-              className={`border-2 border-dashed rounded-xl p-12 text-center cursor-pointer transition-colors ${dragOver ? 'border-fiba-accent bg-fiba-accent/5' : 'border-fiba-border hover:border-fiba-muted'}`}
+              className={`w-full border-2 border-dashed rounded-xl p-12 text-center cursor-pointer transition-colors ${dragOver ? 'border-fiba-accent bg-fiba-accent/5' : 'border-fiba-border hover:border-fiba-muted'}`}
             >
               <p className="text-fiba-muted text-sm">{t('personnel.dropzone')}</p>
-              <p className="text-fiba-muted/60 text-xs mt-1">{t('personnel.dropzoneHint')}</p>
+              <p className="text-fiba-muted/70 text-xs mt-1">{t('personnel.dropzoneHint')}</p>
               <input ref={inputRef} type="file" accept=".csv,.xlsx,.xls" className="hidden"
                 onChange={e => e.target.files[0] && handleFile(e.target.files[0])} />
-            </div>
+            </button>
 
             <div className="mt-6">
               <h4 className="text-sm font-medium text-ink-700 dark:text-gray-300 mb-2">{t('personnel.columnFormat')}</h4>

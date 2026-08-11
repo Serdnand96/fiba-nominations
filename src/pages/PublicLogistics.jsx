@@ -425,7 +425,7 @@ export default function PublicLogistics() {
         )}
       </main>
 
-      <footer className="max-w-5xl mx-auto px-4 py-6 text-center text-[11px] text-ink-400 dark:text-ink-500">
+      <footer className="max-w-5xl mx-auto px-4 py-6 text-center text-[11px] text-ink-500 dark:text-ink-400">
         FIBA Americas · {t('Información operativa. No la compartas fuera del equipo del evento.',
                            'Operational information. Do not share outside the event team.')}
       </footer>

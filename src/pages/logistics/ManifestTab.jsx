@@ -47,6 +47,32 @@ function shortDate(iso, lang) {
 
 const hhmm = (t) => (t ? t.slice(0, 5) : '')
 
+// Definida FUERA de ManifestTab: adentro se redefinía en cada render y, como el
+// buscador cambia estado en cada tecla, React remontaba las celdas de vuelo de
+// toda la tabla (perdiendo foco). MODE_ICONS/shortDate/hhmm son module-level.
+function LegCell({ participant, direction, lang, canEdit, openLeg }) {
+  const leg = direction === 'arrival' ? participant.arrival : participant.departure
+  const content = leg ? (
+    <div className="leading-tight">
+      <div className="text-xs whitespace-nowrap">
+        <span className="mr-1">{MODE_ICONS[leg.transport_mode] || ''}</span>
+        {shortDate(leg.date, lang)} {hhmm(leg.time)}
+      </div>
+      <div className="text-[10px] text-fiba-muted whitespace-nowrap">
+        {[leg.flight_number, leg.airport].filter(Boolean).join(' · ') || '—'}
+        {leg.pickup_time && ` · pick-up ${hhmm(leg.pickup_time)}`}
+      </div>
+    </div>
+  ) : <span className="text-fiba-muted text-xs">—</span>
+
+  if (!canEdit) return content
+  return (
+    <button onClick={() => openLeg(participant, direction)} className="text-left hover:opacity-70 w-full">
+      {content}
+    </button>
+  )
+}
+
 export default function ManifestTab({ competitionId, canEdit }) {
   const { lang } = useLanguage()
   const t = (es, en) => (lang === 'es' ? es : en)
@@ -162,29 +188,6 @@ export default function ManifestTab({ competitionId, canEdit }) {
     groups: t('Grupos de traslado', 'Transfer groups'),
   }
 
-  function LegCell({ participant, direction }) {
-    const leg = direction === 'arrival' ? participant.arrival : participant.departure
-    const content = leg ? (
-      <div className="leading-tight">
-        <div className="text-xs whitespace-nowrap">
-          <span className="mr-1">{MODE_ICONS[leg.transport_mode] || ''}</span>
-          {shortDate(leg.date, lang)} {hhmm(leg.time)}
-        </div>
-        <div className="text-[10px] text-fiba-muted whitespace-nowrap">
-          {[leg.flight_number, leg.airport].filter(Boolean).join(' · ') || '—'}
-          {leg.pickup_time && ` · pick-up ${hhmm(leg.pickup_time)}`}
-        </div>
-      </div>
-    ) : <span className="text-fiba-muted text-xs">—</span>
-
-    if (!canEdit) return content
-    return (
-      <button onClick={() => openLeg(participant, direction)} className="text-left hover:opacity-70 w-full">
-        {content}
-      </button>
-    )
-  }
-
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -255,8 +258,8 @@ export default function ManifestTab({ competitionId, canEdit }) {
                     </span>
                   </td>
                   <td className="px-4 py-2 font-mono text-xs text-fiba-muted">{p.passport || '—'}</td>
-                  <td className="px-4 py-2"><LegCell participant={p} direction="arrival" /></td>
-                  <td className="px-4 py-2"><LegCell participant={p} direction="departure" /></td>
+                  <td className="px-4 py-2"><LegCell participant={p} direction="arrival" lang={lang} canEdit={canEdit} openLeg={openLeg} /></td>
+                  <td className="px-4 py-2"><LegCell participant={p} direction="departure" lang={lang} canEdit={canEdit} openLeg={openLeg} /></td>
                   {canEdit && (
                     <td className="px-4 py-2">
                       <div className="flex gap-2">

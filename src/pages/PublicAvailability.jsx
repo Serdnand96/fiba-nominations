@@ -14,10 +14,13 @@ import { Button } from '../components/ui/Button'
 
 const STATUSES = ['available', 'unavailable', 'restricted']
 
+// Fondos -600/-700: sobre blanco, el texto blanco necesita un fondo lo bastante
+// oscuro para pasar AA (los -500 daban 2.3-3.8:1). warning va a -700 porque el
+// ámbar es claro.
 const CHIP_SELECTED = {
-  available:   'bg-success-500 border-success-500 text-white',
-  unavailable: 'bg-danger-500 border-danger-500 text-white',
-  restricted:  'bg-warning-500 border-warning-500 text-white',
+  available:   'bg-success-600 border-success-600 text-white',
+  unavailable: 'bg-danger-600 border-danger-600 text-white',
+  restricted:  'bg-warning-700 border-warning-700 text-white',
 }
 const CHIP_IDLE = 'bg-white dark:bg-navy-950 border-ink-200 dark:border-navy-700 text-ink-600 dark:text-ink-300 hover:border-ink-300 dark:hover:border-navy-600'
 

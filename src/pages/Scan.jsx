@@ -15,11 +15,12 @@ export default function Scan() {
 
     async function start() {
       try {
-        const Html5QrcodeScanner = (await import('html5-qrcode')).Html5Qrcode
-        const scanner = new Html5QrcodeScanner(containerId, false)
+        // Usar el import estático (ya está en el chunk qrcode-scan de vite y
+        // esta página es lazy-loaded); el import dinámico era redundante.
+        const scanner = new Html5Qrcode(containerId, false)
         scannerRef.current = scanner
 
-        const cameras = await Html5QrcodeScanner.getCameras()
+        const cameras = await Html5Qrcode.getCameras()
         if (!cameras?.length) {
           setError(t('scan.noCamera'))
           return

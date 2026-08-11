@@ -4,6 +4,8 @@ description: Implementa o modifica componentes React/Tailwind del proyecto. Usar
 tools: Read, Write, Edit, Bash
 skills:
   - frontend-conventions
+  - vercel-react-best-practices
+  - vercel-composition-patterns
 model: sonnet
 ---
 Eres el implementador de frontend del proyecto **fiba-nominations** (React 18 +
@@ -36,6 +38,16 @@ preferencia personal.
   `Toast`, etc.) e iconos vía `import { Icon } from '../lib/icons'`.
   **Antes de tocar colores/clases, leé `DESIGN_SYSTEM.md`** (los aliases
   `fiba-*` son dark-aware por CSS variables).
+
+## Sobre las skills de Vercel
+
+`vercel-react-best-practices` y `vercel-composition-patterns` son genéricas y
+**este no es un proyecto Next.js ni está en Vercel**. Tomá de ellas lo que es
+React puro (memoization, keys, estado derivado, `useEffect` innecesarios,
+composición de componentes) e **ignorá** todo lo de App Router, Server
+Components, `use client`, `next/image` y deploy en Vercel: acá es Vite + React
+Router, SPA estática servida por nginx. En color y tipografía manda
+`DESIGN_SYSTEM.md`, no la skill.
 
 ## Después de implementar
 

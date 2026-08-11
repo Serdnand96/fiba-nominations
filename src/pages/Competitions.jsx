@@ -36,6 +36,7 @@ export default function Competitions() {
   const [nominations, setNominations] = useState([])
   const [loading, setLoading] = useState(false)
   const [showModal, setShowModal] = useState(false)
+  const [saving, setSaving] = useState(false)
   const [editing, setEditing] = useState(null)
   const [form, setForm] = useState({ name: '', template_key: 'WCQ', year: new Date().getFullYear(), fiba_games_url: '', fee_type: 'per_game', is_national_team: true })
 
@@ -112,13 +113,21 @@ export default function Competitions() {
 
   async function handleSubmit(e) {
     e.preventDefault()
-    if (editing) {
-      await updateCompetition(editing.id, { ...form, year: parseInt(form.year) })
-    } else {
-      await createCompetition({ ...form, year: parseInt(form.year) })
+    if (saving) return  // evitar doble submit
+    setSaving(true)
+    try {
+      if (editing) {
+        await updateCompetition(editing.id, { ...form, year: parseInt(form.year) })
+      } else {
+        await createCompetition({ ...form, year: parseInt(form.year) })
+      }
+      setShowModal(false)
+      await load()
+    } catch (err) {
+      push({ type: 'error', title: err?.response?.data?.detail || t('common.error') })
+    } finally {
+      setSaving(false)
     }
-    setShowModal(false)
-    await load()
   }
 
   async function handleDelete(comp) {
@@ -280,8 +289,8 @@ export default function Competitions() {
               </div>
               <div className="flex justify-end gap-3 pt-2">
                 <button type="button" onClick={() => setShowModal(false)} className="px-4 py-2 text-sm text-fiba-muted">{t('competitions.cancel')}</button>
-                <button type="submit" className="btn-fiba">
-                  {editing ? t('competitions.save') : t('competitions.create')}
+                <button type="submit" disabled={saving} className="btn-fiba disabled:opacity-60 disabled:cursor-not-allowed">
+                  {saving ? t('common.saving') : (editing ? t('competitions.save') : t('competitions.create'))}
                 </button>
               </div>
             </form>
