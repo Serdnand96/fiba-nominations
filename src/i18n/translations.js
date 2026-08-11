@@ -1202,7 +1202,7 @@ const translations = {
     operations: { en: 'Operations', es: 'Operación' },
     superadmin: { en: 'Superadmin', es: 'Superadmin' },
     user: { en: 'User', es: 'Usuario' },
-    noEditPermission: { en: 'You don\'t have edit permission', es: 'No tenés permiso de edición' },
+    noEditPermission: { en: 'You don\'t have edit permission', es: 'No tienes permiso de edición' },
   },
 
   // ===== Competition selector (CompetitionSearch) =====

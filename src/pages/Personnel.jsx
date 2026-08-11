@@ -424,8 +424,11 @@ function ImportView({ onClose }) {
 
         {tab === 'upload' && (
           <div>
-            {/* button real: alcanzable y operable por teclado. Antes era un div
-                con onClick + input display:none → imposible importar sin mouse. */}
+            {/* button real: alcanzable y operable por teclado (antes era un div
+                con onClick + input display:none → imposible importar sin mouse).
+                El <input> va como HERMANO oculto, no anidado dentro del button
+                (controles interactivos anidados = HTML inválido); el button lo
+                dispara por ref. */}
             <button
               type="button"
               onDragOver={e => { e.preventDefault(); setDragOver(true) }}
@@ -436,9 +439,9 @@ function ImportView({ onClose }) {
             >
               <p className="text-fiba-muted text-sm">{t('personnel.dropzone')}</p>
               <p className="text-fiba-muted/70 text-xs mt-1">{t('personnel.dropzoneHint')}</p>
-              <input ref={inputRef} type="file" accept=".csv,.xlsx,.xls" className="hidden"
-                onChange={e => e.target.files[0] && handleFile(e.target.files[0])} />
             </button>
+            <input ref={inputRef} type="file" accept=".csv,.xlsx,.xls" className="hidden" aria-hidden="true" tabIndex={-1}
+              onChange={e => e.target.files[0] && handleFile(e.target.files[0])} />
 
             <div className="mt-6">
               <h4 className="text-sm font-medium text-ink-700 dark:text-gray-300 mb-2">{t('personnel.columnFormat')}</h4>
