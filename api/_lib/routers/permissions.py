@@ -13,7 +13,7 @@ router = APIRouter(prefix="/permissions", tags=["permissions"])
 # CHECK fails the whole PUT against the constraint, mid-loop.
 # `comp_days` no es una página: gobierna la columna de días compensatorios
 # dentro de Employees. Solo se usa su can_view (migración 030).
-MODULES = ["calendar", "nominations", "payments", "personnel", "competitions", "templates", "users", "logistics", "availability", "training", "games", "assets", "loans", "employees", "reports", "evaluations", "comp_days"]
+MODULES = ["calendar", "nominations", "payments", "budget", "personnel", "competitions", "templates", "users", "logistics", "availability", "training", "games", "assets", "loans", "employees", "reports", "evaluations", "comp_days"]
 
 
 def is_superadmin(user_id: str) -> bool:

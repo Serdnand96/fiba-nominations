@@ -93,6 +93,67 @@ export const downloadPaymentAttachment = async (attId, filename) => {
   return resp.data
 }
 
+// Budget — gastos por departamento, con o sin evento (ver BUDGET_MODULE.md)
+export const getDepartments = () => api.get('/budget/departments').then(r => r.data)
+export const getAccounts = (params) => api.get('/budget/accounts', { params }).then(r => r.data)
+export const createAccount = (data) => api.post('/budget/accounts', data).then(r => r.data)
+export const updateAccount = (code, data) => api.patch(`/budget/accounts/${code}`, data).then(r => r.data)
+
+export const getVendors = (params) => api.get('/budget/vendors', { params }).then(r => r.data)
+export const createVendor = (data) => api.post('/budget/vendors', data).then(r => r.data)
+export const updateVendor = (id, data) => api.patch(`/budget/vendors/${id}`, data).then(r => r.data)
+export const deleteVendor = (id) => api.delete(`/budget/vendors/${id}`).then(r => r.data)
+
+export const getExpenses = (params) => api.get('/budget/expenses', { params }).then(r => r.data)
+export const getExpensesSummary = (params) => api.get('/budget/expenses/summary', { params }).then(r => r.data)
+export const createExpense = (data) => api.post('/budget/expenses', data).then(r => r.data)
+export const updateExpense = (id, data) => api.patch(`/budget/expenses/${id}`, data).then(r => r.data)
+export const approveExpense = (id) => api.post(`/budget/expenses/${id}/approve`).then(r => r.data)
+export const deleteExpense = (id) => api.delete(`/budget/expenses/${id}`).then(r => r.data)
+
+export const getExpenseAttachments = (id) => api.get(`/budget/expenses/${id}/attachments`).then(r => r.data)
+export const uploadExpenseAttachment = (id, file, kind) => {
+  const fd = new FormData()
+  fd.append('file', file)
+  if (kind) fd.append('kind', kind)
+  return api.post(`/budget/expenses/${id}/attachments`, fd, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  }).then(r => r.data)
+}
+export const deleteExpenseAttachment = (attId) => api.delete(`/budget/attachments/${attId}`).then(r => r.data)
+// Descarga autenticada — el bucket es privado, nunca construir URL pública.
+export const downloadExpenseAttachment = async (attId, filename) => {
+  const params = filename ? `?filename=${encodeURIComponent(filename)}` : ''
+  const resp = await api.get(`/budget/attachments/${attId}/download${params}`, { responseType: 'blob' })
+  return resp.data
+}
+
+export const getRecurring = (params) => api.get('/budget/recurring', { params }).then(r => r.data)
+export const createRecurring = (data) => api.post('/budget/recurring', data).then(r => r.data)
+export const updateRecurring = (id, data) => api.patch(`/budget/recurring/${id}`, data).then(r => r.data)
+export const deleteRecurring = (id) => api.delete(`/budget/recurring/${id}`).then(r => r.data)
+export const getPendingRecurring = (period) => api.get('/budget/recurring/pending', { params: { period } }).then(r => r.data)
+export const generateRecurring = (items) => api.post('/budget/recurring/generate', { items }).then(r => r.data)
+
+// Presupuesto (fase 2): la matriz de Competitions y la lista multi-año de IT
+// son dos vistas de la misma tabla budget_lines.
+export const getBudgetLines = (params) => api.get('/budget/lines', { params }).then(r => r.data)
+export const createBudgetLine = (data) => api.post('/budget/lines', data).then(r => r.data)
+export const updateBudgetLine = (id, data) => api.patch(`/budget/lines/${id}`, data).then(r => r.data)
+export const deleteBudgetLine = (id) => api.delete(`/budget/lines/${id}`).then(r => r.data)
+export const projectBudget = (data) => api.post('/budget/lines/project', data).then(r => r.data)
+export const getLineSeries = (seriesId) => api.get(`/budget/lines/series/${seriesId}`).then(r => r.data)
+export const getBudgetSummary = (params) => api.get('/budget/summary', { params }).then(r => r.data)
+export const getHeadcount = (year) => api.get('/budget/headcount', { params: { year } }).then(r => r.data)
+export const putHeadcount = (data) => api.put('/budget/headcount', data).then(r => r.data)
+export const getAssumptions = (year) => api.get(`/budget/assumptions/${year}`).then(r => r.data)
+export const putAssumptions = (year, data) => api.put(`/budget/assumptions/${year}`, data).then(r => r.data)
+
+export const getRevenues = (params) => api.get('/budget/revenues', { params }).then(r => r.data)
+export const createRevenue = (data) => api.post('/budget/revenues', data).then(r => r.data)
+export const updateRevenue = (id, data) => api.patch(`/budget/revenues/${id}`, data).then(r => r.data)
+export const deleteRevenue = (id) => api.delete(`/budget/revenues/${id}`).then(r => r.data)
+
 // Competition reports
 export const getReportTypes = () => api.get('/reports/types').then(r => r.data)
 export const getReportFacets = () => api.get('/reports/facets').then(r => r.data)

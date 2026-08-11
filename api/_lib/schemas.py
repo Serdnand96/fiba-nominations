@@ -222,6 +222,216 @@ class CompetitionReportUpdate(BaseModel):
     summary: Optional[str] = None
 
 
+# ─── BUDGET: catálogos ────────────────────────────────────────────────────
+
+class AccountCreate(BaseModel):
+    code: str
+    label: str
+    kind: Optional[str] = "expense"          # expense | revenue
+    parent_code: Optional[str] = None
+    escalation_pct: Optional[float] = 0
+    pending_mapping: Optional[bool] = False
+    active: Optional[bool] = True
+    sort: Optional[int] = 0
+    notes: Optional[str] = None
+
+
+class AccountUpdate(BaseModel):
+    label: Optional[str] = None
+    kind: Optional[str] = None
+    parent_code: Optional[str] = None
+    escalation_pct: Optional[float] = None
+    pending_mapping: Optional[bool] = None
+    active: Optional[bool] = None
+    sort: Optional[int] = None
+    notes: Optional[str] = None
+
+
+class VendorCreate(BaseModel):
+    name: str
+    tax_id: Optional[str] = None
+    country: Optional[str] = None
+    email: Optional[str] = None
+    phone: Optional[str] = None
+    bank_info: Optional[str] = None
+    notes: Optional[str] = None
+    active: Optional[bool] = True
+
+
+class VendorUpdate(BaseModel):
+    name: Optional[str] = None
+    tax_id: Optional[str] = None
+    country: Optional[str] = None
+    email: Optional[str] = None
+    phone: Optional[str] = None
+    bank_info: Optional[str] = None
+    notes: Optional[str] = None
+    active: Optional[bool] = None
+
+
+# ─── BUDGET: gastos ───────────────────────────────────────────────────────
+
+class ExpenseCreate(BaseModel):
+    department_code: str
+    account_code: str
+    competition_id: Optional[str] = None     # None → gasto general, sin evento
+    payee_type: Optional[str] = "vendor"     # vendor | employee | other
+    vendor_id: Optional[str] = None
+    employee_id: Optional[str] = None
+    payee_name: Optional[str] = None
+    description: str
+    amount: float
+    expense_date: str
+    payment_date: Optional[str] = None
+    status: Optional[str] = "draft"
+    payment_method: Optional[str] = None
+    bank_confirmation: Optional[str] = None
+    invoice_no: Optional[str] = None
+    comments: Optional[str] = None
+
+
+class ExpenseUpdate(BaseModel):
+    department_code: Optional[str] = None
+    account_code: Optional[str] = None
+    competition_id: Optional[str] = None
+    payee_type: Optional[str] = None
+    vendor_id: Optional[str] = None
+    employee_id: Optional[str] = None
+    payee_name: Optional[str] = None
+    description: Optional[str] = None
+    amount: Optional[float] = None
+    expense_date: Optional[str] = None
+    payment_date: Optional[str] = None
+    status: Optional[str] = None
+    payment_method: Optional[str] = None
+    bank_confirmation: Optional[str] = None
+    invoice_no: Optional[str] = None
+    comments: Optional[str] = None
+
+
+# ─── BUDGET: recurrentes ──────────────────────────────────────────────────
+
+class RecurringCreate(BaseModel):
+    department_code: str
+    account_code: str
+    vendor_id: Optional[str] = None
+    description: str
+    amount: float
+    frequency: str                            # monthly | quarterly | annual
+    day_of_month: Optional[int] = None
+    start_date: str
+    end_date: Optional[str] = None
+    active: Optional[bool] = True
+    notes: Optional[str] = None
+
+
+class RecurringUpdate(BaseModel):
+    department_code: Optional[str] = None
+    account_code: Optional[str] = None
+    vendor_id: Optional[str] = None
+    description: Optional[str] = None
+    amount: Optional[float] = None
+    frequency: Optional[str] = None
+    day_of_month: Optional[int] = None
+    start_date: Optional[str] = None
+    end_date: Optional[str] = None
+    active: Optional[bool] = None
+    notes: Optional[str] = None
+
+
+class RecurringGenerateItem(BaseModel):
+    recurring_id: str
+    period: str                               # 'YYYY-MM'
+    amount: Optional[float] = None            # override si la factura vino distinta
+    expense_date: Optional[str] = None
+
+
+class RecurringGenerate(BaseModel):
+    items: list[RecurringGenerateItem]
+
+
+# ─── BUDGET: líneas de presupuesto ────────────────────────────────────────
+
+class BudgetLineCreate(BaseModel):
+    year: int
+    department_code: str
+    account_code: str
+    competition_id: Optional[str] = None     # None → línea general del año
+    kind: Optional[str] = "expense"
+    description: str
+    qty: Optional[float] = None
+    monthly_amount: Optional[float] = None
+    amount: float = 0
+    escalation_pct: Optional[float] = None   # None → default de la cuenta
+    notes: Optional[str] = None
+
+
+class BudgetLineUpdate(BaseModel):
+    department_code: Optional[str] = None
+    account_code: Optional[str] = None
+    competition_id: Optional[str] = None
+    kind: Optional[str] = None
+    description: Optional[str] = None
+    qty: Optional[float] = None
+    monthly_amount: Optional[float] = None
+    amount: Optional[float] = None
+    escalation_pct: Optional[float] = None
+    source: Optional[str] = None
+    notes: Optional[str] = None
+
+
+class BudgetProject(BaseModel):
+    """Genera los años siguientes de un presupuesto aplicando la escalación."""
+    from_year: int
+    to_years: list[int]
+    department_code: Optional[str] = None    # None → todos los departamentos
+    overwrite: Optional[bool] = False        # pisar los años destino existentes
+
+
+class HeadcountItem(BaseModel):
+    competition_id: Optional[str] = None
+    role_label: str
+    headcount: int
+
+
+class HeadcountPut(BaseModel):
+    year: int
+    items: list[HeadcountItem]
+
+
+class AssumptionsPut(BaseModel):
+    avg_flight_cost: float
+    notes: Optional[str] = None
+
+
+# ─── BUDGET: ingresos ─────────────────────────────────────────────────────
+
+class RevenueCreate(BaseModel):
+    department_code: str
+    account_code: str
+    competition_id: Optional[str] = None
+    source_name: str
+    description: Optional[str] = None
+    amount: float
+    expected_date: Optional[str] = None
+    received_date: Optional[str] = None
+    status: Optional[str] = "expected"
+    comments: Optional[str] = None
+
+
+class RevenueUpdate(BaseModel):
+    department_code: Optional[str] = None
+    account_code: Optional[str] = None
+    competition_id: Optional[str] = None
+    source_name: Optional[str] = None
+    description: Optional[str] = None
+    amount: Optional[float] = None
+    expected_date: Optional[str] = None
+    received_date: Optional[str] = None
+    status: Optional[str] = None
+    comments: Optional[str] = None
+
+
 # ─── EXTERNAL STAFF EVALUATIONS ───────────────────────────────────────────
 
 class StaffEvaluationCreate(BaseModel):

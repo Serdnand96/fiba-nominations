@@ -93,6 +93,17 @@ class _QueryBuilder:
         self._params[column] = f"lt.{value}"
         return self
 
+    def is_(self, column: str, value: str = "null"):
+        # PostgREST: ?col=is.null. `eq` no sirve para NULL — manda el literal
+        # "eq.None" y no matchea nada. Lo usa budget.py para los gastos
+        # generales, que son los que tienen competition_id NULL.
+        self._params[column] = f"is.{value}"
+        return self
+
+    def not_is(self, column: str, value: str = "null"):
+        self._params[column] = f"not.is.{value}"
+        return self
+
     def ilike(self, column: str, pattern: str):
         # PostgREST uses * as wildcard in URL params (translated to %).
         self._params[column] = f"ilike.{pattern}"
