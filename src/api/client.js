@@ -95,6 +95,11 @@ export const downloadPaymentAttachment = async (attId, filename) => {
 
 // Budget — gastos por departamento, con o sin evento (ver BUDGET_MODULE.md)
 export const getDepartments = () => api.get('/budget/departments').then(r => r.data)
+// Acceso por departamento (fase 3). Solo superadmin puede leer/escribir el de
+// otro usuario; /access/me/scope lo puede pedir cualquiera con el módulo.
+export const getBudgetAccess = (userId) => api.get(`/budget/access/${userId}`).then(r => r.data)
+export const updateBudgetAccess = (userId, items) => api.put(`/budget/access/${userId}`, { items }).then(r => r.data)
+export const getMyBudgetScope = () => api.get('/budget/access/me/scope').then(r => r.data)
 export const getAccounts = (params) => api.get('/budget/accounts', { params }).then(r => r.data)
 export const createAccount = (data) => api.post('/budget/accounts', data).then(r => r.data)
 export const updateAccount = (code, data) => api.patch(`/budget/accounts/${code}`, data).then(r => r.data)

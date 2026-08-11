@@ -50,6 +50,16 @@ def _is_superadmin_cached(request: Request, user_id: Optional[str]) -> bool:
     return flag
 
 
+def is_superadmin_request(request: Request) -> bool:
+    """¿El caller es superadmin? Cacheado por request.
+
+    Envoltorio público de _is_superadmin_cached, para los módulos que necesitan
+    la respuesta sin pasar por una dependency — hoy budget.py, que recorta filas
+    por departamento y tiene que dejar pasar al superadmin sin filtrar.
+    """
+    return _is_superadmin_cached(request, _user_id(request))
+
+
 def _has_permission(request: Request, user_id: Optional[str], module: str, action: str = "view") -> bool:
     """action: 'view' or 'edit'. Superadmin always passes."""
     if _is_superadmin_cached(request, user_id):

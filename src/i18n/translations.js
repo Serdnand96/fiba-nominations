@@ -345,6 +345,28 @@ const translations = {
     },
     subtotal: { en: 'Subtotal', es: 'Subtotal' },
 
+    // Acceso por departamento (fase 3)
+    access: { en: 'Budget departments', es: 'Departamentos de presupuesto' },
+    accessHint: {
+      en: 'Which departments this user sees inside Budget. Without any, they see no data even with the module granted.',
+      es: 'Qué departamentos ve este usuario dentro de Presupuesto. Sin ninguno no ve datos, aunque tenga el módulo.',
+    },
+    accessAll: { en: 'All departments', es: 'Todos los departamentos' },
+    accessNeedsModule: {
+      en: 'Grant the Budget module above for this to have any effect.',
+      es: 'Otorga el módulo Presupuesto arriba para que esto tenga efecto.',
+    },
+    unallocated: { en: 'Unallocated payments', es: 'Pagos sin imputar' },
+    unallocatedHint: {
+      en: 'Payments with no department or account yet — they are not counted in any department total.',
+      es: 'Pagos que todavía no tienen departamento ni cuenta: no se cuentan en el total de ningún departamento.',
+    },
+    includesPayments: {
+      en: 'Executed includes expenses and payments to nominated people.',
+      es: 'El ejecutado incluye gastos y pagos a personas nominadas.',
+    },
+    readOnlyDept: { en: 'Read only', es: 'Solo lectura' },
+
     // Errores
     required: { en: 'Fill in the required fields', es: 'Completa los campos obligatorios' },
   },

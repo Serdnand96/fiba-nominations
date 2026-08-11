@@ -1,5 +1,9 @@
 import { useState, useEffect } from 'react'
-import { getUsers, createUser, deleteUser, updateUserPassword, getUserPermissions, updateUserPermissions } from '../api/client'
+import {
+  getUsers, createUser, deleteUser, updateUserPassword,
+  getUserPermissions, updateUserPermissions,
+  getDepartments, getBudgetAccess, updateBudgetAccess,
+} from '../api/client'
 import { useLanguage } from '../i18n/LanguageContext'
 import { useToast } from '../components/ui/Toast'
 import { useAuth } from '../contexts/AuthContext'
@@ -36,6 +40,9 @@ export default function Users() {
   const [permLoading, setPermLoading] = useState(false)
   const [permSaving, setPermSaving] = useState(false)
   const [permSuccess, setPermSuccess] = useState(false)
+  // Acceso por departamento del módulo Presupuesto (tabla aparte de user_permissions)
+  const [deptList, setDeptList] = useState([])
+  const [deptAccess, setDeptAccess] = useState([])
 
   useEffect(() => { loadUsers() }, [])
 
@@ -119,7 +126,36 @@ export default function Users() {
     } catch {
       setPermData(MODULES.map(m => ({ module: m, can_view: false, can_edit: false })))
     }
+    // El acceso por departamento de Presupuesto vive en su propia tabla: el
+    // permiso `budget` abre el módulo, esto recorta qué filas ve adentro.
+    try {
+      const [deps, access] = await Promise.all([getDepartments(), getBudgetAccess(user.id)])
+      setDeptList(deps)
+      const byCode = Object.fromEntries(access.map(a => [a.department_code, a]))
+      setDeptAccess([
+        { department_code: '*', ...(byCode['*'] || { can_view: false, can_edit: false }) },
+        ...deps.map(d => ({
+          department_code: d.code,
+          ...(byCode[d.code] || { can_view: false, can_edit: false }),
+        })),
+      ])
+    } catch {
+      setDeptList([])
+      setDeptAccess([])
+    }
     setPermLoading(false)
+  }
+
+  function toggleDept(code, field) {
+    setDeptAccess(prev => prev.map(d => {
+      if (d.department_code !== code) return d
+      if (field === 'can_view') {
+        const v = !d.can_view
+        return { ...d, can_view: v, can_edit: v ? d.can_edit : false }
+      }
+      const e = !d.can_edit
+      return { ...d, can_edit: e, can_view: e ? true : d.can_view }
+    }))
   }
 
   function toggleView(module) {
@@ -142,6 +178,12 @@ export default function Users() {
     setPermSaving(true)
     try {
       await updateUserPermissions(permUser.id, permData)
+      // Se guarda siempre, incluso vacío: quitarle todos los departamentos es
+      // la forma de dejarlo sin datos sin tener que sacarle el módulo.
+      await updateBudgetAccess(
+        permUser.id,
+        deptAccess.filter(d => d.can_view || d.can_edit),
+      )
       setPermSuccess(true)
       setTimeout(() => setPermSuccess(false), 2000)
     } catch (err) {
@@ -352,6 +394,64 @@ export default function Users() {
                     ))}
                   </tbody>
                 </table>
+
+                {/* Presupuesto recorta por departamento además del módulo:
+                    el permiso abre la página, esto decide qué filas ve. */}
+                {deptAccess.length > 0 && (
+                  <div className="mb-4 border-t border-fiba-border pt-4">
+                    <h4 className="text-sm font-semibold text-ink-900 dark:text-white">
+                      {t('budget.access')}
+                    </h4>
+                    <p className="text-xs text-fiba-muted mt-0.5 mb-2">{t('budget.accessHint')}</p>
+                    {!permData.find(p => p.module === 'budget')?.can_view && (
+                      <p className="text-xs text-amber-500 mb-2">{t('budget.accessNeedsModule')}</p>
+                    )}
+                    <table className="w-full text-sm">
+                      <thead className="bg-fiba-surface">
+                        <tr>
+                          <th className="text-left px-3 py-2 font-medium text-fiba-muted">
+                            {t('budget.department')}
+                          </th>
+                          <th className="text-center px-3 py-2 font-medium text-fiba-muted w-24">
+                            {t('permissions.canView')}
+                          </th>
+                          <th className="text-center px-3 py-2 font-medium text-fiba-muted w-24">
+                            {t('permissions.canEdit')}
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {deptAccess.map(d => {
+                          const all = deptAccess.find(x => x.department_code === '*')
+                          // Con "todos" marcado, las filas por departamento no
+                          // suman nada: se deshabilitan para no dar a entender
+                          // que recortan algo.
+                          const overridden = d.department_code !== '*' && all?.can_view
+                          return (
+                            <tr key={d.department_code}
+                              className={`border-t border-fiba-border ${overridden ? 'opacity-40' : ''}`}>
+                              <td className="px-3 py-2 font-medium">
+                                {d.department_code === '*'
+                                  ? <em>{t('budget.accessAll')}</em>
+                                  : (deptList.find(x => x.code === d.department_code)?.label || d.department_code)}
+                              </td>
+                              <td className="px-3 py-2 text-center">
+                                <input type="checkbox" checked={d.can_view} disabled={overridden}
+                                  onChange={() => toggleDept(d.department_code, 'can_view')}
+                                  className="rounded border-fiba-border disabled:opacity-30" />
+                              </td>
+                              <td className="px-3 py-2 text-center">
+                                <input type="checkbox" checked={d.can_edit} disabled={overridden}
+                                  onChange={() => toggleDept(d.department_code, 'can_edit')}
+                                  className="rounded border-fiba-border disabled:opacity-30" />
+                              </td>
+                            </tr>
+                          )
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
 
                 {permSuccess && (
                   <div className="bg-emerald-500/10 text-emerald-400 text-sm px-4 py-2 rounded-lg mb-3">

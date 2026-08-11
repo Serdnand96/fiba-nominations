@@ -244,10 +244,22 @@ function PlanTab({ t, push, canEdit, departments, expenseAccounts, competitions 
           </div>
         </div>
       )}
-      {summary?.excludes_person_payments && (
-        <p className="text-xs text-fiba-muted mb-6 flex items-center gap-1.5">
-          <Icon.Info className="w-3.5 h-3.5 flex-shrink-0" /> {t('budget.excludesPayments')}
-        </p>
+      {summary && (
+        <div className="mb-6 space-y-1">
+          <p className="text-xs text-fiba-muted flex items-center gap-1.5">
+            <Icon.Info className="w-3.5 h-3.5 flex-shrink-0" />
+            {summary.excludes_person_payments ? t('budget.excludesPayments') : t('budget.includesPayments')}
+          </p>
+          {/* Los pagos sin departamento no entran en ningún total por área: se
+              muestran para que se vea qué falta imputar, no para cuadrar. */}
+          {summary.unallocated_payments > 0 && (
+            <p className="text-xs text-amber-500 flex items-center gap-1.5"
+              title={t('budget.unallocatedHint')}>
+              <Icon.Alert className="w-3.5 h-3.5 flex-shrink-0" />
+              {t('budget.unallocated')}: ${money(summary.unallocated_payments)}
+            </p>
+          )}
+        </div>
       )}
 
       <div className="flex flex-wrap gap-3 mb-4 items-center">

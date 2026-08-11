@@ -1,8 +1,8 @@
 # BUDGET_MODULE.md — Diseño del módulo de Presupuesto y Gastos
 
-> Estado: **fases 1 y 2 implementadas** (agosto 2026) — migraciones 033-035
-> **aplicadas a prod**, `api/_lib/routers/budget.py` (25 endpoints),
-> `src/pages/Budget.jsx` (5 pestañas). Fases 3-5 pendientes (ver §7).
+> Estado: **fases 1, 2 y 3 implementadas** (agosto 2026) — migraciones 033-036
+> **aplicadas a prod**, `api/_lib/routers/budget.py` (27 endpoints),
+> `src/pages/Budget.jsx` (5 pestañas). Fases 4-5 pendientes (ver §7).
 >
 > El permiso `budget` **no está sembrado a nadie**: igual que `payments`, hasta
 > que un admin lo otorgue en Usuarios solo lo ve el superadmin.
@@ -480,22 +480,54 @@ colores) e i18n ES/EN.
 |------|---------|-----------|
 | **1** ✅ | Migraciones **033-034** + router `budget.py` + catálogos + gastos + ingresos + proveedores + página | Se pueden cargar gastos por departamento, con o sin evento. Es el pedido original. |
 | **2** ✅ | Migración **035**: presupuesto (`budget_lines`), matriz, lista, proyección | Presupuestado vs. comprometido vs. ejecutado. |
-| **3** | Migración **036**: permisos por departamento + payments consume presupuesto | Designados con acceso acotado. Va después de que el módulo funcione, para probar el scoping contra datos reales. |
+| **3** ✅ | Migración **036**: permisos por departamento + payments consume presupuesto | Designados con acceso acotado. |
 | **4** | Recurrentes (panel del mes), dashboard, vista de costo del evento | Cierra el reporting. |
 | **5** | Migración **037**: tarifario + headcount calculado + import histórico 2026 | Circuito completo presupuesto ↔ nominación ↔ pago. |
 
 ---
 
-## 8. Alcance del "ejecutado" (importante)
+## 8. Alcance del "ejecutado"
 
-`/budget/summary` calcula el ejecutado **solo desde `expenses`**. Los pagos a
-personas nominadas (`payments`) **no se suman todavía**: esa tabla no lleva
-departamento ni cuenta hasta la migración 036, y sumarla sin esas dimensiones
-desbalancearía el corte por departamento.
+Desde la migración 036, `/budget/summary` suma **las dos fuentes de gasto**:
 
-La respuesta devuelve `excludes_person_payments: true` y la UI lo dice en
-pantalla, para que nadie lea esos números de más. El costo total de un evento
-—pagos + airfare + gastos— es la vista de la fase 4.
+| Fuente | Cuenta como ejecutado | Cuenta como comprometido |
+|--------|----------------------|--------------------------|
+| `expenses` | `status = 'paid'` | `status = 'approved'` |
+| `payments` | `status = 'completed'` | `new` / `in_process` / `split` |
+
+Los gastos se imputan al año por `expense_date`; los pagos, por `payment_date`.
+
+Los pagos **sin departamento** (históricos, anteriores al backfill de la 036) se
+reportan aparte en `unallocated_payments` y no se reparten a ciegas en ningún
+total por área — así se ve qué falta clasificar en vez de esconderlo. La UI los
+muestra en ámbar.
+
+`excludes_person_payments` ahora devuelve `false`. El campo se mantiene para que
+un frontend viejo cacheado no muestre una advertencia que ya no aplica.
+
+### Cómo se aplica el recorte por departamento
+
+Todo pasa por dos helpers de `budget.py` y hay un test que lo verifica
+(`_scoped` en cada lectura, `_assert_can_edit` / `_row_or_403` en cada
+escritura):
+
+- **`_scoped(q, request, requested)`** resuelve el scope **y** el filtro que
+  pidió el usuario **en un solo lugar**, a propósito. El query builder guarda un
+  filtro por columna, así que un `.eq("department_code", x)` encadenado después
+  de un `.in_()` **pisa el scope**: encadenarlos sería un bypass con solo pedir
+  `?department=finance`. Nunca los encadenes.
+- **Falla cerrado.** Sin filas en `budget_access` el usuario no ve nada, aunque
+  tenga el permiso del módulo. El default opuesto convertiría un olvido del
+  admin en una fuga de datos financieros.
+- **404, no 403, sobre filas ajenas.** Un 403 distinguible confirmaría que el
+  registro existe.
+- **Mover una fila a otro departamento exige permiso sobre el destino**, no solo
+  sobre el origen.
+- **Los adjuntos heredan el departamento de su gasto** (`_attachment_or_403`).
+  Se piden por su propio id, así que sin eso el scoping tendría una puerta
+  trasera.
+- **`/budget/access/{user_id}` es solo superadmin**: quién ve qué plata no lo
+  decide alguien que ya tiene el módulo, o podría ampliarse el propio alcance.
 
 ---
 

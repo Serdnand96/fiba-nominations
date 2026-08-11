@@ -399,6 +399,16 @@ class HeadcountPut(BaseModel):
     items: list[HeadcountItem]
 
 
+class BudgetAccessItem(BaseModel):
+    department_code: str          # '*' = todos los departamentos
+    can_view: bool = True
+    can_edit: bool = False
+
+
+class BudgetAccessPut(BaseModel):
+    items: list[BudgetAccessItem]
+
+
 class AssumptionsPut(BaseModel):
     avg_flight_cost: float
     notes: Optional[str] = None

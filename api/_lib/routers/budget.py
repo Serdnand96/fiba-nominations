@@ -33,12 +33,13 @@ import httpx
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile
 from fastapi.responses import Response
 
-from api._lib.auth import require_edit, require_view
+from api._lib.auth import is_superadmin_request, require_edit, require_superadmin, require_view
 from api._lib.database import supabase
 from api._lib.schemas import (
     AccountCreate,
     AccountUpdate,
     AssumptionsPut,
+    BudgetAccessPut,
     BudgetLineCreate,
     BudgetLineUpdate,
     BudgetProject,
@@ -164,6 +165,94 @@ def _check_paid_coherence(status: str, payment_date) -> None:
         raise HTTPException(status_code=400, detail="Only a paid expense can carry a payment date")
 
 
+# ─── Scope por departamento ──────────────────────────────────────────────────
+#
+# PRIMER filtrado por fila del sistema. El resto de los módulos abre o cierra un
+# endpoint entero; acá el designado de IT tiene que ver los gastos de IT y no
+# los de Competitions.
+#
+# RLS no sirve: el backend pega con service_role, que la bypassa por diseño. El
+# recorte vive acá y hay que aplicarlo en CADA query. Una lectura de budget sin
+# _scoped() es un agujero P0, igual que un endpoint sin require_view.
+#
+# Falla cerrado: sin filas en budget_access el usuario no ve nada, aunque tenga
+# el permiso del módulo. Es deliberado — el default opuesto convertiría un
+# olvido del admin en una fuga de datos financieros.
+def _access_rows(request: Request) -> list:
+    cached = getattr(request.state, "_budget_access", None)
+    if cached is not None:
+        return cached
+    uid = _user_id(request)
+    rows = []
+    if uid:
+        rows = supabase.table("budget_access").select("*").eq("user_id", uid).execute().data or []
+    request.state._budget_access = rows
+    return rows
+
+
+def _departments_for(request: Request, action: str) -> Optional[list]:
+    """Departamentos permitidos, o None si son todos. action: 'view' | 'edit'."""
+    if is_superadmin_request(request):
+        return None
+    col = "can_edit" if action == "edit" else "can_view"
+    rows = _access_rows(request)
+    if any(r.get("department_code") == "*" and r.get(col) for r in rows):
+        return None
+    return sorted({r["department_code"] for r in rows if r.get(col) and r["department_code"] != "*"})
+
+
+def _scoped(q, request: Request, requested: Optional[str] = None):
+    """Recorte por departamento, combinado con el filtro que pidió el usuario.
+
+    ⚠️ Los dos se resuelven ACÁ y se aplica UN SOLO filtro, a propósito: el
+    query builder guarda un filtro por columna (`self._params[column] = ...`),
+    así que un `.eq("department_code", x)` encadenado después de un `.in_()`
+    PISA el scope silenciosamente. Encadenarlos sería un bypass: bastaría pedir
+    `?department=finance` para leer un departamento ajeno.
+
+    Va en TODA lectura del módulo. Falla cerrado: lista vacía → PostgREST
+    `in.()` → no matchea nada.
+    """
+    allowed = _departments_for(request, "view")
+    if requested:
+        if allowed is not None and requested not in allowed:
+            return q.in_("department_code", [])   # fuera de scope → sin resultados
+        return q.eq("department_code", requested)
+    if allowed is None:
+        return q
+    return q.in_("department_code", allowed)
+
+
+def _can_view_department(request: Request, code: Optional[str]) -> bool:
+    depts = _departments_for(request, "view")
+    return depts is None or (code in depts)
+
+
+def _assert_can_edit(request: Request, code: Optional[str]) -> None:
+    depts = _departments_for(request, "edit")
+    if depts is None:
+        return
+    if not code or code not in depts:
+        raise HTTPException(status_code=403, detail=f"No edit access to department '{code}'")
+
+
+def _row_or_403(table: str, row_id: str, request: Request, action: str = "view") -> dict:
+    """Trae una fila y verifica el acceso a su departamento.
+
+    Devuelve 404 tanto si no existe como si el caller no la puede ver: un 403
+    distinguible confirmaría que el registro existe.
+    """
+    rows = supabase.table(table).select("*").eq("id", row_id).execute().data
+    if not rows:
+        raise HTTPException(status_code=404, detail="Not found")
+    row = rows[0]
+    if not _can_view_department(request, row.get("department_code")):
+        raise HTTPException(status_code=404, detail="Not found")
+    if action == "edit":
+        _assert_can_edit(request, row.get("department_code"))
+    return row
+
+
 def _extract_storage_key(storage_path: Optional[str]) -> Optional[str]:
     """Object key dentro del bucket `nominations`, en los 3 formatos soportados."""
     if not storage_path:
@@ -188,13 +277,75 @@ def _delete_from_storage(storage_path: Optional[str]) -> None:
         logger.warning(f"[storage cleanup] could not remove {key}: {e}")
 
 
+# ─── Administración del acceso por departamento ──────────────────────────────
+# Solo superadmin: quién ve qué plata no lo decide alguien que ya tiene el
+# módulo — si no, un designado podría ampliarse el propio alcance.
+@router.get("/access/{user_id}", dependencies=[Depends(require_superadmin)])
+def get_budget_access(user_id: str):
+    return (
+        supabase.table("budget_access")
+        .select("*")
+        .eq("user_id", user_id)
+        .execute()
+        .data
+    ) or []
+
+
+@router.put("/access/{user_id}", dependencies=[Depends(require_superadmin)])
+def put_budget_access(user_id: str, data: BudgetAccessPut):
+    """Reemplaza el acceso del usuario. Sin ítems = sin acceso a ningún dato."""
+    valid = {d["code"] for d in (supabase.table("departments").select("code").execute().data or [])}
+    valid.add("*")
+    for item in data.items:
+        if item.department_code not in valid:
+            raise HTTPException(status_code=400, detail=f"Unknown department '{item.department_code}'")
+        # can_edit sin can_view no significa nada y dejaría una fila que el
+        # filtro de lectura ignora pero el de escritura acepta.
+        if item.can_edit and not item.can_view:
+            raise HTTPException(status_code=400, detail="can_edit requires can_view")
+
+    supabase.table("budget_access").delete().eq("user_id", user_id).execute()
+    kept = [i for i in data.items if i.can_view or i.can_edit]
+    if kept:
+        supabase.table("budget_access").insert([{
+            "user_id": user_id,
+            "department_code": i.department_code,
+            "can_view": i.can_view,
+            "can_edit": i.can_edit,
+        } for i in kept]).execute()
+    return {"ok": True, "count": len(kept)}
+
+
+@router.get("/access/me/scope")
+def my_scope(request: Request):
+    """Qué ve y qué edita el caller. Lo usa el frontend para armar la UI."""
+    return {
+        "is_superadmin": is_superadmin_request(request),
+        "view": _departments_for(request, "view"),   # None = todos
+        "edit": _departments_for(request, "edit"),
+    }
+
+
 # ─── Catálogos ───────────────────────────────────────────────────────────────
 @router.get("/departments")
-def list_departments(include_inactive: bool = Query(False)):
+def list_departments(request: Request, include_inactive: bool = Query(False)):
+    """Solo los departamentos que el caller puede ver.
+
+    Recortado además de por prolijidad: los selects del frontend se arman con
+    esto, y ofrecer un departamento que el backend después rechaza es una
+    trampa para el usuario.
+    """
     q = supabase.table("departments").select("*").order("sort")
     if not include_inactive:
         q = q.eq("active", True)
-    return q.execute().data or []
+    rows = q.execute().data or []
+    allowed = _departments_for(request, "view")
+    if allowed is not None:
+        rows = [r for r in rows if r["code"] in allowed]
+    editable = _departments_for(request, "edit")
+    for r in rows:
+        r["can_edit"] = editable is None or r["code"] in editable
+    return rows
 
 
 @router.get("/accounts")
@@ -321,6 +472,7 @@ def _shape_line(row: dict) -> dict:
 
 @router.get("/lines")
 def list_budget_lines(
+    request: Request,
     year: int = Query(...),
     department: Optional[str] = Query(None),
     account: Optional[str] = Query(None),
@@ -328,9 +480,10 @@ def list_budget_lines(
     general_only: bool = Query(False),
     kind: Optional[str] = Query(None),
 ):
-    q = supabase.table("budget_lines").select(_LINE_SELECT).eq("year", year).order("account_code")
-    if department:
-        q = q.eq("department_code", department)
+    q = _scoped(
+        supabase.table("budget_lines").select(_LINE_SELECT).eq("year", year).order("account_code"),
+        request, department,
+    )
     if account:
         q = q.eq("account_code", account)
     if kind:
@@ -343,22 +496,22 @@ def list_budget_lines(
 
 
 @router.get("/lines/series/{series_id}")
-def line_series(series_id: str):
+def line_series(series_id: str, request: Request):
     """La misma línea a lo largo de los años — la vista multi-año de IT."""
-    return (
+    return _scoped(
         supabase.table("budget_lines")
-        .select("id, year, amount, escalation_pct, description")
+        .select("id, year, amount, escalation_pct, description, department_code")
         .eq("series_id", series_id)
-        .order("year")
-        .execute()
-        .data
-    ) or []
+        .order("year"),
+        request,
+    ).execute().data or []
 
 
 @router.post("/lines", status_code=201, dependencies=[Depends(require_edit("budget"))])
 def create_budget_line(data: BudgetLineCreate, request: Request):
     if not _valid_department(data.department_code):
         raise HTTPException(status_code=400, detail="Unknown or inactive department")
+    _assert_can_edit(request, data.department_code)
     kind = data.kind or "expense"
     if kind not in ("expense", "revenue"):
         raise HTTPException(status_code=400, detail="kind must be 'expense' or 'revenue'")
@@ -375,15 +528,16 @@ def create_budget_line(data: BudgetLineCreate, request: Request):
 
 
 @router.patch("/lines/{line_id}", dependencies=[Depends(require_edit("budget"))])
-def update_budget_line(line_id: str, data: BudgetLineUpdate):
-    current = supabase.table("budget_lines").select("*").eq("id", line_id).execute().data
-    if not current:
-        raise HTTPException(status_code=404, detail="Budget line not found")
-    current = current[0]
+def update_budget_line(line_id: str, data: BudgetLineUpdate, request: Request):
+    current = _row_or_403("budget_lines", line_id, request, "edit")
 
     updates = _patch_updates(data, "budget_lines")
-    if "department_code" in updates and not _valid_department(updates["department_code"]):
-        raise HTTPException(status_code=400, detail="Unknown or inactive department")
+    if "department_code" in updates:
+        if not _valid_department(updates["department_code"]):
+            raise HTTPException(status_code=400, detail="Unknown or inactive department")
+        # Mover una línea a otro departamento exige permiso sobre el destino
+        # además del origen; si no, se podría empujar gasto a un área ajena.
+        _assert_can_edit(request, updates["department_code"])
     kind = updates.get("kind", current.get("kind"))
     if kind not in ("expense", "revenue"):
         raise HTTPException(status_code=400, detail="kind must be 'expense' or 'revenue'")
@@ -403,7 +557,8 @@ def update_budget_line(line_id: str, data: BudgetLineUpdate):
 
 
 @router.delete("/lines/{line_id}", dependencies=[Depends(require_edit("budget"))])
-def delete_budget_line(line_id: str):
+def delete_budget_line(line_id: str, request: Request):
+    _row_or_403("budget_lines", line_id, request, "edit")
     result = supabase.table("budget_lines").delete().eq("id", line_id).execute()
     if not result.data:
         raise HTTPException(status_code=404, detail="Budget line not found")
@@ -426,20 +581,34 @@ def project_budget(data: BudgetProject, request: Request):
     if any(y == data.from_year for y in data.to_years):
         raise HTTPException(status_code=400, detail="to_years cannot include from_year")
 
-    q = supabase.table("budget_lines").select("*").eq("year", data.from_year)
+    # Proyectar crea filas: sin un departamento explícito haría falta poder
+    # editar todos, así que se exige elegir uno salvo acceso total.
+    editable = _departments_for(request, "edit")
     if data.department_code:
-        q = q.eq("department_code", data.department_code)
+        _assert_can_edit(request, data.department_code)
+    elif editable is not None:
+        raise HTTPException(
+            status_code=403,
+            detail="Pick a department to project — you cannot edit every department",
+        )
+
+    q = _scoped(
+        supabase.table("budget_lines").select("*").eq("year", data.from_year),
+        request, data.department_code,
+    )
     source = q.execute().data or []
     if not source:
         raise HTTPException(status_code=404, detail=f"No budget lines for {data.from_year}")
 
-    existing = (
+    # Scopeada igual que la de origen: una serie normalmente vive en un solo
+    # departamento, pero si alguna vez una de sus filas se movió, `overwrite`
+    # pisaría un año que el caller no puede editar.
+    existing = _scoped(
         supabase.table("budget_lines")
         .select("id, series_id, year")
-        .in_("series_id", [s["series_id"] for s in source])
-        .execute()
-        .data
-    ) or []
+        .in_("series_id", [s["series_id"] for s in source]),
+        request, data.department_code,
+    ).execute().data or []
     by_series_year = {(e["series_id"], e["year"]): e["id"] for e in existing}
 
     created, updated, skipped = 0, 0, 0
@@ -490,29 +659,58 @@ def project_budget(data: BudgetProject, request: Request):
 
 
 @router.get("/summary")
-def budget_summary(year: int = Query(...), department: Optional[str] = Query(None)):
+def budget_summary(request: Request, year: int = Query(...), department: Optional[str] = Query(None)):
     """Presupuestado vs. comprometido vs. ejecutado vs. restante.
 
-    OJO con el alcance: el ejecutado sale de `expenses`, NO de `payments`. Los
-    pagos a personas nominadas todavía no llevan departamento ni cuenta (eso
-    llega con la migración 036), así que sumarlos acá desbalancearía el corte
-    por departamento. El costo total de un evento — pagos + airfare + gastos —
-    es la vista de la fase 4. El flag `excludes_person_payments` está para que
-    la UI lo diga en pantalla y nadie lea estos números de más.
+    Desde la migración 036 el ejecutado suma **las dos** fuentes de gasto:
+    `expenses` y los pagos a personas nominadas (`payments`, que ya llevan
+    departamento y cuenta). Un pago cuenta como ejecutado cuando su status es
+    `completed` — es el equivalente de `paid` en el enum viejo de payments.
+
+    Los pagos sin imputar (sin departamento, por venir de antes del backfill) se
+    reportan aparte en `unallocated_payments` en vez de repartirse a ciegas: así
+    se ve qué falta clasificar en lugar de esconderlo dentro de un total.
     """
-    lq = supabase.table("budget_lines").select("*").eq("year", year)
-    eq_ = supabase.table("expenses").select(
-        "amount, status, department_code, account_code, competition_id"
-    ).gte("expense_date", f"{year}-01-01").lte("expense_date", f"{year}-12-31")
-    rq = supabase.table("revenues").select("amount, status, department_code, competition_id")
-    if department:
-        lq = lq.eq("department_code", department)
-        eq_ = eq_.eq("department_code", department)
-        rq = rq.eq("department_code", department)
+    lq = _scoped(supabase.table("budget_lines").select("*").eq("year", year), request, department)
+    eq_ = _scoped(
+        supabase.table("expenses")
+        .select("amount, status, department_code, account_code, competition_id")
+        .gte("expense_date", f"{year}-01-01").lte("expense_date", f"{year}-12-31"),
+        request, department,
+    )
+    rq = _scoped(
+        supabase.table("revenues").select("amount, status, department_code, competition_id"),
+        request, department,
+    )
+    pq = _scoped(
+        supabase.table("payments").select(
+            "total, status, department_code, account_code, payment_date, "
+            "nominations(competition_id)"
+        ),
+        request, department,
+    )
 
     lines = lq.execute().data or []
     expenses = eq_.execute().data or []
     revenues = rq.execute().data or []
+
+    # Los pagos no tienen fecha de gasto: se imputan al año por `payment_date`,
+    # y los que todavía no se pagaron no cuentan como ejecutado igual que un
+    # gasto sin pagar. Se filtra en Python porque hace falta mirar el embed de
+    # la nominación para sacar la competencia.
+    payments = []
+    for p in (pq.execute().data or []):
+        pd = p.get("payment_date") or ""
+        if p.get("status") == "completed" and not pd.startswith(str(year)):
+            continue
+        nom = p.pop("nominations", None) or {}
+        payments.append({
+            "amount": p.get("total"),
+            "status": p.get("status"),
+            "department_code": p.get("department_code"),
+            "account_code": p.get("account_code"),
+            "competition_id": nom.get("competition_id"),
+        })
 
     depts = {d["code"]: d["label"] for d in (supabase.table("departments").select("code, label").execute().data or [])}
     accts = {a["code"]: a["label"] for a in (supabase.table("accounts").select("code, label").execute().data or [])}
@@ -524,9 +722,19 @@ def budget_summary(year: int = Query(...), department: Optional[str] = Query(Non
     exp_lines = [l for l in lines if l.get("kind") == "expense"]
     rev_lines = [l for l in lines if l.get("kind") == "revenue"]
 
+    # Un pago `completed` es ejecutado; cualquier otro estado vivo es
+    # comprometido (está aprobado a nivel de nominación, falta que salga).
+    paid_payments = [p for p in payments if p.get("status") == "completed"]
+    open_payments = [p for p in payments if p.get("status") in ("new", "in_process", "split")]
+
     budgeted = round(sum(_num(l) for l in exp_lines), 2)
-    executed = round(sum(_num(e) for e in expenses if e.get("status") == "paid"), 2)
-    committed = round(sum(_num(e) for e in expenses if e.get("status") == "approved"), 2)
+    executed = round(
+        sum(_num(e) for e in expenses if e.get("status") == "paid")
+        + sum(_num(p) for p in paid_payments), 2)
+    committed = round(
+        sum(_num(e) for e in expenses if e.get("status") == "approved")
+        + sum(_num(p) for p in open_payments), 2)
+    unallocated = round(sum(_num(p) for p in payments if not p.get("department_code")), 2)
 
     def _rollup(key: str, labels: dict, is_competition: bool = False) -> list:
         acc: dict = {}
@@ -551,6 +759,10 @@ def budget_summary(year: int = Query(...), department: Optional[str] = Query(Non
                 entry["executed"] += _num(e)
             elif e.get("status") == "approved":
                 entry["committed"] += _num(e)
+        for p in paid_payments:
+            _entry(p.get(key))["executed"] += _num(p)
+        for p in open_payments:
+            _entry(p.get(key))["committed"] += _num(p)
 
         out = []
         for entry in acc.values():
@@ -562,7 +774,10 @@ def budget_summary(year: int = Query(...), department: Optional[str] = Query(Non
 
     return {
         "year": year,
-        "excludes_person_payments": True,
+        # Desde la 036 los pagos a personas SÍ se cuentan. El flag se mantiene
+        # para que un frontend viejo no mienta en pantalla.
+        "excludes_person_payments": False,
+        "unallocated_payments": unallocated,
         "totals": {
             "budgeted": budgeted,
             "executed": executed,
@@ -659,6 +874,7 @@ _EXPENSE_SELECT = (
 
 
 def _fetch_expenses(
+    request: Request,
     year: Optional[int] = None,
     department: Optional[str] = None,
     account: Optional[str] = None,
@@ -676,10 +892,11 @@ def _fetch_expenses(
     se filtran como objetos truthy y se vuelven filtros fantasma (mismo bug que
     dejó el summary de payments en $0.00).
     """
-    q = supabase.table("expenses").select(_EXPENSE_SELECT).order("expense_date", desc=True)
+    q = _scoped(
+        supabase.table("expenses").select(_EXPENSE_SELECT).order("expense_date", desc=True),
+        request, department,
+    )
 
-    if department:
-        q = q.eq("department_code", department)
     if account:
         q = q.eq("account_code", account)
     if status:
@@ -717,6 +934,7 @@ def _fetch_expenses(
 
 @router.get("/expenses")
 def list_expenses(
+    request: Request,
     year: Optional[int] = Query(None),
     department: Optional[str] = Query(None),
     account: Optional[str] = Query(None),
@@ -729,7 +947,7 @@ def list_expenses(
     search: Optional[str] = Query(None),
 ):
     return _fetch_expenses(
-        year, department, account, competition_id, general_only,
+        request, year, department, account, competition_id, general_only,
         status, vendor_id, date_from, date_to, search,
     )
 
@@ -737,6 +955,7 @@ def list_expenses(
 # Declarado ANTES de /expenses/{expense_id} — si no, "summary" entra como id.
 @router.get("/expenses/summary")
 def expenses_summary(
+    request: Request,
     year: Optional[int] = Query(None),
     department: Optional[str] = Query(None),
     account: Optional[str] = Query(None),
@@ -746,7 +965,7 @@ def expenses_summary(
     date_to: Optional[str] = Query(None),
 ):
     rows = _fetch_expenses(
-        year=year, department=department, account=account,
+        request, year=year, department=department, account=account,
         competition_id=competition_id, general_only=general_only,
         date_from=date_from, date_to=date_to,
     )
@@ -790,6 +1009,7 @@ def _group_totals(rows: list, key: str) -> list:
 def create_expense(data: ExpenseCreate, request: Request):
     if not _valid_department(data.department_code):
         raise HTTPException(status_code=400, detail="Unknown or inactive department")
+    _assert_can_edit(request, data.department_code)
     _check_account(data.account_code, "expense")
 
     payee_type = data.payee_type or "vendor"
@@ -824,15 +1044,14 @@ def create_expense(data: ExpenseCreate, request: Request):
 
 @router.patch("/expenses/{expense_id}", dependencies=[Depends(require_edit("budget"))])
 def update_expense(expense_id: str, data: ExpenseUpdate, request: Request):
-    current = supabase.table("expenses").select("*").eq("id", expense_id).execute().data
-    if not current:
-        raise HTTPException(status_code=404, detail="Expense not found")
-    current = current[0]
+    current = _row_or_403("expenses", expense_id, request, "edit")
 
     updates = _patch_updates(data, "expenses")
 
-    if "department_code" in updates and not _valid_department(updates["department_code"]):
-        raise HTTPException(status_code=400, detail="Unknown or inactive department")
+    if "department_code" in updates:
+        if not _valid_department(updates["department_code"]):
+            raise HTTPException(status_code=400, detail="Unknown or inactive department")
+        _assert_can_edit(request, updates["department_code"])
     if "account_code" in updates:
         _check_account(updates["account_code"], "expense")
     if "amount" in updates and float(updates["amount"]) < 0:
@@ -882,9 +1101,7 @@ def update_expense(expense_id: str, data: ExpenseUpdate, request: Request):
 @router.post("/expenses/{expense_id}/approve", dependencies=[Depends(require_edit("budget"))])
 def approve_expense(expense_id: str, request: Request):
     """Atajo del flujo: draft → approved. Aprobar no consume presupuesto."""
-    rows = supabase.table("expenses").select("status").eq("id", expense_id).execute().data
-    if not rows:
-        raise HTTPException(status_code=404, detail="Expense not found")
+    rows = [_row_or_403("expenses", expense_id, request, "edit")]
     if rows[0].get("status") != "draft":
         raise HTTPException(status_code=409, detail="Only a draft expense can be approved")
 
@@ -898,12 +1115,13 @@ def approve_expense(expense_id: str, request: Request):
 
 
 @router.delete("/expenses/{expense_id}", dependencies=[Depends(require_edit("budget"))])
-def delete_expense(expense_id: str):
+def delete_expense(expense_id: str, request: Request):
     """Borra el gasto y limpia sus adjuntos de Storage.
 
     El CASCADE de la FK borra las filas de expense_attachments, pero no los
     objetos del bucket: hay que sacarlos a mano (mismo patrón que payments).
     """
+    _row_or_403("expenses", expense_id, request, "edit")
     atts = (
         supabase.table("expense_attachments")
         .select("storage_path")
@@ -922,18 +1140,35 @@ def delete_expense(expense_id: str):
 # ─── Adjuntos ────────────────────────────────────────────────────────────────
 # /attachments/... va antes que /expenses/{id}/... por claridad de rutas; no hay
 # choque porque los prefijos difieren, pero mantenerlos juntos evita sorpresas.
-@router.get("/attachments/{attachment_id}/download")
-def download_attachment(attachment_id: str, filename: Optional[str] = None):
-    """Descarga autenticada por blob. El bucket es privado: nunca URL pública."""
-    row = (
+def _attachment_or_403(attachment_id: str, request: Request, action: str = "view") -> dict:
+    """El adjunto hereda el departamento de su gasto.
+
+    Sin esto el scoping tendría un agujero por la puerta de atrás: los adjuntos
+    se piden por su propio id, así que un designado podría bajarse la factura de
+    otro departamento adivinando (o filtrando) un uuid.
+    """
+    rows = (
         supabase.table("expense_attachments")
-        .select("storage_path, file_name")
+        .select("*, expenses(department_code)")
         .eq("id", attachment_id)
         .execute()
         .data
     )
-    if not row:
+    if not rows:
         raise HTTPException(status_code=404, detail="Attachment not found")
+    row = rows[0]
+    dept = (row.pop("expenses", None) or {}).get("department_code")
+    if not _can_view_department(request, dept):
+        raise HTTPException(status_code=404, detail="Attachment not found")
+    if action == "edit":
+        _assert_can_edit(request, dept)
+    return row
+
+
+@router.get("/attachments/{attachment_id}/download")
+def download_attachment(attachment_id: str, request: Request, filename: Optional[str] = None):
+    """Descarga autenticada por blob. El bucket es privado: nunca URL pública."""
+    row = [_attachment_or_403(attachment_id, request)]
 
     key = _extract_storage_key(row[0].get("storage_path"))
     if not key:
@@ -965,23 +1200,16 @@ def download_attachment(attachment_id: str, filename: Optional[str] = None):
 
 
 @router.delete("/attachments/{attachment_id}", dependencies=[Depends(require_edit("budget"))])
-def delete_attachment(attachment_id: str):
-    row = (
-        supabase.table("expense_attachments")
-        .select("storage_path")
-        .eq("id", attachment_id)
-        .execute()
-        .data
-    )
-    if not row:
-        raise HTTPException(status_code=404, detail="Attachment not found")
+def delete_attachment(attachment_id: str, request: Request):
+    row = _attachment_or_403(attachment_id, request, "edit")
     supabase.table("expense_attachments").delete().eq("id", attachment_id).execute()
-    _delete_from_storage(row[0].get("storage_path"))
+    _delete_from_storage(row.get("storage_path"))
     return {"ok": True}
 
 
 @router.get("/expenses/{expense_id}/attachments")
-def list_attachments(expense_id: str):
+def list_attachments(expense_id: str, request: Request):
+    _row_or_403("expenses", expense_id, request)
     return (
         supabase.table("expense_attachments")
         .select("id, file_name, kind, uploaded_at")
@@ -1003,9 +1231,7 @@ async def upload_attachment(
     file: UploadFile = File(...),
     kind: Optional[str] = Form(None),
 ):
-    exp = supabase.table("expenses").select("id").eq("id", expense_id).execute().data
-    if not exp:
-        raise HTTPException(status_code=404, detail="Expense not found")
+    _row_or_403("expenses", expense_id, request, "edit")
 
     content_type = file.content_type or "application/octet-stream"
     if not any(content_type.startswith(a) for a in _ALLOWED_CONTENT):
@@ -1039,10 +1265,10 @@ async def upload_attachment(
 
 # ─── Recurrentes ─────────────────────────────────────────────────────────────
 @router.get("/recurring")
-def list_recurring(include_inactive: bool = Query(False)):
-    q = supabase.table("recurring_expenses").select(
+def list_recurring(request: Request, include_inactive: bool = Query(False)):
+    q = _scoped(supabase.table("recurring_expenses").select(
         "*, vendors(name), departments(label), accounts(label)"
-    ).order("description")
+    ).order("description"), request)
     if not include_inactive:
         q = q.eq("active", True)
     rows = q.execute().data or []
@@ -1057,6 +1283,7 @@ def list_recurring(include_inactive: bool = Query(False)):
 def create_recurring(data: RecurringCreate, request: Request):
     if not _valid_department(data.department_code):
         raise HTTPException(status_code=400, detail="Unknown or inactive department")
+    _assert_can_edit(request, data.department_code)
     _check_account(data.account_code, "expense")
     if data.frequency not in _FREQUENCIES:
         raise HTTPException(status_code=400, detail="Invalid frequency")
@@ -1094,7 +1321,7 @@ def _covers_period(row: dict, year: int, month: int) -> bool:
 
 
 @router.get("/recurring/pending")
-def pending_recurring(period: str = Query(..., description="'YYYY-MM'")):
+def pending_recurring(request: Request, period: str = Query(..., description="'YYYY-MM'")):
     """Qué gastos recurrentes toca cargar este mes y todavía no se cargaron.
 
     NO crea nada: solo compara las plantillas activas contra los `expenses` que
@@ -1106,13 +1333,12 @@ def pending_recurring(period: str = Query(..., description="'YYYY-MM'")):
         raise HTTPException(status_code=400, detail="period must be 'YYYY-MM'")
     year, month = int(period[0:4]), int(period[5:7])
 
-    templates = (
+    templates = _scoped(
         supabase.table("recurring_expenses")
         .select("*, vendors(name), departments(label), accounts(label)")
-        .eq("active", True)
-        .execute()
-        .data
-    ) or []
+        .eq("active", True),
+        request,
+    ).execute().data or []
     due = [t for t in templates if _covers_period(t, year, month)]
     if not due:
         return []
@@ -1171,6 +1397,9 @@ def generate_recurring(data: RecurringGenerate, request: Request):
         if not tpl:
             raise HTTPException(status_code=404, detail=f"Recurring expense {item.recurring_id} not found")
         tpl = tpl[0]
+        # Generar crea gastos: el permiso se valida por plantilla, no una vez
+        # al entrar — la lista de ítems la manda el cliente.
+        _assert_can_edit(request, tpl.get("department_code"))
 
         # El índice único (recurring_id, recurring_period) ya lo garantiza; se
         # chequea antes para poder reportar el salteo en vez de tirar un 409 y
@@ -1213,10 +1442,13 @@ def generate_recurring(data: RecurringGenerate, request: Request):
 # resuelve en orden de declaración, así que un path param declarado antes se
 # come las rutas literales que comparten prefijo.
 @router.patch("/recurring/{recurring_id}", dependencies=[Depends(require_edit("budget"))])
-def update_recurring(recurring_id: str, data: RecurringUpdate):
+def update_recurring(recurring_id: str, data: RecurringUpdate, request: Request):
+    _row_or_403("recurring_expenses", recurring_id, request, "edit")
     updates = _patch_updates(data, "recurring_expenses")
-    if "department_code" in updates and not _valid_department(updates["department_code"]):
-        raise HTTPException(status_code=400, detail="Unknown or inactive department")
+    if "department_code" in updates:
+        if not _valid_department(updates["department_code"]):
+            raise HTTPException(status_code=400, detail="Unknown or inactive department")
+        _assert_can_edit(request, updates["department_code"])
     if "account_code" in updates:
         _check_account(updates["account_code"], "expense")
     if "frequency" in updates and updates["frequency"] not in _FREQUENCIES:
@@ -1229,8 +1461,9 @@ def update_recurring(recurring_id: str, data: RecurringUpdate):
 
 
 @router.delete("/recurring/{recurring_id}", dependencies=[Depends(require_edit("budget"))])
-def delete_recurring(recurring_id: str):
+def delete_recurring(recurring_id: str, request: Request):
     """Baja lógica si ya generó gastos; borrado real si nunca generó ninguno."""
+    _row_or_403("recurring_expenses", recurring_id, request, "edit")
     used = supabase.table("expenses").select("id").eq("recurring_id", recurring_id).limit(1).execute().data
     if used:
         result = supabase.table("recurring_expenses").update(
@@ -1249,16 +1482,15 @@ def delete_recurring(recurring_id: str):
 # ─── Ingresos ────────────────────────────────────────────────────────────────
 @router.get("/revenues")
 def list_revenues(
+    request: Request,
     year: Optional[int] = Query(None),
     department: Optional[str] = Query(None),
     competition_id: Optional[str] = Query(None),
     status: Optional[str] = Query(None),
 ):
-    q = supabase.table("revenues").select(
+    q = _scoped(supabase.table("revenues").select(
         "*, competitions(name), departments(label), accounts(label)"
-    ).order("expected_date", desc=True)
-    if department:
-        q = q.eq("department_code", department)
+    ).order("expected_date", desc=True), request, department)
     if competition_id:
         q = q.eq("competition_id", competition_id)
     if status:
@@ -1283,6 +1515,7 @@ def list_revenues(
 def create_revenue(data: RevenueCreate, request: Request):
     if not _valid_department(data.department_code):
         raise HTTPException(status_code=400, detail="Unknown or inactive department")
+    _assert_can_edit(request, data.department_code)
     _check_account(data.account_code, "revenue")
     status = data.status or "expected"
     if status not in _REVENUE_STATUSES:
@@ -1299,15 +1532,14 @@ def create_revenue(data: RevenueCreate, request: Request):
 
 
 @router.patch("/revenues/{revenue_id}", dependencies=[Depends(require_edit("budget"))])
-def update_revenue(revenue_id: str, data: RevenueUpdate):
-    current = supabase.table("revenues").select("*").eq("id", revenue_id).execute().data
-    if not current:
-        raise HTTPException(status_code=404, detail="Revenue not found")
-    current = current[0]
+def update_revenue(revenue_id: str, data: RevenueUpdate, request: Request):
+    current = _row_or_403("revenues", revenue_id, request, "edit")
 
     updates = _patch_updates(data, "revenues")
-    if "department_code" in updates and not _valid_department(updates["department_code"]):
-        raise HTTPException(status_code=400, detail="Unknown or inactive department")
+    if "department_code" in updates:
+        if not _valid_department(updates["department_code"]):
+            raise HTTPException(status_code=400, detail="Unknown or inactive department")
+        _assert_can_edit(request, updates["department_code"])
     if "account_code" in updates:
         _check_account(updates["account_code"], "revenue")
 
@@ -1329,7 +1561,8 @@ def update_revenue(revenue_id: str, data: RevenueUpdate):
 
 
 @router.delete("/revenues/{revenue_id}", dependencies=[Depends(require_edit("budget"))])
-def delete_revenue(revenue_id: str):
+def delete_revenue(revenue_id: str, request: Request):
+    _row_or_403("revenues", revenue_id, request, "edit")
     result = supabase.table("revenues").delete().eq("id", revenue_id).execute()
     if not result.data:
         raise HTTPException(status_code=404, detail="Revenue not found")
