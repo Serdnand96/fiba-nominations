@@ -4,6 +4,7 @@ import {
   getEmployeeTripCounts, getEmployeeTrips,
 } from '../api/client'
 import { useLanguage } from '../i18n/LanguageContext'
+import { useToast } from '../components/ui/Toast'
 import { useAuth } from '../contexts/AuthContext'
 
 const EMPTY_FORM = {
@@ -13,6 +14,7 @@ const EMPTY_FORM = {
 
 export default function Employees() {
   const { t } = useLanguage()
+  const { push } = useToast()
   const { hasEdit, hasView } = useAuth()
   const canEdit = hasEdit('employees')
   // Los días compensatorios llevan permiso aparte. Esto es solo UX: el backend
@@ -139,7 +141,7 @@ export default function Employees() {
       setShowForm(false)
       await load()
     } catch (err) {
-      alert(err.response?.data?.detail || err.message)
+      push({ type: 'error', title: err.response?.data?.detail || err.message })
     }
     setSaving(false)
   }
@@ -150,7 +152,7 @@ export default function Employees() {
       await deleteEmployee(emp.id)
       await load()
     } catch (err) {
-      alert(err.response?.data?.detail || err.message)
+      push({ type: 'error', title: err.response?.data?.detail || err.message })
     }
   }
 

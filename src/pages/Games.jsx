@@ -11,6 +11,7 @@ import {
 } from '../api/client'
 import { Icon } from '../lib/icons'
 import { useLanguage } from '../i18n/LanguageContext'
+import { useToast } from '../components/ui/Toast'
 import { useAuth } from '../contexts/AuthContext'
 import CompetitionSearch from '../components/CompetitionSearch'
 import { COUNTRIES, countryName } from '../lib/countries'
@@ -102,6 +103,7 @@ function loadLastSearch() {
 
 export default function Games() {
   const { t } = useLanguage()
+  const { push } = useToast()
   const { hasEdit } = useAuth()
   const canEdit = hasEdit('games')
 
@@ -404,7 +406,7 @@ export default function Games() {
       await reloadCrew()
     } catch (err) {
       const detail = err.response?.data?.detail
-      alert(typeof detail === 'string' ? detail : 'Error')
+      push({ type: 'error', title: typeof detail === 'string' ? detail : 'Error' })
     }
   }
 
@@ -483,7 +485,7 @@ export default function Games() {
       await reloadStaffing()
     } catch (err) {
       const detail = err.response?.data?.detail
-      alert(typeof detail === 'string' ? detail : 'Error')
+      push({ type: 'error', title: typeof detail === 'string' ? detail : 'Error' })
     }
   }
 
@@ -541,7 +543,7 @@ export default function Games() {
         })
         return
       }
-      alert(typeof detail === 'string' ? detail : 'Error')
+      push({ type: 'error', title: typeof detail === 'string' ? detail : 'Error' })
     }
   }
 
@@ -559,7 +561,7 @@ export default function Games() {
         setFlights(await getCompetitionFlights(selectedCompId))
       } catch { /* keep optimistic state if the refetch also fails */ }
       const detail = err.response?.data?.detail
-      alert(typeof detail === 'string' ? detail : 'Error')
+      push({ type: 'error', title: typeof detail === 'string' ? detail : 'Error' })
     }
   }
 
@@ -568,7 +570,7 @@ export default function Games() {
       await deleteGameAssignment(assignmentId)
       await reloadAssignments()
     } catch (err) {
-      alert(err.response?.data?.detail || 'Error')
+      push({ type: 'error', title: err.response?.data?.detail || 'Error' })
     }
   }
 
@@ -891,7 +893,7 @@ export default function Games() {
       setShowModal(false)
       await loadGames()
     } catch (err) {
-      alert(err.response?.data?.detail || 'Error')
+      push({ type: 'error', title: err.response?.data?.detail || 'Error' })
     }
   }
 
@@ -901,7 +903,7 @@ export default function Games() {
       await deleteGame(game.id)
       await loadGames()
     } catch (err) {
-      alert(err.response?.data?.detail || 'Error')
+      push({ type: 'error', title: err.response?.data?.detail || 'Error' })
     }
   }
 

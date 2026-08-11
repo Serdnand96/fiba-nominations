@@ -5,6 +5,7 @@ import {
   getReportFiles, uploadReportFile, deleteReportFile, downloadReportFile,
 } from '../api/client'
 import { useLanguage } from '../i18n/LanguageContext'
+import { useToast } from '../components/ui/Toast'
 import { useAuth } from '../contexts/AuthContext'
 import { readLastSearch, writeLastSearch } from '../lib/lastSearch'
 import CompetitionSearch from '../components/CompetitionSearch'
@@ -49,6 +50,7 @@ function fmtSize(bytes) {
 
 export default function Reports() {
   const { t } = useLanguage()
+  const { push } = useToast()
   const { hasEdit } = useAuth()
   const canEdit = hasEdit('reports')
 
@@ -142,7 +144,7 @@ export default function Reports() {
   async function handleSave(e) {
     e.preventDefault()
     if (!form.title.trim() || !form.competition_id) {
-      alert(t('reports.titleRequired'))
+      push({ type: 'error', title: t('reports.titleRequired') })
       return
     }
     setSaving(true)
@@ -158,7 +160,7 @@ export default function Reports() {
       const fac = await getReportFacets()
       setFacets(fac)
     } catch (err) {
-      alert(err.response?.data?.detail || t('reports.errorSaving'))
+      push({ type: 'error', title: err.response?.data?.detail || t('reports.errorSaving') })
     }
     setSaving(false)
   }
@@ -170,7 +172,7 @@ export default function Reports() {
       closeEditor()
       await load()
     } catch (err) {
-      alert(err.response?.data?.detail || t('reports.errorSaving'))
+      push({ type: 'error', title: err.response?.data?.detail || t('reports.errorSaving') })
     }
   }
 
@@ -184,7 +186,7 @@ export default function Reports() {
       setFiles(await getReportFiles(editing.id))
       await load()
     } catch (err) {
-      alert(err.response?.data?.detail || t('reports.errorUpload'))
+      push({ type: 'error', title: err.response?.data?.detail || t('reports.errorUpload') })
     }
     setUploading(false)
   }
@@ -196,7 +198,7 @@ export default function Reports() {
       setFiles(await getReportFiles(editing.id))
       await load()
     } catch (err) {
-      alert(err.response?.data?.detail || t('reports.errorUpload'))
+      push({ type: 'error', title: err.response?.data?.detail || t('reports.errorUpload') })
     }
   }
 
@@ -213,7 +215,7 @@ export default function Reports() {
       a.remove()
       URL.revokeObjectURL(url)
     } catch (err) {
-      alert(err.response?.data?.detail || t('reports.errorDownload'))
+      push({ type: 'error', title: err.response?.data?.detail || t('reports.errorDownload') })
     }
   }
 

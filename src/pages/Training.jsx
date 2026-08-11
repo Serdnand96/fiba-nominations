@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
 import { useLanguage } from '../i18n/LanguageContext'
+import { useToast } from '../components/ui/Toast'
 import { useAuth } from '../contexts/AuthContext'
 import CompetitionSearch from '../components/CompetitionSearch'
 import {
@@ -36,6 +37,7 @@ function loadLastSearch() {
 
 export default function Training() {
   const { t, lang } = useLanguage()
+  const { push } = useToast()
   const { hasEdit, hasView } = useAuth()
   const canEdit = hasEdit('training')
   const lastSearchRef = useRef(loadLastSearch()) // pending restore, consumed once
@@ -279,7 +281,7 @@ export default function Training() {
       setShowSlotModal(false)
       await loadSlots()
       showToastMsg(editingSlot ? t('training.slotUpdated') : t('training.slotCreated'), 'green')
-    } catch (err) { alert(err.response?.data?.detail || 'Error') }
+    } catch (err) { push({ type: 'error', title: err.response?.data?.detail || 'Error' }) }
   }
 
   async function handleDeleteSlot(slot) {
@@ -369,9 +371,9 @@ export default function Training() {
       })
       setShowExportModal(false)
     } catch (err) {
-      alert(err?.response?.status === 404
+      push({ type: 'error', title: err?.response?.status === 404
         ? t('training.exportScheduleNoData')
-        : (err.detail || err.message))
+        : (err.detail || err.message) })
     }
     setExportingSchedule(false)
   }
@@ -385,7 +387,7 @@ export default function Training() {
     if (!importFile || !importCompId) return
     setImporting(true)
     try { setImportPreview(await previewTrainingExcel(importFile, importCompId, importSport)) }
-    catch (err) { alert(err.response?.data?.detail || 'Error parsing file') }
+    catch (err) { push({ type: 'error', title: err.response?.data?.detail || 'Error parsing file' }) }
     setImporting(false)
   }
 
@@ -393,7 +395,7 @@ export default function Training() {
     if (!importFile || !importCompId) return
     setImporting(true)
     try { setImportResult(await importTrainingExcel(importFile, importCompId, importSport)); await loadSlots() }
-    catch (err) { alert(err.response?.data?.detail || 'Error importing') }
+    catch (err) { push({ type: 'error', title: err.response?.data?.detail || 'Error importing' }) }
     setImporting(false)
   }
 
@@ -479,7 +481,7 @@ export default function Training() {
                 <span className="text-sm font-medium text-ink-700 dark:text-gray-300">{formatDateLabel(selectedDate)}</span>
                 <button onClick={nextDate} disabled={dates.indexOf(selectedDate) >= dates.length - 1}
                   className="px-3 py-1.5 border border-fiba-border rounded-lg text-sm text-fiba-muted disabled:opacity-30 hover:bg-fiba-surface">&rarr;</button>
-                <button onClick={() => downloadTrainingPdf('daily', { competition_id: competitionId, date: selectedDate }).catch(err => alert(err.message))}
+                <button onClick={() => downloadTrainingPdf('daily', { competition_id: competitionId, date: selectedDate }).catch(err => push({ type: 'error', title: err.message }))}
                   className="ml-auto px-3 py-1.5 border border-fiba-border rounded-lg text-sm text-fiba-accent hover:bg-fiba-surface">
                   {t('training.exportPdf')}
                 </button>
@@ -525,7 +527,7 @@ export default function Training() {
                   {teams.map(team => <option key={team} value={team}>{team}</option>)}
                 </select>
                 {selectedTeam && (
-                  <button onClick={() => downloadTrainingPdf('team', { competition_id: competitionId, team_label: selectedTeam }).catch(err => alert(err.message))}
+                  <button onClick={() => downloadTrainingPdf('team', { competition_id: competitionId, team_label: selectedTeam }).catch(err => push({ type: 'error', title: err.message }))}
                     className="ml-auto px-3 py-1.5 border border-fiba-border rounded-lg text-sm text-fiba-accent hover:bg-fiba-surface">
                     {t('training.exportPdf')}
                   </button>
@@ -608,7 +610,7 @@ export default function Training() {
                   </button>
                 )}
                 {selectedTd && (
-                  <button onClick={() => downloadTrainingPdf('competition', { competition_id: competitionId }).catch(err => alert(err.message))}
+                  <button onClick={() => downloadTrainingPdf('competition', { competition_id: competitionId }).catch(err => push({ type: 'error', title: err.message }))}
                     className="ml-auto px-3 py-1.5 border border-fiba-border rounded-lg text-sm text-fiba-accent hover:bg-fiba-surface">
                     {t('training.exportPdf')}
                   </button>

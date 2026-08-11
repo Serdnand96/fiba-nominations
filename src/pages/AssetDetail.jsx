@@ -5,6 +5,7 @@ import {
   createLoan, returnLoan, getEmployees,
 } from '../api/client'
 import { useLanguage } from '../i18n/LanguageContext'
+import { useToast } from '../components/ui/Toast'
 import { useAuth } from '../contexts/AuthContext'
 import { camel, fmtDate } from '../lib/utils'
 
@@ -19,6 +20,7 @@ export default function AssetDetail() {
   const { id } = useParams()
   const navigate = useNavigate()
   const { t } = useLanguage()
+  const { push } = useToast()
   const { hasEdit } = useAuth()
   const canEdit = hasEdit('assets')
   const canEditLoans = hasEdit('loans')
@@ -68,7 +70,7 @@ export default function AssetDetail() {
       await uploadAssetPhoto(id, file)
       await load()
     } catch (err) {
-      alert(err.response?.data?.detail || err.message)
+      push({ type: 'error', title: err.response?.data?.detail || err.message })
     }
     setUploading(false)
     if (fileRef.current) fileRef.current.value = ''
@@ -79,10 +81,10 @@ export default function AssetDetail() {
     try {
       const payload = { asset_id: id, expected_return: loanForm.expected_return || null, notes: loanForm.notes || null }
       if (useFreeText) {
-        if (!loanForm.assigned_to) { alert(t('loans.pickPersonOrType')); return }
+        if (!loanForm.assigned_to) { push({ type: 'error', title: t('loans.pickPersonOrType') }); return }
         payload.assigned_to = loanForm.assigned_to
       } else {
-        if (!loanForm.employee_id) { alert(t('loans.pickPersonOrType')); return }
+        if (!loanForm.employee_id) { push({ type: 'error', title: t('loans.pickPersonOrType') }); return }
         payload.employee_id = loanForm.employee_id
       }
       await createLoan(payload)
@@ -92,7 +94,7 @@ export default function AssetDetail() {
       setEmployeeSearch('')
       await load()
     } catch (err) {
-      alert(err.response?.data?.detail || err.message)
+      push({ type: 'error', title: err.response?.data?.detail || err.message })
     }
   }
 
@@ -102,7 +104,7 @@ export default function AssetDetail() {
       await returnLoan(loanId)
       await load()
     } catch (err) {
-      alert(err.response?.data?.detail || err.message)
+      push({ type: 'error', title: err.response?.data?.detail || err.message })
     }
   }
 

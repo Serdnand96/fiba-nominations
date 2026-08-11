@@ -178,7 +178,7 @@ export default function Nominations() {
       const updated = await updateNominationConfirmation(nom.id, newStatus)
       setNominations(prev => prev.map(n => n.id === nom.id ? { ...n, ...updated } : n))
     } catch (err) {
-      alert(t('nominations.errorUpdatingConfirmation') + ': ' + (err.response?.data?.detail || err.message))
+      push({ type: 'error', title: t('nominations.errorUpdatingConfirmation') + ': ' + (err.response?.data?.detail || err.message) })
     }
   }
 
@@ -268,7 +268,7 @@ export default function Nominations() {
         const result = await createBulkNominations(payload)
         createdIds = result.nominations.map(n => n.id)
         if (result.errors?.length) {
-          alert(`${t('nominations.generated')}: ${result.created}. ${t('personnel.errors')}: ${result.errors.length}`)
+          push({ type: 'error', title: `${t('nominations.generated')}: ${result.created}. ${t('personnel.errors')}: ${result.errors.length}` })
         }
       } else if (form.personnel_ids.length === 1) {
         const result = await createNomination({
@@ -322,7 +322,7 @@ export default function Nominations() {
         if (errorCount > 0) {
           msg += `\n${t('nominations.errorsCount', { count: errorCount })}`
         }
-        alert(msg)
+        push({ type: 'error', title: msg })
       }
 
       await load()
@@ -337,21 +337,21 @@ export default function Nominations() {
       const result = await generateNomination(id)
 
       if (result.error || result.status === 'error') {
-        alert(`${t('nominations.errorGenerating')}:\n${result.error}`)
+        push({ type: 'error', title: `${t('nominations.errorGenerating')}:\n${result.error}` })
         return
       }
 
       await load()
 
       if (result.conversion_error) {
-        alert(`${t('nominations.conversionNote')}\nError: ${result.conversion_error}`)
+        push({ type: 'error', title: `${t('nominations.conversionNote')}\nError: ${result.conversion_error}` })
       }
 
       if (result.pdf_path) {
         downloadFile(result.pdf_path, result.format, id, result.filename)
       }
     } catch (err) {
-      alert(`Error: ${err.message}`)
+      push({ type: 'error', title: `Error: ${err.message}` })
       console.error('Generate error:', err)
     } finally {
       setLoading(false)
@@ -385,7 +385,7 @@ export default function Nominations() {
     setBulkProgress(null)
     await load()
     setSelectedIds(new Set())
-    alert(t('nominations.generatedCount', { success: successCount, total: ids.length }) + (errorCount > 0 ? `\n${t('nominations.errorsCount', { count: errorCount })}` : ''))
+    push({ type: 'error', title: t('nominations.generatedCount', { success: successCount, total: ids.length }) + (errorCount > 0 ? `\n${t('nominations.errorsCount', { count: errorCount })}` : '') })
     setLoading(false)
   }
 
@@ -400,7 +400,7 @@ export default function Nominations() {
   async function handleDeleteNomination(nom) {
     const record = paymentRecordOf(nom)
     if (record) {
-      alert(t('nominations.deleteBlockedPayment', { record }))
+      push({ type: 'error', title: t('nominations.deleteBlockedPayment', { record }) })
       return
     }
     if (!confirm(t('nominations.confirmDelete', { name: nom.personnel?.name }))) return
@@ -408,7 +408,7 @@ export default function Nominations() {
       await deleteNomination(nom.id)
       await load()
     } catch (err) {
-      alert(t('nominations.errorDeleting') + ': ' + (err.response?.data?.detail || err.message))
+      push({ type: 'error', title: t('nominations.errorDeleting') + ': ' + (err.response?.data?.detail || err.message) })
     }
   }
 
@@ -418,7 +418,7 @@ export default function Nominations() {
     const withPayment = rows.filter(n => paymentRecordOf(n))
     const deletable = rows.filter(n => !paymentRecordOf(n))
     if (deletable.length === 0) {
-      alert(t('nominations.bulkAllHavePayments', { count: withPayment.length }))
+      push({ type: 'error', title: t('nominations.bulkAllHavePayments', { count: withPayment.length }) })
       return
     }
     const msg = withPayment.length > 0
@@ -436,13 +436,13 @@ export default function Nominations() {
       // Payments attached between page load and delete (another user/tab):
       // the API refuses those rows even though the pre-check let them through.
       if (res?.blocked?.length > 0) {
-        alert(t('nominations.bulkDeleteBlockedAfter', {
+        push({ type: 'error', title: t('nominations.bulkDeleteBlockedAfter', {
           count: res.blocked.length,
           records: res.blocked.map(b => b.record_no).join(', '),
-        }))
+        }) })
       }
     } catch (err) {
-      alert(t('nominations.errorDeletingBulk') + ': ' + (err.response?.data?.detail || err.message))
+      push({ type: 'error', title: t('nominations.errorDeletingBulk') + ': ' + (err.response?.data?.detail || err.message) })
     }
   }
 
@@ -459,7 +459,7 @@ export default function Nominations() {
       document.body.removeChild(link)
       setTimeout(() => URL.revokeObjectURL(objectUrl), 1000)
     } catch (err) {
-      alert(`${t('nominations.errorGenerating')}: ${err.response?.status || err.message}`)
+      push({ type: 'error', title: `${t('nominations.errorGenerating')}: ${err.response?.status || err.message}` })
     }
   }
 

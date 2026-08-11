@@ -6,6 +6,7 @@ import {
   downloadPaymentAttachment,
 } from '../api/client'
 import { useLanguage } from '../i18n/LanguageContext'
+import { useToast } from '../components/ui/Toast'
 import { useAuth } from '../contexts/AuthContext'
 import { roleLabel, roleBadgeClass } from '../lib/roles'
 import CompetitionSearch from '../components/CompetitionSearch'
@@ -24,6 +25,7 @@ function fmt(n) {
 
 export default function Payments() {
   const { t } = useLanguage()
+  const { push } = useToast()
   const { hasEdit } = useAuth()
   const canEdit = hasEdit('payments')
 
@@ -106,7 +108,7 @@ export default function Payments() {
 
   async function handleSave(e) {
     e?.preventDefault()
-    if (!form.budget_code) { alert(t('payments.budgetRequired')); return }
+    if (!form.budget_code) { push({ type: 'error', title: t('payments.budgetRequired') }); return }
     setSaving(true)
     try {
       const body = {
@@ -128,7 +130,7 @@ export default function Payments() {
       // keep editor open on the same nominee, now with the saved payment
       setEditorNominee(n => n ? { ...n, payment: saved } : n)
     } catch (err) {
-      alert(err.response?.data?.detail || t('payments.errorSaving'))
+      push({ type: 'error', title: err.response?.data?.detail || t('payments.errorSaving') })
     }
     setSaving(false)
   }
@@ -141,7 +143,7 @@ export default function Payments() {
       closeEditor()
       await loadEvent(selectedCompId)
     } catch (err) {
-      alert(err.response?.data?.detail || t('payments.errorSaving'))
+      push({ type: 'error', title: err.response?.data?.detail || t('payments.errorSaving') })
     }
   }
 
@@ -154,7 +156,7 @@ export default function Payments() {
       setAttKind('')
       await loadAttachments(payment.id)
     } catch (err) {
-      alert(err.response?.data?.detail || t('payments.errorUpload'))
+      push({ type: 'error', title: err.response?.data?.detail || t('payments.errorUpload') })
     }
   }
 
@@ -170,7 +172,7 @@ export default function Payments() {
       document.body.removeChild(link)
       setTimeout(() => URL.revokeObjectURL(url), 1000)
     } catch (err) {
-      alert(err.response?.data?.detail || t('payments.errorDownload'))
+      push({ type: 'error', title: err.response?.data?.detail || t('payments.errorDownload') })
     }
   }
 
@@ -180,7 +182,7 @@ export default function Payments() {
       await deletePaymentAttachment(att.id)
       await loadAttachments(payment.id)
     } catch (err) {
-      alert(err.response?.data?.detail || t('payments.errorSaving'))
+      push({ type: 'error', title: err.response?.data?.detail || t('payments.errorSaving') })
     }
   }
 

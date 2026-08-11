@@ -6,6 +6,7 @@ import {
   assignStaff, removeAssignment, getPersonnel, getCompetitionAvailability,
 } from '../api/client'
 import { useLanguage } from '../i18n/LanguageContext'
+import { useToast } from '../components/ui/Toast'
 import { useAuth } from '../contexts/AuthContext'
 
 const COMP_TYPES = [
@@ -66,6 +67,7 @@ function AvailDot({ avail, t }) {
 export default function Calendar() {
   const navigate = useNavigate()
   const { t, lang } = useLanguage()
+  const { push } = useToast()
   const { hasEdit } = useAuth()
   const canEdit = hasEdit('calendar')
   const MONTHS = t('months.names')
@@ -158,7 +160,7 @@ export default function Calendar() {
       setPanelData(await getCalendarCompetition(panelData.id))
       setSelectedPerson(null); setStaffSearch('')
       await load()
-    } catch (err) { alert(err.response?.data?.detail || t('calendar.errorAssigning')) }
+    } catch (err) { push({ type: 'error', title: err.response?.data?.detail || t('calendar.errorAssigning') }) }
     setAssigning(false)
   }
 
@@ -168,7 +170,7 @@ export default function Calendar() {
       await removeAssignment(assignmentId)
       setPanelData(await getCalendarCompetition(panelData.id))
       await load()
-    } catch (err) { alert(err.response?.data?.detail || t('common.error')) }
+    } catch (err) { push({ type: 'error', title: err.response?.data?.detail || t('common.error') }) }
   }
 
   function openCreateEvent() {
@@ -205,7 +207,7 @@ export default function Calendar() {
       }
       setShowEventModal(false)
       await load()
-    } catch (err) { alert(err.response?.data?.detail || t('calendar.errorSaving')) }
+    } catch (err) { push({ type: 'error', title: err.response?.data?.detail || t('calendar.errorSaving') }) }
   }
 
   async function handleDeleteEvent(ev) {
@@ -214,7 +216,7 @@ export default function Calendar() {
       await deleteCalendarEvent(ev.id)
       closePanel()
       await load()
-    } catch (err) { alert(err.response?.data?.detail || t('calendar.errorDeleting')) }
+    } catch (err) { push({ type: 'error', title: err.response?.data?.detail || t('calendar.errorDeleting') }) }
   }
 
   function handleTypeChange(type) {

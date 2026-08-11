@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
 import { useLanguage } from '../../i18n/LanguageContext'
+import { useToast } from '../../components/ui/Toast'
 import {
   getTransportVehicles, getTransportDrivers,
   getTransportTrips, getTransportTripDates, createTransportTrip, updateTransportTrip, deleteTransportTrip,
@@ -44,6 +45,7 @@ const TRIP_TYPE_LABELS = {
 
 export default function TransportTab({ competitionId, selectedComp, canEdit, savedDate, onDateChange }) {
   const { lang } = useLanguage()
+  const { push } = useToast()
   const [tab, setTab] = useState('schedule')
 
   const [eventId, setEventId] = useState(null)
@@ -216,7 +218,7 @@ export default function TransportTab({ competitionId, selectedComp, canEdit, sav
       if (editingTrip) { const { vehicle_id, ...updates } = payload; await updateTransportTrip(editingTrip.id, updates) }
       else { await createTransportTrip(payload) }
       setShowTripModal(false); await loadTrips(); await refreshTripDates()
-    } catch (err) { alert(err.response?.data?.detail || 'Error') }
+    } catch (err) { push({ type: 'error', title: err.response?.data?.detail || 'Error' }) }
   }
 
   // Picking the game pre-fills the leg: pickup leaves the hotel for the venue,
@@ -320,9 +322,9 @@ export default function TransportTab({ competitionId, selectedComp, canEdit, sav
     const win = window.open(url, '_blank')
     if (!win) {
       URL.revokeObjectURL(url)
-      alert(lang === 'es'
+      push({ type: 'error', title: lang === 'es'
         ? 'El navegador bloqueó la ventana emergente. Habilita los popups para exportar el PDF.'
-        : 'The browser blocked the popup window. Enable popups to export the PDF.')
+        : 'The browser blocked the popup window. Enable popups to export the PDF.' })
       return
     }
     setTimeout(() => { win.print(); URL.revokeObjectURL(url) }, 600)

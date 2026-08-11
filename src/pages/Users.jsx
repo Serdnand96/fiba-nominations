@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { getUsers, createUser, deleteUser, updateUserPassword, getUserPermissions, updateUserPermissions } from '../api/client'
 import { useLanguage } from '../i18n/LanguageContext'
+import { useToast } from '../components/ui/Toast'
 import { useAuth } from '../contexts/AuthContext'
 
 const MODULES = ['calendar', 'nominations', 'payments', 'personnel', 'competitions', 'templates', 'users', 'logistics', 'availability', 'training', 'games', 'assets', 'loans', 'employees', 'reports', 'evaluations', 'comp_days']
@@ -10,6 +11,7 @@ const VIEW_ONLY_MODULES = new Set(['comp_days'])
 
 export default function Users() {
   const { t } = useLanguage()
+  const { push } = useToast()
   const { isSuperadmin, hasEdit } = useAuth()
   const canEdit = hasEdit('users')
   const [users, setUsers] = useState([])
@@ -71,7 +73,7 @@ export default function Users() {
       await deleteUser(user.id)
       loadUsers()
     } catch (err) {
-      alert(t('users.errorDeleting') + ': ' + (err.response?.data?.detail || err.message))
+      push({ type: 'error', title: t('users.errorDeleting') + ': ' + (err.response?.data?.detail || err.message) })
     }
   }
 
@@ -143,7 +145,7 @@ export default function Users() {
       setPermSuccess(true)
       setTimeout(() => setPermSuccess(false), 2000)
     } catch (err) {
-      alert(err.response?.data?.detail || t('permissions.errorSaving'))
+      push({ type: 'error', title: err.response?.data?.detail || t('permissions.errorSaving') })
     }
     setPermSaving(false)
   }

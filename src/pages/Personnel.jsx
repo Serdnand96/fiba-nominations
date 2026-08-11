@@ -137,7 +137,7 @@ export default function Personnel() {
           await load()
         }
       } else {
-        alert(err.response?.data?.detail || t('personnel.errorDeleting'))
+        push({ type: 'error', title: err.response?.data?.detail || t('personnel.errorDeleting') })
       }
     }
   }

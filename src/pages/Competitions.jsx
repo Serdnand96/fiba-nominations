@@ -142,7 +142,7 @@ export default function Competitions() {
           await load()
         }
       } else {
-        alert(err.response?.data?.detail || t('competitions.errorDeleting'))
+        push({ type: 'error', title: err.response?.data?.detail || t('competitions.errorDeleting') })
       }
     }
   }

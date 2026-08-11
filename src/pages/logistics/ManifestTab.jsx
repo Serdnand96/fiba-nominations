@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useLanguage } from '../../i18n/LanguageContext'
+import { useToast } from '../../components/ui/Toast'
 import {
   getLogisticsParticipants, createLogisticsParticipant, updateLogisticsParticipant,
   deleteLogisticsParticipant, seedLogisticsFromCrew,
@@ -75,6 +76,7 @@ function LegCell({ participant, direction, lang, canEdit, openLeg }) {
 
 export default function ManifestTab({ competitionId, canEdit }) {
   const { lang } = useLanguage()
+  const { push } = useToast()
   const t = (es, en) => (lang === 'es' ? es : en)
 
   const [view, setView] = useState('people')
@@ -138,7 +140,7 @@ export default function ManifestTab({ competitionId, canEdit }) {
       if (editingPerson) await updateLogisticsParticipant(editingPerson.id, payload)
       else await createLogisticsParticipant({ ...payload, competition_id: competitionId })
       setShowPersonModal(false); await load()
-    } catch (err) { alert(err.response?.data?.detail || 'Error') }
+    } catch (err) { push({ type: 'error', title: err.response?.data?.detail || 'Error' }) }
   }
 
   async function handleDeletePerson(p) {
@@ -152,10 +154,10 @@ export default function ManifestTab({ competitionId, canEdit }) {
     try {
       const res = await seedLogisticsFromCrew(competitionId)
       if (res.created === 0) {
-        alert(t('No hay oficiales asignados nuevos para agregar.', 'No new assigned officials to add.'))
+        push({ type: 'info', title: t('No hay oficiales asignados nuevos para agregar.', 'No new assigned officials to add.') })
       }
       await load()
-    } catch (err) { alert(err.response?.data?.detail || 'Error') }
+    } catch (err) { push({ type: 'error', title: err.response?.data?.detail || 'Error' }) }
   }
 
   function openLeg(participant, direction) {
@@ -180,7 +182,7 @@ export default function ManifestTab({ competitionId, canEdit }) {
       if (legTarget.leg) await updateLogisticsTravelLeg(legTarget.leg.id, payload)
       else await createLogisticsTravelLeg({ ...payload, participant_id: legTarget.participant.id })
       setLegTarget(null); await load()
-    } catch (err) { alert(err.response?.data?.detail || 'Error') }
+    } catch (err) { push({ type: 'error', title: err.response?.data?.detail || 'Error' }) }
   }
 
   const VIEW_LABELS = {

@@ -2,11 +2,13 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { getLoans, returnLoan, deleteLoan } from '../api/client'
 import { useLanguage } from '../i18n/LanguageContext'
+import { useToast } from '../components/ui/Toast'
 import { useAuth } from '../contexts/AuthContext'
 import { fmtDate } from '../lib/utils'
 
 export default function Loans() {
   const { t } = useLanguage()
+  const { push } = useToast()
   const { hasEdit } = useAuth()
   const canEdit = hasEdit('loans')
 
@@ -50,7 +52,7 @@ export default function Loans() {
       await returnLoan(loan.id)
       await load()
     } catch (err) {
-      alert(err.response?.data?.detail || err.message)
+      push({ type: 'error', title: err.response?.data?.detail || err.message })
     }
   }
 
@@ -60,7 +62,7 @@ export default function Loans() {
       await deleteLoan(loan.id)
       await load()
     } catch (err) {
-      alert(err.response?.data?.detail || err.message)
+      push({ type: 'error', title: err.response?.data?.detail || err.message })
     }
   }
 

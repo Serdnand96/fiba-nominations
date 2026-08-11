@@ -3,6 +3,7 @@ import { getCalendarCompetitions, getPersonnel, getCompetitionAvailability,
   createAvailability, updateAvailability,
   getAvailabilityLinks, rotateAvailabilityLink } from '../api/client'
 import { useLanguage } from '../i18n/LanguageContext'
+import { useToast } from '../components/ui/Toast'
 import { useAuth } from '../contexts/AuthContext'
 import { Card } from '../components/ui/Card'
 import { Avatar } from '../components/ui/Avatar'
@@ -35,6 +36,7 @@ const isWeekend = (d) => [0, 6].includes(d.getDay())
 
 export default function Availability() {
   const { t, lang } = useLanguage()
+  const { push } = useToast()
   const { hasEdit } = useAuth()
   const canEdit = hasEdit('availability')
   const [competitions, setCompetitions] = useState([])
@@ -168,7 +170,7 @@ export default function Availability() {
       setAvailData(prev => ({ ...prev, [modal.competition.id]: updated }))
       setModal(null)
     } catch (err) {
-      alert(err.response?.data?.detail || t('availability.errorSaving'))
+      push({ type: 'error', title: err.response?.data?.detail || t('availability.errorSaving') })
     }
     setSaving(false)
   }
@@ -488,7 +490,7 @@ function LinksModal({ t, onClose }) {
       const updated = await rotateAvailabilityLink(link.role)
       setLinks(prev => prev.map(l => (l.role === updated.role ? updated : l)))
     } catch {
-      alert(t('availability.linksError'))
+      push({ type: 'error', title: t('availability.linksError') })
     }
     setRotating(null)
   }

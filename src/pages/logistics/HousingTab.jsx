@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useLanguage } from '../../i18n/LanguageContext'
+import { useToast } from '../../components/ui/Toast'
 import {
   getLogisticsHotels, createLogisticsHotel, updateLogisticsHotel, deleteLogisticsHotel,
   getLogisticsRooming, createLogisticsStay, updateLogisticsStay, deleteLogisticsStay,
@@ -31,6 +32,7 @@ function shortDate(iso, lang) {
 
 export default function HousingTab({ competitionId, canEdit }) {
   const { lang } = useLanguage()
+  const { push } = useToast()
   const t = (es, en) => (lang === 'es' ? es : en)
 
   const [hotels, setHotels] = useState([])
@@ -93,7 +95,7 @@ export default function HousingTab({ competitionId, canEdit }) {
       if (editingHotel) await updateLogisticsHotel(editingHotel.id, payload)
       else await createLogisticsHotel({ ...payload, competition_id: competitionId })
       setShowHotelModal(false); await load()
-    } catch (err) { alert(err.response?.data?.detail || 'Error') }
+    } catch (err) { push({ type: 'error', title: err.response?.data?.detail || 'Error' }) }
   }
 
   async function handleDeleteHotel(h) {
@@ -136,7 +138,7 @@ export default function HousingTab({ competitionId, canEdit }) {
         await createLogisticsStay(payload)
       }
       setShowStayModal(false); await load()
-    } catch (err) { alert(err.response?.data?.detail || 'Error') }
+    } catch (err) { push({ type: 'error', title: err.response?.data?.detail || 'Error' }) }
   }
 
   async function handleDeleteStay(row) {
@@ -154,7 +156,7 @@ export default function HousingTab({ competitionId, canEdit }) {
       setShowMealModal(false)
       setMealForm({ meal: 'breakfast', date: '', start_time: '', end_time: '', location: '', hotel_id: '', notes: '' })
       await load()
-    } catch (err) { alert(err.response?.data?.detail || 'Error') }
+    } catch (err) { push({ type: 'error', title: err.response?.data?.detail || 'Error' }) }
   }
 
   async function handleDeleteMeal(m) {

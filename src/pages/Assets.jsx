@@ -4,6 +4,7 @@ import {
   getAssets, createAsset, updateAsset, retireAsset,
 } from '../api/client'
 import { useLanguage } from '../i18n/LanguageContext'
+import { useToast } from '../components/ui/Toast'
 import { useAuth } from '../contexts/AuthContext'
 import { camel } from '../lib/utils'
 
@@ -23,6 +24,7 @@ const EMPTY_FORM = {
 
 export default function Assets() {
   const { t } = useLanguage()
+  const { push } = useToast()
   const { hasEdit } = useAuth()
   const canEdit = hasEdit('assets')
 
@@ -111,7 +113,7 @@ export default function Assets() {
       setShowForm(false)
       await load()
     } catch (err) {
-      alert(err.response?.data?.detail || err.message)
+      push({ type: 'error', title: err.response?.data?.detail || err.message })
     }
     setSaving(false)
   }
@@ -122,7 +124,7 @@ export default function Assets() {
       await retireAsset(asset.id)
       await load()
     } catch (err) {
-      alert(err.response?.data?.detail || err.message)
+      push({ type: 'error', title: err.response?.data?.detail || err.message })
     }
   }
 

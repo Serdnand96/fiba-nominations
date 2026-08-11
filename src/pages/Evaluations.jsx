@@ -4,6 +4,7 @@ import {
   createEvaluation, updateEvaluation, deleteEvaluation, getPersonnelEvaluations,
 } from '../api/client'
 import { useLanguage } from '../i18n/LanguageContext'
+import { useToast } from '../components/ui/Toast'
 import { useAuth } from '../contexts/AuthContext'
 import { roleLabel, roleBadgeClass } from '../lib/roles'
 import { readLastSearch, writeLastSearch } from '../lib/lastSearch'
@@ -62,6 +63,7 @@ function StarRating({ value, max, disabled, onChange }) {
 
 export default function Evaluations() {
   const { t } = useLanguage()
+  const { push } = useToast()
   const { hasEdit } = useAuth()
   const canEdit = hasEdit('evaluations')
 
@@ -176,7 +178,7 @@ export default function Evaluations() {
       await load()
       getPersonnelEvaluations(target.personnel_id).then(setHistory).catch(() => {})
     } catch (err) {
-      alert(err.response?.data?.detail || t('evaluations.errorSaving'))
+      push({ type: 'error', title: err.response?.data?.detail || t('evaluations.errorSaving') })
     }
     setSaving(false)
   }
@@ -188,7 +190,7 @@ export default function Evaluations() {
       closeEditor()
       await load()
     } catch (err) {
-      alert(err.response?.data?.detail || t('evaluations.errorSaving'))
+      push({ type: 'error', title: err.response?.data?.detail || t('evaluations.errorSaving') })
     }
   }
 
