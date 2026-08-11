@@ -4,16 +4,19 @@ FIBA website scraping for auto-import, results sync, and per-game
 TD/VGO assignments (WCQ, BCLA, LSB).
 """
 import io
+import logging
 import os
 import re
 from fastapi import APIRouter, HTTPException, Query, UploadFile, File, Form, Depends
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Optional, List
 from datetime import datetime, timedelta, timezone
 
 from api._lib.database import supabase
 from api._lib.auth import require_view, require_edit
 from api._lib.crew import get_competition, is_tournament_mode, list_crew
+
+logger = logging.getLogger(__name__)
 from api._lib.net import safe_get
 from api._lib.roles import VALID_ROLES
 from api._lib.travel import sede_pairs, format_sedes
@@ -41,8 +44,8 @@ class GameCreate(BaseModel):
     team_b: str
     team_b_code: Optional[str] = None
     team_b_country: Optional[str] = None
-    score_a: Optional[int] = None
-    score_b: Optional[int] = None
+    score_a: Optional[int] = Field(default=None, ge=0)
+    score_b: Optional[int] = Field(default=None, ge=0)
     venue: Optional[str] = None
     city: Optional[str] = None
     country: Optional[str] = None
@@ -62,8 +65,8 @@ class GameUpdate(BaseModel):
     team_b: Optional[str] = None
     team_b_code: Optional[str] = None
     team_b_country: Optional[str] = None
-    score_a: Optional[int] = None
-    score_b: Optional[int] = None
+    score_a: Optional[int] = Field(default=None, ge=0)
+    score_b: Optional[int] = Field(default=None, ge=0)
     venue: Optional[str] = None
     city: Optional[str] = None
     country: Optional[str] = None
@@ -249,6 +252,7 @@ def sync_results(competition_id: str = Query(...)):
 
     synced = 0
     created = 0
+    errors = []
 
     for fiba_game in games_data:
         # Try to match by fiba_game_id first
@@ -287,10 +291,18 @@ def sync_results(competition_id: str = Query(...)):
             try:
                 supabase.table("game_schedule").insert(record).execute()
                 created += 1
-            except Exception:
-                pass
+            except Exception as e:
+                # No abortar todo el sync por un partido malo, pero tampoco
+                # tragarlo: el usuario veía 'created' menor a lo esperado sin
+                # ninguna pista de qué partido falló ni por qué.
+                logger.warning("sync_results: no se pudo insertar partido %s: %s",
+                               fiba_game.get("fiba_game_id") or fiba_game.get("team_a"), e)
+                errors.append({
+                    "game": f"{fiba_game.get('team_a')} vs {fiba_game.get('team_b')} ({fiba_game.get('date')})",
+                    "error": str(e),
+                })
 
-    return {"synced": synced, "created": created, "total_from_fiba": len(games_data)}
+    return {"synced": synced, "created": created, "total_from_fiba": len(games_data), "errors": errors}
 
 
 # ── FIBA API integration ────────────────────────────────────────────────────

@@ -13,7 +13,7 @@ from typing import Optional
 
 import qrcode
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, UploadFile, File
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from api._lib.auth import require_edit, require_view
 from api._lib.database import supabase
@@ -50,7 +50,9 @@ class ParticipantCreate(BaseModel):
     phone: Optional[str] = None
     email: Optional[str] = None
     dietary_restrictions: Optional[str] = None
-    pax: int = 1
+    # pax cuenta cabezas en un grupo de traslado/hospedaje; 0 o negativo no tiene
+    # sentido y build_movement_groups lo enmascara con `or 1`.
+    pax: int = Field(default=1, ge=1)
     notes: Optional[str] = None
 
 

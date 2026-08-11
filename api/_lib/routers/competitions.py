@@ -53,16 +53,49 @@ def update_competition(competition_id: str, data: CompetitionUpdate):
 
 @router.delete("/{competition_id}", dependencies=[Depends(require_edit("competitions"))])
 def delete_competition(competition_id: str, force: bool = False):
-    noms = supabase.table("nominations").select("id").eq("competition_id", competition_id).execute()
-    if noms.data:
-        if not force:
-            raise HTTPException(
-                status_code=409,
-                detail=f"Tiene {len(noms.data)} nominación(es) asociada(s)."
-            )
-        for n in noms.data:
-            supabase.table("nominations").delete().eq("id", n["id"]).execute()
+    # Reuse el chequeo de pagos y la limpieza de Storage de nominations: borrar
+    # una nominación a mano (raw DELETE) se saltaba ambos, perdía EP records por
+    # la cascada y dejaba PDFs huérfanos en el bucket privado.
+    from api._lib.routers.nominations import _payment_records_for, _delete_pdf_from_storage
+
+    noms = (
+        supabase.table("nominations")
+        .select("id, pdf_path")
+        .eq("competition_id", competition_id)
+        .execute()
+        .data
+    ) or []
+    nom_ids = [n["id"] for n in noms]
+
+    # Un pago atado a CUALQUIER nominación bloquea todo el borrado, con o sin
+    # force: la cascada lo destruiría en silencio (así desaparecieron EP-00001..5).
+    with_payment = _payment_records_for(nom_ids)
+    if with_payment:
+        records = ", ".join(sorted(with_payment.values()))
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"No se puede eliminar: hay pago(s) {records} asociado(s) a "
+                f"nominaciones de esta competencia. Eliminá el/los pago(s) primero "
+                f"en el módulo Pagos."
+            ),
+        )
+
+    if noms and not force:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"Tiene {len(noms)} nominación(es) asociada(s). Confirmá para "
+                f"eliminarla: también se borrarán reportes, evaluaciones y "
+                f"logística de esta competencia."
+            ),
+        )
+
+    for n in noms:
+        supabase.table("nominations").delete().eq("id", n["id"]).execute()
+        _delete_pdf_from_storage(n.get("pdf_path"))
+
     result = supabase.table("competitions").delete().eq("id", competition_id).execute()
     if not result.data:
         raise HTTPException(status_code=404, detail="Competition not found")
-    return {"ok": True, "nominations_deleted": len(noms.data) if noms.data else 0}
+    return {"ok": True, "nominations_deleted": len(noms)}

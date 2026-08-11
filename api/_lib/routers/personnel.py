@@ -187,21 +187,46 @@ def update_personnel(person_id: str, data: PersonnelUpdate):
 
 @router.delete("/{person_id}", dependencies=[Depends(require_edit("personnel"))])
 def delete_personnel(person_id: str, force: bool = False):
-    # Check if person has nominations
-    noms = supabase.table("nominations").select("id").eq("personnel_id", person_id).execute()
-    if noms.data:
-        if not force:
-            raise HTTPException(
-                status_code=409,
-                detail=f"Tiene {len(noms.data)} nominación(es) asociada(s)."
-            )
-        # Delete associated nominations first
-        for n in noms.data:
-            supabase.table("nominations").delete().eq("id", n["id"]).execute()
+    # Mismo patrón que delete_competition: bloquear si hay pagos y limpiar los
+    # PDFs del bucket, en vez de un raw DELETE que perdía EP records y dejaba
+    # objetos huérfanos en Storage.
+    from api._lib.routers.nominations import _payment_records_for, _delete_pdf_from_storage
+
+    noms = (
+        supabase.table("nominations")
+        .select("id, pdf_path")
+        .eq("personnel_id", person_id)
+        .execute()
+        .data
+    ) or []
+    nom_ids = [n["id"] for n in noms]
+
+    with_payment = _payment_records_for(nom_ids)
+    if with_payment:
+        records = ", ".join(sorted(with_payment.values()))
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"No se puede eliminar: hay pago(s) {records} asociado(s) a "
+                f"nominaciones de esta persona. Eliminá el/los pago(s) primero "
+                f"en el módulo Pagos."
+            ),
+        )
+
+    if noms and not force:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Tiene {len(noms)} nominación(es) asociada(s).",
+        )
+
+    for n in noms:
+        supabase.table("nominations").delete().eq("id", n["id"]).execute()
+        _delete_pdf_from_storage(n.get("pdf_path"))
+
     result = supabase.table("personnel").delete().eq("id", person_id).execute()
     if not result.data:
         raise HTTPException(status_code=404, detail="Person not found")
-    return {"ok": True, "nominations_deleted": len(noms.data) if noms.data else 0}
+    return {"ok": True, "nominations_deleted": len(noms)}
 
 
 @router.post("/{person_id}/photo", dependencies=[Depends(require_edit("personnel"))])

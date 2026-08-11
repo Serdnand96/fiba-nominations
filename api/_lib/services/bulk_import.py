@@ -4,6 +4,7 @@ import re
 from openpyxl import load_workbook
 from api._lib.database import supabase
 from api._lib.countries import name_to_code
+from api._lib.roles import VALID_ROLES
 
 COLUMN_MAP = {
     "nombre": "name",
@@ -53,6 +54,11 @@ def _read_xlsx(file_bytes: bytes) -> list[dict]:
         row = {}
         for i, val in enumerate(row_vals):
             if i < len(headers):
+                # Excel entrega números como float aunque la celda sea un
+                # passport/teléfono "12345678" con formato General → str(val)
+                # guardaría "12345678.0". Normalizar los enteros disfrazados.
+                if isinstance(val, float) and val.is_integer():
+                    val = int(val)
                 row[headers[i]] = str(val) if val is not None else ""
         rows.append(row)
     return rows
@@ -117,8 +123,8 @@ def process_bulk_import(file_bytes: bytes, filename: str) -> dict:
         if not EMAIL_REGEX.match(email):
             errors.append({"row": row_num, "email": email, "reason": "Invalid email format"})
             continue
-        if role not in ("VGO", "TD", "REF", "REF_INSTRUCTOR", "VIDEO_OPERATOR"):
-            errors.append({"row": row_num, "email": email, "reason": f"Role must be VGO, TD, REF, REF_INSTRUCTOR or VIDEO_OPERATOR, got '{role}'"})
+        if role not in VALID_ROLES:
+            errors.append({"row": row_num, "email": email, "reason": f"Role must be one of {', '.join(VALID_ROLES)}, got '{role}'"})
             continue
         if email.lower() in existing_emails:
             skipped += 1

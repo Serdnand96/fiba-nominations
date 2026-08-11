@@ -431,18 +431,29 @@ def read_manifest(content: bytes, competition_id: str) -> dict:
                 break
 
     for row_idx in range(header_row + 1, staff_sheet.max_row + 1):
-        first = clean(_cell(staff_sheet, row_idx, col_first_name))
-        last = clean(_cell(staff_sheet, row_idx, col_last_name))
+        raw_first = clean(_cell(staff_sheet, row_idx, col_first_name))
+        raw_last = clean(_cell(staff_sheet, row_idx, col_last_name))
         role = clean(_cell(staff_sheet, row_idx, col_role))
-        if not first and not last:
+        if not raw_first and not raw_last:
             continue
         # "TBC / TBC" es un lugar reservado sin persona todavía; clean() lo
         # vuelve None y la fila queda descartada salvo que traiga cargo.
-        if not first and not last and not role:
+        if not raw_first and not raw_last and not role:
             continue
 
+        # Mismas planillas que la rooming: Names / Last Name vienen invertidos en
+        # varias filas. Decidir el orden por cuál combinación se parece más a
+        # alguien del padrón, no por el header (antes read_manifest confiaba en
+        # las columnas y guardaba nombre/apellido cambiados de lugar).
+        direct = " ".join(x for x in (raw_first, raw_last) if x)
+        swapped = " ".join(x for x in (raw_last, raw_first) if x)
+        match_direct = directory.match(direct)
+        match_swapped = directory.match(swapped)
+        if match_swapped["score"] > match_direct["score"]:
+            first, last, match = raw_last, raw_first, match_swapped
+        else:
+            first, last, match = raw_first, raw_last, match_direct
         name = " ".join(x for x in (first, last) if x)
-        match = directory.match(name)
         if match["status"] == "review":
             warnings.append(review_warning(row_idx, name, match))
 
@@ -922,6 +933,42 @@ def commit_rooming(content: bytes, competition_id: str) -> dict:
             continue
         supabase.table("logistics_stays").update({"share_with_id": partner}).eq("participant_id", me).execute()
         supabase.table("logistics_stays").update({"share_with_id": me}).eq("participant_id", partner).execute()
+
+    # Habitaciones de 3+ personas: share_with_id es una FK singular (pairwise),
+    # así que un cuarto triple/cuádruple no se puede representar completo —el
+    # holder termina apuntando a una sola compañera y las demás se pierden en
+    # silencio, incluido en el conteo de noches que se factura al hotel—. En vez
+    # de tragarlo, detectar la componente conexa de "comparte con" y avisar.
+    _share_adj: dict = {}
+    for row in parsed["rows"]:
+        partner_row = row["stay"].get("share_with_row")
+        if not partner_row:
+            continue
+        a, b = row["source_row"], partner_row
+        _share_adj.setdefault(a, set()).add(b)
+        _share_adj.setdefault(b, set()).add(a)
+    _seen_rows: set = set()
+    for start in _share_adj:
+        if start in _seen_rows:
+            continue
+        stack, comp = [start], set()
+        while stack:
+            node = stack.pop()
+            if node in comp:
+                continue
+            comp.add(node)
+            _seen_rows.add(node)
+            stack.extend(_share_adj.get(node, ()))
+        if len(comp) > 2:
+            warnings.append({
+                "row": min(comp),
+                "field": "share_with",
+                "message": (
+                    f"Habitación compartida por {len(comp)} personas "
+                    f"(filas {sorted(comp)}): el modelo solo guarda parejas, "
+                    f"revisá esta habitación en el rooming a mano."
+                ),
+            })
 
     return {
         "participants_total": len(parsed["rows"]),

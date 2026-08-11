@@ -128,6 +128,15 @@ def generate_nomination(nomination_data: dict) -> tuple[str, str | None, str | N
 
     # Upload to Supabase Storage
     storage_url = _upload_to_storage(final_path, base_name)
+    if storage_url:
+        # Subida OK: OUTPUT_DIR es compartido y persistente (no un tempdir por
+        # llamada), así que los locales ya no se necesitan. Sin esto se acumulan
+        # dos archivos por carta —cientos por temporada— hasta llenar el disco.
+        for p in {str(docx_path), final_path}:
+            try:
+                os.remove(p)
+            except OSError:
+                pass
     return final_path, storage_url, conversion_error
 
 
@@ -336,7 +345,11 @@ def _fee_lines(data: dict, *, incidentals_label: str = "Incidentals",
     fee = data.get("window_fee") or 0
     incidentals = data.get("incidentals") or 0
     game_dates = data.get("game_dates") or []
-    num_games = max(len(game_dates), 1)
+    # NO forzar a 1: una carta per_game generada antes de que se carguen los
+    # partidos (sync que no corrió, click apurado) mostraba fee × 1 —un cargo de
+    # un partido, creíble y equivocado—. Con 0 partidos el total queda
+    # visiblemente incompleto (solo incidentals) y delata el problema.
+    num_games = len(game_dates)
 
     subtotal = fee * num_games if fee_type == "per_game" else fee
     total = subtotal + incidentals

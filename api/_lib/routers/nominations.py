@@ -453,6 +453,9 @@ def generate_nomination_doc(nomination_id: str):
     try:
         local_path, storage_url, conversion_error = generate_nomination(nom_data)
     except Exception:
+        # Loguear el traceback real: sin esto, un fallo de LibreOffice/docxtpl
+        # no deja ningún rastro server-side y journalctl no ayuda a debuggear.
+        logger.exception("generate_nomination_doc failed for nomination %s", nomination_id)
         raise HTTPException(status_code=500, detail="Document generation failed. Please try again.")
 
     # Save the best available path

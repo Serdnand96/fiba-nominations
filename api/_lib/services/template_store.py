@@ -78,9 +78,16 @@ def _download(key: str) -> bytes | None:
             follow_redirects=True,
         )
     except Exception:
+        # No romper la generación de cartas si Storage está caído, PERO dejar
+        # rastro: sin esto, un blip de red hace que un template custom subido
+        # caiga al built-in genérico sin ninguna pista en journalctl.
+        logger.warning("template_store: no se pudo bajar %s (Storage inalcanzable)", key, exc_info=True)
         return None
 
-    return resp.content if resp.status_code == 200 else None
+    if resp.status_code != 200:
+        logger.warning("template_store: GET %s devolvió %s", key, resp.status_code)
+        return None
+    return resp.content
 
 
 def _exists(key: str) -> bool:
@@ -104,6 +111,7 @@ def _exists(key: str) -> bool:
             follow_redirects=True,
         )
     except Exception:
+        logger.warning("template_store: HEAD %s falló (Storage inalcanzable)", key, exc_info=True)
         return False
 
     return resp.status_code == 200

@@ -1,5 +1,5 @@
 from fastapi import APIRouter, HTTPException, Query, Depends
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Optional
 from collections import Counter
 
@@ -22,7 +22,9 @@ class CalendarEventCreate(BaseModel):
     competition_type: str
     template_key: Optional[str] = None
     year: int = 2026
-    month: int
+    # Validar el rango: sin esto se podía crear una competencia con month=13,
+    # que después nunca aparecía al filtrar por mes (el GET sí valida 1-12).
+    month: int = Field(ge=1, le=12)
     start_date: Optional[str] = None
     end_date: Optional[str] = None
     location: Optional[str] = None
@@ -35,7 +37,7 @@ class CalendarEventUpdate(BaseModel):
     competition_type: Optional[str] = None
     template_key: Optional[str] = None
     year: Optional[int] = None
-    month: Optional[int] = None
+    month: Optional[int] = Field(default=None, ge=1, le=12)
     start_date: Optional[str] = None
     end_date: Optional[str] = None
     location: Optional[str] = None

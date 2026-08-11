@@ -1,5 +1,10 @@
 from pydantic import BaseModel
-from typing import Optional
+from typing import Literal, Optional
+
+# fee_type gobierna todo el dispatch per-game vs. tournament. Un str libre dejaba
+# pasar typos ('Tournament') que caían a per_game en silencio; un Literal los
+# rechaza con 422.
+FeeType = Literal["per_game", "tournament"]
 
 
 class LetterTemplateCreate(BaseModel):
@@ -47,7 +52,7 @@ class CompetitionCreate(BaseModel):
     template_key: str
     year: Optional[int] = None
     fiba_games_url: Optional[str] = None
-    fee_type: Optional[str] = "per_game"  # 'per_game' or 'tournament'
+    fee_type: Optional[FeeType] = "per_game"
     # National-team event → referee neutrality restriction applies.
     # None → derived from template_key (WCQ) at creation.
     is_national_team: Optional[bool] = None
@@ -58,7 +63,7 @@ class CompetitionUpdate(BaseModel):
     template_key: Optional[str] = None
     year: Optional[int] = None
     fiba_games_url: Optional[str] = None
-    fee_type: Optional[str] = None
+    fee_type: Optional[FeeType] = None
     is_national_team: Optional[bool] = None
     # Nomination defaults used by the per-game assignment workflow
     default_letter_date: Optional[str] = None
