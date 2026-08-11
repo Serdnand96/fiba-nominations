@@ -15,11 +15,16 @@
 -- `pg_dump --schema-only` → 000_baseline.sql. Requiere la connection string de
 -- prod, así que queda como acción manual del checklist, no en esta migración.
 
+-- APLICADA a prod el 2026-08-11 (proyecto mckaplalscnvaanukrmz). Idempotente:
+-- fee_type y pax check YA existían en prod (deriva previa), así que van con
+-- guarda para poder re-ejecutar sin fallar.
+
 begin;
 
--- 1. nominations.total: NULL + N = NULL. 12 nominaciones tienen window_fee o
+-- 1. nominations.total: NULL + N = NULL. 12 nominaciones tenían window_fee o
 --    incidentals vacío → total NULL, y el pago las tomaba como $0. La expresión
 --    de una columna GENERATED no se puede ALTERar: hay que recrearla.
+--    (Tras aplicar: 0 nominaciones con total NULL.)
 alter table nominations drop column total;
 alter table nominations
   add column total numeric
@@ -27,10 +32,14 @@ alter table nominations
 
 -- 2. nominations: una sola nominación por (competencia, persona). El sync lo
 --    simulaba en memoria; dos syncs concurrentes (o sync + alta manual) creaban
---    dos filas → dos cartas, dos window fees, dos pagos. Prod hoy: 0 duplicados.
-alter table nominations
-  add constraint nominations_competition_personnel_key
-  unique (competition_id, personnel_id);
+--    dos filas → dos cartas, dos window fees, dos pagos. Prod: 0 duplicados.
+do $$ begin
+  if not exists (select 1 from pg_constraint where conname = 'nominations_competition_personnel_key') then
+    alter table nominations
+      add constraint nominations_competition_personnel_key
+      unique (competition_id, personnel_id);
+  end if;
+end $$;
 
 -- 3. staff_evaluations: el UNIQUE (competition_id, personnel_id, created_by) no
 --    frena duplicados cuando created_by es NULL (los NULL son distintos entre
@@ -39,23 +48,26 @@ create unique index if not exists staff_evaluations_uniq_not_null
   on staff_evaluations (competition_id, personnel_id, created_by)
   where created_by is not null;
 
--- 4. Enums que solo se validaban en Python. Los valores viven en tablas sin DDL
---    versionado, pero el ALTER corre contra la tabla real de prod igual.
-alter table competitions
-  add constraint competitions_fee_type_check
-  check (fee_type in ('per_game', 'tournament'));
-
-alter table competitions
-  add constraint competitions_month_check
-  check (month is null or (month >= 1 and month <= 12));
-
-alter table game_schedule
-  add constraint game_schedule_scores_nonneg_check
-  check ((score_a is null or score_a >= 0) and (score_b is null or score_b >= 0));
-
-alter table logistics_participants
-  add constraint logistics_participants_pax_check
-  check (pax >= 1);
+-- 4. Enums/rangos que solo se validaban en Python.
+--    fee_type y pax YA existían en prod (guarda por idempotencia).
+do $$ begin
+  if not exists (select 1 from pg_constraint where conname = 'competitions_fee_type_check') then
+    alter table competitions add constraint competitions_fee_type_check
+      check (fee_type in ('per_game', 'tournament'));
+  end if;
+  if not exists (select 1 from pg_constraint where conname = 'competitions_month_check') then
+    alter table competitions add constraint competitions_month_check
+      check (month is null or (month >= 1 and month <= 12));
+  end if;
+  if not exists (select 1 from pg_constraint where conname = 'game_schedule_scores_nonneg_check') then
+    alter table game_schedule add constraint game_schedule_scores_nonneg_check
+      check ((score_a is null or score_a >= 0) and (score_b is null or score_b >= 0));
+  end if;
+  if not exists (select 1 from pg_constraint where conname = 'logistics_participants_pax_check') then
+    alter table logistics_participants add constraint logistics_participants_pax_check
+      check (pax >= 1);
+  end if;
+end $$;
 
 commit;
 
