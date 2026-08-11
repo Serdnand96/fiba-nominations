@@ -456,6 +456,18 @@ Ruta `/budget`, lazy-loaded, envuelta en `<PermissionGuard module="budget">`.
    - Acción "proyectar años siguientes" aplicando escalación.
 
    Dos reglas de la matriz que salieron de implementarla:
+   - **La vista por defecto la decide el dato.** La matriz solo se gana su lugar
+     si hay cruce real cuenta × evento: se abre en Matriz cuando ≥2 cuentas del
+     departamento tocan competencias, y en Lista si no. El presupuesto de IT es
+     casi todo overhead sin evento — una sola cuenta ("IT on Events") cruza —,
+     así que su matriz salía con 7 filas × 8 columnas y 41 celdas vacías. El
+     toggle manual manda hasta el próximo cambio de año o departamento.
+   - **Las cuentas sin gasto por evento se pliegan.** Una cuenta cuya única
+     cifra está en General no aporta nada a un cruce: se agrupan en una fila
+     desplegable. En IT eso baja la grilla de 56 celdas a 16 (−71%); en
+     Competitions pliega 1 de 21 y no cambia nada. Los totales se calculan
+     sobre **todas** las cuentas, plegadas incluidas — la fila plegada lleva su
+     suma y el total de la matriz no se mueve.
    - **Editar exige un departamento seleccionado.** Crear una línea necesita
      `department_code`, y con "todos" la matriz es un consolidado de varios
      departamentos: no hay forma de saber a cuál pertenece una celda nueva. Con

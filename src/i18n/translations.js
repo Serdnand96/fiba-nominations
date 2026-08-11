@@ -409,6 +409,15 @@ const translations = {
     role: { en: 'Role', es: 'Rol' },
     fee: { en: 'Fee', es: 'Fee' },
     incidentals: { en: 'Incidentals', es: 'Incidentals' },
+    generalOnlyRows: {
+      en: '{n} accounts with no event spend',
+      es: '{n} cuentas sin gasto por evento',
+    },
+    generalOnlyHint: {
+      en: 'Only General — click to expand',
+      es: 'Solo General — clic para desplegar',
+    },
+    collapseRows: { en: 'Collapse accounts with no event spend', es: 'Plegar las cuentas sin gasto por evento' },
 
     // Errores
     required: { en: 'Fill in the required fields', es: 'Completa los campos obligatorios' },

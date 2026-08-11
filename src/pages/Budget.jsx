@@ -539,6 +539,14 @@ function PlanTab({ t, push, canEdit, departments, expenseAccounts, competitions 
       ])
       setLines(ls)
       setSummary(sum)
+      // La matriz solo se gana su lugar si hay cruce real cuenta × evento.
+      // El presupuesto de IT es casi todo overhead sin evento: una sola cuenta
+      // ("IT on Events") toca competencias, así que la matriz saldría con 7
+      // filas × 8 columnas y 41 celdas vacías. La lista dice lo mismo sin el
+      // ruido. Se recalcula al cambiar año o departamento; el toggle manual
+      // manda hasta el próximo cambio de filtro.
+      const withEvents = new Set(ls.filter(l => l.competition_id).map(l => l.account_code))
+      setView(withEvents.size >= 2 ? 'matrix' : 'list')
     } catch (e) {
       console.error(e)
       push({ type: 'error', title: t('common.error') })
@@ -701,6 +709,7 @@ function MatrixView({ lines, competitions, expenseAccounts, department, canEdit,
   const [extraCols, setExtraCols] = useState([])      // competencias agregadas sin líneas
   const [editing, setEditing] = useState(null)        // 'account|colKey'
   const [draft, setDraft] = useState('')
+  const [collapsed, setCollapsed] = useState(true)    // cuentas sin evento, plegadas
 
   // Editar una celda crea una línea, y una línea necesita departamento. Con
   // "todos" seleccionado la matriz es un consolidado de solo lectura.
@@ -738,6 +747,16 @@ function MatrixView({ lines, competitions, expenseAccounts, department, canEdit,
   const rowTotal = (code) => cols.reduce((s, c) => s + cellTotal(`${code}|${c.id}`), 0)
   const colTotal = (colId) => accountRows.reduce((s, a) => s + cellTotal(`${a.code}|${colId}`), 0)
   const grandTotal = accountRows.reduce((s, a) => s + rowTotal(a.code), 0)
+
+  // Una cuenta sin ninguna celda de evento no aporta nada al cruce: su única
+  // cifra es la de General. Mostrarla como fila entera de guiones es ruido —
+  // en IT son 6 de 7 cuentas. Se agrupan y se pueden desplegar; su plata sigue
+  // contando en los totales, que se calculan sobre accountRows.
+  const hasEventCell = (code) => cols.some(c => c.id !== GENERAL && cellTotal(`${code}|${c.id}`) > 0)
+  // Las agregadas a mano quedan siempre visibles: se agregaron para tipear.
+  const visibleRows = accountRows.filter(a => hasEventCell(a.code) || extraRows.includes(a.code))
+  const generalOnly = accountRows.filter(a => !visibleRows.includes(a))
+  const rowsToRender = collapsed ? visibleRows : [...visibleRows, ...generalOnly]
 
   async function commitCell(account, col) {
     const key = `${account.code}|${col.id}`
@@ -796,7 +815,7 @@ function MatrixView({ lines, competitions, expenseAccounts, department, canEdit,
               </tr>
             </thead>
             <tbody className="divide-y divide-fiba-border">
-              {accountRows.map(a => (
+              {rowsToRender.map(a => (
                 <tr key={a.code} className="hover:bg-fiba-surface/40 transition-colors">
                   <td className="px-3 py-2 sticky left-0 bg-fiba-card z-10">
                     <span className="text-ink-900 dark:text-white">{a.label}</span>
@@ -859,6 +878,42 @@ function MatrixView({ lines, competitions, expenseAccounts, department, canEdit,
                   </td>
                 </tr>
               ))}
+
+              {/* Las cuentas que solo tienen General, plegadas en una fila. */}
+              {generalOnly.length > 0 && collapsed && (
+                <tr className="hover:bg-fiba-surface/40 transition-colors">
+                  <td className="px-3 py-2 sticky left-0 bg-fiba-card z-10">
+                    <button onClick={() => setCollapsed(false)}
+                      className="text-left text-fiba-muted hover:text-ink-900 dark:hover:text-white inline-flex items-center gap-1.5">
+                      <Icon.Chevron className="w-3.5 h-3.5" />
+                      <span>
+                        {t('budget.generalOnlyRows', { n: generalOnly.length })}
+                        <span className="block text-2xs text-fiba-muted/70">{t('budget.generalOnlyHint')}</span>
+                      </span>
+                    </button>
+                  </td>
+                  {cols.map(c => (
+                    <td key={c.id} className="px-3 py-2 text-right text-fiba-muted">
+                      {c.id === GENERAL
+                        ? money(generalOnly.reduce((s, a) => s + cellTotal(`${a.code}|${GENERAL}`), 0))
+                        : '—'}
+                    </td>
+                  ))}
+                  <td className="px-3 py-2 text-right font-semibold text-fiba-muted">
+                    {money(generalOnly.reduce((s, a) => s + rowTotal(a.code), 0))}
+                  </td>
+                </tr>
+              )}
+              {generalOnly.length > 0 && !collapsed && (
+                <tr>
+                  <td colSpan={cols.length + 2} className="px-3 py-1.5 sticky left-0">
+                    <button onClick={() => setCollapsed(true)}
+                      className="text-xs text-fiba-muted hover:text-ink-900 dark:hover:text-white inline-flex items-center gap-1.5">
+                      <Icon.ChevronDown className="w-3.5 h-3.5" /> {t('budget.collapseRows')}
+                    </button>
+                  </td>
+                </tr>
+              )}
             </tbody>
             <tfoot className="border-t-2 border-fiba-border bg-fiba-surface/60">
               <tr className="font-semibold">
