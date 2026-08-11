@@ -1,0 +1,42 @@
+# Referencia versionada de la unit systemd de fiba-api.
+# La unit real vive en el droplet: /etc/systemd/system/fiba-api.service
+# Aplicar: reconciliar la real contra esta, luego:
+#   sudo systemctl daemon-reload && sudo systemctl restart fiba-api
+#
+# El agregado de esta auditoría es el bloque de HARDENING. La unit corría sin
+# ninguna restricción: un RCE en el API saltaba directo a `sudo NOPASSWD:ALL`
+# porque NoNewPrivileges no estaba puesto.
+
+[Unit]
+Description=FIBA Nominations API (gunicorn)
+After=network.target
+
+[Service]
+User=fiba
+Group=fiba
+WorkingDirectory=/opt/fiba-nominations
+EnvironmentFile=/opt/fiba-nominations/.env
+ExecStart=/opt/fiba-nominations/venv/bin/gunicorn api.index:app \
+    --workers 2 --worker-class uvicorn.workers.UvicornWorker \
+    --bind 127.0.0.1:8000 --timeout 120
+Restart=always
+RestartSec=3
+MemoryMax=1200M
+LimitNOFILE=65536
+
+# ── Hardening (nuevo) ────────────────────────────────────────────────────────
+# NoNewPrivileges es el más importante: corta el camino a sudo desde un RCE.
+NoNewPrivileges=true
+# PrivateTmp da un /tmp propio — además aísla los archivos de LibreOffice/docx
+# de colisiones con root (que entra por SSH). NO uses ProtectSystem=strict sin
+# antes verificar que soffice puede escribir; PrivateTmp cubre /tmp.
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RestrictRealtime=true
+
+[Install]
+WantedBy=multi-user.target

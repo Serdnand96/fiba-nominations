@@ -54,6 +54,42 @@ server {
         try_files $uri $uri/ /index.html;
     }
 
+    # ⚠️ GOTCHA de nginx: un `add_header` DENTRO de un location descarta TODOS
+    # los add_header heredados del server{}. Si agregás una location con sus
+    # propios headers (cache, etc.), tenés que RE-EMITIR todos los de seguridad
+    # o esa ruta queda sin CSP/XFO/etc. Hoy /assets/ servía los chunks JS/CSS
+    # sin CSP ni X-Frame-Options por exactamente este motivo.
+    # Lo ideal: mover los headers de seguridad a un snippet e `include`-arlo en
+    # cada location. Acá se muestran repetidos para que quede explícito.
+
+    # index.html SIN caché: es el que apunta a los chunks hasheados. Con caché
+    # heurística, tras un deploy un usuario quedaba con el index viejo apuntando
+    # a chunks que ya no existen.
+    location = /index.html {
+        add_header Cache-Control "no-cache" always;
+        add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+        add_header X-Content-Type-Options "nosniff" always;
+        add_header X-Frame-Options "DENY" always;
+        add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+        add_header Permissions-Policy "camera=(), microphone=(), geolocation=()" always;
+        add_header Content-Security-Policy "default-src 'self'; img-src 'self' data: https://mckaplalscnvaanukrmz.supabase.co; connect-src 'self' https://mckaplalscnvaanukrmz.supabase.co; style-src 'self' 'unsafe-inline'; font-src 'self' data:; object-src 'none'; frame-ancestors 'none'; base-uri 'self'" always;
+    }
+
+    # Los assets hasheados (index-<hash>.js/.css, las woff2 de IBM Plex) sí van
+    # con caché inmutable de un año — PERO re-emitiendo los headers de seguridad,
+    # o quedan sin CSP.
+    location /assets/ {
+        expires 1y;
+        add_header Cache-Control "public, immutable" always;
+        add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+        add_header X-Content-Type-Options "nosniff" always;
+        add_header X-Frame-Options "DENY" always;
+        add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+        add_header Permissions-Policy "camera=(), microphone=(), geolocation=()" always;
+        add_header Content-Security-Policy "default-src 'self'; img-src 'self' data: https://mckaplalscnvaanukrmz.supabase.co; connect-src 'self' https://mckaplalscnvaanukrmz.supabase.co; style-src 'self' 'unsafe-inline'; font-src 'self' data:; object-src 'none'; frame-ancestors 'none'; base-uri 'self'" always;
+        try_files $uri =404;
+    }
+
     # ── API → gunicorn, with rate limiting ──────────────────────────────────
     location /api/ {
         limit_req zone=api burst=20 nodelay;

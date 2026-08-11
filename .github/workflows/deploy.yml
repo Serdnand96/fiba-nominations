@@ -8,6 +8,12 @@ on:
 # Deploy is over SSH and never uses the GITHUB_TOKEN — drop all of its scopes.
 permissions: {}
 
+# Un solo deploy a la vez: dos pushes seguidos hacían git reset --hard + npm ci
+# sobre el mismo directorio en paralelo (race). No cancelar el que está en curso.
+concurrency:
+  group: deploy-droplet
+  cancel-in-progress: false
+
 jobs:
   deploy:
     name: Deploy to droplet
@@ -28,6 +34,10 @@ jobs:
           set -euo pipefail
           cd /opt/fiba-nominations
 
+          # Commit actual, para poder volver si algo sale mal.
+          PREV=$(git rev-parse HEAD)
+          echo "=== deploy desde $PREV ==="
+
           echo "=== git pull ==="
           git fetch --quiet origin main
           git reset --hard origin/main
@@ -37,10 +47,17 @@ jobs:
           # too, so a single install keeps every version within its bounds.
           ./venv/bin/pip install -r requirements.txt -q
 
-          echo "=== Frontend build ==="
+          echo "=== Frontend build (a dist.new, sin tocar el dist en vivo) ==="
           set -a && . ./.env && set +a
           npm ci --silent --no-audit --no-fund
-          npm run build
+          # Build a un directorio aparte y recién ahí hacer el swap: nginx sirve
+          # /opt/fiba-nominations/dist, y vite lo vaciaba al empezar → 404 en
+          # index.html y assets durante todo el build.
+          rm -rf dist.new
+          npm run build -- --outDir dist.new --emptyOutDir
+          rm -rf dist.old
+          [ -d dist ] && mv dist dist.old
+          mv dist.new dist   # swap ~atómico (mismo filesystem)
 
           echo "=== Restart API ==="
           sudo systemctl restart fiba-api
@@ -48,8 +65,21 @@ jobs:
           sudo systemctl is-active fiba-api
 
           echo "=== Smoke test ==="
-          # Sin "|| true": si el dominio canónico no responde, el workflow
-          # debe quedar en rojo (el deploy ya corrió; esto es alerta).
-          curl -fsS -o /dev/null -w "HTTPS %{http_code}\n" https://www.fibaapp.com/
-          echo "✅ Deploy OK"
+          if curl -fsS -o /dev/null -w "HTTPS %{http_code}\n" https://www.fibaapp.com/; then
+            echo "✅ Deploy OK"
+            rm -rf dist.old
+          else
+            echo "❌ Smoke test falló — rollback a $PREV"
+            # Restaurar el frontend anterior de inmediato.
+            rm -rf dist.failed && mv dist dist.failed || true
+            [ -d dist.old ] && mv dist.old dist
+            # Revertir el código y las deps al commit previo, y reiniciar.
+            git reset --hard "$PREV"
+            ./venv/bin/pip install -r requirements.txt -q
+            sudo systemctl restart fiba-api
+            sleep 2
+            sudo systemctl is-active fiba-api
+            echo "↩️  Rollback aplicado. El workflow queda en rojo."
+            exit 1
+          fi
           EOF
