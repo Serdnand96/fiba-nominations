@@ -333,7 +333,7 @@ export default function Calendar() {
                           {formatDateRange(ev) ? (
                             <span className="text-xs text-fiba-muted/60">{formatDateRange(ev)}</span>
                           ) : (
-                            <span className="text-xs bg-amber-500/20 text-amber-400 px-1.5 py-0.5 rounded font-medium">TBD</span>
+                            <span className="text-xs bg-amber-100 text-amber-800 dark:bg-amber-500/20 dark:text-amber-400 px-1.5 py-0.5 rounded font-medium">TBD</span>
                           )}
                           {ev.assignment_count > 0 && (
                             <span className="text-xs text-blue-400">{ev.assignment_count} {ev.assignment_count > 1 ? t('calendar.assignedPlural') : t('calendar.assigned')}</span>
@@ -466,7 +466,7 @@ export default function Calendar() {
                           <div className="flex items-center gap-2">
                             {a.personnel?.id && a.role === 'TD' && <AvailDot avail={availabilityMap[a.personnel.id]} t={t} />}
                             <span className="text-sm font-medium text-ink-900 dark:text-white">{a.personnel?.name || 'Staff'}</span>
-                            <span className={`inline-block px-1.5 py-0.5 rounded text-xs font-medium ${a.role === 'VGO' ? 'bg-purple-500/20 text-purple-400' : 'bg-emerald-500/20 text-emerald-400'}`}>{a.role}</span>
+                            <span className={`inline-block px-1.5 py-0.5 rounded text-xs font-medium ${a.role === 'VGO' ? 'bg-purple-100 text-purple-700 dark:bg-purple-500/20 dark:text-purple-400' : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-400'}`}>{a.role}</span>
                           </div>
                           {canEdit && (
                             <button onClick={() => handleRemoveAssignment(a.id)}
@@ -500,7 +500,7 @@ export default function Calendar() {
                                 {p.role === 'TD' && <AvailDot avail={availabilityMap[p.id]} t={t} />}
                                 <span>{p.name}</span>
                               </div>
-                              <span className={`text-xs px-1.5 py-0.5 rounded ${p.role === 'VGO' ? 'bg-purple-500/20 text-purple-400' : 'bg-emerald-500/20 text-emerald-400'}`}>{p.role}</span>
+                              <span className={`text-xs px-1.5 py-0.5 rounded ${p.role === 'VGO' ? 'bg-purple-100 text-purple-700 dark:bg-purple-500/20 dark:text-purple-400' : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-400'}`}>{p.role}</span>
                             </button>
                           ))}
                         </div>

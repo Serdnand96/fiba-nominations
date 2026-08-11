@@ -11,10 +11,10 @@ import { roleLabel, roleBadgeClass } from '../lib/roles'
 import CompetitionSearch from '../components/CompetitionSearch'
 
 const STATUS_BADGES = {
-  new:        'bg-yellow-500/20 text-yellow-500',
-  in_process: 'bg-blue-500/20 text-blue-400',
-  split:      'bg-purple-500/20 text-purple-400',
-  completed:  'bg-emerald-500/20 text-emerald-400',
+  new:        'bg-yellow-100 text-yellow-800 dark:bg-yellow-500/20 dark:text-yellow-500',
+  in_process: 'bg-blue-100 text-blue-700 dark:bg-blue-500/20 dark:text-blue-400',
+  split:      'bg-purple-100 text-purple-700 dark:bg-purple-500/20 dark:text-purple-400',
+  completed:  'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-400',
 }
 const STATUSES = ['new', 'in_process', 'split', 'completed']
 

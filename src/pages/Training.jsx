@@ -567,7 +567,7 @@ export default function Training() {
                                     const inConflict = slotTdConflictMap[slot.id]?.has(a.personnel_id)
                                     return (
                                       <span key={a.id} className={`inline-block px-2 py-0.5 rounded text-[11px] font-medium ${
-                                        inConflict ? 'bg-yellow-500/20 text-yellow-400' : 'bg-blue-500/20 text-blue-400'
+                                        inConflict ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-500/20 dark:text-yellow-400' : 'bg-blue-100 text-blue-700 dark:bg-blue-500/20 dark:text-blue-400'
                                       }`} title={inConflict ? t('training.scheduleConflict') : ''}>
                                         {inConflict ? '\u26A0 ' : ''}{a.personnel?.name || 'TD'}
                                       </span>
@@ -968,7 +968,7 @@ function SlotCard({ slot, canEdit, t, conflictTds, isOverlapping, onAssign, onEd
             const inConflict = conflictTds?.has(a.personnel_id)
             return (
               <span key={a.id} className={`inline-block px-2 py-0.5 rounded text-[11px] font-medium ${
-                inConflict ? 'bg-yellow-500/20 text-yellow-400' : 'bg-blue-500/20 text-blue-400'
+                inConflict ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-500/20 dark:text-yellow-400' : 'bg-blue-100 text-blue-700 dark:bg-blue-500/20 dark:text-blue-400'
               }`} title={inConflict ? t('training.scheduleConflict') : ''}>
                 {inConflict ? '\u26A0 ' : ''}{a.personnel?.name || 'TD'}
               </span>

@@ -10,9 +10,9 @@ import {
 import { Icon } from '../lib/icons'
 
 const BADGE_COLORS = {
-  WCQ: 'bg-red-500/20 text-red-400',
-  BCLA: 'bg-blue-500/20 text-blue-400',
-  LSB: 'bg-amber-500/20 text-amber-400',
+  WCQ: 'bg-red-100 text-red-700 dark:bg-red-500/20 dark:text-red-400',
+  BCLA: 'bg-blue-100 text-blue-700 dark:bg-blue-500/20 dark:text-blue-400',
+  LSB: 'bg-amber-100 text-amber-800 dark:bg-amber-500/20 dark:text-amber-400',
   GENERIC: 'bg-fiba-surface text-fiba-muted',
 }
 

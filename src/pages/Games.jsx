@@ -1030,7 +1030,7 @@ export default function Games() {
                   title={t('games.teamCountriesHint')}>
                   {t('games.teamCountries')}
                   {missingClubCountries > 0 && (
-                    <span className="ml-1.5 inline-flex items-center justify-center min-w-[1.1rem] h-[1.1rem] px-1 rounded-full bg-amber-500/20 text-amber-500 text-[10px] font-bold">
+                    <span className="ml-1.5 inline-flex items-center justify-center min-w-[1.1rem] h-[1.1rem] px-1 rounded-full bg-amber-100 text-amber-800 dark:bg-amber-500/20 dark:text-amber-500 text-[10px] font-bold">
                       {missingClubCountries}
                     </span>
                   )}
@@ -1054,10 +1054,10 @@ export default function Games() {
       </div>
 
       {syncMsg && (
-        <div className="mb-4 px-4 py-2 bg-blue-500/10 text-blue-400 rounded-lg text-sm">{syncMsg}</div>
+        <div className="mb-4 px-4 py-2 bg-blue-100 text-blue-700 dark:bg-blue-500/10 dark:text-blue-400 rounded-lg text-sm">{syncMsg}</div>
       )}
       {nomMsg && (
-        <div className="mb-4 px-4 py-2 bg-emerald-500/10 text-emerald-400 rounded-lg text-sm">{nomMsg}</div>
+        <div className="mb-4 px-4 py-2 bg-emerald-100 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400 rounded-lg text-sm">{nomMsg}</div>
       )}
 
       {/* Competition selector + filters */}
@@ -1150,7 +1150,7 @@ export default function Games() {
           </div>
 
           {crewMsg && (
-            <div className="mb-3 px-3 py-2 bg-blue-500/10 text-blue-400 rounded-lg text-xs">{crewMsg}</div>
+            <div className="mb-3 px-3 py-2 bg-blue-100 text-blue-700 dark:bg-blue-500/10 dark:text-blue-400 rounded-lg text-xs">{crewMsg}</div>
           )}
 
           {crew.length === 0 ? (
@@ -1235,7 +1235,7 @@ export default function Games() {
           </div>
 
           {staffMsg && (
-            <div className="mb-3 px-3 py-2 bg-blue-500/10 text-blue-400 rounded-lg text-xs">{staffMsg}</div>
+            <div className="mb-3 px-3 py-2 bg-blue-100 text-blue-700 dark:bg-blue-500/10 dark:text-blue-400 rounded-lg text-xs">{staffMsg}</div>
           )}
 
           {staffing.length === 0 ? (
@@ -1805,7 +1805,7 @@ export default function Games() {
             </div>
 
             {importMsg && (
-              <div className="mt-3 px-3 py-2 bg-blue-500/10 text-blue-400 rounded text-sm">{importMsg}</div>
+              <div className="mt-3 px-3 py-2 bg-blue-100 text-blue-700 dark:bg-blue-500/10 dark:text-blue-400 rounded text-sm">{importMsg}</div>
             )}
 
             <div className="flex justify-end gap-3 mt-4">

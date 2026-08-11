@@ -7,11 +7,13 @@ import { useLanguage } from '../i18n/LanguageContext'
 import { useAuth } from '../contexts/AuthContext'
 import { camel } from '../lib/utils'
 
+// dark-aware: en claro los text-*-400 sobre card blanca daban ~1.5-2.5:1 (bajo
+// AA). Claro usa -100/-700; oscuro conserva el look original.
 const STATUS_BADGES = {
-  available:   'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40',
-  in_use:      'bg-blue-500/20 text-blue-400 border border-blue-500/40',
-  maintenance: 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/40',
-  retired:     'bg-gray-500/20 text-ink-500 dark:text-gray-400 border border-gray-500/40',
+  available:   'bg-emerald-100 text-emerald-700 border border-emerald-500/40 dark:bg-emerald-500/20 dark:text-emerald-400',
+  in_use:      'bg-blue-100 text-blue-700 border border-blue-500/40 dark:bg-blue-500/20 dark:text-blue-400',
+  maintenance: 'bg-yellow-100 text-yellow-800 border border-yellow-500/40 dark:bg-yellow-500/20 dark:text-yellow-400',
+  retired:     'bg-gray-100 text-ink-600 border border-gray-500/40 dark:bg-gray-500/20 dark:text-gray-400',
 }
 
 const EMPTY_FORM = {

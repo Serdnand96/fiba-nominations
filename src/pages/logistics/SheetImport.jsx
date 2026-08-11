@@ -19,8 +19,8 @@ const ENDPOINTS = {
 }
 
 const STATUS_STYLES = {
-  matched: 'bg-emerald-500/15 text-emerald-500',
-  review: 'bg-amber-500/15 text-amber-500',
+  matched: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-500',
+  review: 'bg-amber-100 text-amber-800 dark:bg-amber-500/15 dark:text-amber-500',
   new: 'bg-fiba-surface text-fiba-muted',
 }
 

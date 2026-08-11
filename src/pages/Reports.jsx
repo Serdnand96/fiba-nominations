@@ -13,13 +13,13 @@ import { Icon } from '../lib/icons'
 const LAST_SEARCH_KEY = 'fiba_reports_last_search'
 
 const TYPE_BADGES = {
-  final:      'bg-emerald-500/20 text-emerald-400',
-  technical:  'bg-blue-500/20 text-blue-400',
-  operations: 'bg-purple-500/20 text-purple-400',
-  venue:      'bg-amber-500/20 text-amber-500',
-  loc:        'bg-cyan-500/20 text-cyan-400',
-  medical:    'bg-red-500/20 text-red-400',
-  security:   'bg-orange-500/20 text-orange-400',
+  final:      'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-400',
+  technical:  'bg-blue-100 text-blue-700 dark:bg-blue-500/20 dark:text-blue-400',
+  operations: 'bg-purple-100 text-purple-700 dark:bg-purple-500/20 dark:text-purple-400',
+  venue:      'bg-amber-100 text-amber-800 dark:bg-amber-500/20 dark:text-amber-500',
+  loc:        'bg-cyan-100 text-cyan-800 dark:bg-cyan-500/20 dark:text-cyan-400',
+  medical:    'bg-red-100 text-red-700 dark:bg-red-500/20 dark:text-red-400',
+  security:   'bg-orange-100 text-orange-700 dark:bg-orange-500/20 dark:text-orange-400',
   other:      'bg-fiba-surface text-fiba-muted',
 }
 

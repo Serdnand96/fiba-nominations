@@ -16,10 +16,10 @@ const MODULE_OPTIONS = [
 // HTTP method → semantic badge. POST also covers actions like generate or
 // rotate; the path column carries the exact operation.
 const ACTION_STYLE = {
-  POST:   { labelKey: 'activity.created', cls: 'bg-emerald-500/20 text-emerald-400' },
-  PUT:    { labelKey: 'activity.updated', cls: 'bg-blue-500/20 text-blue-400' },
-  PATCH:  { labelKey: 'activity.updated', cls: 'bg-blue-500/20 text-blue-400' },
-  DELETE: { labelKey: 'activity.deleted', cls: 'bg-red-500/20 text-red-400' },
+  POST:   { labelKey: 'activity.created', cls: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-400' },
+  PUT:    { labelKey: 'activity.updated', cls: 'bg-blue-100 text-blue-700 dark:bg-blue-500/20 dark:text-blue-400' },
+  PATCH:  { labelKey: 'activity.updated', cls: 'bg-blue-100 text-blue-700 dark:bg-blue-500/20 dark:text-blue-400' },
+  DELETE: { labelKey: 'activity.deleted', cls: 'bg-red-100 text-red-700 dark:bg-red-500/20 dark:text-red-400' },
 }
 
 export default function Activity() {
