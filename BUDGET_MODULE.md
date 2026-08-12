@@ -586,6 +586,26 @@ antes de reinsertar.
 |--------|-------|------|
 | `FIBA_IT_Budget_2027-2030` | 92 (4 años × 23 líneas) | $215.015 |
 | `CompsDraftBudget2027` | 168 | $970.416 |
+| `2027_Budget_Comms_Americas` | 62 (54 + 8 del reparto U16) | $412.500 |
+
+El de Comms se cargó el 2026-08-12 ya con el import del módulo
+(`scripts/import_budget_comms_2027.py` solo aporta el mapeo acordado). Las
+decisiones del cliente sobre sus 10 grupos:
+
+- **BCLA ($100.000) y LSBF ($14.000) → General.** El Excel presupuesta la
+  temporada y la base la modela por fases; imputarlo a una inflaría el costo de
+  ese evento.
+- **«U16 (Both) Boys & Girls» ($78.000) → 50/50** entre `FIBA U16 AmeriCup` y
+  `FIBA U16 Women's AmeriCup`. La planilla no discrimina ("for both boys &
+  girls"): el reparto es acordado, no un dato, y queda anotado en cada línea.
+- **DIGITAL / SOCIAL MEDIA ($63.500) y EDITORIAL 24/7 ($45.000) → General**,
+  que es lo que dice la planilla ("For All Events").
+- **CentroBasket U15/U17 ($14.000) y South American U17 Women ($15.500) →
+  afuera**: no existen en el calendario 2027. Cuando se creen se reimporta el
+  mismo archivo y entran solas, sin tocar el resto.
+
+Las 27 cuentas de Comms son provisorias `COMM-01`…`COMM-27`
+(`pending_mapping = true`), como las `COMP-*`.
 
 El departamento sale de la **línea**, no de la planilla: `COMP-15` y `COMP-16`
 (Comms Expenses, TV Production) van a `comms` y `COMP-26` (IT on Events) a `it`,

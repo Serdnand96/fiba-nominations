@@ -854,7 +854,9 @@ def _plan(content: bytes, *, year: int, kind: str, department: str,
                     buckets.append((competition_id, column["year"], amount, label))
             else:
                 amount = to_number(cell(col_amount))
-                if amount is None:
+                if amount is None or amount == 0:
+                    # Una línea en cero no es presupuesto: las planillas dejan
+                    # filas plantilla ("X", 0) al final del bloque.
                     ignored_rows += 1
                     continue
                 buckets.append((competition_id, year, amount, label))
@@ -887,7 +889,16 @@ def _plan(content: bytes, *, year: int, kind: str, department: str,
                                      f"«{description}» se imputa a {account_code} "
                                      f"«{matched_account['label']}» ({int(account_score * 100)}%)"})
             else:
-                account_code = new_accounts.get(norm(description), {}).get("code") \
+                # Contra las cuentas nuevas de esta misma planilla, además del
+                # texto exacto: el de Comms escribe "Photo Ops" en un evento y
+                # "Photo Op" en el siguiente, y son la misma categoría. Sin
+                # esto el import abre dos cuentas provisorias por cada plural.
+                twin = next(
+                    (v for k, v in new_accounts.items()
+                     if k == norm(description) or _similarity(description, v["label"]) >= 0.92),
+                    None,
+                )
+                account_code = (twin or {}).get("code") \
                     or catalog.next_provisional_code(row_department, seen_codes)
                 account_status = "new"
         if account_status == "new":
