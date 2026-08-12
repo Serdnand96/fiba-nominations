@@ -182,6 +182,9 @@ const translations = {
     // Filtros y columnas comunes
     allDepartments: { en: 'All departments', es: 'Todos los departamentos' },
     allAccounts: { en: 'All accounts', es: 'Todas las cuentas' },
+    allAccountsOfDepartment: { en: 'All accounts of the department', es: 'Todas las cuentas del departamento' },
+    accountsOfDepartment: { en: 'Accounts of this department', es: 'Cuentas de este departamento' },
+    otherAccounts: { en: 'Other accounts', es: 'Otras cuentas' },
     allStatuses: { en: 'All statuses', es: 'Todos los estados' },
     allEvents: { en: 'All events', es: 'Todos los eventos' },
     generalOnly: { en: 'General only (no event)', es: 'Solo generales (sin evento)' },

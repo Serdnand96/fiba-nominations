@@ -73,6 +73,57 @@ function currentPeriod() {
   return new Date().toISOString().slice(0, 7)
 }
 
+/* ─── Cuentas por departamento ───────────────────────────────────────────────
+ *
+ * La cuenta no pertenece a un departamento (son dimensiones separadas), pero
+ * en la práctica cada área usa las suyas: con IT elegido, las 56 cuentas de
+ * Competitions y Comms son ruido. `used_by` viene calculado del backend con lo
+ * que hay cargado.
+ *
+ * En los **filtros** se muestran solo las del departamento: filtrar por una
+ * cuenta que el área nunca usó devuelve una tabla vacía y no sirve de nada.
+ * En los **editores** se muestran todas, con las del departamento arriba —
+ * cargar el primer gasto de una cuenta nueva es legítimo.
+ */
+function splitAccounts(accounts, department) {
+  if (!department) return { mine: accounts, rest: [] }
+  const mine = accounts.filter(a => (a.used_by || []).includes(department))
+  return { mine, rest: accounts.filter(a => !(a.used_by || []).includes(department)) }
+}
+
+function accountOption(a) {
+  // El asterisco marca el código provisorio (`pending_mapping`): el plan de
+  // cuentas oficial de Finance todavía no llegó.
+  return (
+    <option key={a.code} value={a.code}>
+      {a.code} — {a.label}{a.pending_mapping ? ' *' : ''}
+    </option>
+  )
+}
+
+/** Todas las cuentas, con las del departamento primero. Para los editores. */
+function AccountOptions({ accounts, department, t }) {
+  const { mine, rest } = splitAccounts(accounts, department)
+  if (!department || mine.length === 0) return accounts.map(accountOption)
+  return (
+    <>
+      <optgroup label={t('budget.accountsOfDepartment')}>{mine.map(accountOption)}</optgroup>
+      {rest.length > 0 && <optgroup label={t('budget.otherAccounts')}>{rest.map(accountOption)}</optgroup>}
+    </>
+  )
+}
+
+/** Solo las del departamento. Para los filtros de las bandejas. */
+function useDepartmentAccounts(accounts, department, account, setAccount) {
+  const options = useMemo(() => splitAccounts(accounts, department).mine, [accounts, department])
+  // Si el filtro de cuenta quedó fuera del departamento nuevo, se limpia: si no
+  // la bandeja queda vacía por un filtro que ya no se ve en el desplegable.
+  useEffect(() => {
+    if (account && !options.some(a => a.code === account)) setAccount('')
+  }, [options, account])
+  return options
+}
+
 /** Panel lateral reutilizable — mismo patrón que el detalle de viajes en Empleados. */
 function Drawer({ title, subtitle, onClose, children, footer }) {
   return (
@@ -953,7 +1004,7 @@ function MatrixView({ lines, competitions, expenseAccounts, department, canEdit,
           <select value="" onChange={e => e.target.value && setExtraRows(r => [...r, e.target.value])}
             className="fiba-select !w-auto min-w-[220px]">
             <option value="">+ {t('budget.addRow')}</option>
-            {availableAccounts.map(a => <option key={a.code} value={a.code}>{a.code} — {a.label}</option>)}
+            <AccountOptions accounts={availableAccounts} department={department} t={t} />
           </select>
           <select value="" onChange={e => e.target.value && setExtraCols(c => [...c, e.target.value])}
             className="fiba-select !w-auto min-w-[220px]">
@@ -1166,9 +1217,7 @@ function BudgetLineEditor({
       <Field label={t('budget.account')}>
         <select className="fiba-select" value={form.account_code} onChange={e => pickAccount(e.target.value)}>
           <option value="">—</option>
-          {expenseAccounts.map(a => (
-            <option key={a.code} value={a.code}>{a.code} — {a.label}{a.pending_mapping ? ' *' : ''}</option>
-          ))}
+          <AccountOptions accounts={expenseAccounts} department={form.department_code} t={t} />
         </select>
       </Field>
       <Field label={t('budget.competition')}>
@@ -1212,6 +1261,8 @@ function ExpensesTab({ t, push, canEdit, departments, expenseAccounts, competiti
   const [search, setSearch] = useState('')
 
   const [editing, setEditing] = useState(null)
+
+  const accountOptions = useDepartmentAccounts(expenseAccounts, department, account, setAccount)
 
   const yearOptions = useMemo(
     () => Array.from({ length: 6 }, (_, i) => thisYear + 1 - i),
@@ -1303,8 +1354,8 @@ function ExpensesTab({ t, push, canEdit, departments, expenseAccounts, competiti
         </select>
         <select value={account} onChange={e => setAccount(e.target.value)}
           className="fiba-select !w-auto min-w-[200px] flex-shrink-0">
-          <option value="">{t('budget.allAccounts')}</option>
-          {expenseAccounts.map(a => <option key={a.code} value={a.code}>{a.code} — {a.label}</option>)}
+          <option value="">{department ? t('budget.allAccountsOfDepartment') : t('budget.allAccounts')}</option>
+          {accountOptions.map(accountOption)}
         </select>
         <select value={competition} onChange={e => setCompetition(e.target.value)}
           className="fiba-select !w-auto min-w-[200px] flex-shrink-0">
@@ -1534,9 +1585,7 @@ function ExpenseEditor({ expense, onClose, onSaved, t, push, departments, expens
       <Field label={t('budget.account')}>
         <select className="fiba-select" value={form.account_code} onChange={e => set('account_code', e.target.value)}>
           <option value="">—</option>
-          {expenseAccounts.map(a => (
-            <option key={a.code} value={a.code}>{a.code} — {a.label}{a.pending_mapping ? ' *' : ''}</option>
-          ))}
+          <AccountOptions accounts={expenseAccounts} department={form.department_code} t={t} />
         </select>
       </Field>
 
@@ -1868,7 +1917,7 @@ function RecurringEditor({ recurring, onClose, onSaved, t, push, departments, ex
       <Field label={t('budget.account')}>
         <select className="fiba-select" value={form.account_code} onChange={e => set('account_code', e.target.value)}>
           <option value="">—</option>
-          {expenseAccounts.map(a => <option key={a.code} value={a.code}>{a.code} — {a.label}</option>)}
+          <AccountOptions accounts={expenseAccounts} department={form.department_code} t={t} />
         </select>
       </Field>
       <Field label={t('budget.payeeVendor')}>
@@ -2096,7 +2145,7 @@ function RevenueEditor({ revenue, onClose, onSaved, t, push, departments, revenu
       <Field label={t('budget.account')}>
         <select className="fiba-select" value={form.account_code} onChange={e => set('account_code', e.target.value)}>
           <option value="">—</option>
-          {revenueAccounts.map(a => <option key={a.code} value={a.code}>{a.code} — {a.label}</option>)}
+          <AccountOptions accounts={revenueAccounts} department={form.department_code} t={t} />
         </select>
       </Field>
       <Field label={t('budget.competition')}>

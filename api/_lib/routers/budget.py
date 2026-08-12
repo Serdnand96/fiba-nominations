@@ -352,7 +352,20 @@ def list_departments(request: Request, include_inactive: bool = Query(False)):
 
 
 @router.get("/accounts")
-def list_accounts(kind: Optional[str] = Query(None), include_inactive: bool = Query(False)):
+def list_accounts(request: Request, kind: Optional[str] = Query(None),
+                  include_inactive: bool = Query(False)):
+    """El plan de cuentas, con qué departamentos usa cada cuenta.
+
+    `used_by` no es una columna: la cuenta **no pertenece** a un departamento
+    (decisión #2 — son dimensiones separadas, y "TV Production" es plata de
+    Comms dentro del presupuesto de Competitions). Se deriva de lo que hay
+    cargado para que la UI pueda ordenar el desplegable por el departamento en
+    el que estás parado: con IT elegido, las 56 cuentas de Competitions y Comms
+    son ruido.
+
+    Va recortado por el scope del caller: solo aparecen los departamentos que
+    puede ver, así el listado no filtra en qué gasta un área ajena.
+    """
     q = supabase.table("accounts").select("*").order("sort")
     if kind:
         if kind not in ("expense", "revenue"):
@@ -360,7 +373,19 @@ def list_accounts(kind: Optional[str] = Query(None), include_inactive: bool = Qu
         q = q.eq("kind", kind)
     if not include_inactive:
         q = q.eq("active", True)
-    return q.execute().data or []
+    accounts = q.execute().data or []
+
+    used = {}
+    for table in ("budget_lines", "expenses", "revenues", "recurring_expenses"):
+        rows = _scoped(
+            supabase.table(table).select("account_code, department_code"), request,
+        ).execute().data or []
+        for row in rows:
+            if row.get("account_code"):
+                used.setdefault(row["account_code"], set()).add(row["department_code"])
+    for account in accounts:
+        account["used_by"] = sorted(used.get(account["code"], set()))
+    return accounts
 
 
 @router.post("/accounts", status_code=201, dependencies=[Depends(require_edit("budget"))])
