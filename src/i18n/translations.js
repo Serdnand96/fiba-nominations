@@ -345,6 +345,52 @@ const translations = {
     },
     subtotal: { en: 'Subtotal', es: 'Subtotal' },
 
+    // Import desde Excel
+    import: { en: 'Import Excel', es: 'Importar Excel' },
+    impTitle: { en: 'Import budget from Excel', es: 'Importar presupuesto desde Excel' },
+    impHint: {
+      en: 'An .xlsx with one line per row (with an account code and, if you have them, one column per year) or a matrix of accounts by event. Nothing is saved until you confirm.',
+      es: 'Un .xlsx con una línea por fila (con código de cuenta y, si los tienes, una columna por año) o una matriz de cuentas por evento. No se guarda nada hasta que confirmes.',
+    },
+    impPickDepartment: {
+      en: 'Pick a department above: every imported line has to belong to one.',
+      es: 'Elige un departamento arriba: cada línea importada tiene que pertenecer a uno.',
+    },
+    impTemplate: { en: 'Download template', es: 'Descargar plantilla' },
+    impSheet: { en: 'Sheet', es: 'Hoja' },
+    impClear: { en: 'Clear', es: 'Limpiar' },
+    impNew: { en: 'to create', es: 'a crear' },
+    impUpdate: { en: 'to update', es: 'a actualizar' },
+    impError: { en: 'with errors', es: 'con error' },
+    impWillImport: { en: 'Will import', es: 'Se importa' },
+    impNotImported: { en: 'Left out', es: 'Queda afuera' },
+    impRow: { en: 'Row', es: 'Fila' },
+    impColumns: { en: 'Event columns', es: 'Columnas de evento' },
+    impColumnsHint: {
+      en: 'Each column of the sheet has to point at an event. Anything left as "Do not import" stays out — a doubtful name is never guessed, because that would book the money against another event.',
+      es: 'Cada columna de la planilla tiene que apuntar a un evento. Lo que quede en «No importar» se deja afuera: un nombre dudoso nunca se adivina, porque sería imputar la plata a otro evento.',
+    },
+    impDoNotImport: { en: 'Do not import', es: 'No importar' },
+    impGeneralColumn: { en: 'General (no event)', es: 'General (sin evento)' },
+    impAssignAll: { en: 'Book every line to', es: 'Imputar todas las líneas a' },
+    impNewAccounts: { en: 'accounts will be created (provisional code)', es: 'cuentas se van a crear (código provisorio)' },
+    impWarnings: { en: 'thing(s) worth checking', es: 'cosa(s) que conviene mirar' },
+    impCreateAccounts: { en: 'Create missing accounts', es: 'Crear las cuentas que faltan' },
+    impReplace: { en: 'Replace the loaded budget', es: 'Reemplazar el presupuesto cargado' },
+    impReplaceHint: {
+      en: 'Deletes the lines of these years and departments that are not in the sheet. They are listed before you confirm.',
+      es: 'Borra las líneas de estos años y departamentos que no estén en la planilla. Se listan antes de confirmar.',
+    },
+    impWillDelete: { en: 'Lines that will be deleted', es: 'Líneas que se van a borrar' },
+    impTruncated: { en: 'Only the first rows are shown; the import covers every row.', es: 'Solo se muestran las primeras filas; el import cubre todas.' },
+    impConfirm: { en: 'Confirm import', es: 'Confirmar importación' },
+    impDone: { en: 'lines imported', es: 'líneas importadas' },
+    impCreated: { en: 'Created', es: 'Creadas' },
+    impUpdated: { en: 'Updated', es: 'Actualizadas' },
+    impDeleted: { en: 'Deleted', es: 'Borradas' },
+    impAccountsNew: { en: 'New accounts', es: 'Cuentas nuevas' },
+    impFailed: { en: 'Could not read the file.', es: 'No se pudo leer el archivo.' },
+
     // Acceso por departamento (fase 3)
     access: { en: 'Budget departments', es: 'Departamentos de presupuesto' },
     accessHint: {

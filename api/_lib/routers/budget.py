@@ -22,6 +22,7 @@ permiso `budget`, view separado de edit.
 
 Ver BUDGET_MODULE.md para el diseño completo.
 """
+import json
 import logging
 import os
 import re
@@ -658,6 +659,159 @@ def project_budget(data: BudgetProject, request: Request):
             created += 1
 
     return {"created": created, "updated": updated, "skipped": skipped}
+
+
+# ─── Import / export del presupuesto en Excel ────────────────────────────────
+#
+# Dos pasos como el resto de los importadores del repo: el preview no escribe
+# nada y muestra qué línea se crea, cuál se actualiza y qué columna quedó sin
+# resolver; recién /commit toca la base. Lo dudoso NUNCA se importa solo —
+# imputar una columna al evento equivocado es plata en el presupuesto de otro.
+#
+# Autorización: `require_edit("budget")` como cualquier escritura, más el
+# recorte por departamento. Una planilla puede tocar varios departamentos (las
+# líneas de Comms e IT viven dentro del presupuesto de Competitions), así que
+# se valida el elegido acá y el servicio marca como error las filas de un
+# departamento que el caller no puede editar.
+
+_MAX_SHEET_BYTES = 5 * 1024 * 1024
+
+
+async def _read_sheet_upload(file: UploadFile) -> bytes:
+    if not (file.filename or "").lower().endswith((".xlsx", ".xlsm")):
+        raise HTTPException(status_code=400, detail="Only .xlsx files are supported")
+    content = await file.read()
+    if len(content) > _MAX_SHEET_BYTES:
+        raise HTTPException(status_code=400, detail="File too large (max 5 MB)")
+    return content
+
+
+def _import_options(request: Request, year: int, department: str, kind: str,
+                    sheet, mapping, default_competition_id,
+                    create_accounts: bool, replace: bool) -> dict:
+    if kind not in ("expense", "revenue"):
+        raise HTTPException(status_code=400, detail="kind must be 'expense' or 'revenue'")
+    if not 2000 <= year <= 2100:
+        raise HTTPException(status_code=400, detail="Invalid year")
+    if not _valid_department(department):
+        raise HTTPException(status_code=400, detail="Unknown or inactive department")
+    _assert_can_edit(request, department)
+
+    if default_competition_id:
+        try:
+            uuid.UUID(default_competition_id)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid competition id")
+        if not supabase.table("competitions").select("id").eq("id", default_competition_id).execute().data:
+            raise HTTPException(status_code=400, detail="Unknown competition")
+
+    parsed_mapping = {}
+    if mapping:
+        try:
+            parsed_mapping = json.loads(mapping)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid column mapping")
+        if not isinstance(parsed_mapping, dict) or not all(
+            isinstance(k, str) and isinstance(v, str) for k, v in parsed_mapping.items()
+        ):
+            raise HTTPException(status_code=400, detail="Invalid column mapping")
+
+    return {
+        "year": year,
+        "kind": kind,
+        "department": department,
+        "sheet": sheet or None,
+        "mapping": parsed_mapping,
+        "default_competition_id": default_competition_id or None,
+        "create_accounts": create_accounts,
+        "replace": replace,
+        "editable": _departments_for(request, "edit"),
+        "viewable": _departments_for(request, "view"),
+    }
+
+
+@router.post("/import/lines/preview", dependencies=[Depends(require_edit("budget"))])
+async def preview_line_import(
+    request: Request,
+    file: UploadFile = File(...),
+    year: int = Form(...),
+    department: str = Form(...),
+    kind: str = Form("expense"),
+    sheet: Optional[str] = Form(None),
+    mapping: Optional[str] = Form(None),
+    default_competition_id: Optional[str] = Form(None),
+    create_accounts: bool = Form(True),
+    replace: bool = Form(False),
+):
+    from api._lib.services import budget_import
+
+    content = await _read_sheet_upload(file)
+    options = _import_options(request, year, department, kind, sheet, mapping,
+                              default_competition_id, create_accounts, replace)
+    try:
+        return budget_import.preview(content, **options)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+@router.post("/import/lines/commit", dependencies=[Depends(require_edit("budget"))])
+async def commit_line_import(
+    request: Request,
+    file: UploadFile = File(...),
+    year: int = Form(...),
+    department: str = Form(...),
+    kind: str = Form("expense"),
+    sheet: Optional[str] = Form(None),
+    mapping: Optional[str] = Form(None),
+    default_competition_id: Optional[str] = Form(None),
+    create_accounts: bool = Form(True),
+    replace: bool = Form(False),
+):
+    from api._lib.services import budget_import
+
+    content = await _read_sheet_upload(file)
+    options = _import_options(request, year, department, kind, sheet, mapping,
+                              default_competition_id, create_accounts, replace)
+    try:
+        result = budget_import.commit(content, created_by=_user_id(request), **options)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    logger.info(
+        "budget import: %s created, %s updated, %s deleted (year=%s, departments=%s, user=%s)",
+        result["created"], result["updated"], result["deleted"],
+        year, ",".join(result["departments"]), _user_id(request),
+    )
+    return result
+
+
+@router.get("/lines/export.xlsx")
+def export_budget_lines(
+    request: Request,
+    year: int = Query(...),
+    department: Optional[str] = Query(None),
+    kind: str = Query("expense"),
+    lang: str = Query("es"),
+):
+    """Las líneas de un año en el mismo formato que lee el import.
+
+    Es la plantilla y el round-trip a la vez: se baja, se edita en Excel y se
+    vuelve a subir. La columna ID hace que la reimportación actualice esas
+    mismas filas en vez de duplicarlas.
+    """
+    from api._lib.services.budget_import import export_lines_xlsx
+
+    query = _scoped(
+        supabase.table("budget_lines").select(_LINE_SELECT).eq("year", year)
+        .eq("kind", kind).order("account_code"),
+        request, department,
+    )
+    lines = [_shape_line(r) for r in (query.execute().data or [])]
+    content = export_lines_xlsx(lines, year, "en" if lang == "en" else "es")
+    return Response(
+        content=content,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="budget-{year}.xlsx"'},
+    )
 
 
 @router.get("/summary")

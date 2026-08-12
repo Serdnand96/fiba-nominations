@@ -435,6 +435,11 @@ GET   /budget/competitions/{id}/cost   # nominaciones + airfare + gastos vs pres
 
 # Tarifario
 GET/PUT  /budget/fee-schedule
+
+# Import / export del presupuesto en Excel (§13)
+POST  /budget/import/lines/preview     # no escribe; propone el mapeo de columnas
+POST  /budget/import/lines/commit      # con el mapeo que confirmó el usuario
+GET   /budget/lines/export.xlsx        # la plantilla y el round-trip
 ```
 
 Los adjuntos van al bucket privado `nominations` bajo `expenses/<id>/`, con
@@ -656,3 +661,62 @@ que lo importado siga cuadrando con la planilla.
   los archivos.
 - **Regla de visibilidad cruzada** dentro de una competencia (§4): decidida por
   defecto, confirmar con los designados cuando usen el módulo.
+
+
+---
+
+## 13. Import desde Excel
+
+Lo que en §10 fue un script de una sola vez (`scripts/import_budgets_2027.py`)
+ahora es una función del módulo: botón **Importar Excel** en la pestaña
+Presupuesto → `api/_lib/services/budget_import.py`. Dos pasos, preview → commit,
+como el resto de los importadores del repo.
+
+**Lee las dos formas reales sin configuración**, detectando el encabezado por su
+texto y no por posición (las planillas traen títulos arriba, celdas combinadas y
+saltos de línea dentro del header):
+
+- **lista** con código contable y columnas por año (`Annual 2027`…`2030`) → una
+  fila por año, unidas por `series_id`. Es el de IT;
+- **matriz** cuenta × competencia con su columna "General" → una línea por
+  celda. Es el de Competitions;
+- una planilla sin encabezados de dos columnas `concepto | monto` (el
+  presupuesto de un solo evento), que se imputa entera a la competencia que se
+  elija.
+
+### Las tres decisiones que lo definen
+
+1. **Una columna dudosa no se importa.** Solo el match exacto del nombre vincula
+   una columna a una competencia. La *contención* está topeada por debajo del
+   umbral a propósito: "Women's AmeriCup" está contenido en "FIBA U16 Women's
+   AmeriCup" y son eventos distintos. Lo dudoso se propone en el preview con su
+   parecido y lo resuelve el usuario en un desplegable; lo que quede sin
+   resolver se reporta con su monto y **queda afuera**. Nunca va a "General":
+   General es una columna real del Excel y ensuciarla arruina el reporte — la
+   misma regla que §10.
+2. **Reimportar es la operación normal.** Una fila que matchea
+   (año + departamento + cuenta + competencia + descripción), o que trae el `ID`
+   que emite el export, **actualiza** la línea existente. No hay marcas de
+   import ni versiones: sigue habiendo una sola versión vigente (decisión #6).
+   `replace` —opcional, apagado— borra además lo que ya no está en la planilla,
+   acotado a los departamentos y años que la planilla toca y listando cada línea
+   antes de confirmar.
+3. **El export ES la plantilla.** `GET /budget/lines/export.xlsx` emite las
+   líneas del año en el formato que el import vuelve a leer, con la columna ID.
+   El ciclo exportar → editar en Excel → subir no duplica nada.
+
+**Cuentas.** La planilla de Competitions no trae códigos: la cuenta es el propio
+"Expense Item", que se busca contra `accounts.label`. Lo que no matchea abre una
+cuenta provisoria `<DEPT>-NN` con `pending_mapping = true` —siguiendo la serie
+`COMP-01…28`— y el preview las lista antes de crear ninguna. Se puede apagar,
+y entonces esas filas quedan como error en vez de importarse.
+
+**Autorización.** `require_edit("budget")` más el recorte por departamento: se
+valida el departamento elegido y las filas de un departamento que el caller no
+puede editar salen como error. Una planilla puede tocar varios departamentos —
+las líneas de Comms e IT viven dentro del presupuesto de Competitions—, así que
+el chequeo es por fila, no solo sobre el departamento del formulario.
+
+Validado contra los archivos reales: el de IT reproduce **$215.015** para 2027
+(92 filas, 4 años) y el de Competitions **$970.416** con las 13 columnas
+mapeadas, dejando afuera los mismos **$563.416** de §10.

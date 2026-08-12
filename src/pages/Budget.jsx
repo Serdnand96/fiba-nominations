@@ -25,6 +25,7 @@ import { useLanguage } from '../i18n/LanguageContext'
 import { useToast } from '../components/ui/Toast'
 import { useAuth } from '../contexts/AuthContext'
 import { Icon } from '../lib/icons'
+import BudgetImport from './budget/BudgetImport'
 
 const TABS = ['dashboard', 'plan', 'expenses', 'recurring', 'revenues', 'vendors']
 const GENERAL = '__general__'   // clave de la columna "sin evento" en la matriz
@@ -522,6 +523,7 @@ function PlanTab({ t, push, canEdit, departments, expenseAccounts, competitions 
   const [projecting, setProjecting] = useState(false)
   const [editingLine, setEditingLine] = useState(null)
   const [cellDetail, setCellDetail] = useState(null)
+  const [importing, setImporting] = useState(false)
 
   const yearOptions = useMemo(
     () => Array.from({ length: 7 }, (_, i) => thisYear + 2 - i),
@@ -637,18 +639,32 @@ function PlanTab({ t, push, canEdit, departments, expenseAccounts, competitions 
           ))}
         </div>
 
+        {canEdit && (
+          <button onClick={() => setImporting(v => !v)} className="btn-fiba-ghost ml-auto">
+            <Icon.Upload className="w-4 h-4 inline mr-1.5" />
+            {t('budget.import')}
+          </button>
+        )}
         {canEdit && lines.length > 0 && (
           <button onClick={() => handleProject(false)} disabled={projecting}
-            title={t('budget.projectHint')} className="btn-fiba-ghost ml-auto">
+            title={t('budget.projectHint')} className="btn-fiba-ghost">
             {projecting ? t('common.loading') : t('budget.project')}
           </button>
         )}
         {canEdit && (
-          <button onClick={() => setEditingLine({})} className={lines.length > 0 ? 'btn-fiba' : 'btn-fiba ml-auto'}>
+          <button onClick={() => setEditingLine({})} className="btn-fiba">
             {t('budget.newLine')}
           </button>
         )}
       </div>
+
+      {importing && (
+        <BudgetImport
+          year={year} department={department} competitions={competitions}
+          t={t} push={push}
+          onDone={load} onClose={() => setImporting(false)}
+        />
+      )}
 
       {loading ? (
         <div className="text-fiba-muted text-sm py-8 text-center">{t('common.loading')}</div>

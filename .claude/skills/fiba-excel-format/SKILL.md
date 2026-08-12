@@ -1,18 +1,19 @@
 ---
 name: fiba-excel-format
-description: Mapeo de columnas y reglas de parsing/matching de los imports de planilla de fiba-nominations — el formato Excel multi-sport de FIBA del Training Schedule (training.py), el import de roster de personnel (bulk_import.py) y los imports de logística, flight manifest y rooming list (logistics_import.py). Usar para cualquier cambio de parsing/validación de Excel o CSV.
+description: Mapeo de columnas y reglas de parsing/matching de los imports de planilla de fiba-nominations — el formato Excel multi-sport de FIBA del Training Schedule (training.py), el import de roster de personnel (bulk_import.py), los imports de logística, flight manifest y rooming list (logistics_import.py) y el import de presupuesto (budget_import.py). Usar para cualquier cambio de parsing/validación de Excel o CSV.
 ---
 
 # Formatos de import — Excel/CSV (fiba-nominations)
 
-Hay **tres importers distintos**. No los confundas: viven en archivos separados,
-tienen formatos distintos y alimentan tablas distintas.
+Hay **cuatro importers distintos**. No los confundas: viven en archivos
+separados, tienen formatos distintos y alimentan tablas distintas.
 
 | Import | Código | Endpoint | Tabla destino |
 |--------|--------|----------|---------------|
 | Training Schedule (multi-sport FIBA) | `api/_lib/routers/training.py::_parse_fiba_schedule` | `POST /api/training/import/excel` y `/import/preview` | `training_slots` |
 | Roster de personnel | `api/_lib/services/bulk_import.py::process_bulk_import` | `POST /api/personnel/import` | `personnel` |
 | Logística (flight manifest + rooming list) | `api/_lib/services/logistics_import.py` | `POST /api/logistics/import/{manifest,rooming}/{preview,commit}` | `logistics_participants`, `logistics_travel_legs`, `logistics_stays` |
+| Presupuesto | `api/_lib/services/budget_import.py` | `POST /api/budget/import/lines/{preview,commit}` | `budget_lines` (+ `accounts` provisorias) |
 
 ---
 
@@ -160,3 +161,56 @@ Reglas de diseño (distintas de los otros dos importers):
 
 El mapeo fino de columnas vive en `logistics_import.py` — **leelo antes de
 tocar nada**; este resumen no reemplaza el código.
+
+---
+
+## 4) Presupuesto — `budget_import.py`
+
+Import de `budget_lines` desde el Excel que ya usa cada área
+(`api/_lib/services/budget_import.py`), expuesto en
+`api/_lib/routers/budget.py`:
+
+- `POST /api/budget/import/lines/preview` → `preview()`
+- `POST /api/budget/import/lines/commit` → `commit()`
+- `GET /api/budget/lines/export.xlsx` → `export_lines_xlsx()` (la plantilla:
+  se exporta, se edita y se vuelve a subir)
+
+Lo que lo diferencia de los otros tres:
+
+- **La forma se detecta, no se asume.** `analyze()` busca la fila de
+  encabezado (hasta la 25) y clasifica cada columna por su texto:
+  `description`, `account`, `department`, `competition`, `qty`, `monthly`,
+  `escalation`, `notes`, `year:<Y>`, `amount`. Lo que queda sin rol es
+  candidato a **columna de competencia**. Dos formas resultantes:
+  - **lista** — una línea por fila; con columnas de año (`Annual 2027`…
+    `Annual 2030`) genera una fila por año unidas por `series_id`;
+  - **matriz** — ≥3 columnas sin rol con números (filas = cuentas,
+    columnas = eventos). Con menos de 3 se lee como lista a propósito: las
+    planillas de seguimiento traen pares `Rate | Total` que serían dos
+    "eventos" inventados.
+  - Sin encabezados, se acepta solo el patrón `texto | número` repetido 3
+    veces (el presupuesto de un solo evento).
+- **Nunca adivina plata.** Una columna solo se vincula a una competencia con
+  match **exacto** de nombre. La *contención* está topeada a 0,85 (debajo del
+  umbral 0,92) porque "Women's AmeriCup" está contenido en "FIBA U16 Women's
+  AmeriCup" y son eventos distintos. Lo dudoso se propone en el preview y lo
+  resuelve el usuario con un desplegable (`mapping: {etiqueta → id | __general__
+  | __skip__}`); lo que no se resuelve **queda afuera** y se reporta con su
+  monto — **nunca** se manda a "General", que es una columna real del Excel.
+- **Cuentas**: por código explícito, o por el nombre de la línea contra
+  `accounts.label` (exacto, contención con ≥2 palabras, o fuzzy ≥0,90; todo
+  match no exacto se reporta). Sin match se abre una cuenta provisoria
+  `<DEPT>-NN` con `pending_mapping = true`, siguiendo la serie `COMP-01…28`.
+- **Idempotente sin marcas**: una fila que matchea
+  (año + departamento + cuenta + competencia + descripción) o que trae el `ID`
+  del export **actualiza** la línea en vez de duplicarla.
+- **Filas de corte**: `Total*` corta la tabla (abajo solo hay totales y notas),
+  `Subtotal*` saltea la fila.
+- **Scoping**: `require_edit("budget")` + `_assert_can_edit` sobre el
+  departamento elegido; las filas de un departamento que el caller no puede
+  editar salen como error y no se importan. `replace=true` borra lo que no vino
+  en la planilla, solo dentro de esos departamentos y años, listándolo antes.
+
+Validado contra los archivos reales del cliente: el de IT reproduce
+$215.015 (2027) y el de Competitions $970.416 con las 13 columnas mapeadas —
+las mismas cifras de `BUDGET_MODULE.md` §10.

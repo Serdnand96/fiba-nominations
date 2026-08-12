@@ -149,6 +149,44 @@ export const deleteBudgetLine = (id) => api.delete(`/budget/lines/${id}`).then(r
 export const projectBudget = (data) => api.post('/budget/lines/project', data).then(r => r.data)
 export const getLineSeries = (seriesId) => api.get(`/budget/lines/series/${seriesId}`).then(r => r.data)
 export const getBudgetSummary = (params) => api.get('/budget/summary', { params }).then(r => r.data)
+
+// Import del presupuesto desde Excel, en dos pasos: el preview no escribe nada
+// y devuelve el mapeo de columnas propuesto; el commit manda el mapeo que el
+// usuario confirmó. El archivo viaja en las dos llamadas — el backend no
+// guarda subidas a medio confirmar.
+const budgetImportForm = (file, options) => {
+  const form = new FormData()
+  form.append('file', file)
+  form.append('year', options.year)
+  form.append('department', options.department)
+  form.append('kind', options.kind || 'expense')
+  if (options.sheet) form.append('sheet', options.sheet)
+  if (options.mapping) form.append('mapping', JSON.stringify(options.mapping))
+  if (options.defaultCompetitionId) form.append('default_competition_id', options.defaultCompetitionId)
+  form.append('create_accounts', options.createAccounts !== false)
+  form.append('replace', !!options.replace)
+  return form
+}
+const postBudgetImport = (path, file, options) =>
+  api.post(path, budgetImportForm(file, options), {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  }).then(r => r.data)
+export const previewBudgetImport = (file, options) => postBudgetImport('/budget/import/lines/preview', file, options)
+export const commitBudgetImport = (file, options) => postBudgetImport('/budget/import/lines/commit', file, options)
+
+// Export de las líneas en el mismo formato que lee el import (plantilla y
+// round-trip). Blob + JWT, como el resto de las descargas.
+export const downloadBudgetLinesXlsx = async (params) => {
+  const resp = await api.get('/budget/lines/export.xlsx', { params, responseType: 'blob' })
+  const objectUrl = URL.createObjectURL(resp.data)
+  const link = document.createElement('a')
+  link.href = objectUrl
+  link.download = `budget-${params.year}.xlsx`
+  document.body.appendChild(link)
+  link.click()
+  document.body.removeChild(link)
+  setTimeout(() => URL.revokeObjectURL(objectUrl), 1000)
+}
 // Costo total del evento. NO está recortado por departamento a propósito: el
 // scoping rige cargar y editar, no leer la cifra de una competencia.
 export const getCompetitionCost = (id) => api.get(`/budget/competitions/${id}/cost`).then(r => r.data)
