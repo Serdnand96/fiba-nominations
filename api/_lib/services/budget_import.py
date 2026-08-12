@@ -91,8 +91,12 @@ def to_number(value) -> Optional[float]:
     if norm(text) in _NULLISH:
         return None
     negative = text.startswith("(") and text.endswith(")")
-    text = re.sub(r"[^\d,.\-]", "", text)
-    if not text or not re.search(r"\d", text):
+    # Solo se sacan moneda, espacios y el signo de porcentaje. Las letras NO se
+    # descartan: si se descartaran, "All Star 5 Gifts" valdría 5 y un concepto
+    # entraría como monto.
+    text = re.sub(r"(?i)\b(usd|us\$|eur)\b", "", text.strip("()").strip())
+    text = re.sub(r"[\s $€%]", "", text)
+    if not re.fullmatch(r"[+-]?[\d.,]+", text) or not re.search(r"\d", text):
         return None
     if "," in text and "." in text:
         # el separador decimal es el último que aparece
@@ -251,38 +255,119 @@ def _analyze_sheet(ws) -> dict:
         header = clean(rows[best_idx][i]) if i < len(rows[best_idx]) else None
         columns.append({"index": i, "header": header, "role": role, "year": year})
     return {"header_row": best_idx + 1, "columns": columns,
-            "rows": rows[best_idx + 1:], "headerless": False}
+            "rows": rows[best_idx + 1:], "headerless": False,
+            "data_start": best_idx + 2}
 
 
 def _analyze_headerless(rows: list) -> dict:
-    """Planilla sin encabezados: dos columnas, concepto | monto.
+    """Planilla sin encabezados: una columna de concepto y una de monto.
 
-    Es la forma del presupuesto de un solo evento ("AmeriCup W 2027 - Budget"):
-    un título arriba y abajo pares texto/número. Solo se acepta si el patrón se
-    repite: tres filas seguidas de texto + número. Cualquier otra cosa sin
-    encabezados se rechaza en vez de adivinar qué columna es cuál.
+    Es la forma de los presupuestos armados a mano: el de un solo evento
+    ("AmeriCup W 2027") y el de Comms, que arranca con un título y ni siquiera
+    usa la columna A. Se busca el par de columnas —cualquier par, no A|B— donde
+    el patrón texto+número se repite tres veces seguidas. Sin esa repetición se
+    rechaza: adivinar qué columna es cuál sería inventar el presupuesto.
     """
-    first = None
-    streak = 0
-    for idx, cells in enumerate(rows):
-        text_ok = bool(clean(cells[0] if cells else None))
-        number_ok = len(cells) > 1 and to_number(cells[1]) is not None
-        if text_ok and number_ok:
-            first = idx if streak == 0 else first
-            streak += 1
-            if streak >= 3:
+    candidates = []
+    width = max((len(r) for r in rows), default=0)
+    for text_col in range(min(width, 8)):
+        for number_col in range(text_col + 1, min(width, 12)):
+            first, streak, hits, best_streak, values = None, 0, 0, 0, []
+            for idx, cells in enumerate(rows):
+                text_ok = len(cells) > text_col and bool(clean(cells[text_col])) \
+                    and to_number(cells[text_col]) is None
+                number = to_number(cells[number_col]) if len(cells) > number_col else None
+                if text_ok and number is not None:
+                    if first is None:
+                        first = idx
+                    streak += 1
+                    hits += 1
+                    best_streak = max(best_streak, streak)
+                    values.append(abs(number))
+                else:
+                    streak = 0
+            # Una columna de puros valores < 1 es un porcentaje, no plata: el
+            # presupuesto de Comms trae el % de cada línea al lado del monto.
+            fraction = bool(values) and all(v < 1 for v in values)
+            if best_streak >= 3 and first is not None:
+                candidates.append({"hits": hits, "text": text_col, "number": number_col,
+                                   "first": first, "fraction": fraction})
+    if not candidates:
+        return {"header_row": None, "columns": [], "rows": [], "headerless": True, "data_start": 1}
+
+    money_cols = [c for c in candidates if not c["fraction"]] or candidates
+    top = max(c["hits"] for c in money_cols)
+    # A igualdad de cobertura gana la columna de más a la izquierda: es la que
+    # está pegada al concepto.
+    best = min((c for c in money_cols if c["hits"] >= 0.9 * top),
+               key=lambda c: (c["number"], c["text"]))
+    text_col, number_col, first = best["text"], best["number"], best["first"]
+    columns = [{"index": text_col, "header": None, "role": "description", "year": None},
+               {"index": number_col, "header": None, "role": "amount", "year": None}]
+
+    # Una columna de texto libre a la derecha del monto suele ser la de notas
+    # ("NOTES" en el de Comms): es información que alguien escribió a mano y
+    # tirarla sería peor que arriesgar una columna mal rotulada, que se ve.
+    data = rows[first:]
+    for index in range(number_col + 1, min(width, 12)):
+        texts = sum(1 for r in data if len(r) > index and clean(r[index]) and to_number(r[index]) is None)
+        if texts >= max(3, len(data) // 4):
+            columns.append({"index": index, "header": None, "role": "notes", "year": None})
+            break
+
+    return {"header_row": None, "columns": columns, "rows": data, "headerless": True,
+            "data_start": first + 1}
+
+
+def _detect_groups(entries: list, candidates: set) -> tuple:
+    """Detecta los subtotales de una lista jerárquica. → (grupos, padre_de)
+
+    El presupuesto de Comms viene como árbol: una fila por evento con su
+    subtotal ("BCLA 100.000") y debajo sus líneas ("Photo Ops 24.000", …),
+    anidado dos niveles ("EVENTS" contiene cuatro eventos). Importar todo
+    plano contaría la plata dos veces.
+
+    Dos señales, y hacen falta las dos:
+
+    * **candidata** — la fila viene en negrita o menos sangrada que la de
+      abajo. Es lo que separa un subtotal de una línea cualquiera.
+    * **aritmética** — su monto es exactamente la suma de las filas que le
+      siguen y todavía no pertenecen a otro grupo.
+
+    Con la aritmética sola no alcanza: en esta misma planilla "Draw 8.000"
+    coincide con las dos líneas de abajo (5.000 + 3.000) y se robaba los hijos
+    de BCLA, que entonces dejaba de cerrar. Con la negrita sola tampoco: si las
+    sumas no cierran no hay árbol y la planilla se lee plana.
+
+    Se recorre de abajo hacia arriba, así los grupos internos quedan resueltos
+    antes que los que los contienen.
+
+    `entries` es [(offset, descripción, monto)] en el orden de la planilla.
+    """
+    groups, parent_of = set(), {}
+    total = len(entries)
+    for i in range(total - 1, -1, -1):
+        offset, _, amount = entries[i]
+        if amount is None or amount <= 0 or offset not in candidates:
+            continue
+        running, children = 0.0, []
+        for j in range(i + 1, total):
+            if entries[j][0] in parent_of:
+                continue                      # ya es hijo de un grupo interno
+            child_amount = entries[j][2]
+            if child_amount is None:
+                continue
+            running += child_amount
+            children.append(entries[j][0])
+            if round(running, 2) >= round(amount, 2):
                 break
-        else:
-            streak = 0
-    if streak < 3 or first is None:
-        return {"header_row": None, "columns": [], "rows": [], "headerless": True}
-    return {
-        "header_row": None,
-        "columns": [{"index": 0, "header": None, "role": "description", "year": None},
-                    {"index": 1, "header": None, "role": "amount", "year": None}],
-        "rows": rows[first:],
-        "headerless": True,
-    }
+        # Dos hijos como mínimo: que una línea suelta coincida con la de abajo
+        # es una casualidad, no un subtotal.
+        if len(children) >= 2 and round(running, 2) == round(amount, 2):
+            groups.add(offset)
+            for child in children:
+                parent_of[child] = offset
+    return groups, parent_of
 
 
 def _shape(columns: list, rows: list) -> str:
@@ -321,6 +406,35 @@ def _has_formulas(content: bytes, sheet: str) -> bool:
     except Exception:
         return False
     return False
+
+
+def _emphasized_rows(ws, parsed: dict) -> set:
+    """Offsets de las filas que *parecen* un encabezado de grupo.
+
+    Negrita, o menos sangría que la fila siguiente. Es solo la lista de
+    candidatas de `_detect_groups`: que una fila esté en negrita no la
+    convierte en subtotal, lo decide la aritmética.
+    """
+    column = next((c for c in parsed["columns"] if c["role"] == "description"), None)
+    if not column:
+        return set()
+    start = parsed.get("data_start", 1)
+    indents, bold = {}, set()
+    for offset in range(len(parsed["rows"])):
+        try:
+            cell = ws.cell(row=start + offset, column=column["index"] + 1)
+        except (ValueError, IndexError):
+            continue
+        if cell.font is not None and cell.font.bold:
+            bold.add(offset)
+        indents[offset] = int((cell.alignment.indent if cell.alignment else 0) or 0)
+
+    emphasized = set(bold)
+    for offset, indent in indents.items():
+        following = indents.get(offset + 1)
+        if following is not None and following > indent:
+            emphasized.add(offset)
+    return emphasized
 
 
 def analyze(content: bytes, sheet: Optional[str] = None) -> dict:
@@ -363,6 +477,7 @@ def analyze(content: bytes, sheet: Optional[str] = None) -> dict:
     parsed["sheet"] = chosen
     parsed["sheets"] = sheets
     parsed["shape"] = _shape(parsed["columns"], parsed["rows"])
+    parsed["emphasized"] = _emphasized_rows(wb[chosen], parsed)
     if parsed["shape"] == "matrix":
         # En matriz la columna "Total"/"TOTALS" es el total de la fila: sumarla
         # duplicaría el presupuesto entero.
@@ -554,6 +669,36 @@ def _plan(content: bytes, *, year: int, kind: str, department: str,
     years = sorted({c["year"] for c in year_columns}) or [year]
     catalog = Catalog(year, kind, viewable)
 
+    # ── jerarquía (lista con subtotales por evento) ──────────────────────────
+    # Antes de leer fila por fila hay que saber cuáles son subtotales: en el
+    # presupuesto de Comms el evento es la fila de arriba ("BCLA 100.000") y sus
+    # líneas cuelgan debajo. Sin esto la plata se contaría dos veces y el evento
+    # se perdería.
+    group_rows, group_labels = set(), {}
+    if shape == "list" and not year_columns and not col_competition:
+        entries, seen_any = [], False
+        for offset, cells in enumerate(raw_rows):
+            description = clean(cells[col_desc["index"]]) if len(cells) > col_desc["index"] else None
+            if not description:
+                continue
+            head = norm(description)
+            if head.startswith(("subtotal", "sub total", "sub-total")):
+                continue
+            entries.append((offset, description, to_number(cells[col_amount["index"]])
+                            if col_amount and len(cells) > col_amount["index"] else None))
+            seen_any = True
+        if seen_any:
+            detected, parent_of = _detect_groups(entries, parsed.get("emphasized") or set())
+            by_offset = {e[0]: e[1] for e in entries}
+            leaves = [e for e in entries if e[0] not in detected and (e[2] or 0) > 0]
+            covered = [e for e in leaves if e[0] in parent_of]
+            # Se acepta solo si el árbol explica la planilla: dos grupos o más y
+            # la gran mayoría de las líneas colgando de alguno. Una coincidencia
+            # aritmética suelta no alcanza para reinterpretar el archivo.
+            if len(detected) >= 2 and leaves and len(covered) >= 0.6 * len(leaves):
+                group_rows = detected
+                group_labels = {e[0]: by_offset[parent_of[e[0]]] for e in covered}
+
     # ── resolución de las etiquetas de competencia ──────────────────────────
     # En matriz son los encabezados de columna; en lista, los valores de la
     # columna "Competencia". Se resuelven una sola vez y el usuario puede pisar
@@ -573,6 +718,10 @@ def _plan(content: bytes, *, year: int, kind: str, department: str,
     elif col_competition:
         labels = sorted({clean(r[col_competition["index"]]) for r in raw_rows
                          if len(r) > col_competition["index"] and clean(r[col_competition["index"]])})
+    elif group_labels:
+        # Los subtotales de la jerarquía son la dimensión de competencia: se
+        # resuelven con el mismo desplegable que las columnas de la matriz.
+        labels = sorted(set(group_labels.values()))
 
     resolved = {}
     for label in labels:
@@ -642,8 +791,8 @@ def _plan(content: bytes, *, year: int, kind: str, department: str,
                 and not clean(cell(col_account)):
             stop = True
             continue
-        if head.startswith(("subtotal", "sub total", "sub-total")):
-            ignored_rows += 1
+        if head.startswith(("subtotal", "sub total", "sub-total")) or offset in group_rows:
+            ignored_rows += 1     # subtotal: su plata ya está en las líneas de abajo
             continue
 
         # departamento: el de la fila si la planilla lo trae, si no el elegido.
@@ -685,9 +834,8 @@ def _plan(content: bytes, *, year: int, kind: str, department: str,
                                           "description": description})
         else:
             competition_id = default_competition_id
-            label = None
-            if col_competition and clean(cell(col_competition)):
-                label = clean(cell(col_competition))
+            label = clean(cell(col_competition)) if col_competition else group_labels.get(offset)
+            if label:
                 target = resolved.get(label, {})
                 if target.get("status") in ("matched", "assigned"):
                     competition_id = target.get("competition_id")

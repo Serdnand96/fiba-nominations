@@ -680,9 +680,20 @@ saltos de línea dentro del header):
   fila por año, unidas por `series_id`. Es el de IT;
 - **matriz** cuenta × competencia con su columna "General" → una línea por
   celda. Es el de Competitions;
+- **lista jerárquica**: una fila por evento con su subtotal ("BCLA 100.000") y
+  debajo sus líneas, anidada dos niveles ("EVENTS" contiene cuatro eventos). Es
+  el de Comms, y ahí el evento **es** la fila de arriba;
 - una planilla sin encabezados de dos columnas `concepto | monto` (el
   presupuesto de un solo evento), que se imputa entera a la competencia que se
   elija.
+
+En la jerárquica los subtotales no se importan —su plata ya está en las líneas
+de abajo— y se detectan con **dos** señales: la fila viene en negrita o menos
+sangrada que la de abajo, **y** su monto es exactamente la suma de las filas que
+le siguen. Hacen falta las dos: en el propio archivo de Comms "Draw 8.000"
+coincide con las dos líneas siguientes (5.000 + 3.000) y con la aritmética sola
+se robaba los hijos de BCLA. Si las sumas no cierran no hay árbol y la planilla
+se lee plana.
 
 ### Las tres decisiones que lo definen
 

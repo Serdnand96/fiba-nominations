@@ -188,8 +188,17 @@ Lo que lo diferencia de los otros tres:
     columnas = eventos). Con menos de 3 se lee como lista a propósito: las
     planillas de seguimiento traen pares `Rate | Total` que serían dos
     "eventos" inventados.
-  - Sin encabezados, se acepta solo el patrón `texto | número` repetido 3
-    veces (el presupuesto de un solo evento).
+  - **lista jerárquica** — grupo con subtotal + líneas hijas (el de Comms). El
+    grupo es la dimensión de competencia y **no** se importa como línea.
+    `_detect_groups()` exige **dos** señales: candidata por formato (negrita o
+    menos sangría que la fila de abajo) **y** que el monto sea exactamente la
+    suma de las filas siguientes no reclamadas, de abajo hacia arriba para
+    resolver el anidado. Solo con aritmética se rompía: "Draw 8000" coincide
+    con las dos líneas de abajo y le robaba los hijos a "BCLA 100000".
+  - Sin encabezados, se busca **cualquier** par de columnas `texto | número`
+    con 3 aciertos seguidos (el de Comms ni usa la columna A); a igual
+    cobertura gana la de más a la izquierda y se descartan las columnas de
+    puros valores < 1, que son porcentajes y no plata.
 - **Nunca adivina plata.** Una columna solo se vincula a una competencia con
   match **exacto** de nombre. La *contención* está topeada a 0,85 (debajo del
   umbral 0,92) porque "Women's AmeriCup" está contenido en "FIBA U16 Women's
