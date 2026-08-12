@@ -46,8 +46,12 @@ DECISIONS = {
     "FIBA AmeriCup 2029 Qualifiers W1": "FIBA AmeriCup 2029 Qualifiers – Window 1",
     "WBLA": "WBLA – Final 4",
     SPLIT_LABEL: "FIBA U16 AmeriCup",                       # se parte después
-    "CentroBasket U15 / U17": bi.SKIP,                      # no está en el calendario
-    "South American U17 Championship (Women)": bi.SKIP,
+    # Creadas el 2026-08-12 con `is_tbd`: van en el segundo semestre pero
+    # todavía no tienen fecha. CentroBasket queda como un solo evento —
+    # es como lo presupuesta la planilla, y partirlo en U15 y U17 sería
+    # inventar un reparto que el Excel no da.
+    "CentroBasket U15 / U17": "FIBA Centrobasket U15 & U17",
+    "South American U17 Championship (Women)": "South American U17 Women's Championship",
 }
 SPLIT_INTO = "FIBA U16 Women's AmeriCup"
 
