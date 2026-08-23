@@ -495,6 +495,13 @@ class Catalog:
         self.year = year
         self.kind = kind
         self.competitions = supabase.table("competitions").select("id, name, year").execute().data or []
+        # Los eventos presupuestarios (Draws, workshops, temporadas) matchean
+        # igual que una competencia: para la planilla son una columna más.
+        # Mientras la tabla esté vacía el pool es idéntico al de antes, así que
+        # esto no puede cambiar el resultado de un import ya validado.
+        self.budget_events = supabase.table("budget_events").select("id, name, year") \
+            .eq("active", True).execute().data or []
+        self.event_ids = {e["id"] for e in self.budget_events}
         self.accounts = supabase.table("accounts").select("code, label, kind, active").execute().data or []
         self.departments = supabase.table("departments").select("code, label, active").execute().data or []
         self._by_label = {}
@@ -517,7 +524,8 @@ class Catalog:
         text = norm(label)
         if not text:
             return {"status": "unmatched", "competition_id": None, "name": None, "score": 0}
-        pool = [c for c in self.competitions if c.get("year") == self.year] or self.competitions
+        everything = self.competitions + self.budget_events
+        pool = [c for c in everything if c.get("year") == self.year] or everything
         best, best_score = None, 0.0
         for competition in pool:
             if norm(competition["name"]) == text:
@@ -605,7 +613,8 @@ class Catalog:
     def existing_lines(self, years: list) -> list:
         query = (
             supabase.table("budget_lines")
-            .select("id, year, department_code, account_code, competition_id, description, series_id, kind")
+            .select("id, year, department_code, account_code, competition_id, budget_event_id, "
+                    "description, series_id, kind")
             .in_("year", sorted(set(years)))
         )
         if self.viewable is not None:
@@ -614,8 +623,11 @@ class Catalog:
 
 
 # ─── Armado del plan ─────────────────────────────────────────────────────────
-def _row_key(year, department, account, competition_id, description) -> tuple:
-    return (year, department, account, competition_id or None, norm(description))
+def _row_key(year, department, account, target_id, description) -> tuple:
+    """Clave de deduplicación. `target_id` es la competencia O el evento
+    presupuestario: son excluyentes (CHECK de la migración 039), así que un solo
+    campo alcanza y evita que la misma línea se duplique al reimportar."""
+    return (year, department, account, target_id or None, norm(description))
 
 
 def _plan(content: bytes, *, year: int, kind: str, department: str,
@@ -750,16 +762,26 @@ def _plan(content: bytes, *, year: int, kind: str, department: str,
 
     # ── filas ───────────────────────────────────────────────────────────────
     existing = catalog.existing_lines(years)
+
+    def _target_of(line: dict):
+        """El destino de una línea ya cargada: competencia o evento.
+
+        Son excluyentes en la base (CHECK de la 039), así que el `or` no puede
+        elegir mal. Del lado de la planilla el destino sale del match y es un
+        solo id, con lo cual las dos puntas de la clave hablan de lo mismo.
+        """
+        return line.get("competition_id") or line.get("budget_event_id")
+
     by_key = {}
     for line in existing:
         by_key.setdefault(_row_key(line["year"], line["department_code"], line["account_code"],
-                                   line["competition_id"], line["description"]), line)
+                                   _target_of(line), line["description"]), line)
     by_id = {line["id"]: line for line in existing}
     # series existentes por concepto, para que los años queden unidos
     series_by_concept = {}
     for line in existing:
         series_by_concept.setdefault(
-            (line["department_code"], line["account_code"], line["competition_id"], norm(line["description"])),
+            (line["department_code"], line["account_code"], _target_of(line), norm(line["description"])),
             line["series_id"],
         )
 
@@ -923,7 +945,11 @@ def _plan(content: bytes, *, year: int, kind: str, department: str,
                 "account_code": account_code,
                 "account_new": account_status == "new",
                 "description": description[:300],
-                "competition_id": competition_id,
+                # `competition_id` sale del match y puede ser el id de una
+                # competencia o el de un evento presupuestario: son la misma
+                # dimensión para la planilla y columnas distintas en la base.
+                "competition_id": None if competition_id in catalog.event_ids else competition_id,
+                "budget_event_id": competition_id if competition_id in catalog.event_ids else None,
                 "competition_label": label,
                 "amount": round(amount, 2),
                 "qty": qty,
@@ -1074,7 +1100,7 @@ def preview(content: bytes, **kwargs) -> dict:
     }
 
 
-_LINE_FIELDS = ("year", "department_code", "account_code", "competition_id", "kind",
+_LINE_FIELDS = ("year", "department_code", "account_code", "competition_id", "budget_event_id", "kind",
                 "description", "qty", "monthly_amount", "amount", "escalation_pct",
                 "notes", "series_id")
 

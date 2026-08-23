@@ -41,6 +41,9 @@ from api._lib.schemas import (
     AccountUpdate,
     AssumptionsPut,
     BudgetAccessPut,
+    BudgetEventCompetitions,
+    BudgetEventCreate,
+    BudgetEventUpdate,
     BudgetLineCreate,
     BudgetLineUpdate,
     BudgetProject,
@@ -77,6 +80,7 @@ _REVENUE_STATUSES = {"expected", "received", "cancelled"}
 _PAYEE_TYPES = {"vendor", "employee", "other"}
 _FREQUENCIES = {"monthly", "quarterly", "annual"}
 _PERIOD_RE = re.compile(r"^\d{4}-(0[1-9]|1[0-2])$")
+_BUDGET_EVENT_KINDS = {"season", "draw", "workshop", "other"}
 
 # Campos que un PATCH puede cambiar pero nunca vaciar. Los updates usan
 # model_dump(exclude_unset=True) — no `if v is not None` — para distinguir "no
@@ -90,6 +94,7 @@ _REQUIRED_ON_UPDATE = {
     "budget_lines": {"department_code", "account_code", "description", "amount", "kind", "escalation_pct", "source"},
     "vendors": {"name"},
     "accounts": {"label", "kind"},
+    "budget_events": {"name", "year", "department_code", "kind"},
 }
 
 
@@ -484,15 +489,188 @@ def delete_vendor(vendor_id: str):
     return {"ok": True, "deactivated": False}
 
 
+# ─── Eventos presupuestarios ────────────────────────────────────────────────
+#
+# Gasto que no es competencia del calendario ni overhead anual del
+# departamento: los Draws de AmeriCup, los workshops de TDs, y las temporadas
+# de las ligas que el Excel presupuesta enteras mientras el calendario tiene
+# las fases sueltas. Sin hijos es una bolsa suelta; con competencias colgadas
+# es una temporada que presupuesta lo que sus fases ejecutan (migración 039).
+def _budget_event(event_id: str, request: Request, action: str = "view") -> dict:
+    return _row_or_403("budget_events", event_id, request, action)
+
+
+def _check_target(competition_id, budget_event_id, request: Request, action: str = "view") -> None:
+    """Un gasto/línea/ingreso apunta a UNA competencia o a UN evento, no a dos.
+
+    El CHECK de la 039 ya lo impide en la base; acá se da el 400 con mensaje en
+    vez de un 500 de Postgres. Y de paso se valida el acceso al departamento del
+    evento: sin esto se podría colgar gasto de un evento de un área ajena
+    eligiendo su id, que es el mismo agujero que `_row_or_403` cierra en todo el
+    resto del módulo.
+    """
+    if competition_id and budget_event_id:
+        raise HTTPException(
+            status_code=400,
+            detail="A row belongs to a competition or to a budget event, not both",
+        )
+    if budget_event_id:
+        _budget_event(budget_event_id, request, action)
+
+
+@router.get("/events")
+def list_budget_events(
+    request: Request,
+    year: Optional[int] = Query(None),
+    department: Optional[str] = Query(None),
+    kind: Optional[str] = Query(None),
+    include_inactive: bool = Query(False),
+):
+    q = _scoped(supabase.table("budget_events").select("*"), request, department)
+    if year:
+        q = q.eq("year", year)
+    if kind:
+        q = q.eq("kind", kind)
+    if not include_inactive:
+        q = q.eq("active", True)
+    events = q.order("year", desc=True).order("name").execute().data or []
+    if not events:
+        return []
+
+    # Las fases de cada temporada, en una sola query. Se devuelven acá y no en
+    # un endpoint aparte porque la UI las necesita para decidir si muestra el
+    # panel de fases, y son pocas por evento.
+    phases = supabase.table("competitions").select("id, name, year, budget_event_id") \
+        .in_("budget_event_id", [e["id"] for e in events]).execute().data or []
+    by_event: dict = {}
+    for c in phases:
+        by_event.setdefault(c["budget_event_id"], []).append(
+            {"id": c["id"], "name": c["name"], "year": c.get("year")})
+    for e in events:
+        e["competitions"] = sorted(by_event.get(e["id"], []), key=lambda c: (c["name"] or "").lower())
+    return events
+
+
+@router.post("/events", status_code=201, dependencies=[Depends(require_edit("budget"))])
+def create_budget_event(data: BudgetEventCreate, request: Request):
+    if not _valid_department(data.department_code):
+        raise HTTPException(status_code=400, detail="Unknown or inactive department")
+    _assert_can_edit(request, data.department_code)
+    kind = data.kind or "other"
+    if kind not in _BUDGET_EVENT_KINDS:
+        raise HTTPException(status_code=400, detail="Invalid kind")
+
+    record = {k: v for k, v in data.model_dump().items() if v is not None}
+    record["kind"] = kind
+    record["created_by"] = _user_id(request)
+    try:
+        return supabase.table("budget_events").insert(record).execute().data[0]
+    except Exception as e:
+        # El índice único es (lower(name), year): un duplicado es un error del
+        # usuario, no del servidor.
+        if "idx_budget_events_name_year" in str(e):
+            raise HTTPException(status_code=409, detail="A budget event with that name already exists for this year")
+        raise
+
+
+@router.patch("/events/{event_id}", dependencies=[Depends(require_edit("budget"))])
+def update_budget_event(event_id: str, data: BudgetEventUpdate, request: Request):
+    _budget_event(event_id, request, "edit")
+    updates = _patch_updates(data, "budget_events")
+    if "department_code" in updates:
+        if not _valid_department(updates["department_code"]):
+            raise HTTPException(status_code=400, detail="Unknown or inactive department")
+        # Mover el evento a otro departamento exige permiso sobre el destino.
+        _assert_can_edit(request, updates["department_code"])
+    if "kind" in updates and updates["kind"] not in _BUDGET_EVENT_KINDS:
+        raise HTTPException(status_code=400, detail="Invalid kind")
+    updates["updated_at"] = _now_iso()
+    result = supabase.table("budget_events").update(updates).eq("id", event_id).execute()
+    if not result.data:
+        raise HTTPException(status_code=404, detail="Budget event not found")
+    return result.data[0]
+
+
+@router.put("/events/{event_id}/competitions", dependencies=[Depends(require_edit("budget"))])
+def set_budget_event_competitions(event_id: str, data: BudgetEventCompetitions, request: Request):
+    """Define qué fases del calendario cuelgan de esta temporada.
+
+    Reemplaza el conjunto entero. Escribe en `competitions`, que es tabla de
+    otro módulo, pero solo esta columna: `budget_event_id` no existe para nadie
+    más que el rollup de Budget, así que no hace falta exigir el permiso
+    `competitions` como sí lo hace el tarifario de fees (que sí pisa los montos
+    que terminan en las cartas).
+    """
+    event = _budget_event(event_id, request, "edit")
+    wanted = list(dict.fromkeys(data.competition_ids or []))   # dedup, orden estable
+
+    if wanted:
+        found = supabase.table("competitions").select("id").in_("id", wanted).execute().data or []
+        if len(found) != len(wanted):
+            raise HTTPException(status_code=400, detail="Some competitions do not exist")
+
+    current = supabase.table("competitions").select("id") \
+        .eq("budget_event_id", event_id).execute().data or []
+    current_ids = {c["id"] for c in current}
+
+    to_detach = sorted(current_ids - set(wanted))
+    to_attach = [c for c in wanted if c not in current_ids]
+
+    if to_detach:
+        supabase.table("competitions").update({"budget_event_id": None}).in_("id", to_detach).execute()
+    if to_attach:
+        # in_() en el update: una sola query, y todas las filas van al mismo
+        # evento, así que no hace falta ir de a una.
+        supabase.table("competitions").update({"budget_event_id": event_id}).in_("id", to_attach).execute()
+
+    return {"ok": True, "event": event["name"], "attached": len(wanted),
+            "added": len(to_attach), "removed": len(to_detach)}
+
+
+@router.delete("/events/{event_id}", dependencies=[Depends(require_edit("budget"))])
+def delete_budget_event(event_id: str, request: Request):
+    """Baja lógica si el evento tiene plata o fases colgadas; borrado real si no.
+
+    Mismo criterio que `delete_vendor`: los FK son ON DELETE SET NULL, así que
+    un DELETE real no rompería nada, pero dejaría líneas y gastos históricos
+    apuntando a la nada y sin forma de saber a qué evento pertenecían.
+    """
+    _budget_event(event_id, request, "edit")
+    used = False
+    for table in ("budget_lines", "expenses", "revenues"):
+        if supabase.table(table).select("id").eq("budget_event_id", event_id).limit(1).execute().data:
+            used = True
+            break
+    if not used and supabase.table("competitions").select("id") \
+            .eq("budget_event_id", event_id).limit(1).execute().data:
+        used = True
+
+    if used:
+        result = supabase.table("budget_events").update(
+            {"active": False, "updated_at": _now_iso()}
+        ).eq("id", event_id).execute()
+        if not result.data:
+            raise HTTPException(status_code=404, detail="Budget event not found")
+        return {"ok": True, "deactivated": True}
+
+    result = supabase.table("budget_events").delete().eq("id", event_id).execute()
+    if not result.data:
+        raise HTTPException(status_code=404, detail="Budget event not found")
+    return {"ok": True, "deactivated": False}
+
+
 # ─── Presupuesto ─────────────────────────────────────────────────────────────
-_LINE_SELECT = "*, competitions(name), departments(label), accounts(label, kind)"
+_LINE_SELECT = "*, competitions(name), budget_events(name), departments(label), accounts(label, kind)"
 
 
 def _shape_line(row: dict) -> dict:
     comp = row.pop("competitions", None) or {}
+    event = row.pop("budget_events", None) or {}
     dept = row.pop("departments", None) or {}
     acc = row.pop("accounts", None) or {}
     row["competition_name"] = comp.get("name")
+    row["budget_event_name"] = event.get("name")
+    row["event_display"] = comp.get("name") or event.get("name")
     row["department_label"] = dept.get("label")
     row["account_label"] = acc.get("label")
     return row
@@ -505,6 +683,7 @@ def list_budget_lines(
     department: Optional[str] = Query(None),
     account: Optional[str] = Query(None),
     competition_id: Optional[str] = Query(None),
+    budget_event_id: Optional[str] = Query(None),
     general_only: bool = Query(False),
     kind: Optional[str] = Query(None),
 ):
@@ -517,7 +696,12 @@ def list_budget_lines(
     if kind:
         q = q.eq("kind", kind)
     if general_only:
-        q = q.is_("competition_id")
+        # "General" = ni competencia ni evento presupuestario. Sin la segunda
+        # condición la línea de un Draw aparecería como gasto general y el
+        # reporte de overhead anual quedaría inflado.
+        q = q.is_("competition_id").is_("budget_event_id")
+    elif budget_event_id:
+        q = q.eq("budget_event_id", budget_event_id)
     elif competition_id:
         q = q.eq("competition_id", competition_id)
     return [_shape_line(r) for r in (q.execute().data or [])]
@@ -544,6 +728,7 @@ def create_budget_line(data: BudgetLineCreate, request: Request):
     if kind not in ("expense", "revenue"):
         raise HTTPException(status_code=400, detail="kind must be 'expense' or 'revenue'")
     _check_account(data.account_code, kind)
+    _check_target(data.competition_id, data.budget_event_id, request)
 
     record = {k: v for k, v in data.model_dump().items() if v is not None}
     record["kind"] = kind
@@ -571,6 +756,11 @@ def update_budget_line(line_id: str, data: BudgetLineUpdate, request: Request):
         raise HTTPException(status_code=400, detail="kind must be 'expense' or 'revenue'")
     if "account_code" in updates:
         _check_account(updates["account_code"], kind)
+    _check_target(
+        updates.get("competition_id", current.get("competition_id")),
+        updates.get("budget_event_id", current.get("budget_event_id")),
+        request,
+    )
 
     # Tocar el monto de una línea calculada la vuelve manual: el recálculo por
     # headcount no puede pisar lo que alguien ajustó a mano.
@@ -860,10 +1050,15 @@ def _payment_expense_rows(rows: list, year: int) -> list:
     for p in rows:
         nom = p.get("nominations") or {}
         comp = nom.get("competitions") or {}
+        # El año de la competencia es el respaldo para las DOS ramas. En la de
+        # `completed` importa más de lo que parece: `payment_date` es nullable y
+        # una fila histórica puede no tenerla, y sin respaldo esa plata no cae en
+        # ningún año — desaparece del ejecutado en vez de aparecer mal ubicada.
+        fallback = str(comp.get("year") or "") or (p.get("created_at") or "")[:4]
         if p.get("status") == "completed":
-            row_year = (p.get("payment_date") or "")[:4]
+            row_year = (p.get("payment_date") or "")[:4] or fallback
         else:
-            row_year = str(comp.get("year") or "") or (p.get("created_at") or "")[:4]
+            row_year = fallback
         if row_year != str(year):
             continue
 
@@ -908,12 +1103,13 @@ def budget_summary(request: Request, year: int = Query(...), department: Optiona
     lq = _scoped(supabase.table("budget_lines").select("*").eq("year", year), request, department)
     eq_ = _scoped(
         supabase.table("expenses")
-        .select("amount, status, department_code, account_code, competition_id")
+        .select("amount, status, department_code, account_code, competition_id, budget_event_id")
         .gte("expense_date", f"{year}-01-01").lte("expense_date", f"{year}-12-31"),
         request, department,
     )
     rq = _scoped(
-        supabase.table("revenues").select("amount, status, department_code, competition_id"),
+        supabase.table("revenues")
+        .select("amount, status, department_code, competition_id, budget_event_id"),
         request, department,
     )
     pq = _scoped(
@@ -933,13 +1129,39 @@ def budget_summary(request: Request, year: int = Query(...), department: Optiona
 
     depts = {d["code"]: d["label"] for d in (supabase.table("departments").select("code, label").execute().data or [])}
     accts = {a["code"]: a["label"] for a in (supabase.table("accounts").select("code, label").execute().data or [])}
-    comps = {c["id"]: c["name"] for c in (supabase.table("competitions").select("id, name").execute().data or [])}
+
+    # El rollup por evento cuenta competencias Y eventos presupuestarios en el
+    # mismo eje: para reportar da igual si el gasto colgó de una competencia del
+    # calendario o de un Draw, lo que importa es contra qué se compara.
+    comp_rows = supabase.table("competitions").select("id, name, budget_event_id").execute().data or []
+    event_rows = supabase.table("budget_events").select("id, name").execute().data or []
+    comps = {c["id"]: c["name"] for c in comp_rows}
+    comps.update({e["id"]: e["name"] for e in event_rows})
+
+    # LAS TEMPORADAS PRESUPUESTAN, LAS FASES EJECUTAN (migración 039). El Excel
+    # presupuesta la temporada entera de Liga Sudamericana; el calendario tiene
+    # sus 6 fases. Sin plegar, la temporada saldría con presupuesto y cero
+    # ejecutado y cada fase con ejecutado y cero presupuesto — dos mitades que
+    # no se comparan con nada. Se imputa todo a la temporada; el desglose por
+    # fase vive en la vista del evento.
+    season_of = {c["id"]: c["budget_event_id"] for c in comp_rows if c.get("budget_event_id")}
+
+    def _stamp_target(rows: list) -> list:
+        for r in rows:
+            r["target_id"] = (
+                r.get("budget_event_id")
+                or season_of.get(r.get("competition_id"))
+                or r.get("competition_id")
+            )
+        return rows
 
     def _num(row, field="amount") -> float:
         return float(row.get(field) or 0)
 
-    exp_lines = [l for l in lines if l.get("kind") == "expense"]
+    exp_lines = _stamp_target([l for l in lines if l.get("kind") == "expense"])
     rev_lines = [l for l in lines if l.get("kind") == "revenue"]
+    _stamp_target(expenses)
+    _stamp_target(payments)
 
     # Un pago `completed` es ejecutado; cualquier otro estado vivo es
     # comprometido (está aprobado a nivel de nominación, falta que salga).
@@ -954,6 +1176,13 @@ def budget_summary(request: Request, year: int = Query(...), department: Optiona
         sum(_num(e) for e in expenses if e.get("status") == "approved")
         + sum(_num(p) for p in open_payments), 2)
     unallocated = round(sum(_num(p) for p in payments if not p.get("department_code")), 2)
+    # Un vuelo con departamento pero SIN cuenta no entra en el ámbar de arriba y
+    # se escondía en la fila "General" de by_account, contra un presupuesto de
+    # cero: restante en rojo sin ninguna pista de qué era. Los roles sin cuenta
+    # de travel (VIDEO_OPERATOR, §14.10) caen justo acá.
+    unallocated_accounts = round(sum(
+        _num(p) for p in payments
+        if p.get("department_code") and not p.get("account_code")), 2)
 
     def _rollup(key: str, labels: dict, is_competition: bool = False) -> list:
         acc: dict = {}
@@ -1000,6 +1229,7 @@ def budget_summary(request: Request, year: int = Query(...), department: Optiona
         # para que un frontend viejo no mienta en pantalla.
         "excludes_person_payments": False,
         "unallocated_payments": unallocated,
+        "unallocated_accounts": unallocated_accounts,
         "totals": {
             "budgeted": budgeted,
             "executed": executed,
@@ -1015,24 +1245,22 @@ def budget_summary(request: Request, year: int = Query(...), department: Optiona
         },
         "by_department": _rollup("department_code", depts),
         "by_account": _rollup("account_code", accts),
-        "by_competition": _rollup("competition_id", comps, is_competition=True),
+        "by_competition": _rollup("target_id", comps, is_competition=True),
     }
 
 
-@router.get("/competitions/{competition_id}/cost")
-def competition_cost(competition_id: str, request: Request):
-    """Costo total de una competencia: pagos a personas + airfare + gastos.
+def _cost_core(competition_ids: list, event_ids: list) -> dict:
+    """Costo de un conjunto de destinos: pagos a personas + airfare + gastos.
 
-    ⚠️ EXCEPCIÓN EXPLÍCITA al recorte por departamento — este endpoint NO llama
-    a _scoped(). Es deliberado y fue decisión del cliente: el scoping rige
-    cargar y editar, no leer el costo de un evento. Una competencia cruza
-    departamentos (la línea de TV Production es de Comms dentro del presupuesto
-    de Competitions), así que sin el desglose entero la cifra no sirve para
-    reportar. Quien tiene el módulo `budget` ve el evento completo.
+    Lo comparten `/competitions/{id}/cost` (una competencia) y
+    `/events/{id}/cost` (un evento presupuestario, más las fases que le
+    cuelguen). Es el mismo cálculo con distinto alcance, así que vive una sola
+    vez: duplicarlo era garantizar que dentro de tres meses los dos endpoints
+    dieran cifras distintas para la misma plata.
 
-    Junta las tres fuentes que hoy están separadas:
+    Junta las tres fuentes que están separadas:
       - `payments`  → fees de las personas nominadas, + airfare aparte
-      - `expenses`  → gasto del evento sin persona (shipping, branding, seguros)
+      - `expenses`  → gasto sin persona (shipping, branding, seguros)
       - `budget_lines` → contra qué se compara
 
     El airfare va como línea propia y NO dentro del fee: en `payments` el total
@@ -1040,47 +1268,58 @@ def competition_cost(competition_id: str, request: Request):
     sigue igual en el desglose, pero desde la 038 **sí entra al ejecutado y al
     comprometido**: es plata gastada, contra la línea de travel del rol.
     """
-    comp = supabase.table("competitions").select("id, name, year, subzone, tier") \
-        .eq("id", competition_id).execute().data
-    if not comp:
-        raise HTTPException(status_code=404, detail="Competition not found")
-    comp = comp[0]
+    def _by_target(table: str, columns: str) -> list:
+        """Filas del `table` que cuelgan de alguna de las competencias o eventos.
 
-    lines = supabase.table("budget_lines").select(
-        "amount, department_code, account_code, kind"
-    ).eq("competition_id", competition_id).execute().data or []
+        Dos queries y no un `or_()`: el wrapper de PostgREST del repo no lo
+        expone, y con `or_` habría que escapar los uuid a mano. Son tablas
+        chicas por evento.
+        """
+        rows = []
+        if competition_ids:
+            rows += supabase.table(table).select(columns) \
+                .in_("competition_id", competition_ids).execute().data or []
+        if event_ids:
+            rows += supabase.table(table).select(columns) \
+                .in_("budget_event_id", event_ids).execute().data or []
+        return rows
 
-    expenses = supabase.table("expenses").select(
-        "amount, status, department_code, account_code, description"
-    ).eq("competition_id", competition_id).execute().data or []
+    lines = _by_target("budget_lines", "amount, department_code, account_code, kind, competition_id")
+    expenses = _by_target("expenses", "amount, status, department_code, account_code, description, competition_id")
+    # Ingresos del evento (fase 11): el grant de FIBA HQ, el hosting fee, los
+    # sponsors. Ya viven en `revenues` con su competencia; lo único que faltaba
+    # era cruzarlos contra el costo para poder decir cuánto dejó el evento.
+    revenues = _by_target("revenues", "amount, status, source_name, competition_id")
 
-    noms = supabase.table("nominations").select("id").eq("competition_id", competition_id) \
-        .execute().data or []
+    noms = []
+    if competition_ids:
+        noms = supabase.table("nominations").select("id") \
+            .in_("competition_id", competition_ids).execute().data or []
     pays = []
     if noms:
         pays = supabase.table("payments").select(
             "total, airfare, status, department_code, account_code, "
-            "airfare_account_code, nominations(personnel(name, role))"
+            "airfare_account_code, nominations(competition_id, personnel(name, role))"
         ).in_("nomination_id", [n["id"] for n in noms]).execute().data or []
 
     def _n(row, field="amount") -> float:
         return float(row.get(field) or 0)
 
+    _OPEN = ("new", "in_process", "split")
     budgeted = round(sum(_n(l) for l in lines if l.get("kind") == "expense"), 2)
     exp_paid = round(sum(_n(e) for e in expenses if e.get("status") == "paid"), 2)
     exp_open = round(sum(_n(e) for e in expenses if e.get("status") == "approved"), 2)
-    _OPEN = ("new", "in_process", "split")
     fees_paid = round(sum(_n(p, "total") for p in pays if p.get("status") == "completed"), 2)
     fees_open = round(sum(_n(p, "total") for p in pays if p.get("status") in _OPEN), 2)
-    # El airfare sigue siendo su propia cifra en el desglose —se liquida con la
-    # agencia y no es parte de lo que cobra la persona—, pero desde la 038
-    # entra al ejecutado: es plata gastada contra la línea de travel del rol.
     airfare = round(sum(_n(p, "airfare") for p in pays), 2)
     airfare_paid = round(sum(_n(p, "airfare") for p in pays if p.get("status") == "completed"), 2)
     airfare_open = round(sum(_n(p, "airfare") for p in pays if p.get("status") in _OPEN), 2)
 
     executed = round(exp_paid + fees_paid + airfare_paid, 2)
     committed = round(exp_open + fees_open + airfare_open, 2)
+
+    rev_received = round(sum(_n(r) for r in revenues if r.get("status") == "received"), 2)
+    rev_expected = round(sum(_n(r) for r in revenues if r.get("status") == "expected"), 2)
 
     # Desglose por departamento, con las tres fuentes juntas.
     by_dept: dict = {}
@@ -1120,15 +1359,56 @@ def competition_cost(competition_id: str, request: Request):
 
     people = []
     for p in pays:
-        person = ((p.pop("nominations", None) or {}).get("personnel")) or {}
+        nom = p.pop("nominations", None) or {}
+        p["competition_id"] = nom.get("competition_id")
+        person = nom.get("personnel") or {}
         people.append({
             "name": person.get("name"), "role": person.get("role"),
+            "competition_id": p["competition_id"],
             "total": p.get("total"), "airfare": p.get("airfare"), "status": p.get("status"),
         })
     people.sort(key=lambda r: (r["name"] or "").lower())
 
+    # Desglose por competencia, con las filas que ya están en memoria. Es lo que
+    # le sirve a una temporada para ver qué aporta cada fase; se calcula siempre
+    # porque no cuesta una query más, y llamar a _cost_core una vez por fase
+    # multiplicaba las consultas contra una base que tiene rate limit.
+    by_comp: dict = {}
+
+    def _comp_entry(cid):
+        return by_comp.setdefault(cid, {
+            "competition_id": cid, "budgeted": 0.0, "executed": 0.0, "committed": 0.0,
+        })
+
+    for l in lines:
+        if l.get("kind") == "expense" and l.get("competition_id"):
+            _comp_entry(l["competition_id"])["budgeted"] += _n(l)
+    for e in expenses:
+        if not e.get("competition_id"):
+            continue
+        entry = _comp_entry(e["competition_id"])
+        if e.get("status") == "paid":
+            entry["executed"] += _n(e)
+        elif e.get("status") == "approved":
+            entry["committed"] += _n(e)
+    for p in pays:
+        if not p.get("competition_id"):
+            continue
+        entry = _comp_entry(p["competition_id"])
+        money = _n(p, "total") + _n(p, "airfare")
+        if p.get("status") == "completed":
+            entry["executed"] += money
+        elif p.get("status") in _OPEN:
+            entry["committed"] += money
+
+    comp_rows = []
+    for cid, e in by_comp.items():
+        for f in ("budgeted", "executed", "committed"):
+            e[f] = round(e[f], 2)
+        e["remaining"] = round(e["budgeted"] - e["executed"] - e["committed"], 2)
+        comp_rows.append(e)
+
     return {
-        "competition": comp,
         "scoped": False,   # la UI lo dice: acá se ve el evento completo
         "totals": {
             "budgeted": budgeted,
@@ -1141,10 +1421,83 @@ def competition_cost(competition_id: str, request: Request):
             "airfare": airfare,
             "event_expenses": round(exp_paid + exp_open, 2),
             "people_count": len(people),
+            # Resultado del evento. Dos lecturas a propósito: `result` es lo que
+            # ya ocurrió (recibido − ejecutado) y `projected_result` es cómo
+            # termina si todo lo esperado entra y todo lo comprometido sale. Una
+            # sola cifra obligaría a elegir entre ser prudente y ser útil.
+            "revenue_received": rev_received,
+            "revenue_expected": rev_expected,
+            "result": round(rev_received - executed, 2),
+            "projected_result": round(rev_received + rev_expected - executed - committed, 2),
         },
+        "revenues": sorted(revenues, key=lambda r: -_n(r)),
         "by_department": dept_rows,
+        "by_competition": comp_rows,
         "people": people,
     }
+
+
+@router.get("/competitions/{competition_id}/cost")
+def competition_cost(competition_id: str, request: Request):
+    """Costo total de una competencia.
+
+    ⚠️ EXCEPCIÓN EXPLÍCITA al recorte por departamento — este endpoint NO llama
+    a _scoped(). Es deliberado y fue decisión del cliente: el scoping rige
+    cargar y editar, no leer el costo de un evento. Una competencia cruza
+    departamentos (la línea de TV Production es de Comms dentro del presupuesto
+    de Competitions), así que sin el desglose entero la cifra no sirve para
+    reportar. Quien tiene el módulo `budget` ve el evento completo.
+
+    Es el costo de ESTA competencia, aunque sea una fase de una temporada: la
+    fase ejecuta y el rollup hacia la temporada lo hace `/events/{id}/cost`.
+    """
+    comp = supabase.table("competitions").select("id, name, year, subzone, tier, budget_event_id") \
+        .eq("id", competition_id).execute().data
+    if not comp:
+        raise HTTPException(status_code=404, detail="Competition not found")
+
+    core = _cost_core([competition_id], [])
+    # El desglose por competencia solo tiene sentido para una temporada con
+    # fases; acá sería una sola fila repitiendo los totales.
+    core.pop("by_competition", None)
+    return {"competition": comp[0], **core}
+
+
+@router.get("/events/{event_id}/cost")
+def budget_event_cost(event_id: str, request: Request):
+    """Costo de un evento presupuestario, incluidas las fases que le cuelguen.
+
+    LAS TEMPORADAS PRESUPUESTAN, LAS FASES EJECUTAN. El presupuesto de Liga
+    Sudamericana está cargado sobre la temporada; el gasto real ocurre en Group
+    A-D, QFs y Finals, que son competencias del calendario. Acá se suman las dos
+    puntas, que es lo único que permite comparar presupuestado contra ejecutado
+    sin que cada mitad quede huérfana.
+
+    Misma excepción al recorte por departamento que `competition_cost`, y por la
+    misma razón: leer el costo de un evento no está scopeado, cargarlo sí. El
+    evento en sí se busca con `_row_or_403`, así que un evento de un
+    departamento que el caller no puede ver da 404 y no se abre por este lado.
+    """
+    event = _budget_event(event_id, request)
+    phases = supabase.table("competitions").select("id, name, year") \
+        .eq("budget_event_id", event_id).execute().data or []
+    phase_ids = [c["id"] for c in phases]
+
+    result = _cost_core(phase_ids, [event_id])
+    result["event"] = event
+    result["phases"] = sorted(phases, key=lambda c: (c["name"] or "").lower())
+
+    # Cuánto aporta cada fase por separado — la pregunta inmediata cuando el
+    # total de la temporada no cierra con lo presupuestado. Sale del desglose
+    # que `_cost_core` ya calculó, sin una query por fase.
+    totals_by_comp = {r["competition_id"]: r for r in result.pop("by_competition", [])}
+    empty = {"budgeted": 0.0, "executed": 0.0, "committed": 0.0, "remaining": 0.0}
+    result["by_phase"] = [
+        {"competition_id": c["id"], "name": c["name"],
+         **{k: v for k, v in totals_by_comp.get(c["id"], empty).items() if k != "competition_id"}}
+        for c in result["phases"]
+    ]
+    return result
 
 
 # ─── Headcount y supuestos (base de las líneas calculadas — UI en fase 5) ────
@@ -1393,11 +1746,15 @@ def _shape_expense(row: dict) -> dict:
     vendor = row.pop("vendors", None) or {}
     employee = row.pop("employees", None) or {}
     comp = row.pop("competitions", None) or {}
+    event = row.pop("budget_events", None) or {}
     dept = row.pop("departments", None) or {}
     acc = row.pop("accounts", None) or {}
     row["vendor_name"] = vendor.get("name")
     row["employee_name"] = employee.get("name")
     row["competition_name"] = comp.get("name")
+    row["budget_event_name"] = event.get("name")
+    # Contra qué evento se muestra la fila, sea del calendario o presupuestario.
+    row["event_display"] = comp.get("name") or event.get("name")
     row["department_label"] = dept.get("label")
     row["account_label"] = acc.get("label")
     # Nombre a mostrar, cualquiera sea el tipo de destinatario.
@@ -1406,7 +1763,7 @@ def _shape_expense(row: dict) -> dict:
 
 
 _EXPENSE_SELECT = (
-    "*, vendors(name), employees(name), competitions(name), "
+    "*, vendors(name), employees(name), competitions(name), budget_events(name), "
     "departments(label), accounts(label)"
 )
 
@@ -1417,6 +1774,7 @@ def _fetch_expenses(
     department: Optional[str] = None,
     account: Optional[str] = None,
     competition_id: Optional[str] = None,
+    budget_event_id: Optional[str] = None,
     general_only: bool = False,
     status: Optional[str] = None,
     vendor_id: Optional[str] = None,
@@ -1442,7 +1800,10 @@ def _fetch_expenses(
     if vendor_id:
         q = q.eq("vendor_id", vendor_id)
     if general_only:
-        q = q.is_("competition_id")
+        # Ver el comentario del listado de líneas: general es sin NINGÚN evento.
+        q = q.is_("competition_id").is_("budget_event_id")
+    elif budget_event_id:
+        q = q.eq("budget_event_id", budget_event_id)
     elif competition_id:
         q = q.eq("competition_id", competition_id)
 
@@ -1477,16 +1838,22 @@ def list_expenses(
     department: Optional[str] = Query(None),
     account: Optional[str] = Query(None),
     competition_id: Optional[str] = Query(None),
-    general_only: bool = Query(False, description="Solo gastos sin competencia"),
+    budget_event_id: Optional[str] = Query(None),
+    general_only: bool = Query(False, description="Solo gastos sin competencia ni evento"),
     status: Optional[str] = Query(None),
     vendor_id: Optional[str] = Query(None),
     date_from: Optional[str] = Query(None),
     date_to: Optional[str] = Query(None),
     search: Optional[str] = Query(None),
 ):
+    # Todo por keyword: la lista de parámetros de _fetch_expenses crece, y
+    # pasarlos por posición hace que agregar uno en el medio corra todos los
+    # demás en silencio.
     return _fetch_expenses(
-        request, year, department, account, competition_id, general_only,
-        status, vendor_id, date_from, date_to, search,
+        request, year=year, department=department, account=account,
+        competition_id=competition_id, budget_event_id=budget_event_id,
+        general_only=general_only, status=status, vendor_id=vendor_id,
+        date_from=date_from, date_to=date_to, search=search,
     )
 
 
@@ -1498,13 +1865,15 @@ def expenses_summary(
     department: Optional[str] = Query(None),
     account: Optional[str] = Query(None),
     competition_id: Optional[str] = Query(None),
+    budget_event_id: Optional[str] = Query(None),
     general_only: bool = Query(False),
     date_from: Optional[str] = Query(None),
     date_to: Optional[str] = Query(None),
 ):
     rows = _fetch_expenses(
         request, year=year, department=department, account=account,
-        competition_id=competition_id, general_only=general_only,
+        competition_id=competition_id, budget_event_id=budget_event_id,
+        general_only=general_only,
         date_from=date_from, date_to=date_to,
     )
 
@@ -1549,6 +1918,11 @@ def create_expense(data: ExpenseCreate, request: Request):
         raise HTTPException(status_code=400, detail="Unknown or inactive department")
     _assert_can_edit(request, data.department_code)
     _check_account(data.account_code, "expense")
+    # `view` y no `edit` sobre el evento: el evento es el contenedor, la plata la
+    # gobierna el department_code del propio gasto. Exigir edición ahí rompería
+    # el caso normal de que un área gaste dentro del evento de otra — que es
+    # exactamente lo que pasa con TV Production adentro de Competitions.
+    _check_target(data.competition_id, data.budget_event_id, request)
 
     payee_type = data.payee_type or "vendor"
     _check_payee(payee_type, data.vendor_id, data.employee_id, data.payee_name)
@@ -1592,6 +1966,11 @@ def update_expense(expense_id: str, data: ExpenseUpdate, request: Request):
         _assert_can_edit(request, updates["department_code"])
     if "account_code" in updates:
         _check_account(updates["account_code"], "expense")
+    _check_target(
+        updates.get("competition_id", current.get("competition_id")),
+        updates.get("budget_event_id", current.get("budget_event_id")),
+        request,
+    )
     if "amount" in updates and float(updates["amount"]) < 0:
         raise HTTPException(status_code=400, detail="amount must be zero or positive")
 
@@ -2055,6 +2434,7 @@ def create_revenue(data: RevenueCreate, request: Request):
         raise HTTPException(status_code=400, detail="Unknown or inactive department")
     _assert_can_edit(request, data.department_code)
     _check_account(data.account_code, "revenue")
+    _check_target(data.competition_id, data.budget_event_id, request)
     status = data.status or "expected"
     if status not in _REVENUE_STATUSES:
         raise HTTPException(status_code=400, detail="Invalid status")
@@ -2080,6 +2460,11 @@ def update_revenue(revenue_id: str, data: RevenueUpdate, request: Request):
         _assert_can_edit(request, updates["department_code"])
     if "account_code" in updates:
         _check_account(updates["account_code"], "revenue")
+    _check_target(
+        updates.get("competition_id", current.get("competition_id")),
+        updates.get("budget_event_id", current.get("budget_event_id")),
+        request,
+    )
 
     status = updates.get("status", current.get("status"))
     if status not in _REVENUE_STATUSES:

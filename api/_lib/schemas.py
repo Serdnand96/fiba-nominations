@@ -185,9 +185,6 @@ class PaymentCreate(BaseModel):
     department_code: Optional[str] = None
     account_code: Optional[str] = None
     airfare_account_code: Optional[str] = None
-    # Legacy payment_budgets code. No longer sent by the UI (migration 038);
-    # optional so an old client keeps working.
-    budget_code: Optional[str] = None
     amount: Optional[float] = None  # None → prefilled from nomination.total
     extra: Optional[float] = 0
     airfare: Optional[float] = 0    # flight cost — tracked apart, not in total
@@ -201,7 +198,6 @@ class PaymentUpdate(BaseModel):
     department_code: Optional[str] = None
     account_code: Optional[str] = None
     airfare_account_code: Optional[str] = None
-    budget_code: Optional[str] = None
     amount: Optional[float] = None
     extra: Optional[float] = None
     airfare: Optional[float] = None
@@ -285,6 +281,9 @@ class ExpenseCreate(BaseModel):
     department_code: str
     account_code: str
     competition_id: Optional[str] = None     # None → gasto general, sin evento
+    # Contenedor que no es competencia (Draw, workshop, temporada). Excluyente
+    # con competition_id — lo impone el CHECK expenses_one_target (migración 039).
+    budget_event_id: Optional[str] = None
     payee_type: Optional[str] = "vendor"     # vendor | employee | other
     vendor_id: Optional[str] = None
     employee_id: Optional[str] = None
@@ -304,6 +303,7 @@ class ExpenseUpdate(BaseModel):
     department_code: Optional[str] = None
     account_code: Optional[str] = None
     competition_id: Optional[str] = None
+    budget_event_id: Optional[str] = None
     payee_type: Optional[str] = None
     vendor_id: Optional[str] = None
     employee_id: Optional[str] = None
@@ -367,6 +367,7 @@ class BudgetLineCreate(BaseModel):
     department_code: str
     account_code: str
     competition_id: Optional[str] = None     # None → línea general del año
+    budget_event_id: Optional[str] = None    # excluyente con competition_id
     kind: Optional[str] = "expense"
     description: str
     qty: Optional[float] = None
@@ -380,6 +381,7 @@ class BudgetLineUpdate(BaseModel):
     department_code: Optional[str] = None
     account_code: Optional[str] = None
     competition_id: Optional[str] = None
+    budget_event_id: Optional[str] = None
     kind: Optional[str] = None
     description: Optional[str] = None
     qty: Optional[float] = None
@@ -451,6 +453,7 @@ class RevenueCreate(BaseModel):
     department_code: str
     account_code: str
     competition_id: Optional[str] = None
+    budget_event_id: Optional[str] = None
     source_name: str
     description: Optional[str] = None
     amount: float
@@ -464,6 +467,7 @@ class RevenueUpdate(BaseModel):
     department_code: Optional[str] = None
     account_code: Optional[str] = None
     competition_id: Optional[str] = None
+    budget_event_id: Optional[str] = None
     source_name: Optional[str] = None
     description: Optional[str] = None
     amount: Optional[float] = None
@@ -471,6 +475,42 @@ class RevenueUpdate(BaseModel):
     received_date: Optional[str] = None
     status: Optional[str] = None
     comments: Optional[str] = None
+
+
+# ─── BUDGET EVENTS (migración 039) ────────────────────────────────────────
+#
+# Contenedor de gasto que no es competencia del calendario ni overhead anual:
+# sin hijos es un Draw o un workshop, con competencias colgadas es una temporada.
+
+class BudgetEventCreate(BaseModel):
+    name: str
+    year: int
+    department_code: str
+    kind: Optional[str] = "other"   # season | draw | workshop | other
+    start_date: Optional[str] = None
+    end_date: Optional[str] = None
+    notes: Optional[str] = None
+
+
+class BudgetEventUpdate(BaseModel):
+    name: Optional[str] = None
+    year: Optional[int] = None
+    department_code: Optional[str] = None
+    kind: Optional[str] = None
+    start_date: Optional[str] = None
+    end_date: Optional[str] = None
+    active: Optional[bool] = None
+    notes: Optional[str] = None
+
+
+class BudgetEventCompetitions(BaseModel):
+    """Las fases del calendario que cuelgan de esta temporada.
+
+    Reemplaza el conjunto entero: lo que no viene en la lista se desvincula.
+    Es una relación chica (una liga son 3-6 fases) y mandar el estado completo
+    evita tener que razonar sobre altas y bajas por separado.
+    """
+    competition_ids: list[str]
 
 
 # ─── EXTERNAL STAFF EVALUATIONS ───────────────────────────────────────────

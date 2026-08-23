@@ -29,7 +29,8 @@ from fastapi.responses import Response
 
 from api._lib.database import supabase
 from api._lib.auth import require_view, require_edit
-from api._lib.schemas import PaymentCreate, PaymentUpdate
+from api._lib.routers import budget as budget_router
+from api._lib.schemas import ExpenseCreate, ExpenseUpdate, PaymentCreate, PaymentUpdate
 
 logger = logging.getLogger(__name__)
 
@@ -54,9 +55,24 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-def _valid_budget(code: str) -> bool:
-    row = supabase.table("payment_budgets").select("code").eq("code", code).eq("active", True).execute().data
-    return bool(row)
+def _payment_date_for(status: str, payment_date: Optional[str]) -> Optional[str]:
+    """La fecha de pago que corresponde al estado, estampándola si falta.
+
+    ⚠️ ESTO ARREGLA UN AGUJERO QUE SE TRAGABA PLATA. `/budget/summary` imputa un
+    pago `completed` al año de su `payment_date`, pero la columna es nullable,
+    no tiene el CHECK que sí tiene `expenses` (migración 034) y **el formulario
+    de Payments nunca tuvo un campo de fecha**. O sea: al marcar un pago como
+    pagado, la fila se quedaba sin año y desaparecía del ejecutado, del
+    comprometido, de los tres rollups y hasta de `unallocated_payments`. Pagar
+    hacía subir el disponible del presupuesto.
+
+    Se resuelve como ya lo hace el módulo de gastos: pasar a `completed` estampa
+    hoy si nadie puso una fecha, y salir de `completed` la limpia — un pago que
+    no está pagado no puede tener fecha de pago.
+    """
+    if status == "completed":
+        return payment_date or datetime.now(timezone.utc).date().isoformat()
+    return None
 
 
 # ─── Budget imputation ───────────────────────────────────────────────────────
@@ -66,7 +82,7 @@ def _valid_budget(code: str) -> bool:
 # `VIDEO_OPERATOR` is deliberately absent: the Fees Breakdown sheet doesn't
 # have it and migration 036 gave it no fee account either, so those payments
 # need the account picked by hand until FIBA decides its line
-# (BUDGET_MODULE.md §14.8). Falling back to the VGO line would be a guess that
+# (BUDGET_MODULE.md §14.10). Falling back to the VGO line would be a guess that
 # lands real money on the wrong account.
 _ROLE_ACCOUNTS = {
     "TD":             {"fee": "COMP-11", "airfare": "COMP-12"},
@@ -76,21 +92,35 @@ _ROLE_ACCOUNTS = {
 }
 
 
-def _departments() -> list:
-    return (
-        supabase.table("departments")
-        .select("code, label").eq("active", True)
-        .order("sort").execute().data
-    ) or []
+def _departments(only_active: bool = True) -> list:
+    rows = supabase.table("departments").select("code, label, active").order("sort").execute().data or []
+    return [r for r in rows if r.get("active")] if only_active else rows
 
 
-def _expense_accounts() -> list:
-    return (
+def _expense_accounts(only_active: bool = True) -> list:
+    rows = (
         supabase.table("accounts")
-        .select("code, label, pending_mapping")
-        .eq("active", True).eq("kind", "expense")
-        .order("sort").execute().data
+        .select("code, label, pending_mapping, active")
+        .eq("kind", "expense").order("sort").execute().data
     ) or []
+    return [r for r in rows if r.get("active")] if only_active else rows
+
+
+def _assert_can_spend(request: Request, department_code: str) -> None:
+    """El caller puede imputar plata a ese departamento.
+
+    ⚠️ MISMO `budget_access` QUE BUDGET, y por la misma razón. Sin esto,
+    cualquiera con `payments.can_edit` puede cargar $50.000 contra el
+    presupuesto de IT: aparecen en el ejecutado de IT en `/budget/summary` y el
+    responsable de IT no los puede corregir, porque su acceso no alcanza a
+    Payments. No es un problema de confidencialidad sino de integridad, y nació
+    en el momento en que la fase 6 conectó las dos mitades.
+
+    ⚠️ REQUISITO DE DEPLOY: `budget_access` falla cerrado. Un usuario no
+    superadmin sin filas ahí no puede cargar pagos. Hay que sembrarlo ANTES de
+    que salga esta versión (ver BUDGET_MODULE.md §14.11).
+    """
+    budget_router._assert_can_edit(request, department_code)
 
 
 def _nomination_role(nomination_id: str) -> Optional[str]:
@@ -110,6 +140,7 @@ def _resolve_imputation(
     airfare_account_code: Optional[str],
     airfare: float,
     role: Optional[str],
+    changed: Optional[set] = None,
 ) -> dict:
     """Validate the budget imputation of a payment, filling in the role defaults.
 
@@ -120,11 +151,23 @@ def _resolve_imputation(
     mapping gets a 400 instead of a silent NULL: an unimputed payment is money
     that disappears from every departmental total, which is the bug this whole
     phase exists to fix.
+
+    `changed` names the fields the request actually sent. Only those are held to
+    "must be active"; a code inherited from the stored row is checked for
+    existence alone. Without that split, the day Finance deactivates the
+    provisional COMP-13 (which is exactly what `PATCH /budget/accounts` is for),
+    every historical payment on that account becomes uneditable — including
+    advancing its status — with a 400 naming a code the form no longer offers.
     """
+    changed = changed if changed is not None else {"department_code", "account_code", "airfare_account_code"}
+
     if not department_code:
         raise HTTPException(status_code=400, detail="A department is required to impute the payment")
-    if department_code not in {d["code"] for d in _departments()}:
-        raise HTTPException(status_code=400, detail="Unknown department")
+    departments = _departments(only_active=False)
+    dept_pool = {d["code"] for d in departments
+                 if d.get("active") or "department_code" not in changed}
+    if department_code not in dept_pool:
+        raise HTTPException(status_code=400, detail="Unknown or inactive department")
 
     defaults = _ROLE_ACCOUNTS.get(role or "", {})
     account_code = account_code or defaults.get("fee")
@@ -134,8 +177,7 @@ def _resolve_imputation(
             detail=f"No default budget account for role {role or '—'}; pick one explicitly",
         )
 
-    needs_airfare_account = float(airfare or 0) > 0
-    if needs_airfare_account:
+    if float(airfare or 0) > 0:
         airfare_account_code = airfare_account_code or defaults.get("airfare")
         if not airfare_account_code:
             raise HTTPException(
@@ -147,10 +189,13 @@ def _resolve_imputation(
         # an account with a zero attached to it.
         airfare_account_code = None
 
-    known = {a["code"] for a in _expense_accounts()}
-    for code in (account_code, airfare_account_code):
-        if code and code not in known:
-            raise HTTPException(status_code=400, detail=f"Unknown expense account: {code}")
+    accounts = _expense_accounts(only_active=False)
+    for field, code in (("account_code", account_code), ("airfare_account_code", airfare_account_code)):
+        if not code:
+            continue
+        pool = {a["code"] for a in accounts if a.get("active") or field not in changed}
+        if code not in pool:
+            raise HTTPException(status_code=400, detail=f"Unknown or inactive expense account: {code}")
 
     return {
         "department_code": department_code,
@@ -199,22 +244,9 @@ def _shape_payment(row: dict) -> dict:
     return row
 
 
-# ─── Budgets catalogue (legacy — historical rows only) ───────────────────────
-@router.get("/budgets")
-def list_budgets():
-    return (
-        supabase.table("payment_budgets")
-        .select("*")
-        .eq("active", True)
-        .order("sort")
-        .execute()
-        .data
-    ) or []
-
-
 # ─── Imputation catalogue: what the payment form offers ──────────────────────
 @router.get("/imputation")
-def imputation_options():
+def imputation_options(request: Request):
     """Departments, expense accounts and the per-role account defaults.
 
     Served from the payments router — and therefore behind `require_view
@@ -222,11 +254,134 @@ def imputation_options():
     permission on top. These are catalogues: names of departments and account
     lines, no amounts.
     """
+    accounts = _expense_accounts()
+
+    # `used_by`: qué departamentos ya gastaron contra cada cuenta. No es una
+    # columna — la cuenta NO pertenece a un departamento (son dimensiones
+    # separadas) — pero es lo que deja poner arriba del desplegable las 2-4
+    # cuentas del área en la que estás parado en vez de las 34 del plan entero.
+    # Mismo cálculo que `/budget/accounts`, sin el recorte por scope: acá no se
+    # devuelven montos, y Payments todavía no respeta `budget_access` (fase 9).
+    used: dict = {}
+    for table in ("budget_lines", "expenses"):
+        rows = supabase.table(table).select("account_code, department_code").execute().data or []
+        for row in rows:
+            if row.get("account_code"):
+                used.setdefault(row["account_code"], set()).add(row["department_code"])
+    for row in (supabase.table("payments").select("account_code, department_code").execute().data or []):
+        if row.get("account_code"):
+            used.setdefault(row["account_code"], set()).add(row["department_code"])
+    for account in accounts:
+        account["used_by"] = sorted(c for c in used.get(account["code"], set()) if c)
+
+    # Qué departamentos puede efectivamente imputar el caller (fase 9). La lista
+    # completa se devuelve igual porque la bandeja muestra el evento entero; sin
+    # esta marca el formulario ofrecería departamentos que el backend después
+    # rechaza con un 403, que es la peor forma de enterarse.
+    editable = budget_router._departments_for(request, "edit")
+    departments = _departments()
+    for d in departments:
+        d["can_edit"] = editable is None or d["code"] in editable
+
     return {
-        "departments": _departments(),
-        "accounts": _expense_accounts(),
+        "departments": departments,
+        "accounts": accounts,
         "role_accounts": _ROLE_ACCOUNTS,
+        "editable_all": editable is None,
     }
+
+
+# ─── Bandeja única del evento (fase 9) ──────────────────────────────────────
+#
+# Payments deja de ser "la pantalla de los nominados" y pasa a mostrar TODO el
+# gasto de una competencia: las personas nominadas (`payments`) y el gasto
+# operativo sin persona (`expenses` — shipping, branding, seguros). Antes eso
+# vivía en otra pantalla y detrás de otro permiso, así que quien opera un evento
+# necesitaba `budget` para ver la mitad de lo que gasta.
+#
+# EL RECORTE. La bandeja se abre con `payments`, pero las FILAS se recortan con
+# el mismo `budget_access` que Budget: se ve el evento entero —una competencia
+# cruza departamentos— y se carga y edita solo en los propios. Es la regla que
+# `competition_cost` ya aplicaba; acá deja de ser una excepción.
+#
+# POR QUÉ SE LLAMA AL ROUTER DE BUDGET EN VEZ DE REIMPLEMENTAR. Las escrituras
+# delegan en `budget.create_expense` / `update_expense` / `delete_expense`, que
+# ya validan cuenta, destinatario, coherencia de pagado y —lo que importa acá—
+# el departamento contra `budget_access`. Duplicarlas era garantizar que en tres
+# meses las dos pantallas validaran distinto sobre la misma tabla.
+#
+# ⚠️ Se pueden llamar como funciones porque NO tienen defaults de `Query()`: el
+# repo ya se quemó con eso (un `Query()` sin resolver llega como objeto truthy y
+# se convierte en un filtro fantasma — el bug que dejó `/summary` en $0.00). Si
+# alguna vez le agregás un `Query()` a esas tres, este atajo deja de servir.
+def _event_expense_target(competition_id, budget_event_id) -> None:
+    """Un gasto cargado desde la bandeja pertenece al evento, siempre.
+
+    Sin esto, `payments` se convertiría en una puerta lateral para cargar el
+    overhead anual de un departamento sin tener el permiso `budget`.
+    """
+    if not competition_id and not budget_event_id:
+        raise HTTPException(
+            status_code=400,
+            detail="An expense created from the event tray must belong to a competition or budget event",
+        )
+
+
+@router.get("/event")
+def event_tray(request: Request, competition_id: str = Query(...)):
+    """Todo el gasto de una competencia, en una sola respuesta.
+
+    `people` son los nominados con su pago (o sin él); `expenses`, el gasto
+    operativo del evento recortado a los departamentos que el caller puede ver.
+    Los totales vienen separados porque son plata de naturaleza distinta y la
+    pantalla los muestra como cards independientes.
+    """
+    people = list_nominees(competition_id=competition_id)
+
+    expenses = budget_router._fetch_expenses(request, competition_id=competition_id)
+
+    def _sum(rows, field="amount", predicate=lambda r: True) -> float:
+        return round(sum(float(r.get(field) or 0) for r in rows if predicate(r)), 2)
+
+    payments = [p["payment"] for p in people if p.get("payment")]
+    live_expenses = [e for e in expenses if e.get("status") not in ("rejected", "cancelled")]
+
+    return {
+        "people": people,
+        "expenses": expenses,
+        "totals": {
+            "nominated": len(people),
+            "with_payment": len(payments),
+            "person_fees": _sum(payments, "total"),
+            "airfare": _sum(payments, "airfare"),
+            "event_expenses": _sum(live_expenses),
+            "expenses_paid": _sum(expenses, predicate=lambda r: r.get("status") == "paid"),
+            "grand_total": round(_sum(payments, "total") + _sum(payments, "airfare")
+                                 + _sum(live_expenses), 2),
+        },
+    }
+
+
+@router.post("/event-expenses", status_code=201, dependencies=[Depends(require_edit("payments"))])
+def create_event_expense(data: ExpenseCreate, request: Request):
+    _event_expense_target(data.competition_id, data.budget_event_id)
+    return budget_router.create_expense(data, request)
+
+
+@router.patch("/event-expenses/{expense_id}", dependencies=[Depends(require_edit("payments"))])
+def update_event_expense(expense_id: str, data: ExpenseUpdate, request: Request):
+    updated = budget_router.update_expense(expense_id, data, request)
+    # Se valida DESPUÉS: `update_expense` ya resolvió el merge con la fila
+    # existente y verificó el acceso al departamento. Mirar el resultado evita
+    # tener que replicar acá ese merge, y un PATCH que dejaría el gasto sin
+    # evento se rechaza igual — solo que con el trabajo ya hecho.
+    _event_expense_target(updated.get("competition_id"), updated.get("budget_event_id"))
+    return updated
+
+
+@router.delete("/event-expenses/{expense_id}", dependencies=[Depends(require_edit("payments"))])
+def delete_event_expense(expense_id: str, request: Request):
+    return budget_router.delete_expense(expense_id, request)
 
 
 # ─── Nominees for an event (main view: event → nominated people → payment) ───
@@ -268,7 +423,6 @@ def list_nominees(competition_id: str = Query(...)):
 # ─── Payments list ───────────────────────────────────────────────────────────
 def _fetch_payments(
     competition_id: Optional[str] = None,
-    budget: Optional[str] = None,
     status: Optional[str] = None,
     department: Optional[str] = None,
 ) -> list:
@@ -280,11 +434,6 @@ def _fetch_payments(
     ).order("record_no")
     if department:
         q = q.eq("department_code", department)
-    # `budget` is the legacy filter on payment_budgets. Kept because a cached
-    # SPA still sends it; silently ignoring it would show unfiltered totals to
-    # someone who thinks they filtered.
-    if budget:
-        q = q.eq("budget_code", budget)
     if status:
         q = q.eq("status", status)
     rows = q.execute().data or []
@@ -297,21 +446,19 @@ def _fetch_payments(
 @router.get("")
 def list_payments(
     competition_id: Optional[str] = Query(None),
-    budget: Optional[str] = Query(None),
     status: Optional[str] = Query(None),
     department: Optional[str] = Query(None),
 ):
-    return _fetch_payments(competition_id, budget, status, department)
+    return _fetch_payments(competition_id, status, department)
 
 
 # ─── Totals for the footer ───────────────────────────────────────────────────
 @router.get("/summary")
 def payments_summary(
     competition_id: Optional[str] = Query(None),
-    budget: Optional[str] = Query(None),
     department: Optional[str] = Query(None),
 ):
-    rows = _fetch_payments(competition_id=competition_id, budget=budget, department=department)
+    rows = _fetch_payments(competition_id=competition_id, department=department)
     return {
         "count": len(rows),
         "amount": round(sum(float(r.get("amount") or 0) for r in rows), 2),
@@ -333,10 +480,12 @@ def create_payment(data: PaymentCreate, request: Request):
     )
     if not nom:
         raise HTTPException(status_code=404, detail="Nomination not found")
-    if data.budget_code and not _valid_budget(data.budget_code):
-        raise HTTPException(status_code=400, detail="Unknown budget")
     if data.status and data.status not in _VALID_STATUSES:
         raise HTTPException(status_code=400, detail="Invalid status")
+    # Un pago nace sin aprobar, así que no puede nacer pagado: si no, crear con
+    # status 'completed' sería la puerta de atrás del circuito de la fase 10.
+    if data.status == "completed":
+        raise HTTPException(status_code=400, detail="A new payment cannot start as completed; approve it first")
 
     existing = supabase.table("payments").select("id").eq("nomination_id", data.nomination_id).execute().data
     if existing:
@@ -346,18 +495,18 @@ def create_payment(data: PaymentCreate, request: Request):
         data.department_code, data.account_code, data.airfare_account_code,
         data.airfare or 0, _nomination_role(data.nomination_id),
     )
+    _assert_can_spend(request, imputation["department_code"])
 
     amount = data.amount if data.amount is not None else (nom[0].get("total") or 0)
     record = {
         "nomination_id": data.nomination_id,
-        "budget_code": data.budget_code,
         **imputation,
         "amount": amount,
         "extra": data.extra or 0,
         "airfare": data.airfare or 0,
         "comments": data.comments,
         "status": data.status or "new",
-        "payment_date": data.payment_date,
+        "payment_date": _payment_date_for(data.status or "new", data.payment_date),
         "bank_confirmation": data.bank_confirmation,
         "created_by": _user_id(request),
     }
@@ -368,10 +517,11 @@ def create_payment(data: PaymentCreate, request: Request):
 
 # ─── Update ──────────────────────────────────────────────────────────────────
 @router.put("/{payment_id}", dependencies=[Depends(require_edit("payments"))])
-def update_payment(payment_id: str, data: PaymentUpdate):
-    updates = {k: v for k, v in data.model_dump().items() if v is not None}
-    if "budget_code" in updates and not _valid_budget(updates["budget_code"]):
-        raise HTTPException(status_code=400, detail="Unknown budget")
+def update_payment(payment_id: str, data: PaymentUpdate, request: Request):
+    # exclude_unset y NO `if v is not None`: hay que poder distinguir "no mandé
+    # el campo" de "vacialo". Con el filtro de None, borrar el texto de un
+    # comentario y guardar no borraba nada — el comentario viejo sobrevivía.
+    updates = data.model_dump(exclude_unset=True)
     if "status" in updates and updates["status"] not in _VALID_STATUSES:
         raise HTTPException(status_code=400, detail="Invalid status")
     if not updates:
@@ -379,7 +529,8 @@ def update_payment(payment_id: str, data: PaymentUpdate):
 
     current = (
         supabase.table("payments")
-        .select("nomination_id, department_code, account_code, airfare_account_code, airfare")
+        .select("nomination_id, status, payment_date, department_code, "
+                "account_code, airfare_account_code, airfare")
         .eq("id", payment_id).execute().data
     )
     if not current:
@@ -392,17 +543,114 @@ def update_payment(payment_id: str, data: PaymentUpdate):
     # zero parked on COMP-12 reads as a consumed line), and a legacy row with no
     # department gets classified the first time somebody touches it instead of
     # staying invisible to every departmental total forever.
+    imputation_fields = {"department_code", "account_code", "airfare_account_code"}
     updates.update(_resolve_imputation(
         updates.get("department_code") or current.get("department_code"),
         updates.get("account_code") or current.get("account_code"),
         updates.get("airfare_account_code") or current.get("airfare_account_code"),
         updates.get("airfare", current.get("airfare")) or 0,
         _nomination_role(current["nomination_id"]),
+        changed=imputation_fields & updates.keys(),
     ))
+    # Sobre el destino Y sobre el origen: mover un pago a otro departamento sin
+    # poder editar el de llegada sería empujarle gasto a un área ajena, y sin
+    # poder editar el de salida sería sacárselo de encima.
+    _assert_can_spend(request, updates["department_code"])
+    if current.get("department_code") and current["department_code"] != updates["department_code"]:
+        _assert_can_spend(request, current["department_code"])
+
+    status = updates.get("status", current.get("status"))
+    # Un pago sin aprobar no puede darse por pagado (fase 10). Es donde la
+    # aprobación tiene dientes: `completed` es lo que consume presupuesto en
+    # `/budget/summary`, así que sin esta guarda aprobar sería decorativo.
+    if status == "completed" and not current.get("approved_at"):
+        raise HTTPException(status_code=400, detail="Approve the payment before marking it completed")
+    updates["payment_date"] = _payment_date_for(
+        status, updates.get("payment_date", current.get("payment_date")))
     updates["updated_at"] = _now_iso()
     result = supabase.table("payments").update(updates).eq("id", payment_id).execute()
     if not result.data:
         raise HTTPException(status_code=404, detail="Payment not found")
+    return result.data[0]
+
+
+# ─── Aprobación (fase 10) ────────────────────────────────────────────────────
+#
+# Un nivel y sin umbral: el designado con `can_edit` sobre el departamento del
+# pago aprueba cualquier monto de su área. El control lo da el recorte por
+# departamento, no un escalamiento por plata.
+#
+# Eje separado del status, igual que en `expenses`: `new/in_process/split/
+# completed` describen el trámite bancario y `approved_at` dice quién dio el OK.
+@router.get("/pending-approval")
+def pending_approval(request: Request, competition_id: Optional[str] = Query(None)):
+    """Los pagos que esperan aprobación, recortados a lo que el caller aprueba.
+
+    A diferencia del resto de las lecturas de Payments —que muestran el evento
+    entero— esta sí filtra por departamento: es una bandeja de trabajo, y ver en
+    ella lo que no podés aprobar es solo ruido.
+    """
+    rows = [p for p in _fetch_payments(competition_id=competition_id) if not p.get("approved_at")]
+    editable = budget_router._departments_for(request, "edit")
+    if editable is not None:
+        rows = [p for p in rows if p.get("department_code") in editable]
+    return {
+        "count": len(rows),
+        "total": round(sum(float(p.get("total") or 0) + float(p.get("airfare") or 0) for p in rows), 2),
+        "payments": rows,
+    }
+
+
+@router.post("/{payment_id}/approve", dependencies=[Depends(require_edit("payments"))])
+def approve_payment(payment_id: str, request: Request):
+    rows = (
+        supabase.table("payments")
+        .select("id, department_code, approved_at")
+        .eq("id", payment_id).execute().data
+    )
+    if not rows:
+        raise HTTPException(status_code=404, detail="Payment not found")
+    row = rows[0]
+    if not row.get("department_code"):
+        raise HTTPException(
+            status_code=400,
+            detail="Impute the payment to a department before approving it",
+        )
+    _assert_can_spend(request, row["department_code"])
+    if row.get("approved_at"):
+        return row   # idempotente: reaprobar no re-estampa ni cambia el autor
+
+    result = supabase.table("payments").update({
+        "approved_by": _user_id(request),
+        "approved_at": _now_iso(),
+        "updated_at": _now_iso(),
+    }).eq("id", payment_id).execute()
+    return result.data[0]
+
+
+@router.post("/{payment_id}/unapprove", dependencies=[Depends(require_edit("payments"))])
+def unapprove_payment(payment_id: str, request: Request):
+    """Vuelve atrás una aprobación, salvo que el pago ya esté pagado.
+
+    Desaprobar un pago `completed` dejaría plata ya ejecutada colgando de una
+    aprobación que no existe; para revertir eso hay que sacarlo de `completed`
+    primero, que es una decisión distinta y visible.
+    """
+    rows = (
+        supabase.table("payments")
+        .select("id, department_code, status")
+        .eq("id", payment_id).execute().data
+    )
+    if not rows:
+        raise HTTPException(status_code=404, detail="Payment not found")
+    row = rows[0]
+    _assert_can_spend(request, row.get("department_code"))
+    if row.get("status") == "completed":
+        raise HTTPException(status_code=400, detail="Move the payment out of 'completed' before unapproving it")
+
+    result = supabase.table("payments").update({
+        "approved_by": None, "approved_at": None, "updated_at": _now_iso(),
+    }).eq("id", payment_id).execute()
     return result.data[0]
 
 

@@ -680,7 +680,7 @@ que lo importado siga cuadrando con la planilla.
 ## 12. Pendientes
 
 > Superado por **§14** (revisión de agosto 2026): la hoja de ruta vigente son
-> las fases 6-11 de esa sección. Lo de acá sigue pendiente y se repite en 14.8.
+> las fases 6-11 de esa sección. Lo de acá sigue pendiente y se repite en 14.10.
 
 - **Plan de cuentas oficial de Finance.** Hasta que llegue, los códigos de
   Competitions son `COMP-01`…`COMP-28` con `pending_mapping = true`.
@@ -897,7 +897,7 @@ distintas del presupuesto: el fee de la persona y su vuelo. Se agrega
 El mapeo de fees es el mismo que ya hizo el backfill de la 036; el de travel es
 su columna paralela en el Excel de Competitions. **`VIDEO_OPERATOR` no tiene
 cuenta asignada** — el backfill de la 036 tampoco se la dio — y queda como
-pregunta abierta (14.8): es un rol distinto de `VGO` en este sistema, aunque el
+pregunta abierta (14.10): es un rol distinto de `VGO` en este sistema, aunque el
 Excel solo trae "TV Graphics Operator".
 
 ⚠️ **No hay doble conteo con las líneas calculadas de headcount.** Esas líneas
@@ -911,7 +911,7 @@ número.
 |------|---------|----------------------|
 | **6** ✅ | **El puente y el año.** Departamento + cuenta obligatorios al crear/editar un pago, con prefill por rol; `airfare_account_code`; la UI de Payments migra de `payment_budgets` a departamento + cuenta; los pagos abiertos se imputan por el año de su competencia; backfill de lo cargado sin imputar desde la 036. Migración **038**. Ver 14.6. | Es el bug que hace que la plata no se vea. Alto valor, bajo riesgo, sin schema nuevo salvo una columna. |
 | **7** ✅ | **Remanente con compromiso** en `/budget/summary`, `competition_cost` y el dashboard. Ver 14.7. | Cambio de fórmula acotado, y hace falta antes de que alguien tome decisiones mirando el número viejo. |
-| **8** | **Migración 039: `budget_events`**, rollup temporada → fases, y reimport de los $563.416 que hoy quedan afuera. | Schema nuevo. Independiente de la 6 y la 7, se puede hacer en paralelo. |
+| **8** ✅ | **Migración 039: `budget_events`**, rollup temporada → fases, y soporte del importador. Ver 14.8. El reimport de los $563.416 queda pendiente de los archivos. | Schema nuevo. Independiente de la 6 y la 7, se puede hacer en paralelo. |
 | **9** | **Bandeja única del evento**: Payments muestra personas + proveedores + gasto operativo, con `budget_access` recortando filas y el alta de gasto de proveedor desde ahí. | Es la fase grande de UI y necesita que la 6 y la 8 ya hayan pasado: sin imputación ni contenedor de evento, la bandeja mostraría totales que no cierran. |
 | **10** | **Aprobación de un nivel** para gastos y pagos, con bandeja de pendientes del departamento. | Depende de la 9: la bandeja de aprobación vive en la misma pantalla. |
 | **11** | **Resultado por evento**: ingresos contra costo total en el panel de la competencia y del `budget_event`. | Cierra el reporting. Necesita el rollup de la 8. |
@@ -937,7 +937,7 @@ que deja el formulario en un clic para los cuatro roles que tienen línea.
 **Un rol sin mapeo devuelve 400 en vez de un NULL silencioso:** un pago sin
 imputar es plata que desaparece de todos los totales por área, que es
 exactamente el bug que esta fase vino a cerrar. Hoy el único caso es
-`VIDEO_OPERATOR` (14.8), que se carga eligiendo la cuenta a mano.
+`VIDEO_OPERATOR` (14.10), que se carga eligiendo la cuenta a mano.
 
 Dos detalles que salieron de implementarlo:
 
@@ -970,7 +970,7 @@ que no existe.
 
 ### 14.7 Fase 7 — el restante descuenta lo comprometido
 
-`remaining = budgeted − executed − committed`, en los tres lugares que lo
+`remaining = budgeted − executed − committed`, en los cuatro lugares que lo
 calculaban: los totales y el rollup de `/budget/summary`, y los totales y el
 desglose por departamento de `competition_cost`. `executed` y `committed` se
 siguen devolviendo por separado, así que la cifra vieja se reconstruye sumando.
@@ -982,7 +982,90 @@ lado: el sobregiro lo causaba lo comprometido y la barra solo miraba lo
 ejecutado. Los dos segmentos siguen separados —verde lo que ya salió, azul lo
 reservado— y se tiñen de rojo juntos cuando la suma pasa el presupuesto.
 
-### 14.8 Preguntas abiertas
+### 14.8 Fase 8 — `budget_events`
+
+Migración **039**, `routers/budget.py`, `services/budget_import.py`, y la pestaña
+Eventos de `Budget.jsx`.
+
+**Una tabla, dos usos.** `budget_events` sin competencias colgadas es una bolsa
+suelta (un Draw, un workshop); con `competitions.budget_event_id` apuntando a
+ella es una temporada. El CHECK `*_one_target` en `budget_lines`, `expenses` y
+`revenues` impide que una fila apunte a una competencia **y** a un evento: con
+las dos cargadas contaría en los dos rollups y el total del año quedaría
+inflado sin que se note dónde.
+
+**El rollup pliega la fase en su temporada.** `_stamp_target()` en el summary
+resuelve, para cada fila, `budget_event_id → temporada de su competencia →
+competencia`. Sin eso la temporada saldría con presupuesto y cero ejecutado, y
+cada fase con ejecutado y cero presupuesto: dos mitades que no se comparan con
+nada. El desglose por fase vive en `GET /budget/events/{id}/cost`.
+
+**`_cost_core()` es ahora uno solo.** `/competitions/{id}/cost` y
+`/events/{id}/cost` son el mismo cálculo con distinto alcance; duplicarlo era
+garantizar que en tres meses dieran cifras distintas para la misma plata. El
+desglose por fase sale de las filas que el core ya trajo — llamarlo una vez por
+fase multiplicaba las consultas contra una base con rate limit.
+
+**"General" ahora significa sin NINGÚN evento.** `general_only=true` en los
+listados de líneas y gastos exige que `competition_id` y `budget_event_id` sean
+los dos nulos. Sin la segunda condición el gasto de un Draw aparecería como
+overhead anual y ensuciaría justo el reporte que la decisión 7 quiere preservar.
+
+**El importador matchea eventos igual que competencias.** El pool de
+`match_competition` pasa a ser competencias + eventos del año, y el destino se
+parte en la columna que corresponda al armar la fila. Mientras `budget_events`
+esté vacía el pool es idéntico al de antes, así que **no puede cambiar el
+resultado de un import ya validado** — el de IT sigue dando $215.015 y el de
+Competitions $970.416. Los $563.416 entran cuando existan los eventos y estén
+los archivos.
+
+### 14.9 Auditoría de las fases 6 y 7 — qué se corrigió
+
+Dos agentes auditaron el código y la UI de las fases 6 y 7. Lo que salió, en
+orden de plata involucrada:
+
+1. **P0 — un pago `completed` desaparecía de todos los años.** `/budget/summary`
+   imputa un pago pagado por `payment_date`, pero la columna es nullable, no
+   tiene el CHECK que sí tiene `expenses`, y **el formulario de Payments nunca
+   tuvo un campo de fecha**. Al marcar un pago como pagado la fila se quedaba
+   sin año y se caía del ejecutado, del comprometido, de los tres rollups y
+   hasta de `unallocated_payments`. Con la fase 7 el efecto se duplicaba: bajaba
+   el comprometido *y* subía el restante. **Pagar hacía ver el presupuesto más
+   disponible.** Arreglado por los dos lados: `_payment_date_for()` estampa hoy
+   al pasar a `completed` y limpia al salir (lo mismo que ya hace el módulo de
+   gastos), y el corte por año usa el año de la competencia como respaldo
+   también en la rama `completed`, para las filas históricas.
+2. **Desactivar una cuenta congelaba los pagos históricos.** `_resolve_imputation`
+   exigía `active` incluso sobre códigos que venían de la fila y que el usuario
+   no había tocado. El día que Finance desactive la provisoria COMP-13 —que es
+   exactamente para lo que existe `PATCH /budget/accounts`— todos los pagos de
+   esa cuenta habrían quedado ineditables, con un 400 nombrando un código que el
+   formulario ya no ofrece. Ahora el parámetro `changed` marca qué mandó el
+   request: eso se valida contra el catálogo activo, lo heredado solo por
+   existencia.
+3. **El vuelo sin cuenta se escondía en "General".** Tiene departamento (lo
+   hereda del fee), así que el ámbar de `unallocated_payments` no lo veía, y su
+   `account_code` nulo lo mandaba al bucket general contra un presupuesto de
+   cero. Se reporta aparte en `unallocated_accounts`.
+4. **Borrar un comentario no lo borraba.** `update_payment` filtraba los `None`
+   del `model_dump()`, así que vaciar un campo era indistinguible de no
+   mandarlo. Pasa a `exclude_unset=True`.
+5. **Se borró la superficie muerta de `payment_budgets`.** La justificación
+   escrita —"un SPA cacheado lo pide"— no se sostenía: un SPA viejo manda
+   `budget_code` sin departamento y `_resolve_imputation` lo rechaza igual, o
+   sea la compatibilidad ya estaba rota del lado de escritura. Se fueron
+   `GET /payments/budgets`, `_valid_budget`, el filtro `?budget=` y el campo de
+   los schemas. **La columna `payments.budget_code` y la tabla `payment_budgets`
+   se quedan**: son dato histórico, no necesitan superficie de API.
+
+⚠️ **Riesgo aceptado hasta la fase 9:** Payments valida que el departamento
+exista, no que el caller pueda gastar de él. Alguien con `payments.can_edit` y
+sin filas en `budget_access` puede imputar al presupuesto de otra área, y el
+responsable de esa área no puede corregirlo porque Payments todavía no recorta
+por departamento. No es un problema de confidencialidad sino de integridad, y
+existe desde que la fase 6 conectó la plata. Lo cierra la fase 9.
+
+### 14.10 Preguntas abiertas
 
 - **`VIDEO_OPERATOR` no tiene cuenta de fee ni de travel** (14.4). ¿Va contra
   COMP-13/COMP-14 junto con los VGO, o es una línea propia que el Excel no trae?
