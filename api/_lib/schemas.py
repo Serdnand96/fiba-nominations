@@ -180,7 +180,14 @@ class EmployeeUpdate(BaseModel):
 
 class PaymentCreate(BaseModel):
     nomination_id: str
-    budget_code: str
+    # Budget imputation. `department_code` is required by _resolve_imputation;
+    # the two accounts default from the nominee's role when omitted.
+    department_code: Optional[str] = None
+    account_code: Optional[str] = None
+    airfare_account_code: Optional[str] = None
+    # Legacy payment_budgets code. No longer sent by the UI (migration 038);
+    # optional so an old client keeps working.
+    budget_code: Optional[str] = None
     amount: Optional[float] = None  # None → prefilled from nomination.total
     extra: Optional[float] = 0
     airfare: Optional[float] = 0    # flight cost — tracked apart, not in total
@@ -191,6 +198,9 @@ class PaymentCreate(BaseModel):
 
 
 class PaymentUpdate(BaseModel):
+    department_code: Optional[str] = None
+    account_code: Optional[str] = None
+    airfare_account_code: Optional[str] = None
     budget_code: Optional[str] = None
     amount: Optional[float] = None
     extra: Optional[float] = None

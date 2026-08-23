@@ -66,12 +66,15 @@ export const downloadNominationBlob = async (id, filename) => {
 }
 
 // Payments
-export const getPaymentBudgets = () => api.get('/payments/budgets').then(r => r.data)
+// Departments + expense accounts + the per-role defaults the payment form uses
+// to impute a payment to the budget. Served by the payments router, so paying
+// someone does not require the `budget` permission.
+export const getPaymentImputation = () => api.get('/payments/imputation').then(r => r.data)
 export const getPaymentNominees = (competitionId) =>
   api.get('/payments/nominees', { params: { competition_id: competitionId } }).then(r => r.data)
 export const getPayments = (params) => api.get('/payments', { params }).then(r => r.data)
-export const getPaymentsSummary = (competitionId, budget) =>
-  api.get('/payments/summary', { params: { competition_id: competitionId, ...(budget ? { budget } : {}) } }).then(r => r.data)
+export const getPaymentsSummary = (competitionId, department) =>
+  api.get('/payments/summary', { params: { competition_id: competitionId, ...(department ? { department } : {}) } }).then(r => r.data)
 export const createPayment = (data) => api.post('/payments', data).then(r => r.data)
 export const updatePayment = (id, data) => api.put(`/payments/${id}`, data).then(r => r.data)
 export const deletePayment = (id) => api.delete(`/payments/${id}`).then(r => r.data)

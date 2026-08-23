@@ -1,9 +1,16 @@
 """Payments module — payments to event personnel, anchored to nominations.
 
 Each payment hangs off a nomination (the person nominated to a competition),
-picks the budget it comes out of, adds an optional extra + comments, carries a
-status the finance team advances, and can have financial-control files
-attached (EXPENSES / W8 / BANK INFO).
+adds an optional extra + comments, carries a status the finance team advances,
+and can have financial-control files attached (EXPENSES / W8 / BANK INFO).
+
+A payment also **imputes to the budget**: `department_code` + `account_code`
+say whose money it is and which line it consumes, and `airfare_account_code`
+does the same for the flight, which is a different budget line than the fee
+(a TD's fee is COMP-11, their flight COMP-12). Both are required on create —
+see `_resolve_imputation`. The old `budget_code` / `payment_budgets` catalogue
+mixed department and line in one column and is no longer written; it stays
+readable on historical rows (migrations 036 and 038).
 
 Sensitive data (amounts, bank confirmations, W8 docs) lives here, so the
 tables are backend-only (RLS on, no policies) and this router is gated by the
@@ -52,6 +59,106 @@ def _valid_budget(code: str) -> bool:
     return bool(row)
 
 
+# ─── Budget imputation ───────────────────────────────────────────────────────
+#
+# Which budget line a person's fee and their flight consume, by role. Same
+# mapping as the backfill in migration 038 — if one changes, both change.
+# `VIDEO_OPERATOR` is deliberately absent: the Fees Breakdown sheet doesn't
+# have it and migration 036 gave it no fee account either, so those payments
+# need the account picked by hand until FIBA decides its line
+# (BUDGET_MODULE.md §14.7). Falling back to the VGO line would be a guess that
+# lands real money on the wrong account.
+_ROLE_ACCOUNTS = {
+    "TD":             {"fee": "COMP-11", "airfare": "COMP-12"},
+    "VGO":            {"fee": "COMP-13", "airfare": "COMP-14"},
+    "REF":            {"fee": "COMP-10", "airfare": "COMP-07"},
+    "REF_INSTRUCTOR": {"fee": "COMP-08", "airfare": "COMP-09"},
+}
+
+
+def _departments() -> list:
+    return (
+        supabase.table("departments")
+        .select("code, label").eq("active", True)
+        .order("sort").execute().data
+    ) or []
+
+
+def _expense_accounts() -> list:
+    return (
+        supabase.table("accounts")
+        .select("code, label, pending_mapping")
+        .eq("active", True).eq("kind", "expense")
+        .order("sort").execute().data
+    ) or []
+
+
+def _nomination_role(nomination_id: str) -> Optional[str]:
+    row = (
+        supabase.table("nominations")
+        .select("personnel(role)")
+        .eq("id", nomination_id).execute().data
+    )
+    if not row:
+        return None
+    return ((row[0].get("personnel") or {}).get("role"))
+
+
+def _resolve_imputation(
+    department_code: Optional[str],
+    account_code: Optional[str],
+    airfare_account_code: Optional[str],
+    airfare: float,
+    role: Optional[str],
+) -> dict:
+    """Validate the budget imputation of a payment, filling in the role defaults.
+
+    The department can't be derived — the same role is paid by Competitions at
+    one event and by Club Competitions at another — so it's always required.
+    The accounts default from the role, which is what makes the form a
+    one-click affair for the four roles that have a line. A role without a
+    mapping gets a 400 instead of a silent NULL: an unimputed payment is money
+    that disappears from every departmental total, which is the bug this whole
+    phase exists to fix.
+    """
+    if not department_code:
+        raise HTTPException(status_code=400, detail="A department is required to impute the payment")
+    if department_code not in {d["code"] for d in _departments()}:
+        raise HTTPException(status_code=400, detail="Unknown department")
+
+    defaults = _ROLE_ACCOUNTS.get(role or "", {})
+    account_code = account_code or defaults.get("fee")
+    if not account_code:
+        raise HTTPException(
+            status_code=400,
+            detail=f"No default budget account for role {role or '—'}; pick one explicitly",
+        )
+
+    needs_airfare_account = float(airfare or 0) > 0
+    if needs_airfare_account:
+        airfare_account_code = airfare_account_code or defaults.get("airfare")
+        if not airfare_account_code:
+            raise HTTPException(
+                status_code=400,
+                detail=f"No default travel account for role {role or '—'}; pick one explicitly",
+            )
+    else:
+        # No flight, no travel line. Clearing it keeps the reports from finding
+        # an account with a zero attached to it.
+        airfare_account_code = None
+
+    known = {a["code"] for a in _expense_accounts()}
+    for code in (account_code, airfare_account_code):
+        if code and code not in known:
+            raise HTTPException(status_code=400, detail=f"Unknown expense account: {code}")
+
+    return {
+        "department_code": department_code,
+        "account_code": account_code,
+        "airfare_account_code": airfare_account_code,
+    }
+
+
 # ─── Storage helpers (private bucket) ────────────────────────────────────────
 def _extract_storage_key(storage_path: Optional[str]) -> Optional[str]:
     """Object key inside the `nominations` bucket for any supported path format."""
@@ -92,7 +199,7 @@ def _shape_payment(row: dict) -> dict:
     return row
 
 
-# ─── Budgets catalogue ───────────────────────────────────────────────────────
+# ─── Budgets catalogue (legacy — historical rows only) ───────────────────────
 @router.get("/budgets")
 def list_budgets():
     return (
@@ -103,6 +210,23 @@ def list_budgets():
         .execute()
         .data
     ) or []
+
+
+# ─── Imputation catalogue: what the payment form offers ──────────────────────
+@router.get("/imputation")
+def imputation_options():
+    """Departments, expense accounts and the per-role account defaults.
+
+    Served from the payments router — and therefore behind `require_view
+    ("payments")` — so that paying someone doesn't require the `budget`
+    permission on top. These are catalogues: names of departments and account
+    lines, no amounts.
+    """
+    return {
+        "departments": _departments(),
+        "accounts": _expense_accounts(),
+        "role_accounts": _ROLE_ACCOUNTS,
+    }
 
 
 # ─── Nominees for an event (main view: event → nominated people → payment) ───
@@ -146,6 +270,7 @@ def _fetch_payments(
     competition_id: Optional[str] = None,
     budget: Optional[str] = None,
     status: Optional[str] = None,
+    department: Optional[str] = None,
 ) -> list:
     # Shared by the endpoints below. Endpoints must not call each other as plain
     # functions: FastAPI Query() defaults leak through as truthy objects and
@@ -153,6 +278,11 @@ def _fetch_payments(
     q = supabase.table("payments").select(
         "*, nominations(competition_id, total, personnel(name, role, country), competitions(name))"
     ).order("record_no")
+    if department:
+        q = q.eq("department_code", department)
+    # `budget` is the legacy filter on payment_budgets. Kept because a cached
+    # SPA still sends it; silently ignoring it would show unfiltered totals to
+    # someone who thinks they filtered.
     if budget:
         q = q.eq("budget_code", budget)
     if status:
@@ -169,8 +299,9 @@ def list_payments(
     competition_id: Optional[str] = Query(None),
     budget: Optional[str] = Query(None),
     status: Optional[str] = Query(None),
+    department: Optional[str] = Query(None),
 ):
-    return _fetch_payments(competition_id, budget, status)
+    return _fetch_payments(competition_id, budget, status, department)
 
 
 # ─── Totals for the footer ───────────────────────────────────────────────────
@@ -178,8 +309,9 @@ def list_payments(
 def payments_summary(
     competition_id: Optional[str] = Query(None),
     budget: Optional[str] = Query(None),
+    department: Optional[str] = Query(None),
 ):
-    rows = _fetch_payments(competition_id=competition_id, budget=budget)
+    rows = _fetch_payments(competition_id=competition_id, budget=budget, department=department)
     return {
         "count": len(rows),
         "amount": round(sum(float(r.get("amount") or 0) for r in rows), 2),
@@ -201,7 +333,7 @@ def create_payment(data: PaymentCreate, request: Request):
     )
     if not nom:
         raise HTTPException(status_code=404, detail="Nomination not found")
-    if not _valid_budget(data.budget_code):
+    if data.budget_code and not _valid_budget(data.budget_code):
         raise HTTPException(status_code=400, detail="Unknown budget")
     if data.status and data.status not in _VALID_STATUSES:
         raise HTTPException(status_code=400, detail="Invalid status")
@@ -210,10 +342,16 @@ def create_payment(data: PaymentCreate, request: Request):
     if existing:
         raise HTTPException(status_code=409, detail="A payment already exists for this nomination")
 
+    imputation = _resolve_imputation(
+        data.department_code, data.account_code, data.airfare_account_code,
+        data.airfare or 0, _nomination_role(data.nomination_id),
+    )
+
     amount = data.amount if data.amount is not None else (nom[0].get("total") or 0)
     record = {
         "nomination_id": data.nomination_id,
         "budget_code": data.budget_code,
+        **imputation,
         "amount": amount,
         "extra": data.extra or 0,
         "airfare": data.airfare or 0,
@@ -238,6 +376,29 @@ def update_payment(payment_id: str, data: PaymentUpdate):
         raise HTTPException(status_code=400, detail="Invalid status")
     if not updates:
         raise HTTPException(status_code=400, detail="Nothing to update")
+
+    current = (
+        supabase.table("payments")
+        .select("nomination_id, department_code, account_code, airfare_account_code, airfare")
+        .eq("id", payment_id).execute().data
+    )
+    if not current:
+        raise HTTPException(status_code=404, detail="Payment not found")
+    current = current[0]
+
+    # The imputation is re-resolved on every edit, merging the update onto what
+    # the row already has. Two reasons it isn't skipped when the update leaves
+    # it alone: dropping the airfare to 0 has to clear the travel account (a
+    # zero parked on COMP-12 reads as a consumed line), and a legacy row with no
+    # department gets classified the first time somebody touches it instead of
+    # staying invisible to every departmental total forever.
+    updates.update(_resolve_imputation(
+        updates.get("department_code") or current.get("department_code"),
+        updates.get("account_code") or current.get("account_code"),
+        updates.get("airfare_account_code") or current.get("airfare_account_code"),
+        updates.get("airfare", current.get("airfare")) or 0,
+        _nomination_role(current["nomination_id"]),
+    ))
     updates["updated_at"] = _now_iso()
     result = supabase.table("payments").update(updates).eq("id", payment_id).execute()
     if not result.data:

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
-  getCalendarCompetitions, getPaymentBudgets, getPaymentNominees, getPaymentsSummary,
+  getCalendarCompetitions, getPaymentImputation, getPaymentNominees, getPaymentsSummary,
   createPayment, updatePayment, deletePayment,
   getPaymentAttachments, uploadPaymentAttachment, deletePaymentAttachment,
   downloadPaymentAttachment,
@@ -30,9 +30,13 @@ export default function Payments() {
   const canEdit = hasEdit('payments')
 
   const [competitions, setCompetitions] = useState([])
-  const [budgets, setBudgets] = useState([])
+  // Budget imputation catalogues: which department pays and which line each
+  // half of the payment consumes (the fee and, separately, the flight).
+  const [departments, setDepartments] = useState([])
+  const [accounts, setAccounts] = useState([])
+  const [roleAccounts, setRoleAccounts] = useState({})
   const [selectedCompId, setSelectedCompId] = useState('')
-  const [budgetFilter, setBudgetFilter] = useState('')
+  const [deptFilter, setDeptFilter] = useState('')
   const [nominees, setNominees] = useState([])
   const [summary, setSummary] = useState({ count: 0, amount: 0, extra: 0, total: 0 })
   const [loading, setLoading] = useState(false)
@@ -40,15 +44,20 @@ export default function Payments() {
   // Payment editor
   const [editorNominee, setEditorNominee] = useState(null)   // the nominee row being edited
   const [payment, setPayment] = useState(null)               // existing payment (or null = new)
-  const [form, setForm] = useState({ budget_code: '', amount: '', extra: '0', airfare: '0', comments: '', status: 'new' })
+  const [form, setForm] = useState({
+    department_code: '', account_code: '', airfare_account_code: '',
+    amount: '', extra: '0', airfare: '0', comments: '', status: 'new',
+  })
   const [attachments, setAttachments] = useState([])
   const [attKind, setAttKind] = useState('')
   const [saving, setSaving] = useState(false)
 
   useEffect(() => {
-    Promise.all([getCalendarCompetitions(), getPaymentBudgets()]).then(([comps, buds]) => {
+    Promise.all([getCalendarCompetitions(), getPaymentImputation()]).then(([comps, imp]) => {
       setCompetitions(comps)
-      setBudgets(buds)
+      setDepartments(imp.departments || [])
+      setAccounts(imp.accounts || [])
+      setRoleAccounts(imp.role_accounts || {})
     }).catch(e => console.error(e))
   }, [])
 
@@ -56,14 +65,20 @@ export default function Payments() {
     if (!compId) { setNominees([]); setSummary({ count: 0, amount: 0, extra: 0, total: 0 }); return }
     setLoading(true)
     try {
-      const [noms, sum] = await Promise.all([getPaymentNominees(compId), getPaymentsSummary(compId, budgetFilter)])
+      const [noms, sum] = await Promise.all([getPaymentNominees(compId), getPaymentsSummary(compId, deptFilter)])
       setNominees(noms)
       setSummary(sum)
     } catch (e) { console.error(e) }
     setLoading(false)
   }
 
-  useEffect(() => { loadEvent(selectedCompId) }, [selectedCompId, budgetFilter])
+  useEffect(() => { loadEvent(selectedCompId) }, [selectedCompId, deptFilter])
+
+  const deptLabel = (code) => departments.find(d => d.code === code)?.label || code || '—'
+  const accountLabel = (code) => {
+    const a = accounts.find(x => x.code === code)
+    return a ? `${a.code} · ${a.label}` : (code || '—')
+  }
 
   const selectedComp = competitions.find(c => c.id === selectedCompId)
 
@@ -71,9 +86,16 @@ export default function Payments() {
     setEditorNominee(nominee)
     const p = nominee.payment
     setPayment(p || null)
+    // The two accounts default from the nominee's role — a TD's fee is COMP-11
+    // and their flight COMP-12 — so the form is one click for the four roles
+    // that have a line. A role without a mapping (VIDEO_OPERATOR) comes up
+    // empty and has to be picked; the backend rejects it rather than guessing.
+    const defaults = roleAccounts[nominee.nominee_role] || {}
     if (p) {
       setForm({
-        budget_code: p.budget_code || '',
+        department_code: p.department_code || '',
+        account_code: p.account_code || defaults.fee || '',
+        airfare_account_code: p.airfare_account_code || defaults.airfare || '',
         amount: p.amount ?? '',
         extra: p.extra ?? '0',
         airfare: p.airfare ?? '0',
@@ -83,7 +105,9 @@ export default function Payments() {
       loadAttachments(p.id)
     } else {
       setForm({
-        budget_code: budgets[0]?.code || '',
+        department_code: deptFilter || '',
+        account_code: defaults.fee || '',
+        airfare_account_code: defaults.airfare || '',
         amount: nominee.nomination_total ?? '',
         extra: '0',
         airfare: '0',
@@ -108,14 +132,23 @@ export default function Payments() {
 
   async function handleSave(e) {
     e?.preventDefault()
-    if (!form.budget_code) { push({ type: 'error', title: t('payments.budgetRequired') }); return }
+    if (!form.department_code) { push({ type: 'error', title: t('payments.departmentRequired') }); return }
+    if (!form.account_code) { push({ type: 'error', title: t('payments.accountRequired') }); return }
+    const airfare = Number(form.airfare || 0)
+    if (airfare > 0 && !form.airfare_account_code) {
+      push({ type: 'error', title: t('payments.airfareAccountRequired') }); return
+    }
     setSaving(true)
     try {
       const body = {
-        budget_code: form.budget_code,
+        department_code: form.department_code,
+        account_code: form.account_code,
+        // Only travel with a flight attached: the backend clears the account
+        // when the airfare is zero, so sending it would be a no-op anyway.
+        airfare_account_code: airfare > 0 ? form.airfare_account_code : null,
         amount: Number(form.amount || 0),
         extra: Number(form.extra || 0),
-        airfare: Number(form.airfare || 0),
+        airfare,
         comments: form.comments || null,
         status: form.status,
       }
@@ -186,11 +219,11 @@ export default function Payments() {
     }
   }
 
-  // With a budget filter on, the table and money cards narrow to that budget;
-  // the Nominated / With payment cards keep counting the whole event.
+  // With a department filter on, the table and money cards narrow to that
+  // department; the Nominated / With payment cards keep counting the whole event.
   const visibleNominees = useMemo(
-    () => budgetFilter ? nominees.filter(n => n.payment?.budget_code === budgetFilter) : nominees,
-    [nominees, budgetFilter]
+    () => deptFilter ? nominees.filter(n => n.payment?.department_code === deptFilter) : nominees,
+    [nominees, deptFilter]
   )
   const paidCount = useMemo(() => nominees.filter(n => n.payment).length, [nominees])
 
@@ -209,9 +242,9 @@ export default function Payments() {
           placeholder={t('payments.selectEvent')}
         />
         {selectedCompId && (
-          <select value={budgetFilter} onChange={e => setBudgetFilter(e.target.value)} className="fiba-select">
-            <option value="">{t('payments.allBudgets')}</option>
-            {budgets.map(b => <option key={b.code} value={b.code}>{b.label}</option>)}
+          <select value={deptFilter} onChange={e => setDeptFilter(e.target.value)} className="fiba-select">
+            <option value="">{t('payments.allDepartments')}</option>
+            {departments.map(d => <option key={d.code} value={d.code}>{d.label}</option>)}
           </select>
         )}
       </div>
@@ -246,7 +279,7 @@ export default function Payments() {
                     <th>{t('payments.nominee')}</th>
                     <th>{t('personnel.role')}</th>
                     <th className="text-right">{t('payments.nominationValue')}</th>
-                    <th>{t('payments.budget')}</th>
+                    <th>{t('payments.department')}</th>
                     <th className="text-right">{t('payments.amount')}</th>
                     <th className="text-right">{t('payments.extra')}</th>
                     <th className="text-right">{t('payments.airfare')}</th>
@@ -261,7 +294,10 @@ export default function Payments() {
                   )}
                   {!loading && visibleNominees.map(n => {
                     const p = n.payment
-                    const budgetLabel = p ? (budgets.find(b => b.code === p.budget_code)?.label || p.budget_code) : '—'
+                    // A payment with no department predates migration 038 and
+                    // is invisible to every departmental total — flag it in
+                    // amber so it gets classified on the next edit.
+                    const unimputed = p && !p.department_code
                     return (
                       <tr key={n.nomination_id}>
                         <td className="px-4 py-3 font-medium">{n.nominee_name}</td>
@@ -269,7 +305,18 @@ export default function Payments() {
                           <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${roleBadgeClass(n.nominee_role)}`}>{roleLabel(n.nominee_role)}</span>
                         </td>
                         <td className="px-4 py-3 text-right tabular-nums">{fmt(n.nomination_total)}</td>
-                        <td className="px-4 py-3">{budgetLabel}</td>
+                        <td className="px-4 py-3">
+                          {!p ? '—' : unimputed ? (
+                            <span className="text-amber-500" title={t('payments.unimputedHint')}>
+                              {t('payments.unimputed')}
+                            </span>
+                          ) : (
+                            <>
+                              <span>{deptLabel(p.department_code)}</span>
+                              <span className="block text-[11px] text-fiba-muted/70">{accountLabel(p.account_code)}</span>
+                            </>
+                          )}
+                        </td>
                         <td className="px-4 py-3 text-right tabular-nums">{p ? fmt(p.amount) : '—'}</td>
                         <td className="px-4 py-3 text-right tabular-nums">{p ? fmt(p.extra) : '—'}</td>
                         <td className="px-4 py-3 text-right tabular-nums">{p ? fmt(p.airfare) : '—'}</td>
@@ -289,7 +336,7 @@ export default function Payments() {
                   })}
                   {!loading && visibleNominees.length === 0 && (
                     <tr><td colSpan={10} className="px-4 py-8 text-center text-fiba-muted/60">
-                      {budgetFilter && nominees.length > 0 ? t('payments.noBudgetPayments') : t('payments.noNominees')}
+                      {deptFilter && nominees.length > 0 ? t('payments.noDepartmentPayments') : t('payments.noNominees')}
                     </td></tr>
                   )}
                 </tbody>
@@ -329,14 +376,28 @@ export default function Payments() {
 
             <div className="flex-1 overflow-y-auto p-6 space-y-4">
               <form onSubmit={handleSave} className="space-y-4">
-                <div>
-                  <label className="block text-xs text-fiba-muted mb-1">{t('payments.budget')}</label>
-                  <select value={form.budget_code} disabled={!canEdit}
-                    onChange={e => setForm(f => ({ ...f, budget_code: e.target.value }))} className="fiba-select w-full">
-                    <option value="">{t('payments.selectBudget')}</option>
-                    {budgets.map(b => <option key={b.code} value={b.code}>{b.label}</option>)}
-                  </select>
+                {/* Budget imputation — whose money it is and which line it consumes */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs text-fiba-muted mb-1">{t('payments.department')}</label>
+                    <select value={form.department_code} disabled={!canEdit}
+                      onChange={e => setForm(f => ({ ...f, department_code: e.target.value }))} className="fiba-select w-full">
+                      <option value="">{t('payments.selectDepartment')}</option>
+                      {departments.map(d => <option key={d.code} value={d.code}>{d.label}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs text-fiba-muted mb-1">{t('payments.feeAccount')}</label>
+                    <select value={form.account_code} disabled={!canEdit}
+                      onChange={e => setForm(f => ({ ...f, account_code: e.target.value }))} className="fiba-select w-full">
+                      <option value="">{t('payments.selectAccount')}</option>
+                      {accounts.map(a => <option key={a.code} value={a.code}>{a.code} · {a.label}</option>)}
+                    </select>
+                  </div>
                 </div>
+                {!roleAccounts[editorNominee.nominee_role] && (
+                  <p className="text-[11px] text-amber-500">{t('payments.noRoleDefaults')}</p>
+                )}
 
                 <div className="grid grid-cols-2 gap-3">
                   <div>
@@ -352,12 +413,25 @@ export default function Payments() {
                   </div>
                 </div>
 
-                {/* Airfare — tracked apart, does not add to the payment total */}
-                <div className="rounded-lg border border-fiba-border p-3">
-                  <label className="block text-xs font-semibold text-ink-900 dark:text-white mb-1">{t('payments.airfare')}</label>
-                  <input type="number" step="0.01" value={form.airfare} disabled={!canEdit}
-                    onChange={e => setForm(f => ({ ...f, airfare: e.target.value }))} className="fiba-input w-full" />
-                  <p className="text-[11px] text-fiba-muted/70 mt-1">{t('payments.airfareHint')}</p>
+                {/* Airfare — not part of the payment total, but its own budget
+                    line: a TD's fee is COMP-11 and their flight COMP-12. */}
+                <div className="rounded-lg border border-fiba-border p-3 space-y-3">
+                  <div>
+                    <label className="block text-xs font-semibold text-ink-900 dark:text-white mb-1">{t('payments.airfare')}</label>
+                    <input type="number" step="0.01" value={form.airfare} disabled={!canEdit}
+                      onChange={e => setForm(f => ({ ...f, airfare: e.target.value }))} className="fiba-input w-full" />
+                    <p className="text-[11px] text-fiba-muted/70 mt-1">{t('payments.airfareHint')}</p>
+                  </div>
+                  {Number(form.airfare || 0) > 0 && (
+                    <div>
+                      <label className="block text-xs text-fiba-muted mb-1">{t('payments.airfareAccount')}</label>
+                      <select value={form.airfare_account_code} disabled={!canEdit}
+                        onChange={e => setForm(f => ({ ...f, airfare_account_code: e.target.value }))} className="fiba-select w-full">
+                        <option value="">{t('payments.selectAccount')}</option>
+                        {accounts.map(a => <option key={a.code} value={a.code}>{a.code} · {a.label}</option>)}
+                      </select>
+                    </div>
+                  )}
                 </div>
 
                 <div>

@@ -518,7 +518,11 @@ Desde la migración 036, `/budget/summary` suma **las dos fuentes de gasto**:
 | `expenses` | `status = 'paid'` | `status = 'approved'` |
 | `payments` | `status = 'completed'` | `new` / `in_process` / `split` |
 
-Los gastos se imputan al año por `expense_date`; los pagos, por `payment_date`.
+Los gastos se imputan al año por `expense_date`. Un pago **pagado** va por
+`payment_date`; uno todavía abierto no tiene esa fecha y va por el año de su
+competencia (migración 038 — antes no se filtraba por año y sumaba como
+comprometido en todos). El **airfare** cuenta como una segunda fila de gasto
+del pago, imputada a `airfare_account_code`.
 
 Los pagos **sin departamento** (históricos, anteriores al backfill de la 036) se
 reportan aparte en `unallocated_payments` y no se reparten a ciegas en ningún
@@ -562,7 +566,7 @@ separadas:
 | Fuente | Qué aporta |
 |--------|-----------|
 | `payments` → `nominations` | fees de las personas nominadas |
-| `payments.airfare` | pasajes, **línea aparte** — se liquidan con la agencia y no son parte de lo que cobra la persona (migración 013) |
+| `payments.airfare` | pasajes, **línea aparte** en el desglose — se liquidan con la agencia y no son parte de lo que cobra la persona (migración 013) — pero desde la 038 sí entran al ejecutado y al comprometido, contra la cuenta de travel del rol |
 | `expenses` | gasto del evento sin persona: shipping, branding, seguros |
 | `budget_lines` | contra qué se compara |
 
@@ -676,7 +680,7 @@ que lo importado siga cuadrando con la planilla.
 ## 12. Pendientes
 
 > Superado por **§14** (revisión de agosto 2026): la hoja de ruta vigente son
-> las fases 6-11 de esa sección. Lo de acá sigue pendiente y se repite en 14.6.
+> las fases 6-11 de esa sección. Lo de acá sigue pendiente y se repite en 14.7.
 
 - **Plan de cuentas oficial de Finance.** Hasta que llegue, los códigos de
   Competitions son `COMP-01`…`COMP-28` con `pending_mapping = true`.
@@ -839,7 +843,7 @@ no es una competencia**. Uno sin hijos es un Draw; uno con las fases colgadas es
 una temporada. Una entidad, dos usos:
 
 ```sql
--- 038 (propuesta)
+-- 039 (propuesta — la 038 se la llevó el puente de payments, fase 6)
 CREATE TABLE budget_events (
     id              uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     name            text NOT NULL,
@@ -893,7 +897,7 @@ distintas del presupuesto: el fee de la persona y su vuelo. Se agrega
 El mapeo de fees es el mismo que ya hizo el backfill de la 036; el de travel es
 su columna paralela en el Excel de Competitions. **`VIDEO_OPERATOR` no tiene
 cuenta asignada** — el backfill de la 036 tampoco se la dio — y queda como
-pregunta abierta (14.6): es un rol distinto de `VGO` en este sistema, aunque el
+pregunta abierta (14.7): es un rol distinto de `VGO` en este sistema, aunque el
 Excel solo trae "TV Graphics Operator".
 
 ⚠️ **No hay doble conteo con las líneas calculadas de headcount.** Esas líneas
@@ -905,14 +909,66 @@ número.
 
 | Fase | Alcance | Por qué en este orden |
 |------|---------|----------------------|
-| **6** | **El puente y el año.** Departamento + cuenta obligatorios al crear/editar un pago, con prefill por rol; `airfare_account_code`; la UI de Payments migra de `payment_budgets` a departamento + cuenta; los pagos abiertos se imputan por el año de su competencia; backfill de lo cargado sin imputar desde la 036. | Es el bug que hace que la plata no se vea. Alto valor, bajo riesgo, sin schema nuevo salvo una columna. |
+| **6** ✅ | **El puente y el año.** Departamento + cuenta obligatorios al crear/editar un pago, con prefill por rol; `airfare_account_code`; la UI de Payments migra de `payment_budgets` a departamento + cuenta; los pagos abiertos se imputan por el año de su competencia; backfill de lo cargado sin imputar desde la 036. Migración **038**. Ver 14.6. | Es el bug que hace que la plata no se vea. Alto valor, bajo riesgo, sin schema nuevo salvo una columna. |
 | **7** | **Remanente con compromiso** en `/budget/summary`, `competition_cost` y el dashboard. | Cambio de fórmula acotado, y hace falta antes de que alguien tome decisiones mirando el número viejo. |
-| **8** | **Migración 038: `budget_events`**, rollup temporada → fases, y reimport de los $563.416 que hoy quedan afuera. | Schema nuevo. Independiente de la 6 y la 7, se puede hacer en paralelo. |
+| **8** | **Migración 039: `budget_events`**, rollup temporada → fases, y reimport de los $563.416 que hoy quedan afuera. | Schema nuevo. Independiente de la 6 y la 7, se puede hacer en paralelo. |
 | **9** | **Bandeja única del evento**: Payments muestra personas + proveedores + gasto operativo, con `budget_access` recortando filas y el alta de gasto de proveedor desde ahí. | Es la fase grande de UI y necesita que la 6 y la 8 ya hayan pasado: sin imputación ni contenedor de evento, la bandeja mostraría totales que no cierran. |
 | **10** | **Aprobación de un nivel** para gastos y pagos, con bandeja de pendientes del departamento. | Depende de la 9: la bandeja de aprobación vive en la misma pantalla. |
 | **11** | **Resultado por evento**: ingresos contra costo total en el panel de la competencia y del `budget_event`. | Cierra el reporting. Necesita el rollup de la 8. |
 
-### 14.6 Preguntas abiertas
+### 14.6 Fase 6 — cómo quedó implementada
+
+Migración **038**, `routers/payments.py`, `routers/budget.py`, `Payments.jsx`.
+
+**Un pago ahora imputa a dos líneas, no a una.** El fee va a `account_code` y el
+vuelo a `airfare_account_code` — son cuentas distintas del Excel de
+Competitions, y mientras el airfare no tuvo cuenta propia las líneas de viaje
+(COMP-07, 09, 12 y 14) mostraron 100% de remanente aunque los vuelos estuvieran
+pagados. `_payment_expense_rows()` en `budget.py` parte cada pago en esas dos
+filas antes de los rollups, así que el reparto por cuenta sale solo. El airfare
+**no** es parte de `payments.total` (migración 013), de modo que sumarlo como
+fila propia no lo cuenta dos veces.
+
+**`_resolve_imputation()` en `payments.py` es la única puerta.** El departamento
+es obligatorio y no se deriva: el mismo rol lo paga Competitions en un evento y
+Club Competitions en otro. Las dos cuentas sí salen del rol (`_ROLE_ACCOUNTS`,
+el mismo mapeo que el backfill de la 038 — si cambia uno, cambian los dos), lo
+que deja el formulario en un clic para los cuatro roles que tienen línea.
+**Un rol sin mapeo devuelve 400 en vez de un NULL silencioso:** un pago sin
+imputar es plata que desaparece de todos los totales por área, que es
+exactamente el bug que esta fase vino a cerrar. Hoy el único caso es
+`VIDEO_OPERATOR` (14.7), que se carga eligiendo la cuenta a mano.
+
+Dos detalles que salieron de implementarlo:
+
+- **La imputación se recalcula en cada edición**, no solo cuando la tocan. Bajar
+  el airfare a 0 tiene que **limpiar** la cuenta de viaje: un cero estacionado
+  en COMP-12 se lee como una línea consumida. Y de paso, una fila vieja sin
+  departamento queda clasificada la primera vez que alguien la abre, en lugar de
+  seguir invisible para siempre.
+- **`budget_code` perdió su `NOT NULL`** y dejó de escribirse. `payment_budgets`
+  se mantiene porque es lo que hace legible un pago de 2024, y el endpoint
+  `GET /payments/budgets` sigue en pie para un SPA cacheado; ningún camino nuevo
+  lo usa. Por la misma razón el filtro `?budget=` del listado sobrevive junto al
+  `?department=` nuevo: ignorarlo en silencio le mostraría totales sin filtrar a
+  alguien que cree haber filtrado.
+
+**El año de un pago abierto** sale de la competencia de su nominación
+(`created_at` de respaldo para las pocas competencias sin año). Antes la guarda
+solo descartaba los `completed` de otro año, así que un pago abierto de 2026
+sumaba como comprometido en 2027, 2028 y cualquier año consultado.
+
+Verificado sobre las dos funciones puras: los 12 casos de `_resolve_imputation`
+(defaults por rol, override manual, limpieza del vuelo, rol sin mapeo,
+departamento y cuenta inexistentes) y los 7 de `_payment_expense_rows` (el corte
+por año en las dos ramas, las dos filas con cuentas distintas, el pago sin
+imputar que conserva el `None`, y el airfare en cero que no genera fila).
+
+⚠️ **La 038 no va en el deploy automático:** aplicarla a mano contra Supabase
+*antes* de que salga el código, o el alta de pagos falla al escribir una columna
+que no existe.
+
+### 14.7 Preguntas abiertas
 
 - **`VIDEO_OPERATOR` no tiene cuenta de fee ni de travel** (14.4). ¿Va contra
   COMP-13/COMP-14 junto con los VGO, o es una línea propia que el Excel no trae?

@@ -133,6 +133,24 @@ legacy `fibaamericascloud.com`).
     `user_permissions.module`, `MODULES` en `permissions.py` y `MODULES` en
     `src/pages/Users.jsx`.
 
+11. **Un pago imputa a DOS líneas de presupuesto, no a una.** Desde la
+    migración 038 `payments` lleva `department_code` + `account_code` (el fee) y
+    `airfare_account_code` (el vuelo, que es otra cuenta: el fee de un TD es
+    COMP-11 y su pasaje COMP-12). Los tres los resuelve `_resolve_imputation()`
+    en `routers/payments.py`, con defaults por rol en `_ROLE_ACCOUNTS` — el
+    mismo mapeo que el backfill de la 038, **si cambia uno cambian los dos**. El
+    departamento es obligatorio y no se deriva; un rol sin cuenta por defecto
+    tira 400 en vez de guardar NULL, porque un pago sin imputar desaparece de
+    todos los totales por área.
+
+    `payment_budgets` y `payments.budget_code` son **históricos**: mezclaban
+    departamento y línea en una columna. No los uses en código nuevo; siguen
+    ahí porque hacen legible un pago de 2024 y porque un SPA cacheado todavía
+    los pide.
+
+    El contrato completo del módulo —incluida la hoja de ruta de lo que falta—
+    está en `BUDGET_MODULE.md` §14. Leelo antes de tocar Budget o Payments.
+
 ---
 
 ## 🗺️ Mapa del repo
@@ -146,6 +164,8 @@ fiba-nominations/
 ├── DEVELOPMENT.md             ← correr local
 ├── DESIGN_SYSTEM.md           ← tokens / componentes UI
 ├── SECURITY_RUNBOOK.md        ← acciones manuales pendientes (Supabase, DNS)
+├── BUDGET_MODULE.md           ← contrato del módulo Budget + Payments. §14 es
+│                                 la revisión vigente y la hoja de ruta
 ├── PAYMENTS_MODULE.md         ← análisis del legacy vbills (histórico; la
 │                                 implementación final difiere — ver nota adentro)
 ├── .claude/                   ← subagentes + skills para sesiones de IA (ver abajo)
