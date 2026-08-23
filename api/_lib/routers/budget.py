@@ -898,6 +898,12 @@ def budget_summary(request: Request, year: int = Query(...), department: Optiona
     Los pagos sin imputar (sin departamento, por venir de antes del backfill) se
     reportan aparte en `unallocated_payments` en vez de repartirse a ciegas: así
     se ve qué falta clasificar en lugar de esconderlo dentro de un total.
+
+    RESTANTE = presupuestado − ejecutado − comprometido (fase 7). Es lo que
+    queda realmente disponible: un gasto aprobado o un pago pendiente ya reservó
+    su plata, y contarla como disponible es exactamente cómo se sobregira un
+    presupuesto sin enterarse. El ejecutado y el comprometido se siguen
+    devolviendo por separado, así que la cifra vieja se puede reconstruir.
     """
     lq = _scoped(supabase.table("budget_lines").select("*").eq("year", year), request, department)
     eq_ = _scoped(
@@ -981,7 +987,10 @@ def budget_summary(request: Request, year: int = Query(...), department: Optiona
         for entry in acc.values():
             for f in ("budgeted", "executed", "committed"):
                 entry[f] = round(entry[f], 2)
-            entry["remaining"] = round(entry["budgeted"] - entry["executed"], 2)
+            # Disponible de verdad: lo aprobado-sin-pagar y los pagos abiertos ya
+            # reservaron su plata (fase 7). El ejecutado sigue aparte en su columna.
+            entry["remaining"] = round(
+                entry["budgeted"] - entry["executed"] - entry["committed"], 2)
             out.append(entry)
         return sorted(out, key=lambda e: -e["budgeted"])
 
@@ -995,8 +1004,11 @@ def budget_summary(request: Request, year: int = Query(...), department: Optiona
             "budgeted": budgeted,
             "executed": executed,
             "committed": committed,
-            # Restante contra lo ejecutado: aprobado-sin-pagar NO descuenta.
-            "remaining": round(budgeted - executed, 2),
+            # Restante = lo que queda REALMENTE disponible: descuenta tanto lo
+            # ejecutado como lo comprometido (fase 7). Un gasto aprobado o un pago
+            # pendiente ya reservó esa plata; contarla como disponible es cómo se
+            # sobregira un presupuesto sin enterarse.
+            "remaining": round(budgeted - executed - committed, 2),
             "revenue_budgeted": round(sum(_num(l) for l in rev_lines), 2),
             "revenue_received": round(sum(_num(r) for r in revenues if r.get("status") == "received"), 2),
             "revenue_expected": round(sum(_num(r) for r in revenues if r.get("status") == "expected"), 2),
@@ -1068,6 +1080,7 @@ def competition_cost(competition_id: str, request: Request):
     airfare_open = round(sum(_n(p, "airfare") for p in pays if p.get("status") in _OPEN), 2)
 
     executed = round(exp_paid + fees_paid + airfare_paid, 2)
+    committed = round(exp_open + fees_open + airfare_open, 2)
 
     # Desglose por departamento, con las tres fuentes juntas.
     by_dept: dict = {}
@@ -1101,7 +1114,7 @@ def competition_cost(competition_id: str, request: Request):
         for f in ("budgeted", "executed", "committed"):
             e[f] = round(e[f], 2)
         e["label"] = labels.get(e["department_code"], e["department_code"] or "—")
-        e["remaining"] = round(e["budgeted"] - e["executed"], 2)
+        e["remaining"] = round(e["budgeted"] - e["executed"] - e["committed"], 2)
         dept_rows.append(e)
     dept_rows.sort(key=lambda e: -max(e["budgeted"], e["executed"]))
 
@@ -1120,8 +1133,10 @@ def competition_cost(competition_id: str, request: Request):
         "totals": {
             "budgeted": budgeted,
             "executed": executed,
-            "committed": round(exp_open + fees_open + airfare_open, 2),
-            "remaining": round(budgeted - executed, 2),
+            "committed": committed,
+            # Igual que en /budget/summary (fase 7): lo comprometido ya reservó
+            # su plata, así que no queda disponible.
+            "remaining": round(budgeted - executed - committed, 2),
             "person_fees": round(fees_paid + fees_open, 2),
             "airfare": airfare,
             "event_expenses": round(exp_paid + exp_open, 2),

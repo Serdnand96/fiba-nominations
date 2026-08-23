@@ -59,7 +59,7 @@ Competitions son `(línea, competencia)`, y la columna "General Expenses" es
 | 2 | **Departamento** y **cuenta** son dimensiones separadas | Una competencia cruza departamentos: en la matriz de 2027, "TV Production (COMMS)" e "IT on Events" viven dentro del presupuesto de Competitions. Quién ejecuta ≠ de dónde sale la plata. |
 | 3 | Aprobación **simple** (`approved_by` + `approved_at`) | Sin bandeja de pendientes ni notificaciones. |
 | 4 | Presupuesto **multi-año**, por departamento **y** por competencia | El de IT proyecta 2027-2030; el de Competitions presupuesta por evento. |
-| 5 | **Solo el gasto pagado consume presupuesto** | Lo aprobado-no-pagado se reporta aparte como *comprometido*. |
+| 5 | **Solo el gasto pagado cuenta como ejecutado** | Lo aprobado-no-pagado se reporta aparte como *comprometido*. Desde la fase 7 (§14) el **restante sí lo descuenta**: `presupuestado − ejecutado − comprometido`. |
 | 6 | **Una sola versión vigente** del presupuesto, editable | Sin tabla de versiones. Los cambios quedan en el activity log existente (migración 018). |
 | 7 | Todo en **USD** | Sin multi-moneda, sin tipo de cambio. |
 | 8 | Recurrentes por **plantilla con generación perezosa** | Nada corre por cron; los gastos esperados del mes se muestran al abrir el mes y se confirman en bloque. |
@@ -680,7 +680,7 @@ que lo importado siga cuadrando con la planilla.
 ## 12. Pendientes
 
 > Superado por **§14** (revisión de agosto 2026): la hoja de ruta vigente son
-> las fases 6-11 de esa sección. Lo de acá sigue pendiente y se repite en 14.7.
+> las fases 6-11 de esa sección. Lo de acá sigue pendiente y se repite en 14.8.
 
 - **Plan de cuentas oficial de Finance.** Hasta que llegue, los códigos de
   Competitions son `COMP-01`…`COMP-28` con `pending_mapping = true`.
@@ -897,7 +897,7 @@ distintas del presupuesto: el fee de la persona y su vuelo. Se agrega
 El mapeo de fees es el mismo que ya hizo el backfill de la 036; el de travel es
 su columna paralela en el Excel de Competitions. **`VIDEO_OPERATOR` no tiene
 cuenta asignada** — el backfill de la 036 tampoco se la dio — y queda como
-pregunta abierta (14.7): es un rol distinto de `VGO` en este sistema, aunque el
+pregunta abierta (14.8): es un rol distinto de `VGO` en este sistema, aunque el
 Excel solo trae "TV Graphics Operator".
 
 ⚠️ **No hay doble conteo con las líneas calculadas de headcount.** Esas líneas
@@ -910,7 +910,7 @@ número.
 | Fase | Alcance | Por qué en este orden |
 |------|---------|----------------------|
 | **6** ✅ | **El puente y el año.** Departamento + cuenta obligatorios al crear/editar un pago, con prefill por rol; `airfare_account_code`; la UI de Payments migra de `payment_budgets` a departamento + cuenta; los pagos abiertos se imputan por el año de su competencia; backfill de lo cargado sin imputar desde la 036. Migración **038**. Ver 14.6. | Es el bug que hace que la plata no se vea. Alto valor, bajo riesgo, sin schema nuevo salvo una columna. |
-| **7** | **Remanente con compromiso** en `/budget/summary`, `competition_cost` y el dashboard. | Cambio de fórmula acotado, y hace falta antes de que alguien tome decisiones mirando el número viejo. |
+| **7** ✅ | **Remanente con compromiso** en `/budget/summary`, `competition_cost` y el dashboard. Ver 14.7. | Cambio de fórmula acotado, y hace falta antes de que alguien tome decisiones mirando el número viejo. |
 | **8** | **Migración 039: `budget_events`**, rollup temporada → fases, y reimport de los $563.416 que hoy quedan afuera. | Schema nuevo. Independiente de la 6 y la 7, se puede hacer en paralelo. |
 | **9** | **Bandeja única del evento**: Payments muestra personas + proveedores + gasto operativo, con `budget_access` recortando filas y el alta de gasto de proveedor desde ahí. | Es la fase grande de UI y necesita que la 6 y la 8 ya hayan pasado: sin imputación ni contenedor de evento, la bandeja mostraría totales que no cierran. |
 | **10** | **Aprobación de un nivel** para gastos y pagos, con bandeja de pendientes del departamento. | Depende de la 9: la bandeja de aprobación vive en la misma pantalla. |
@@ -937,7 +937,7 @@ que deja el formulario en un clic para los cuatro roles que tienen línea.
 **Un rol sin mapeo devuelve 400 en vez de un NULL silencioso:** un pago sin
 imputar es plata que desaparece de todos los totales por área, que es
 exactamente el bug que esta fase vino a cerrar. Hoy el único caso es
-`VIDEO_OPERATOR` (14.7), que se carga eligiendo la cuenta a mano.
+`VIDEO_OPERATOR` (14.8), que se carga eligiendo la cuenta a mano.
 
 Dos detalles que salieron de implementarlo:
 
@@ -968,7 +968,21 @@ imputar que conserva el `None`, y el airfare en cero que no genera fila).
 *antes* de que salga el código, o el alta de pagos falla al escribir una columna
 que no existe.
 
-### 14.7 Preguntas abiertas
+### 14.7 Fase 7 — el restante descuenta lo comprometido
+
+`remaining = budgeted − executed − committed`, en los tres lugares que lo
+calculaban: los totales y el rollup de `/budget/summary`, y los totales y el
+desglose por departamento de `competition_cost`. `executed` y `committed` se
+siguen devolviendo por separado, así que la cifra vieja se reconstruye sumando.
+
+**La barra de progreso cambió con la fórmula.** "Usado" pasa a ser
+ejecutado + comprometido, que es lo mismo que ahora descuenta el restante. Sin
+eso una fila con restante negativo en rojo podía mostrar la barra verde al
+lado: el sobregiro lo causaba lo comprometido y la barra solo miraba lo
+ejecutado. Los dos segmentos siguen separados —verde lo que ya salió, azul lo
+reservado— y se tiñen de rojo juntos cuando la suma pasa el presupuesto.
+
+### 14.8 Preguntas abiertas
 
 - **`VIDEO_OPERATOR` no tiene cuenta de fee ni de travel** (14.4). ¿Va contra
   COMP-13/COMP-14 junto con los VGO, o es una línea propia que el Excel no trae?

@@ -245,17 +245,24 @@ function Bar({ budgeted, executed, committed }) {
   const c = Number(committed || 0)
   // Sin presupuesto cargado no hay porcentaje que mostrar: la barra iría al
   // infinito. Se marca como sobregiro si igual hubo gasto.
+  //
+  // "Usado" = ejecutado + comprometido, lo mismo que descuenta el restante
+  // (fase 7). Sin esto una fila con restante negativo en rojo podía tener la
+  // barra verde al lado: el sobregiro lo causaba lo comprometido y la barra
+  // solo miraba lo ejecutado. Los dos segmentos siguen separados — verde lo
+  // que ya salió, azul lo que está reservado.
+  const used = e + c
   const pct = b > 0 ? Math.min(100, (e / b) * 100) : (e > 0 ? 100 : 0)
   const cPct = b > 0 ? Math.min(100 - pct, (c / b) * 100) : 0
-  const over = b > 0 ? e > b : e > 0
+  const over = b > 0 ? used > b : used > 0
   return (
     <div className="flex items-center gap-2">
       <div className="flex-1 h-2 rounded-full bg-fiba-surface overflow-hidden flex">
         <div className={over ? 'bg-red-500' : 'bg-emerald-500'} style={{ width: `${pct}%` }} />
-        <div className="bg-blue-500/40" style={{ width: `${cPct}%` }} />
+        <div className={over ? 'bg-red-500/40' : 'bg-blue-500/40'} style={{ width: `${cPct}%` }} />
       </div>
       <span className={`text-xs tabular-nums w-12 text-right ${over ? 'text-red-500 font-medium' : 'text-fiba-muted'}`}>
-        {b > 0 ? `${Math.round((e / b) * 100)}%` : '—'}
+        {b > 0 ? `${Math.round((used / b) * 100)}%` : '—'}
       </span>
     </div>
   )
@@ -276,7 +283,7 @@ function RollupTable({ title, rows, t, onRowClick }) {
               <th className="px-4 py-2 text-right">{t('budget.budgeted')}</th>
               <th className="px-4 py-2 text-right">{t('budget.committed')}</th>
               <th className="px-4 py-2 text-right">{t('budget.executed')}</th>
-              <th className="px-4 py-2 text-right">{t('budget.remaining')}</th>
+              <th className="px-4 py-2 text-right" title={t('budget.remainingHint')}>{t('budget.remaining')}</th>
               <th className="px-4 py-2 w-40">{t('budget.used')}</th>
             </tr>
           </thead>
@@ -370,7 +377,7 @@ function DashboardTab({ t, push, canEdit, departments, competitions }) {
               <p className="text-xs text-fiba-muted">{t('budget.executed')}</p>
               <p className="text-2xl font-bold text-emerald-400">${money(summary.totals.executed)}</p>
             </div>
-            <div className="fiba-stat">
+            <div className="fiba-stat" title={t('budget.remainingHint')}>
               <p className="text-xs text-fiba-muted">{t('budget.remaining')}</p>
               <p className={`text-2xl font-bold ${summary.totals.remaining < 0 ? 'text-red-500' : 'text-ink-900 dark:text-white'}`}>
                 ${money(summary.totals.remaining)}
@@ -419,7 +426,8 @@ function DashboardTab({ t, push, canEdit, departments, competitions }) {
               <div className="fiba-stat">
                 <p className="text-xs text-fiba-muted">{t('budget.budgeted')}</p>
                 <p className="text-xl font-bold text-ink-900 dark:text-white">${money(cost.totals.budgeted)}</p>
-                <p className={`text-2xs ${cost.totals.remaining < 0 ? 'text-red-500' : 'text-fiba-muted'}`}>
+                <p className={`text-2xs ${cost.totals.remaining < 0 ? 'text-red-500' : 'text-fiba-muted'}`}
+                   title={t('budget.remainingHint')}>
                   {t('budget.remaining')}: ${money(cost.totals.remaining)}
                 </p>
               </div>
@@ -642,7 +650,7 @@ function PlanTab({ t, push, canEdit, departments, expenseAccounts, competitions 
             <p className="text-xs text-fiba-muted">{t('budget.executed')}</p>
             <p className="text-2xl font-bold text-emerald-400">${money(summary.totals.executed)}</p>
           </div>
-          <div className="fiba-stat">
+          <div className="fiba-stat" title={t('budget.remainingHint')}>
             <p className="text-xs text-fiba-muted">{t('budget.remaining')}</p>
             <p className={`text-2xl font-bold ${summary.totals.remaining < 0 ? 'text-red-500' : 'text-ink-900 dark:text-white'}`}>
               ${money(summary.totals.remaining)}

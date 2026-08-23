@@ -305,6 +305,10 @@ const translations = {
     // Presupuesto (fase 2)
     budgeted: { en: 'Budgeted', es: 'Presupuestado' },
     remaining: { en: 'Remaining', es: 'Restante' },
+    remainingHint: {
+      en: 'Budgeted minus executed minus committed — what is actually left to spend. An approved expense or a pending payment has already reserved its money.',
+      es: 'Presupuestado menos ejecutado menos comprometido — lo que queda realmente disponible. Un gasto aprobado o un pago pendiente ya reservó su plata.',
+    },
     viewMatrix: { en: 'Matrix', es: 'Matriz' },
     viewList: { en: 'List', es: 'Lista' },
     pickDepartment: { en: 'Pick a department to edit', es: 'Elige un departamento para editar' },

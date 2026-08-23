@@ -66,7 +66,7 @@ def _valid_budget(code: str) -> bool:
 # `VIDEO_OPERATOR` is deliberately absent: the Fees Breakdown sheet doesn't
 # have it and migration 036 gave it no fee account either, so those payments
 # need the account picked by hand until FIBA decides its line
-# (BUDGET_MODULE.md §14.7). Falling back to the VGO line would be a guess that
+# (BUDGET_MODULE.md §14.8). Falling back to the VGO line would be a guess that
 # lands real money on the wrong account.
 _ROLE_ACCOUNTS = {
     "TD":             {"fee": "COMP-11", "airfare": "COMP-12"},
