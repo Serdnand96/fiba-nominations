@@ -31,6 +31,34 @@ bash verify_security.sh       # smoke test
 
 ---
 
+## ⚠️ Las migraciones NO las corre el pipeline
+
+`supabase/migrations/*.sql` **no se aplica solo**. El deploy hace `git pull`,
+`pip install`, `npm build` y reinicia el servicio — nada toca la base. Las
+migraciones se aplican **a mano contra Supabase, ANTES de mergear a `main`**.
+
+El orden no es una preferencia: el backend le pide a PostgREST las columnas
+nuevas, y una columna que no existe **no degrada, tira 500**. Si el código sale
+primero, el módulo afectado queda caído para todos hasta que la migración entre.
+Con las migraciones aplicadas antes, en cambio, el código viejo sigue andando —
+son aditivas y las columnas nuevas simplemente no se usan todavía.
+
+```
+1. aplicar las migraciones pendientes a Supabase
+2. verificar que entraron (information_schema)
+3. recién ahí: merge a main → el pipeline deploya
+4. bash verify_security.sh
+```
+
+`verify_security.sh` **no** detecta este problema: chequea headers y auth, no el
+esquema. Si después de un deploy un módulo entero devuelve 500, lo primero que
+hay que mirar es si su migración está aplicada.
+
+Algunas migraciones además tienen un **requisito de datos** que tampoco es
+automático — la 036/039 dependen de que `budget_access` esté sembrado, porque
+falla cerrado y sin filas nadie puede editar. Eso está en `BUDGET_MODULE.md`
+§14.10.
+
 ## Pipeline (GitHub Actions)
 
 `.github/workflows/deploy.yml`:

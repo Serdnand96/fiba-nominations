@@ -148,6 +148,32 @@ legacy `fibaamericascloud.com`).
     ahí porque hacen legible un pago de 2024 y porque un SPA cacheado todavía
     los pide.
 
+    **Payments es la bandeja del evento, no la de los nominados.** Muestra en una
+    pantalla las personas nominadas *y* el gasto operativo de la competencia
+    (`expenses`), y sus escrituras delegan en el router de Budget en vez de
+    reimplementar la validación. Se abre con el permiso `payments`, pero las
+    **escrituras** se recortan con el mismo `budget_access` que Budget: se ve el
+    evento entero, se carga solo en los departamentos propios. Las lecturas del
+    evento son excepción explícita al recorte —igual que `competition_cost`—
+    porque un total que cambia según quién lo mira no sirve para reportar.
+
+    **Un pago sin aprobar no puede pasar a `completed`** (migración 040). La
+    aprobación es un eje separado del status: `new/in_process/split/completed`
+    describen el trámite bancario, `approved_at` dice quién dio el OK. Ojo: con
+    un solo nivel y sin umbral, **el que edita es el mismo que aprueba** — la
+    aprobación deja registro, no separa funciones.
+
+    **`budget_events` es lo que no es competencia ni overhead anual** (migración
+    039): sin fases colgadas es un Draw o un workshop; con `competitions
+    .budget_event_id` apuntándole es una temporada que presupuesta lo que sus
+    fases ejecutan. Una fila apunta a una competencia **o** a un evento, nunca a
+    las dos (CHECK `*_one_target`), y `general_only` significa sin ninguno de los
+    dos.
+
+    ⚠️ **Las migraciones de este módulo no van en el deploy automático** y hay
+    que aplicarlas antes de mergear: una columna que falta tira 500, no degrada.
+    Ver `DEPLOYMENT.md`.
+
     El contrato completo del módulo —incluida la hoja de ruta de lo que falta—
     está en `BUDGET_MODULE.md` §14. Leelo antes de tocar Budget o Payments.
 
