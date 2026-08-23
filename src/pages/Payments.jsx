@@ -18,7 +18,7 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react'
 import {
   getCalendarCompetitions, getPaymentImputation, getPaymentEvent,
-  getPendingApprovalPayments, getVendors, getEmployees,
+  getPendingApprovalPayments,
 } from '../api/client'
 import { useLanguage } from '../i18n/LanguageContext'
 import { useToast } from '../components/ui/Toast'
@@ -38,7 +38,7 @@ const EMPTY_EVENT = { people: [], expenses: [], totals: {} }
 export default function Payments() {
   const { t } = useLanguage()
   const { push } = useToast()
-  const { hasEdit, hasView } = useAuth()
+  const { hasEdit } = useAuth()
   const canEdit = hasEdit('payments')
 
   const [competitions, setCompetitions] = useState([])
@@ -69,16 +69,12 @@ export default function Payments() {
       setAccounts(imp.accounts || [])
       setRoleAccounts(imp.role_accounts || {})
       setEditableAll(!!imp.editable_all)
+      // Proveedores y empleados vienen en el mismo catálogo: sus tablas están
+      // detrás de `budget` y `employees`, y pedirlas aparte hacía que cargar un
+      // gasto operativo exigiera tres permisos en vez de uno.
+      setVendors(imp.vendors || [])
+      setEmployees(imp.employees || [])
     }).catch(e => console.error(e))
-  }, [])
-
-  // Proveedores y empleados son para el editor de gasto operativo, y viven
-  // detrás de `budget` y `employees`. Se piden solo si el usuario los tiene:
-  // pedirlos igual sería un 403 por pantalla cargada. Sin ellos el gasto se
-  // carga con el destinatario escrito a mano.
-  useEffect(() => {
-    if (hasView('budget')) getVendors().then(setVendors).catch(() => setVendors(null))
-    if (hasView('employees')) getEmployees().then(setEmployees).catch(() => setEmployees(null))
   }, [])
 
   // Cambiar de evento rápido dispara dos cargas; sin este número de secuencia la

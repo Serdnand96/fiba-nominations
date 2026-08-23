@@ -106,7 +106,7 @@ def _expense_accounts(only_active: bool = True) -> list:
     return [r for r in rows if r.get("active")] if only_active else rows
 
 
-def _assert_can_spend(request: Request, department_code: str) -> None:
+def _assert_can_spend(request: Request, department_code: Optional[str]) -> None:
     """El caller puede imputar plata a ese departamento.
 
     ⚠️ MISMO `budget_access` QUE BUDGET, y por la misma razón. Sin esto,
@@ -120,6 +120,17 @@ def _assert_can_spend(request: Request, department_code: str) -> None:
     superadmin sin filas ahí no puede cargar pagos. Hay que sembrarlo ANTES de
     que salga esta versión (ver BUDGET_MODULE.md §14.10).
     """
+    if budget_router._departments_for(request, "edit") is None:
+        return   # acceso total: no hay nada que recortar
+    if not department_code:
+        # Una fila sin imputar no pertenece a ningún departamento, así que no
+        # hay designado acotado que la gobierne. El mensaje lo dice, en vez de
+        # hablar de un departamento llamado "None". Quien tiene acceso total ya
+        # salió arriba: una fila histórica sin imputar sigue siendo suya.
+        raise HTTPException(
+            status_code=400,
+            detail="Impute the payment to a department first",
+        )
     budget_router._assert_can_edit(request, department_code)
 
 
@@ -247,12 +258,16 @@ def _shape_payment(row: dict) -> dict:
 # ─── Imputation catalogue: what the payment form offers ──────────────────────
 @router.get("/imputation")
 def imputation_options(request: Request):
-    """Departments, expense accounts and the per-role account defaults.
+    """Los catálogos que necesita el formulario de la bandeja del evento.
 
-    Served from the payments router — and therefore behind `require_view
-    ("payments")` — so that paying someone doesn't require the `budget`
-    permission on top. These are catalogues: names of departments and account
-    lines, no amounts.
+    Departamentos (marcados con `can_edit`), plan de cuentas de gasto,
+    proveedores, empleados y los defaults de cuenta por rol. Se sirven desde el
+    router de payments —y por lo tanto detrás de `require_view("payments")`—
+    para que pagar y cargar el gasto de un evento no exija además los permisos
+    `budget` y `employees`.
+
+    Son catálogos: nombres y códigos, sin montos, sin datos bancarios ni
+    fiscales.
     """
     accounts = _expense_accounts()
 
@@ -283,9 +298,29 @@ def imputation_options(request: Request):
     for d in departments:
         d["can_edit"] = editable is None or d["code"] in editable
 
+    # Proveedores y empleados: el alta de un gasto operativo exige `vendor_id` o
+    # `employee_id` según el tipo de destinatario, y esos catálogos viven detrás
+    # de los permisos `budget` y `employees`. Sin ellos la bandeja de la fase 9
+    # solo dejaba cargar destinatarios sueltos por nombre, o sea que no servía
+    # con un solo permiso. Se sirven acá, igual que `/staffing/candidates` sirve
+    # el picker de empleados para no exigir `employees` a quien planifica.
+    #
+    # Solo lo mínimo para elegir: nada de datos bancarios ni fiscales, que es lo
+    # que hace sensible a `vendors` (RLS on, sin políticas — migración 033).
+    vendors = (
+        supabase.table("vendors").select("id, name")
+        .eq("active", True).order("name").execute().data
+    ) or []
+    employees = (
+        supabase.table("employees").select("id, name")
+        .eq("active", True).order("name").execute().data
+    ) or []
+
     return {
         "departments": departments,
         "accounts": accounts,
+        "vendors": vendors,
+        "employees": employees,
         "role_accounts": _ROLE_ACCOUNTS,
         "editable_all": editable is None,
     }
@@ -345,7 +380,33 @@ def event_tray(request: Request, competition_id: str = Query(...)):
     """
     people = list_nominees(competition_id=competition_id)
 
-    expenses = budget_router._fetch_expenses(request, competition_id=competition_id)
+    # ⚠️ LECTURA SIN RECORTE, A PROPÓSITO — misma excepción que
+    # `competition_cost` y por la misma razón (§14.10): el scoping rige cargar y
+    # editar, no leer el costo de un evento, y una competencia cruza
+    # departamentos. Antes esto pasaba por `_fetch_expenses`, que sí recorta, y
+    # el resultado era peor que un permiso de más: las personas venían sin
+    # recortar y los gastos recortados, así que `grand_total` **daba distinto
+    # para cada usuario**. Una cifra de portada que cambia según quién la mira
+    # no sirve para reportar nada.
+    #
+    # No se hace con un flag en `_fetch_expenses`: un parámetro que apaga el
+    # scope en el helper que lo garantiza es exactamente lo que después alguien
+    # usa sin darse cuenta. Acá la excepción es local y visible.
+    expenses = [
+        budget_router._shape_expense(r)
+        for r in (
+            supabase.table("expenses")
+            .select(budget_router._EXPENSE_SELECT)
+            .eq("competition_id", competition_id)
+            .order("expense_date", desc=True)
+            .execute().data or []
+        )
+    ]
+    # Qué puede editar el caller, para que la UI no ofrezca lo que el backend
+    # va a rechazar. Se ve todo; se toca lo propio.
+    editable = budget_router._departments_for(request, "edit")
+    for e in expenses:
+        e["can_edit"] = editable is None or e.get("department_code") in editable
 
     def _sum(rows, field="amount", predicate=lambda r: True) -> float:
         return round(sum(float(r.get(field) or 0) for r in rows if predicate(r)), 2)

@@ -70,6 +70,9 @@ export const downloadNominationBlob = async (id, filename) => {
 // to impute a payment to the budget. Served by the payments router, so paying
 // someone does not require the `budget` permission.
 export const getPaymentImputation = () => api.get('/payments/imputation').then(r => r.data)
+// Solo los nominados de una competencia. Desde la fase 9 la pantalla usa
+// `getPaymentEvent`, que devuelve esto más el gasto operativo y los totales; el
+// endpoint sigue vivo en el backend (la bandeja lo reutiliza por dentro).
 export const getPaymentNominees = (competitionId) =>
   api.get('/payments/nominees', { params: { competition_id: competitionId } }).then(r => r.data)
 // Bandeja única del evento (fase 9): las personas nominadas con su pago Y el
@@ -92,6 +95,9 @@ export const getPendingApprovalPayments = (competitionId) =>
 export const approvePayment = (id) => api.post(`/payments/${id}/approve`).then(r => r.data)
 export const unapprovePayment = (id) => api.post(`/payments/${id}/unapprove`).then(r => r.data)
 export const getPayments = (params) => api.get('/payments', { params }).then(r => r.data)
+// Totales de los pagos a personas, con filtro opcional por departamento. La
+// bandeja del evento ya trae los suyos en `getPaymentEvent`; esto queda para
+// quien necesite el corte por departamento contra el backend.
 export const getPaymentsSummary = (competitionId, department) =>
   api.get('/payments/summary', { params: { competition_id: competitionId, ...(department ? { department } : {}) } }).then(r => r.data)
 export const createPayment = (data) => api.post('/payments', data).then(r => r.data)

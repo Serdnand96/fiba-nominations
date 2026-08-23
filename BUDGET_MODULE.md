@@ -1095,6 +1095,26 @@ el evento entero, que es el punto—, y `/payments/imputation` marca cada
 departamento con `can_edit` para que el formulario no ofrezca lo que el backend
 va a rechazar.
 
+⚠️ **La lectura de gastos de la bandeja es una excepción explícita al scope**,
+igual que `competition_cost`. La primera versión la resolvía con
+`_fetch_expenses`, que sí recorta, y el resultado era peor que un permiso de
+más: las personas venían sin recortar y los gastos recortados, así que
+`grand_total` **daba distinto para cada usuario**. Una cifra de portada que
+cambia según quién la mira no sirve para reportar nada. La excepción se escribe
+local y a la vista en `event_tray`, y **no** como un flag en `_fetch_expenses`:
+un parámetro que apaga el scope dentro del helper que lo garantiza es
+exactamente lo que alguien después usa sin darse cuenta. Cada fila viaja con su
+`can_edit`.
+
+**El catálogo de proveedores y empleados lo sirve `/payments/imputation`.** El
+alta de un gasto operativo exige `vendor_id` o `employee_id`, y esas tablas
+están detrás de `budget` y `employees`: sin esto, la bandeja de la fase 9 solo
+dejaba cargar destinatarios sueltos escritos a mano, o sea que no era usable con
+un solo permiso. Se sirven `id` y `name` y nada más — los datos bancarios y
+fiscales son justamente lo que hace sensible a `vendors`. Es el mismo patrón que
+`/staffing/candidates`, que sirve el picker de empleados para no exigirle el
+permiso `employees` a quien planifica.
+
 ⚠️ **REQUISITO DE DEPLOY.** `budget_access` falla cerrado: un usuario no
 superadmin **sin filas ahí no puede cargar ni editar pagos**. Hay que sembrarlo
 antes de que salga esta versión, o el módulo de pagos queda inutilizable para

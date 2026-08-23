@@ -661,12 +661,12 @@ const translations = {
       es: 'Lo que cuesta operar la competencia sin una persona nominada detrás: shipping, branding, seguros, proveedores.',
     },
     expensesScopeHint: {
-      en: 'Only the spend of the departments you have access to is listed.',
-      es: 'Solo se listan los gastos de los departamentos a los que tienes acceso.',
+      en: 'The whole event is listed, across departments. You can only edit the spend of your own.',
+      es: 'Se lista el evento completo, de todos los departamentos. Solo puedes editar el gasto de los tuyos.',
     },
     expenseBelongsToEvent: {
       en: 'An expense loaded from here always belongs to this event.',
-      es: 'Un gasto cargado desde acá siempre pertenece a este evento.',
+      es: 'Un gasto cargado desde aquí siempre pertenece a este evento.',
     },
     expenseStatusHint: {
       en: 'Only a paid expense consumes budget; approved and unpaid counts as committed.',
