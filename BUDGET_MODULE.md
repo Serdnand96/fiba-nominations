@@ -680,7 +680,7 @@ que lo importado siga cuadrando con la planilla.
 ## 12. Pendientes
 
 > Superado por **§14** (revisión de agosto 2026): la hoja de ruta vigente son
-> las fases 6-11 de esa sección. Lo de acá sigue pendiente y se repite en 14.10.
+> las fases 6-11 de esa sección. Lo de acá sigue pendiente y se repite en 14.13.
 
 - **Plan de cuentas oficial de Finance.** Hasta que llegue, los códigos de
   Competitions son `COMP-01`…`COMP-28` con `pending_mapping = true`.
@@ -897,7 +897,7 @@ distintas del presupuesto: el fee de la persona y su vuelo. Se agrega
 El mapeo de fees es el mismo que ya hizo el backfill de la 036; el de travel es
 su columna paralela en el Excel de Competitions. **`VIDEO_OPERATOR` no tiene
 cuenta asignada** — el backfill de la 036 tampoco se la dio — y queda como
-pregunta abierta (14.10): es un rol distinto de `VGO` en este sistema, aunque el
+pregunta abierta (14.13): es un rol distinto de `VGO` en este sistema, aunque el
 Excel solo trae "TV Graphics Operator".
 
 ⚠️ **No hay doble conteo con las líneas calculadas de headcount.** Esas líneas
@@ -912,9 +912,9 @@ número.
 | **6** ✅ | **El puente y el año.** Departamento + cuenta obligatorios al crear/editar un pago, con prefill por rol; `airfare_account_code`; la UI de Payments migra de `payment_budgets` a departamento + cuenta; los pagos abiertos se imputan por el año de su competencia; backfill de lo cargado sin imputar desde la 036. Migración **038**. Ver 14.6. | Es el bug que hace que la plata no se vea. Alto valor, bajo riesgo, sin schema nuevo salvo una columna. |
 | **7** ✅ | **Remanente con compromiso** en `/budget/summary`, `competition_cost` y el dashboard. Ver 14.7. | Cambio de fórmula acotado, y hace falta antes de que alguien tome decisiones mirando el número viejo. |
 | **8** ✅ | **Migración 039: `budget_events`**, rollup temporada → fases, y soporte del importador. Ver 14.8. El reimport de los $563.416 queda pendiente de los archivos. | Schema nuevo. Independiente de la 6 y la 7, se puede hacer en paralelo. |
-| **9** | **Bandeja única del evento**: Payments muestra personas + proveedores + gasto operativo, con `budget_access` recortando filas y el alta de gasto de proveedor desde ahí. | Es la fase grande de UI y necesita que la 6 y la 8 ya hayan pasado: sin imputación ni contenedor de evento, la bandeja mostraría totales que no cierran. |
-| **10** | **Aprobación de un nivel** para gastos y pagos, con bandeja de pendientes del departamento. | Depende de la 9: la bandeja de aprobación vive en la misma pantalla. |
-| **11** | **Resultado por evento**: ingresos contra costo total en el panel de la competencia y del `budget_event`. | Cierra el reporting. Necesita el rollup de la 8. |
+| **9** ✅ | **Bandeja única del evento**: Payments muestra personas + proveedores + gasto operativo, con `budget_access` recortando filas y el alta de gasto de proveedor desde ahí. Ver 14.10. | Es la fase grande de UI y necesita que la 6 y la 8 ya hayan pasado: sin imputación ni contenedor de evento, la bandeja mostraría totales que no cierran. |
+| **10** ✅ | **Aprobación de un nivel** para gastos y pagos, con bandeja de pendientes del departamento. Migración **040**. Ver 14.11. | Depende de la 9: la bandeja de aprobación vive en la misma pantalla. |
+| **11** ✅ | **Resultado por evento**: ingresos contra costo total en el panel de la competencia y del `budget_event`. Ver 14.12. | Cierra el reporting. Necesita el rollup de la 8. |
 
 ### 14.6 Fase 6 — cómo quedó implementada
 
@@ -937,7 +937,7 @@ que deja el formulario en un clic para los cuatro roles que tienen línea.
 **Un rol sin mapeo devuelve 400 en vez de un NULL silencioso:** un pago sin
 imputar es plata que desaparece de todos los totales por área, que es
 exactamente el bug que esta fase vino a cerrar. Hoy el único caso es
-`VIDEO_OPERATOR` (14.10), que se carga eligiendo la cuenta a mano.
+`VIDEO_OPERATOR` (14.13), que se carga eligiendo la cuenta a mano.
 
 Dos detalles que salieron de implementarlo:
 
@@ -1065,7 +1065,84 @@ responsable de esa área no puede corregirlo porque Payments todavía no recorta
 por departamento. No es un problema de confidencialidad sino de integridad, y
 existe desde que la fase 6 conectó la plata. Lo cierra la fase 9.
 
-### 14.10 Preguntas abiertas
+### 14.10 Fase 9 — la bandeja única del evento
+
+`GET /payments/event` devuelve en una sola respuesta las personas nominadas con
+su pago y el gasto operativo de la competencia. Payments deja de ser "la
+pantalla de los nominados": quien opera un evento ve todo lo que ese evento
+gasta sin necesitar el permiso `budget`.
+
+**Las escrituras delegan, no reimplementan.** `/payments/event-expenses` llama a
+`create_expense` / `update_expense` / `delete_expense` del router de Budget, que
+ya validan cuenta, destinatario, coherencia de pagado y el departamento contra
+`budget_access`. Duplicar esas validaciones era garantizar que en tres meses las
+dos pantallas trataran distinto la misma tabla.
+
+⚠️ Se las puede llamar como funciones porque **no tienen defaults de `Query()`**.
+El repo ya se quemó con eso: un `Query()` sin resolver llega como objeto truthy
+y se convierte en un filtro fantasma — es el bug que dejó `/payments/summary` en
+$0.00. Si alguna vez alguien le agrega un `Query()` a esas tres, este atajo deja
+de servir y hay que extraerlas a un servicio.
+
+**Un gasto cargado desde la bandeja pertenece siempre al evento**
+(`_event_expense_target`). Sin esa guarda, `payments` sería una puerta lateral
+para cargar el overhead anual de un departamento sin tener el permiso `budget`.
+
+**El recorte llegó a Payments.** `_assert_can_spend()` exige `budget_access` con
+`can_edit` sobre el departamento al que se imputa, y sobre el de origen cuando
+un pago se mueve de área. Las lecturas siguen sin recortar —la bandeja muestra
+el evento entero, que es el punto—, y `/payments/imputation` marca cada
+departamento con `can_edit` para que el formulario no ofrezca lo que el backend
+va a rechazar.
+
+⚠️ **REQUISITO DE DEPLOY.** `budget_access` falla cerrado: un usuario no
+superadmin **sin filas ahí no puede cargar ni editar pagos**. Hay que sembrarlo
+antes de que salga esta versión, o el módulo de pagos queda inutilizable para
+todos menos el superadmin. Es el mismo trámite que otorgar el permiso `budget`,
+solo que ahora también condiciona a Payments.
+
+### 14.11 Fase 10 — aprobación
+
+Migración **040**. Un nivel y sin umbral: el designado con `can_edit` sobre el
+departamento aprueba cualquier monto de su área (§14.2, decisión 4). El control
+lo da el recorte por departamento — nadie aprueba plata ajena —, no un
+escalamiento por monto que nadie pidió.
+
+**Eje separado del status, no un estado más.** `new/in_process/split/completed`
+vienen del legacy vbills y describen dónde está el trámite bancario;
+`approved_at` dice quién dio el OK. Meter `approved` en el mismo enum obligaría
+a decidir si un pago aprobado que volvió de finanzas es `approved` o
+`in_process`, y la respuesta es "las dos". Es la misma separación que ya usa
+`expenses`.
+
+**Dónde tiene dientes:** un pago sin aprobar no puede pasar a `completed`, que
+es exactamente el estado que consume presupuesto en `/budget/summary`. Sin esa
+guarda, aprobar sería decorativo. Tampoco puede nacer `completed`, que sería la
+puerta de atrás.
+
+El backfill de la 040 deja aprobados los pagos ya completados, con
+`approved_by` en NULL: no hay a quién atribuirles esa aprobación y estampar un
+usuario cualquiera sería inventar un dato de auditoría. Sin ese backfill,
+cualquier edición sobre un pago histórico dispararía un 400 pidiendo una
+aprobación imposible de dar retroactivamente.
+
+`GET /payments/pending-approval` **sí** filtra por departamento, a diferencia
+del resto de las lecturas de Payments: es una bandeja de trabajo, y ver ahí lo
+que no podés aprobar es solo ruido.
+
+### 14.12 Fase 11 — resultado por evento
+
+`_cost_core` suma `revenues` y devuelve dos lecturas, a propósito:
+
+- **`result`** = recibido − ejecutado. Lo que ya pasó.
+- **`projected_result`** = (recibido + esperado) − (ejecutado + comprometido).
+  Cómo termina el evento si todo lo esperado entra y todo lo comprometido sale.
+
+Una sola cifra obligaría a elegir entre ser prudente y ser útil. Con las dos, la
+distancia entre ellas es en sí misma la información: si son muy distintas, el
+resultado del evento depende de plata que todavía no se movió.
+
+### 14.13 Preguntas abiertas
 
 - **`VIDEO_OPERATOR` no tiene cuenta de fee ni de travel** (14.4). ¿Va contra
   COMP-13/COMP-14 junto con los VGO, o es una línea propia que el Excel no trae?

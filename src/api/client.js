@@ -193,6 +193,23 @@ export const downloadBudgetLinesXlsx = async (params) => {
 // Costo total del evento. NO está recortado por departamento a propósito: el
 // scoping rige cargar y editar, no leer la cifra de una competencia.
 export const getCompetitionCost = (id) => api.get(`/budget/competitions/${id}/cost`).then(r => r.data)
+
+// Eventos presupuestarios (migración 039): gasto que no es competencia del
+// calendario ni overhead anual — Draws, workshops y las temporadas de las
+// ligas. Sin competencias colgadas es una bolsa suelta; con fases colgadas es
+// una temporada que presupuesta lo que sus fases ejecutan.
+export const getBudgetEvents = (params) => api.get('/budget/events', { params }).then(r => r.data)
+export const createBudgetEvent = (data) => api.post('/budget/events', data).then(r => r.data)
+export const updateBudgetEvent = (id, data) => api.patch(`/budget/events/${id}`, data).then(r => r.data)
+// Reemplaza el conjunto entero de fases: lo que no va en la lista se desvincula.
+export const setBudgetEventCompetitions = (id, competitionIds) =>
+  api.put(`/budget/events/${id}/competitions`, { competition_ids: competitionIds }).then(r => r.data)
+// Baja lógica si el evento tiene plata o fases ({ deactivated: true }); borrado
+// real solo si nunca se usó.
+export const deleteBudgetEvent = (id) => api.delete(`/budget/events/${id}`).then(r => r.data)
+// Mismo shape que getCompetitionCost, más `event`, `phases` y `by_phase`.
+export const getBudgetEventCost = (id) => api.get(`/budget/events/${id}/cost`).then(r => r.data)
+
 // Tarifario: rellena competitions.{prefix}_window_fee/_incidentals, que es lo
 // que sync-nominations ya lee. No es una segunda fuente de verdad.
 export const getFeeSchedule = (params) => api.get('/budget/fee-schedule', { params }).then(r => r.data)

@@ -82,7 +82,7 @@ def _payment_date_for(status: str, payment_date: Optional[str]) -> Optional[str]
 # `VIDEO_OPERATOR` is deliberately absent: the Fees Breakdown sheet doesn't
 # have it and migration 036 gave it no fee account either, so those payments
 # need the account picked by hand until FIBA decides its line
-# (BUDGET_MODULE.md §14.10). Falling back to the VGO line would be a guess that
+# (BUDGET_MODULE.md §14.13). Falling back to the VGO line would be a guess that
 # lands real money on the wrong account.
 _ROLE_ACCOUNTS = {
     "TD":             {"fee": "COMP-11", "airfare": "COMP-12"},
@@ -118,7 +118,7 @@ def _assert_can_spend(request: Request, department_code: str) -> None:
 
     ⚠️ REQUISITO DE DEPLOY: `budget_access` falla cerrado. Un usuario no
     superadmin sin filas ahí no puede cargar pagos. Hay que sembrarlo ANTES de
-    que salga esta versión (ver BUDGET_MODULE.md §14.11).
+    que salga esta versión (ver BUDGET_MODULE.md §14.10).
     """
     budget_router._assert_can_edit(request, department_code)
 

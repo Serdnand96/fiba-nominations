@@ -305,9 +305,13 @@ const translations = {
     // Presupuesto (fase 2)
     budgeted: { en: 'Budgeted', es: 'Presupuestado' },
     remaining: { en: 'Remaining', es: 'Restante' },
+    usedHint: {
+      en: 'Executed plus committed, over budgeted. It changed in August 2026: it used to count only what was executed.',
+      es: 'Ejecutado más comprometido, sobre lo presupuestado. Cambió en agosto de 2026: antes contaba solo lo ejecutado.',
+    },
     remainingHint: {
       en: 'Budgeted minus executed minus committed — what is actually left to spend. An approved expense or a pending payment has already reserved its money.',
-      es: 'Presupuestado menos ejecutado menos comprometido — lo que queda realmente disponible. Un gasto aprobado o un pago pendiente ya reservó su plata.',
+      es: 'Presupuestado menos ejecutado menos comprometido — lo que queda realmente disponible. Un gasto aprobado o un pago pendiente ya reservó ese dinero.',
     },
     viewMatrix: { en: 'Matrix', es: 'Matriz' },
     viewList: { en: 'List', es: 'Lista' },
@@ -437,8 +441,8 @@ const translations = {
     eventExpenses: { en: 'Event expenses', es: 'Gastos del evento' },
     peopleCount: { en: 'People', es: 'Personas' },
     airfareApart: {
-      en: 'Airfare is settled with the travel agency and is not part of what the person is paid.',
-      es: 'Los pasajes se liquidan con la agencia y no son parte de lo que cobra la persona.',
+      en: 'Airfare is settled with the travel agency and is not part of what the person is paid — but it does consume the travel budget line.',
+      es: 'Los pasajes se liquidan con la agencia y no son parte de lo que cobra la persona, pero sí consumen la línea de viaje del presupuesto.',
     },
     nobody: { en: 'Nobody nominated yet', es: 'Nadie nominado todavía' },
     pickEvent: { en: 'Pick an event...', es: 'Elige un evento...' },
@@ -472,6 +476,77 @@ const translations = {
     },
     collapseRows: { en: 'Collapse accounts with no event spend', es: 'Plegar las cuentas sin gasto por evento' },
 
+    // Eventos presupuestarios (fase 8)
+    tabEvents: { en: 'Budget events', es: 'Eventos' },
+    eventsHint: {
+      en: 'Spend that is neither a competition on the calendar nor the department’s yearly overhead: AmeriCup Draws, TD workshops, and the league seasons. With no phases attached it is a standalone bucket; with phases attached it is a season that budgets what its phases execute.',
+      es: 'Gasto que no es una competencia del calendario ni el overhead anual del departamento: los Draws de AmeriCup, los workshops de TDs y las temporadas de las ligas. Sin fases colgadas es una bolsa suelta; con fases colgadas es una temporada que presupuesta lo que sus fases ejecutan.',
+    },
+    budgetEvent: { en: 'Budget event', es: 'Evento presupuestario' },
+    budgetEventsGroup: { en: 'Budget events', es: 'Eventos presupuestarios' },
+    competitionsGroup: { en: 'Calendar competitions', es: 'Competencias del calendario' },
+    targetHint: {
+      en: 'A line belongs to a calendar competition or to a budget event — never to both.',
+      es: 'Una línea cuelga de una competencia del calendario o de un evento presupuestario, nunca de los dos.',
+    },
+    unknownTarget: { en: 'Current event (not in the list)', es: 'Evento actual (fuera de la lista)' },
+    newEvent: { en: 'New budget event', es: 'Nuevo evento presupuestario' },
+    editEvent: { en: 'Edit budget event', es: 'Editar evento presupuestario' },
+    eventName: { en: 'Name', es: 'Nombre' },
+    eventKind: { en: 'Kind', es: 'Tipo' },
+    kind_season: { en: 'Season', es: 'Temporada' },
+    kind_draw: { en: 'Draw', es: 'Draw' },
+    kind_workshop: { en: 'Workshop', es: 'Workshop' },
+    kind_other: { en: 'Other', es: 'Otro' },
+    dates: { en: 'Dates', es: 'Fechas' },
+    allYears: { en: 'All years', es: 'Todos los años' },
+    showInactive: { en: 'Show inactive', es: 'Ver inactivos' },
+    inactive: { en: 'inactive', es: 'inactivo' },
+    eventActive: { en: 'Active', es: 'Activo' },
+    close: { en: 'Close', es: 'Cerrar' },
+    selected: { en: 'selected', es: 'seleccionadas' },
+    noEvents: { en: 'No budget events', es: 'Sin eventos presupuestarios' },
+    noEventsBody: {
+      en: 'A Draw or a workshop has real spend but is not a competition and is not yearly overhead — without one of these it can only live under "General", where nobody sees it.',
+      es: 'Un Draw o un workshop tiene gasto real pero no es una competencia ni overhead anual: sin uno de estos solo puede vivir en «General», donde nadie lo ve.',
+    },
+    eventDuplicate: {
+      en: 'There is already a budget event with that name for this year.',
+      es: 'Ya hay un evento presupuestario con ese nombre en ese año.',
+    },
+    eventDeactivated: {
+      en: 'Event has budget, spend or phases — deactivated instead of deleted.',
+      es: 'El evento tiene presupuesto, gasto o fases: se desactivó en vez de borrarse.',
+    },
+    confirmDeleteEvent: {
+      en: 'Delete this budget event? If it already has budget, spend or phases attached it is deactivated instead of deleted, so the loaded history keeps its name.',
+      es: '¿Eliminar este evento presupuestario? Si ya tiene presupuesto, gasto o fases colgadas se desactiva en vez de borrarse, para que lo cargado no pierda el nombre.',
+    },
+
+    // Fases de una temporada
+    phases: { en: 'Phases', es: 'Fases' },
+    phase: { en: 'Phase', es: 'Fase' },
+    phasesHint: {
+      en: 'Which calendar competitions hang off this season. The budget lives on the season; the real spend is booked to the phase where it happened and the report adds it up.',
+      es: 'Qué competencias del calendario cuelgan de esta temporada. El presupuesto vive en la temporada; el gasto real se imputa a la fase donde ocurrió y el reporte lo suma hacia arriba.',
+    },
+    phasesReplaceHint: {
+      en: 'Saving replaces the whole set: anything unchecked is unlinked.',
+      es: 'Guardar reemplaza el conjunto entero: lo que quede sin marcar se desvincula.',
+    },
+    phaseTakenBy: { en: 'already hangs off', es: 'ya cuelga de' },
+    searchCompetition: { en: 'Search competition...', es: 'Buscar competencia...' },
+    noCompetitions: { en: 'No competitions match', es: 'Ninguna competencia coincide' },
+    byPhase: { en: 'By phase', es: 'Por fase' },
+    byPhaseHint: {
+      en: 'The season budgets, the phases execute — this is what each phase contributes.',
+      es: 'La temporada presupuesta y las fases ejecutan: esto es lo que aporta cada una.',
+    },
+    noPhasesCost: {
+      en: 'No phases attached: this is the event’s own spend.',
+      es: 'Sin fases colgadas: esto es el gasto propio del evento.',
+    },
+
     // Errores
     required: { en: 'Fill in the required fields', es: 'Completa los campos obligatorios' },
   },
@@ -493,13 +568,18 @@ const translations = {
     allDepartments: { en: 'All departments', es: 'Todos los departamentos' },
     noDepartmentPayments: { en: 'No payments from this department in this event.', es: 'No hay pagos de este departamento en este evento.' },
     feeAccount: { en: 'Fee account', es: 'Cuenta del fee' },
-    airfareAccount: { en: 'Travel account', es: 'Cuenta del pasaje' },
+    airfareAccount: { en: 'Airfare account', es: 'Cuenta del pasaje' },
     selectAccount: { en: 'Select account...', es: 'Selecciona cuenta...' },
     accountRequired: { en: 'Please select the budget account for the fee', es: 'Selecciona la cuenta presupuestaria del fee' },
-    airfareAccountRequired: { en: 'Please select the budget account for the flight', es: 'Selecciona la cuenta presupuestaria del pasaje' },
-    noRoleDefaults: { en: 'This role has no default budget accounts — pick them by hand.', es: 'Este rol no tiene cuentas por defecto — elegilas a mano.' },
+    airfareAccountRequired: { en: 'Please select the budget account for the airfare', es: 'Selecciona la cuenta presupuestaria del pasaje' },
+    noRoleDefaults: { en: 'This role has no default budget accounts — pick them by hand.', es: 'Este rol no tiene cuentas por defecto — elígelas a mano.' },
+    close: { en: 'Close', es: 'Cerrar' },
+    movedOutOfFilter: {
+      en: 'Saved. The payment now belongs to another department, so it is hidden by the current filter.',
+      es: 'Guardado. El pago pasó a otro departamento, así que el filtro actual lo oculta.',
+    },
     unimputed: { en: 'Unimputed', es: 'Sin imputar' },
-    unimputedHint: { en: 'This payment has no department, so it counts in no departmental total. Open it and pick one.', es: 'Este pago no tiene departamento, así que no suma en ningún total por área. Abrilo y elegí uno.' },
+    unimputedHint: { en: 'This payment has no department, so it counts in no departmental total. Open it and pick one.', es: 'Este pago no tiene departamento, así que no suma en ningún total por área. Ábrelo y elige uno.' },
     amount: { en: 'Amount', es: 'Monto' },
     extra: { en: 'Extra', es: 'Extra' },
     airfare: { en: 'Airfare', es: 'Airfare' },

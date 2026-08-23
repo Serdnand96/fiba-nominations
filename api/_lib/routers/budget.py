@@ -1179,7 +1179,7 @@ def budget_summary(request: Request, year: int = Query(...), department: Optiona
     # Un vuelo con departamento pero SIN cuenta no entra en el ámbar de arriba y
     # se escondía en la fila "General" de by_account, contra un presupuesto de
     # cero: restante en rojo sin ninguna pista de qué era. Los roles sin cuenta
-    # de travel (VIDEO_OPERATOR, §14.10) caen justo acá.
+    # de travel (VIDEO_OPERATOR, §14.13) caen justo acá.
     unallocated_accounts = round(sum(
         _num(p) for p in payments
         if p.get("department_code") and not p.get("account_code")), 2)

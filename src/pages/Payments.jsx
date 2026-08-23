@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import {
   getCalendarCompetitions, getPaymentImputation, getPaymentNominees, getPaymentsSummary,
   createPayment, updatePayment, deletePayment,
@@ -10,6 +10,8 @@ import { useToast } from '../components/ui/Toast'
 import { useAuth } from '../contexts/AuthContext'
 import { roleLabel, roleBadgeClass } from '../lib/roles'
 import CompetitionSearch from '../components/CompetitionSearch'
+import { Badge } from '../components/ui/Badge'
+import { AccountOptions } from '../lib/accounts'
 
 const STATUS_BADGES = {
   new:        'bg-yellow-100 text-yellow-800 dark:bg-yellow-500/20 dark:text-yellow-500',
@@ -43,7 +45,10 @@ export default function Payments() {
 
   // Payment editor
   const [editorNominee, setEditorNominee] = useState(null)   // the nominee row being edited
-  const [payment, setPayment] = useState(null)               // existing payment (or null = new)
+  // El pago se deriva del nominado abierto en vez de vivir en su propio estado:
+  // cuando eran dos copias, la de edición no se refrescaba al guardar y el panel
+  // seguía mostrando lo que el usuario había tipeado, no lo que quedó guardado.
+  const payment = editorNominee?.payment || null
   const [form, setForm] = useState({
     department_code: '', account_code: '', airfare_account_code: '',
     amount: '', extra: '0', airfare: '0', comments: '', status: 'new',
@@ -51,6 +56,13 @@ export default function Payments() {
   const [attachments, setAttachments] = useState([])
   const [attKind, setAttKind] = useState('')
   const [saving, setSaving] = useState(false)
+  const [errors, setErrors] = useState({})
+  const fieldId = useId()
+  const deptRef = useRef(null)
+  const accountRef = useRef(null)
+  const airfareAccountRef = useRef(null)
+  const panelRef = useRef(null)
+  const openerRef = useRef(null)
 
   useEffect(() => {
     Promise.all([getCalendarCompetitions(), getPaymentImputation()]).then(([comps, imp]) => {
@@ -74,6 +86,17 @@ export default function Payments() {
 
   useEffect(() => { loadEvent(selectedCompId) }, [selectedCompId, deptFilter])
 
+  // El panel es un diálogo: Escape lo cierra y el foco entra adentro. Sin esto
+  // el foco se queda en la tabla de atrás, que sigue siendo navegable debajo del
+  // overlay.
+  useEffect(() => {
+    if (!editorNominee) return
+    const onKey = e => { if (e.key === 'Escape') closeEditor() }
+    document.addEventListener('keydown', onKey)
+    panelRef.current?.querySelector('select, input, button')?.focus()
+    return () => document.removeEventListener('keydown', onKey)
+  }, [editorNominee])
+
   const deptLabel = (code) => departments.find(d => d.code === code)?.label || code || '—'
   const accountLabel = (code) => {
     const a = accounts.find(x => x.code === code)
@@ -82,10 +105,11 @@ export default function Payments() {
 
   const selectedComp = competitions.find(c => c.id === selectedCompId)
 
-  function openEditor(nominee) {
+  function openEditor(nominee, event) {
+    openerRef.current = event?.currentTarget || null
     setEditorNominee(nominee)
+    setErrors({})
     const p = nominee.payment
-    setPayment(p || null)
     // The two accounts default from the nominee's role — a TD's fee is COMP-11
     // and their flight COMP-12 — so the form is one click for the four roles
     // that have a line. A role without a mapping (VIDEO_OPERATOR) comes up
@@ -105,7 +129,10 @@ export default function Payments() {
       loadAttachments(p.id)
     } else {
       setForm({
-        department_code: deptFilter || '',
+        // Vacío a propósito, y no el filtro de la vista: un filtro es una forma
+        // de mirar, no una decisión contable. Si prellenara, filtrar por Comms y
+        // cargar el pago de un TD lo imputaría a Comms sin que nadie lo eligiera.
+        department_code: '',
         account_code: defaults.fee || '',
         airfare_account_code: defaults.airfare || '',
         amount: nominee.nomination_total ?? '',
@@ -121,8 +148,11 @@ export default function Payments() {
 
   function closeEditor() {
     setEditorNominee(null)
-    setPayment(null)
     setAttachments([])
+    setErrors({})
+    // Devolver el foco a lo que abrió el panel: si no, se pierde en el <body> y
+    // quien navega por teclado vuelve al principio de la página.
+    openerRef.current?.focus?.()
   }
 
   async function loadAttachments(paymentId) {
@@ -132,11 +162,23 @@ export default function Payments() {
 
   async function handleSave(e) {
     e?.preventDefault()
-    if (!form.department_code) { push({ type: 'error', title: t('payments.departmentRequired') }); return }
-    if (!form.account_code) { push({ type: 'error', title: t('payments.accountRequired') }); return }
     const airfare = Number(form.airfare || 0)
+
+    // El error va al lado del campo y no a un toast: el panel scrollea y el
+    // botón Guardar está al fondo, así que con adjuntos cargados los selects de
+    // imputación quedan fuera de pantalla y el toast no dice cuál de los tres
+    // falta. Además se enfoca el primero que falla.
+    const found = {}
+    if (!form.department_code) found.department_code = t('payments.departmentRequired')
+    if (!form.account_code) found.account_code = t('payments.accountRequired')
     if (airfare > 0 && !form.airfare_account_code) {
-      push({ type: 'error', title: t('payments.airfareAccountRequired') }); return
+      found.airfare_account_code = t('payments.airfareAccountRequired')
+    }
+    setErrors(found)
+    if (Object.keys(found).length) {
+      const first = found.department_code ? deptRef : found.account_code ? accountRef : airfareAccountRef
+      first.current?.focus()
+      return
     }
     setSaving(true)
     try {
@@ -152,16 +194,21 @@ export default function Payments() {
         comments: form.comments || null,
         status: form.status,
       }
-      let saved
-      if (payment) {
-        saved = await updatePayment(payment.id, body)
-      } else {
-        saved = await createPayment({ nomination_id: editorNominee.nomination_id, ...body })
-        setPayment(saved)   // switch editor to edit mode so files can be attached
-      }
+      const saved = payment
+        ? await updatePayment(payment.id, body)
+        : await createPayment({ nomination_id: editorNominee.nomination_id, ...body })
       await loadEvent(selectedCompId)
-      // keep editor open on the same nominee, now with the saved payment
+      // El panel queda abierto sobre el mismo nominado, ahora con lo que el
+      // backend devolvió — incluida su normalización (limpiar la cuenta del
+      // pasaje cuando el airfare es 0, estampar la fecha al completar).
       setEditorNominee(n => n ? { ...n, payment: saved } : n)
+      setForm(f => ({
+        ...f,
+        airfare_account_code: saved.airfare_account_code || f.airfare_account_code,
+      }))
+      if (deptFilter && saved.department_code !== deptFilter) {
+        push({ type: 'info', title: t('payments.movedOutOfFilter') })
+      }
     } catch (err) {
       push({ type: 'error', title: err.response?.data?.detail || t('payments.errorSaving') })
     }
@@ -307,13 +354,13 @@ export default function Payments() {
                         <td className="px-4 py-3 text-right tabular-nums">{fmt(n.nomination_total)}</td>
                         <td className="px-4 py-3">
                           {!p ? '—' : unimputed ? (
-                            <span className="text-amber-500" title={t('payments.unimputedHint')}>
-                              {t('payments.unimputed')}
+                            <span title={t('payments.unimputedHint')}>
+                              <Badge tone="warning">{t('payments.unimputed')}</Badge>
                             </span>
                           ) : (
                             <>
                               <span>{deptLabel(p.department_code)}</span>
-                              <span className="block text-[11px] text-fiba-muted/70">{accountLabel(p.account_code)}</span>
+                              <span className="block text-xs text-fiba-muted">{accountLabel(p.account_code)}</span>
                             </>
                           )}
                         </td>
@@ -327,7 +374,7 @@ export default function Payments() {
                         </td>
                         <td className="px-4 py-3 text-xs text-fiba-muted">{p?.record_no || '—'}</td>
                         <td className="px-4 py-3 text-right">
-                          <button onClick={() => openEditor(n)} className="text-fiba-accent hover:underline text-sm">
+                          <button onClick={e => openEditor(n, e)} className="text-fiba-accent hover:underline text-sm">
                             {p ? t('payments.manage') : (canEdit ? t('payments.addPayment') : t('profile.view'))}
                           </button>
                         </td>
@@ -363,41 +410,72 @@ export default function Payments() {
       {editorNominee && (
         <>
           <div className="fixed inset-0 bg-black/40 z-40" onClick={closeEditor} />
-          <div className="fixed top-0 right-0 h-full w-full max-w-lg bg-fiba-card border-l border-fiba-border z-50 flex flex-col animate-slide-in">
+          <div ref={panelRef} role="dialog" aria-modal="true" aria-labelledby={`${fieldId}-title`}
+            className="fixed top-0 right-0 h-full w-full max-w-lg bg-fiba-card border-l border-fiba-border z-50 flex flex-col animate-slide-in">
             <div className="flex items-start justify-between p-6 border-b border-fiba-border">
               <div>
-                <h3 className="text-lg font-bold text-ink-900 dark:text-white">{editorNominee.nominee_name}</h3>
+                <h3 id={`${fieldId}-title`} className="text-lg font-bold text-ink-900 dark:text-white">
+                  {editorNominee.nominee_name}
+                </h3>
                 <p className="text-sm text-fiba-muted">
                   {selectedComp?.name}{payment?.record_no ? ` · ${payment.record_no}` : ''}
                 </p>
+                {/* Una fila anterior a la 038 llega sin departamento y el
+                    formulario le sugiere una cuenta por rol: sin este aviso, se
+                    ve idéntica a una imputada y no hay señal de que falta. */}
+                {payment && !payment.department_code && (
+                  <div className="mt-2"><Badge tone="warning">{t('payments.unimputed')}</Badge></div>
+                )}
               </div>
-              <button onClick={closeEditor} className="text-fiba-muted hover:text-ink-900 dark:hover:text-white text-xl leading-none">×</button>
+              <button onClick={closeEditor} aria-label={t('payments.close')}
+                className="text-fiba-muted hover:text-ink-900 dark:hover:text-white text-xl leading-none">×</button>
             </div>
 
             <div className="flex-1 overflow-y-auto p-6 space-y-4">
               <form onSubmit={handleSave} className="space-y-4">
                 {/* Budget imputation — whose money it is and which line it consumes */}
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-xs text-fiba-muted mb-1">{t('payments.department')}</label>
-                    <select value={form.department_code} disabled={!canEdit}
-                      onChange={e => setForm(f => ({ ...f, department_code: e.target.value }))} className="fiba-select w-full">
-                      <option value="">{t('payments.selectDepartment')}</option>
-                      {departments.map(d => <option key={d.code} value={d.code}>{d.label}</option>)}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-xs text-fiba-muted mb-1">{t('payments.feeAccount')}</label>
-                    <select value={form.account_code} disabled={!canEdit}
-                      onChange={e => setForm(f => ({ ...f, account_code: e.target.value }))} className="fiba-select w-full">
-                      <option value="">{t('payments.selectAccount')}</option>
-                      {accounts.map(a => <option key={a.code} value={a.code}>{a.code} · {a.label}</option>)}
-                    </select>
-                  </div>
+                <div>
+                  <label htmlFor={`${fieldId}-dept`} className="block text-xs text-fiba-muted mb-1">
+                    {t('payments.department')}
+                  </label>
+                  <select id={`${fieldId}-dept`} ref={deptRef} value={form.department_code} disabled={!canEdit}
+                    aria-invalid={!!errors.department_code}
+                    aria-describedby={errors.department_code ? `${fieldId}-dept-err` : undefined}
+                    onChange={e => setForm(f => ({ ...f, department_code: e.target.value }))}
+                    className="fiba-select w-full">
+                    <option value="">{t('payments.selectDepartment')}</option>
+                    {departments.map(d => <option key={d.code} value={d.code}>{d.label}</option>)}
+                  </select>
+                  {errors.department_code && (
+                    <p id={`${fieldId}-dept-err`} className="text-xs text-danger-500 mt-1">{errors.department_code}</p>
+                  )}
                 </div>
-                {!roleAccounts[editorNominee.nominee_role] && (
-                  <p className="text-[11px] text-amber-500">{t('payments.noRoleDefaults')}</p>
-                )}
+
+                <div>
+                  <label htmlFor={`${fieldId}-acct`} className="block text-xs text-fiba-muted mb-1">
+                    {t('payments.feeAccount')}
+                  </label>
+                  {/* Las cuentas del departamento primero: el plan tiene 34 y
+                      subiendo, y para pagarle a un TD no sirve ver "Utilities". */}
+                  <select id={`${fieldId}-acct`} ref={accountRef} value={form.account_code} disabled={!canEdit}
+                    aria-invalid={!!errors.account_code}
+                    aria-describedby={errors.account_code ? `${fieldId}-acct-err` : undefined}
+                    onChange={e => setForm(f => ({ ...f, account_code: e.target.value }))}
+                    className="fiba-select w-full">
+                    <option value="">{t('payments.selectAccount')}</option>
+                    <AccountOptions accounts={accounts} department={form.department_code} t={t} />
+                  </select>
+                  {errors.account_code && (
+                    <p id={`${fieldId}-acct-err`} className="text-xs text-danger-500 mt-1">{errors.account_code}</p>
+                  )}
+                  {/* Solo mientras siga sin elegirse: un aviso que no se apaga
+                      cuando el usuario hace lo que pide entrena a ignorarlo. */}
+                  {!form.account_code && !roleAccounts[editorNominee.nominee_role] && (
+                    <p role="status" className="text-xs text-warning-600 dark:text-warning-500 mt-1">
+                      {t('payments.noRoleDefaults')}
+                    </p>
+                  )}
+                </div>
 
                 <div className="grid grid-cols-2 gap-3">
                   <div>
@@ -417,21 +495,34 @@ export default function Payments() {
                     line: a TD's fee is COMP-11 and their flight COMP-12. */}
                 <div className="rounded-lg border border-fiba-border p-3 space-y-3">
                   <div>
-                    <label className="block text-xs font-semibold text-ink-900 dark:text-white mb-1">{t('payments.airfare')}</label>
-                    <input type="number" step="0.01" value={form.airfare} disabled={!canEdit}
+                    <label htmlFor={`${fieldId}-airfare`} className="block text-xs font-semibold text-ink-900 dark:text-white mb-1">
+                      {t('payments.airfare')}
+                    </label>
+                    <input id={`${fieldId}-airfare`} type="number" step="0.01" min="0" value={form.airfare} disabled={!canEdit}
                       onChange={e => setForm(f => ({ ...f, airfare: e.target.value }))} className="fiba-input w-full" />
-                    <p className="text-[11px] text-fiba-muted/70 mt-1">{t('payments.airfareHint')}</p>
+                    <p className="text-xs text-fiba-muted mt-1">{t('payments.airfareHint')}</p>
                   </div>
-                  {Number(form.airfare || 0) > 0 && (
-                    <div>
-                      <label className="block text-xs text-fiba-muted mb-1">{t('payments.airfareAccount')}</label>
-                      <select value={form.airfare_account_code} disabled={!canEdit}
-                        onChange={e => setForm(f => ({ ...f, airfare_account_code: e.target.value }))} className="fiba-select w-full">
-                        <option value="">{t('payments.selectAccount')}</option>
-                        {accounts.map(a => <option key={a.code} value={a.code}>{a.code} · {a.label}</option>)}
-                      </select>
-                    </div>
-                  )}
+                  {/* Se renderiza siempre y se deshabilita sin pasaje, en vez de
+                      aparecer y desaparecer: mostrarlo condicionalmente empujaba
+                      medio formulario al tipear el primer dígito del monto, y
+                      dejaba invisible una cuenta que seguía elegida. */}
+                  <div>
+                    <label htmlFor={`${fieldId}-airfare-acct`} className="block text-xs text-fiba-muted mb-1">
+                      {t('payments.airfareAccount')}
+                    </label>
+                    <select id={`${fieldId}-airfare-acct`} ref={airfareAccountRef} value={form.airfare_account_code}
+                      disabled={!canEdit || !(Number(form.airfare || 0) > 0)}
+                      aria-invalid={!!errors.airfare_account_code}
+                      aria-describedby={errors.airfare_account_code ? `${fieldId}-airfare-acct-err` : undefined}
+                      onChange={e => setForm(f => ({ ...f, airfare_account_code: e.target.value }))}
+                      className="fiba-select w-full disabled:opacity-50">
+                      <option value="">{t('payments.selectAccount')}</option>
+                      <AccountOptions accounts={accounts} department={form.department_code} t={t} />
+                    </select>
+                    {errors.airfare_account_code && (
+                      <p id={`${fieldId}-airfare-acct-err`} className="text-xs text-danger-500 mt-1">{errors.airfare_account_code}</p>
+                    )}
+                  </div>
                 </div>
 
                 <div>

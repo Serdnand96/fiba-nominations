@@ -19,16 +19,23 @@ import {
   getRevenues, createRevenue, updateRevenue, deleteRevenue,
   getBudgetLines, createBudgetLine, updateBudgetLine, deleteBudgetLine,
   projectBudget, getBudgetSummary, getCompetitionCost,
+  getBudgetEvents, getBudgetEventCost,
   getFeeSchedule, applyFeeSchedule,
 } from '../api/client'
 import { useLanguage } from '../i18n/LanguageContext'
 import { useToast } from '../components/ui/Toast'
 import { useAuth } from '../contexts/AuthContext'
 import { Icon } from '../lib/icons'
+import { AccountOptions, accountOption, splitAccounts } from '../lib/accounts'
 import BudgetImport from './budget/BudgetImport'
+import EventsTab from './budget/EventsTab'
+import EventCostPanel from './budget/EventCostPanel'
+import {
+  GENERAL, money, Drawer, Field, RollupTable,
+  TargetSelect, targetKey, targetBody, targetParams,
+} from './budget/shared'
 
-const TABS = ['dashboard', 'plan', 'expenses', 'recurring', 'revenues', 'vendors']
-const GENERAL = '__general__'   // clave de la columna "sin evento" en la matriz
+const TABS = ['dashboard', 'plan', 'events', 'expenses', 'recurring', 'revenues', 'vendors']
 
 // Tipos de evento del sheet `Fees Breakdown`. NO es template_key: son ejes
 // distintos — dos competencias con el mismo template pueden pagar distinto.
@@ -61,10 +68,6 @@ const STATUS_BADGE = {
   received:  'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-400',
 }
 
-function money(n) {
-  return Number(n || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-}
-
 function today() {
   return new Date().toISOString().slice(0, 10)
 }
@@ -85,33 +88,9 @@ function currentPeriod() {
  * En los **editores** se muestran todas, con las del departamento arriba —
  * cargar el primer gasto de una cuenta nueva es legítimo.
  */
-function splitAccounts(accounts, department) {
-  if (!department) return { mine: accounts, rest: [] }
-  const mine = accounts.filter(a => (a.used_by || []).includes(department))
-  return { mine, rest: accounts.filter(a => !(a.used_by || []).includes(department)) }
-}
-
-function accountOption(a) {
-  // El asterisco marca el código provisorio (`pending_mapping`): el plan de
-  // cuentas oficial de Finance todavía no llegó.
-  return (
-    <option key={a.code} value={a.code}>
-      {a.code} — {a.label}{a.pending_mapping ? ' *' : ''}
-    </option>
-  )
-}
-
-/** Todas las cuentas, con las del departamento primero. Para los editores. */
-function AccountOptions({ accounts, department, t }) {
-  const { mine, rest } = splitAccounts(accounts, department)
-  if (!department || mine.length === 0) return accounts.map(accountOption)
-  return (
-    <>
-      <optgroup label={t('budget.accountsOfDepartment')}>{mine.map(accountOption)}</optgroup>
-      {rest.length > 0 && <optgroup label={t('budget.otherAccounts')}>{rest.map(accountOption)}</optgroup>}
-    </>
-  )
-}
+// splitAccounts / accountOption / AccountOptions viven en src/lib/accounts.jsx:
+// los usa también el formulario de imputación de Payments, y cuando estaban
+// duplicados la misma cuenta se dibujaba distinta en cada pantalla.
 
 /** Solo las del departamento. Para los filtros de las bandejas. */
 function useDepartmentAccounts(accounts, department, account, setAccount) {
@@ -122,36 +101,6 @@ function useDepartmentAccounts(accounts, department, account, setAccount) {
     if (account && !options.some(a => a.code === account)) setAccount('')
   }, [options, account])
   return options
-}
-
-/** Panel lateral reutilizable — mismo patrón que el detalle de viajes en Empleados. */
-function Drawer({ title, subtitle, onClose, children, footer }) {
-  return (
-    <>
-      <div className="fixed inset-0 bg-black/40 z-40" onClick={onClose} />
-      <div className="fixed top-0 right-0 h-full w-full max-w-lg bg-fiba-card border-l border-fiba-border z-50 flex flex-col animate-slide-in">
-        <div className="flex items-start justify-between p-6 border-b border-fiba-border">
-          <div className="min-w-0">
-            <h3 className="text-lg font-bold text-ink-900 dark:text-white truncate">{title}</h3>
-            {subtitle && <p className="text-xs text-fiba-muted mt-0.5 truncate">{subtitle}</p>}
-          </div>
-          <button onClick={onClose} aria-label="Cerrar"
-            className="p-1.5 rounded hover:bg-fiba-surface text-fiba-muted hover:text-ink-900 dark:hover:text-white">×</button>
-        </div>
-        <div className="flex-1 overflow-auto p-6 space-y-4">{children}</div>
-        {footer && <div className="p-6 border-t border-fiba-border flex gap-3 justify-end">{footer}</div>}
-      </div>
-    </>
-  )
-}
-
-function Field({ label, children }) {
-  return (
-    <label className="block">
-      <div className="text-[13px] font-medium text-ink-700 dark:text-ink-200 mb-1.5">{label}</div>
-      {children}
-    </label>
-  )
 }
 
 export default function Budget() {
@@ -169,6 +118,9 @@ export default function Budget() {
   const [competitions, setCompetitions] = useState([])
   const [vendors, setVendors] = useState([])
   const [employees, setEmployees] = useState([])
+  // Eventos presupuestarios activos de todos los años: son pocos y los
+  // necesitan los desplegables de destino de líneas y gastos.
+  const [budgetEvents, setBudgetEvents] = useState([])
   const [catalogsReady, setCatalogsReady] = useState(false)
 
   useEffect(() => {
@@ -179,13 +131,15 @@ export default function Budget() {
       getCalendarCompetitions(),
       getVendors(),
       getEmployees(),
-    ]).then(([deps, accE, accR, comps, vs, emps]) => {
+      getBudgetEvents(),
+    ]).then(([deps, accE, accR, comps, vs, emps, evs]) => {
       setDepartments(deps)
       setExpenseAccounts(accE)
       setRevenueAccounts(accR)
       setCompetitions(comps)
       setVendors(vs)
       setEmployees(emps)
+      setBudgetEvents(evs)
     }).catch(e => {
       console.error(e)
       push({ type: 'error', title: t('common.error') })
@@ -196,11 +150,15 @@ export default function Budget() {
     try { setVendors(await getVendors()) } catch (e) { console.error(e) }
   }
 
+  async function reloadBudgetEvents() {
+    try { setBudgetEvents(await getBudgetEvents()) } catch (e) { console.error(e) }
+  }
+
   if (!catalogsReady) return <div className="text-fiba-muted text-sm">{t('common.loading')}</div>
 
   const shared = {
     t, push, canEdit, departments, expenseAccounts, revenueAccounts,
-    competitions, vendors, employees, reloadVendors,
+    competitions, vendors, employees, budgetEvents, reloadVendors, reloadBudgetEvents,
   }
 
   return (
@@ -224,6 +182,7 @@ export default function Budget() {
 
       {tab === 'dashboard' && <DashboardTab {...shared} />}
       {tab === 'plan' && <PlanTab {...shared} />}
+      {tab === 'events' && <EventsTab {...shared} />}
       {tab === 'expenses' && <ExpensesTab {...shared} />}
       {tab === 'recurring' && <RecurringTab {...shared} />}
       {tab === 'revenues' && <RevenuesTab {...shared} />}
@@ -235,89 +194,22 @@ export default function Budget() {
 /* ──────────────────────────── Resumen ────────────────────────────
  *
  * Presupuestado vs. ejecutado por departamento, cuenta y evento; y el costo
- * total de una competencia juntando las tres fuentes de gasto.
+ * total de un evento juntando las tres fuentes de gasto. `Bar` y `RollupTable`
+ * viven en `budget/shared.jsx` — las comparte el panel de costo, que es el
+ * mismo para una competencia y para un evento presupuestario.
  */
 
-/** Barra de consumo. Roja al pasarse — el sobregiro se tiene que ver solo. */
-function Bar({ budgeted, executed, committed }) {
-  const b = Number(budgeted || 0)
-  const e = Number(executed || 0)
-  const c = Number(committed || 0)
-  // Sin presupuesto cargado no hay porcentaje que mostrar: la barra iría al
-  // infinito. Se marca como sobregiro si igual hubo gasto.
-  //
-  // "Usado" = ejecutado + comprometido, lo mismo que descuenta el restante
-  // (fase 7). Sin esto una fila con restante negativo en rojo podía tener la
-  // barra verde al lado: el sobregiro lo causaba lo comprometido y la barra
-  // solo miraba lo ejecutado. Los dos segmentos siguen separados — verde lo
-  // que ya salió, azul lo que está reservado.
-  const used = e + c
-  const pct = b > 0 ? Math.min(100, (e / b) * 100) : (e > 0 ? 100 : 0)
-  const cPct = b > 0 ? Math.min(100 - pct, (c / b) * 100) : 0
-  const over = b > 0 ? used > b : used > 0
-  return (
-    <div className="flex items-center gap-2">
-      <div className="flex-1 h-2 rounded-full bg-fiba-surface overflow-hidden flex">
-        <div className={over ? 'bg-red-500' : 'bg-emerald-500'} style={{ width: `${pct}%` }} />
-        <div className={over ? 'bg-red-500/40' : 'bg-blue-500/40'} style={{ width: `${cPct}%` }} />
-      </div>
-      <span className={`text-xs tabular-nums w-12 text-right ${over ? 'text-red-500 font-medium' : 'text-fiba-muted'}`}>
-        {b > 0 ? `${Math.round((used / b) * 100)}%` : '—'}
-      </span>
-    </div>
-  )
-}
-
-function RollupTable({ title, rows, t, onRowClick }) {
-  if (!rows?.length) return null
-  return (
-    <div className="rounded-xl border border-fiba-border overflow-hidden mb-6">
-      <div className="px-4 py-2.5 bg-fiba-surface/60 border-b border-fiba-border">
-        <h3 className="text-sm font-semibold text-ink-900 dark:text-white">{title}</h3>
-      </div>
-      <div className="overflow-x-auto">
-        <table className="min-w-full text-sm">
-          <thead>
-            <tr className="text-left text-2xs font-semibold uppercase tracking-wider text-fiba-muted border-b border-fiba-border">
-              <th className="px-4 py-2">{t('budget.department')}</th>
-              <th className="px-4 py-2 text-right">{t('budget.budgeted')}</th>
-              <th className="px-4 py-2 text-right">{t('budget.committed')}</th>
-              <th className="px-4 py-2 text-right">{t('budget.executed')}</th>
-              <th className="px-4 py-2 text-right" title={t('budget.remainingHint')}>{t('budget.remaining')}</th>
-              <th className="px-4 py-2 w-40">{t('budget.used')}</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-fiba-border">
-            {rows.map(r => (
-              <tr key={r.key ?? r.label}
-                onClick={onRowClick && r.key ? () => onRowClick(r) : undefined}
-                className={`${onRowClick && r.key ? 'cursor-pointer' : ''} hover:bg-fiba-surface/40 transition-colors`}>
-                <td className="px-4 py-2.5 text-ink-900 dark:text-white">
-                  {r.general ? <span className="italic text-fiba-muted">{t('budget.general')}</span> : r.label}
-                </td>
-                <td className="px-4 py-2.5 text-right text-fiba-muted">${money(r.budgeted)}</td>
-                <td className="px-4 py-2.5 text-right text-blue-400">${money(r.committed)}</td>
-                <td className="px-4 py-2.5 text-right text-emerald-400">${money(r.executed)}</td>
-                <td className={`px-4 py-2.5 text-right font-medium ${r.remaining < 0 ? 'text-red-500' : 'text-ink-900 dark:text-white'}`}>
-                  ${money(r.remaining)}
-                </td>
-                <td className="px-4 py-2.5"><Bar {...r} /></td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  )
-}
-
-function DashboardTab({ t, push, canEdit, departments, competitions }) {
+function DashboardTab({ t, push, canEdit, departments, competitions, budgetEvents }) {
   const thisYear = new Date().getFullYear()
   const [year, setYear] = useState(2027)
   const [department, setDepartment] = useState('')
   const [summary, setSummary] = useState(null)
   const [loading, setLoading] = useState(true)
-  const [costEvent, setCostEvent] = useState('')
+  // Destino del panel de costo: 'comp:<id>' o 'event:<id>'. El rollup "Por
+  // evento" del summary mezcla las dos familias en un mismo eje (una temporada
+  // se pliega ahí junto a las competencias sueltas), así que la clave de la
+  // fila sola no dice a qué endpoint hay que pegarle.
+  const [costTarget, setCostTarget] = useState('')
   const [cost, setCost] = useState(null)
 
   const yearOptions = useMemo(() => Array.from({ length: 7 }, (_, i) => thisYear + 4 - i), [thisYear])
@@ -331,11 +223,24 @@ function DashboardTab({ t, push, canEdit, departments, competitions }) {
   }, [year, department])
 
   useEffect(() => {
-    if (!costEvent) { setCost(null); return }
-    getCompetitionCost(costEvent).then(setCost).catch(e => {
-      console.error(e); push({ type: 'error', title: t('common.error') })
-    })
-  }, [costEvent])
+    if (!costTarget) { setCost(null); return }
+    let alive = true
+    const { competition_id, budget_event_id } = targetBody(costTarget)
+    const request = budget_event_id
+      ? getBudgetEventCost(budget_event_id)
+      : getCompetitionCost(competition_id)
+    request
+      .then(c => { if (alive) setCost(c) })
+      .catch(e => {
+        console.error(e)
+        if (alive) { setCost(null); push({ type: 'error', title: t('common.error') }) }
+      })
+    return () => { alive = false }
+  }, [costTarget])
+
+  // La fila del rollup trae el id pelado; acá se decide de qué familia es.
+  const eventIds = useMemo(() => new Set(budgetEvents.map(e => e.id)), [budgetEvents])
+  const rollupTarget = (key) => (eventIds.has(key) ? `event:${key}` : `comp:${key}`)
 
   const accountRows = useMemo(
     () => (summary?.by_account || []).filter(r => r.budgeted || r.executed || r.committed).slice(0, 15),
@@ -358,7 +263,7 @@ function DashboardTab({ t, push, canEdit, departments, competitions }) {
 
       {loading ? (
         <div className="text-fiba-muted text-sm py-8 text-center">{t('common.loading')}</div>
-      ) : !summary || (!summary.totals.budgeted && !summary.totals.executed) ? (
+      ) : !summary || (!summary.totals.budgeted && !summary.totals.executed && !summary.totals.committed) ? (
         <div className="rounded-xl border border-fiba-border py-12 text-center mb-8">
           <p className="font-semibold text-ink-900 dark:text-white">{t('budget.noSummary')}</p>
         </div>
@@ -390,7 +295,7 @@ function DashboardTab({ t, push, canEdit, departments, competitions }) {
 
           <RollupTable title={t('budget.byDepartment')} rows={summary.by_department} t={t} />
           <RollupTable title={t('budget.byCompetition')} rows={summary.by_competition} t={t}
-            onRowClick={r => setCostEvent(r.key)} />
+            onRowClick={r => setCostTarget(rollupTarget(r.key))} />
           <RollupTable title={t('budget.byAccount')} rows={accountRows} t={t} />
         </>
       )}
@@ -399,70 +304,16 @@ function DashboardTab({ t, push, canEdit, departments, competitions }) {
       <div className="rounded-xl border border-fiba-border p-5">
         <div className="flex flex-wrap items-center gap-3 mb-1">
           <h3 className="font-semibold text-ink-900 dark:text-white">{t('budget.eventCost')}</h3>
-          <select value={costEvent} onChange={e => setCostEvent(e.target.value)}
-            className="fiba-select !w-auto min-w-[260px]">
-            <option value="">{t('budget.pickEvent')}</option>
-            {competitions.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-          </select>
+          <TargetSelect
+            value={costTarget} onChange={setCostTarget}
+            competitions={competitions} budgetEvents={budgetEvents} t={t}
+            generalLabel={t('budget.pickEvent')}
+            className="fiba-select !w-auto min-w-[260px]"
+          />
         </div>
         <p className="text-xs text-fiba-muted mb-4">{t('budget.eventCostHint')}</p>
 
-        {cost && (
-          <>
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
-              <div className="fiba-stat">
-                <p className="text-xs text-fiba-muted">{t('budget.personFees')}</p>
-                <p className="text-xl font-bold text-ink-900 dark:text-white">${money(cost.totals.person_fees)}</p>
-                <p className="text-2xs text-fiba-muted">{cost.totals.people_count} {t('budget.peopleCount')}</p>
-              </div>
-              <div className="fiba-stat" title={t('budget.airfareApart')}>
-                <p className="text-xs text-fiba-muted">{t('budget.airfare')}</p>
-                <p className="text-xl font-bold text-ink-900 dark:text-white">${money(cost.totals.airfare)}</p>
-              </div>
-              <div className="fiba-stat">
-                <p className="text-xs text-fiba-muted">{t('budget.eventExpenses')}</p>
-                <p className="text-xl font-bold text-ink-900 dark:text-white">${money(cost.totals.event_expenses)}</p>
-              </div>
-              <div className="fiba-stat">
-                <p className="text-xs text-fiba-muted">{t('budget.budgeted')}</p>
-                <p className="text-xl font-bold text-ink-900 dark:text-white">${money(cost.totals.budgeted)}</p>
-                <p className={`text-2xs ${cost.totals.remaining < 0 ? 'text-red-500' : 'text-fiba-muted'}`}
-                   title={t('budget.remainingHint')}>
-                  {t('budget.remaining')}: ${money(cost.totals.remaining)}
-                </p>
-              </div>
-            </div>
-
-            <RollupTable title={t('budget.byDepartment')} rows={cost.by_department} t={t} />
-
-            {cost.people.length > 0 && (
-              <div className="overflow-x-auto">
-                <table className="min-w-full text-sm">
-                  <thead>
-                    <tr className="text-left text-2xs font-semibold uppercase tracking-wider text-fiba-muted border-b border-fiba-border">
-                      <th className="px-3 py-2">{t('budget.peopleCount')}</th>
-                      <th className="px-3 py-2 text-right">{t('budget.personFees')}</th>
-                      <th className="px-3 py-2 text-right">{t('budget.airfare')}</th>
-                      <th className="px-3 py-2">{t('budget.status')}</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-fiba-border">
-                    {cost.people.map((p, i) => (
-                      <tr key={i}>
-                        <td className="px-3 py-2 text-ink-900 dark:text-white">
-                          {p.name} <span className="text-2xs text-fiba-muted">{p.role}</span>
-                        </td>
-                        <td className="px-3 py-2 text-right">${money(p.total)}</td>
-                        <td className="px-3 py-2 text-right text-fiba-muted">${money(p.airfare)}</td>
-                        <td className="px-3 py-2 text-fiba-muted text-xs">{p.status}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </>
-        )}
+        <EventCostPanel cost={cost} t={t} />
       </div>
 
       <FeesPanel t={t} push={push} canEdit={canEdit} competitions={competitions} />
@@ -571,7 +422,7 @@ function FeesPanel({ t, push, canEdit, competitions }) {
  *   Lista  → líneas agrupadas por cuenta con columnas de años, la forma del
  *            Excel de IT, más la proyección por escalación.
  */
-function PlanTab({ t, push, canEdit, departments, expenseAccounts, competitions }) {
+function PlanTab({ t, push, canEdit, departments, expenseAccounts, competitions, budgetEvents }) {
   const thisYear = new Date().getFullYear()
   const [year, setYear] = useState(thisYear)
   const [department, setDepartment] = useState('')
@@ -734,7 +585,8 @@ function PlanTab({ t, push, canEdit, departments, expenseAccounts, competitions 
         </div>
       ) : view === 'matrix' ? (
         <MatrixView
-          lines={lines} competitions={competitions} expenseAccounts={expenseAccounts}
+          lines={lines} competitions={competitions} budgetEvents={budgetEvents}
+          expenseAccounts={expenseAccounts}
           department={department} canEdit={canEdit} t={t} push={push}
           onReload={load} onOpenCell={setCellDetail}
         />
@@ -747,14 +599,14 @@ function PlanTab({ t, push, canEdit, departments, expenseAccounts, competitions 
           line={editingLine} year={year} defaultDepartment={department}
           onClose={() => setEditingLine(null)} onSaved={() => { setEditingLine(null); load() }}
           onDeleted={() => { setEditingLine(null); load() }}
-          {...{ t, push, departments, expenseAccounts, competitions, canEdit }}
+          {...{ t, push, departments, expenseAccounts, competitions, budgetEvents, canEdit }}
         />
       )}
 
       {cellDetail && (
         <Drawer
           title={cellDetail.accountLabel}
-          subtitle={cellDetail.competitionName || t('budget.general')}
+          subtitle={cellDetail.eventName || t('budget.general')}
           onClose={() => setCellDetail(null)}
         >
           {cellDetail.lines.map(l => (
@@ -778,8 +630,8 @@ function PlanTab({ t, push, canEdit, departments, expenseAccounts, competitions 
   )
 }
 
-/** Matriz cuentas × competencias, con edición inline de celda. */
-function MatrixView({ lines, competitions, expenseAccounts, department, canEdit, t, push, onReload, onOpenCell }) {
+/** Matriz cuentas × eventos, con edición inline de celda. */
+function MatrixView({ lines, competitions, budgetEvents, expenseAccounts, department, canEdit, t, push, onReload, onOpenCell }) {
   const [extraRows, setExtraRows] = useState([])      // cuentas agregadas sin líneas todavía
   const [extraCols, setExtraCols] = useState([])      // competencias agregadas sin líneas
   const [editing, setEditing] = useState(null)        // 'account|colKey'
@@ -799,42 +651,51 @@ function MatrixView({ lines, competitions, expenseAccounts, department, canEdit,
       .sort((a, b) => (a.sort ?? 0) - (b.sort ?? 0) || a.code.localeCompare(b.code))
   }, [lines, extraRows, expenseAccounts])
 
+  // Una columna es un DESTINO, no necesariamente una competencia: desde la
+  // migración 039 una línea puede colgar de un evento presupuestario (un Draw,
+  // una temporada). Sin distinguirlos, esas líneas caerían en la columna
+  // "General" —que el backend define como ni competencia ni evento— e inflarían
+  // el overhead anual con plata que sí tiene evento.
   const cols = useMemo(() => {
-    const used = [...new Set(lines.filter(l => l.competition_id).map(l => l.competition_id))]
-    const ids = [...new Set([...used, ...extraCols])]
-    const byId = Object.fromEntries(competitions.map(c => [c.id, c]))
-    const comps = ids.map(id => byId[id] || { id, name: id })
+    const used = [...new Set(lines.map(targetKey).filter(Boolean))]
+    const keys = [...new Set([...used, ...extraCols])]
+    const byKey = new Map([
+      ...competitions.map(c => [`comp:${c.id}`, { key: `comp:${c.id}`, name: c.name, isEvent: false }]),
+      ...budgetEvents.map(e => [`event:${e.id}`, { key: `event:${e.id}`, name: e.name, isEvent: true }]),
+    ])
+    const targets = keys
+      .map(k => byKey.get(k) || { key: k, name: k, isEvent: k.startsWith('event:') })
       .sort((a, b) => (a.name || '').localeCompare(b.name || ''))
-    return [{ id: GENERAL, name: t('budget.general') }, ...comps]
-  }, [lines, extraCols, competitions, t])
+    return [{ key: GENERAL, name: t('budget.general'), isEvent: false }, ...targets]
+  }, [lines, extraCols, competitions, budgetEvents, t])
 
   // { 'accountCode|colKey': [line, ...] }
   const cells = useMemo(() => {
     const map = {}
     for (const l of lines) {
-      const key = `${l.account_code}|${l.competition_id || GENERAL}`
+      const key = `${l.account_code}|${targetKey(l) || GENERAL}`
       ;(map[key] ||= []).push(l)
     }
     return map
   }, [lines])
 
   const cellTotal = (key) => (cells[key] || []).reduce((s, l) => s + Number(l.amount || 0), 0)
-  const rowTotal = (code) => cols.reduce((s, c) => s + cellTotal(`${code}|${c.id}`), 0)
-  const colTotal = (colId) => accountRows.reduce((s, a) => s + cellTotal(`${a.code}|${colId}`), 0)
+  const rowTotal = (code) => cols.reduce((s, c) => s + cellTotal(`${code}|${c.key}`), 0)
+  const colTotal = (colKey) => accountRows.reduce((s, a) => s + cellTotal(`${a.code}|${colKey}`), 0)
   const grandTotal = accountRows.reduce((s, a) => s + rowTotal(a.code), 0)
 
   // Una cuenta sin ninguna celda de evento no aporta nada al cruce: su única
   // cifra es la de General. Mostrarla como fila entera de guiones es ruido —
   // en IT son 6 de 7 cuentas. Se agrupan y se pueden desplegar; su plata sigue
   // contando en los totales, que se calculan sobre accountRows.
-  const hasEventCell = (code) => cols.some(c => c.id !== GENERAL && cellTotal(`${code}|${c.id}`) > 0)
+  const hasEventCell = (code) => cols.some(c => c.key !== GENERAL && cellTotal(`${code}|${c.key}`) > 0)
   // Las agregadas a mano quedan siempre visibles: se agregaron para tipear.
   const visibleRows = accountRows.filter(a => hasEventCell(a.code) || extraRows.includes(a.code))
   const generalOnly = accountRows.filter(a => !visibleRows.includes(a))
   const rowsToRender = collapsed ? visibleRows : [...visibleRows, ...generalOnly]
 
   async function commitCell(account, col) {
-    const key = `${account.code}|${col.id}`
+    const key = `${account.code}|${col.key}`
     const existing = cells[key] || []
     const value = Number(draft || 0)
     setEditing(null)
@@ -842,11 +703,12 @@ function MatrixView({ lines, competitions, expenseAccounts, department, canEdit,
     try {
       if (existing.length === 0) {
         if (value <= 0) return
+        const target = col.key === GENERAL ? {} : targetBody(col.key)
         await createBudgetLine({
           year: lines[0]?.year ?? new Date().getFullYear(),
           department_code: department,
           account_code: account.code,
-          competition_id: col.id === GENERAL ? null : col.id,
+          ...Object.fromEntries(Object.entries(target).filter(([, v]) => v !== null)),
           description: account.label,
           amount: value,
         })
@@ -864,7 +726,9 @@ function MatrixView({ lines, competitions, expenseAccounts, department, canEdit,
   }
 
   const availableAccounts = expenseAccounts.filter(a => !accountRows.some(r => r.code === a.code))
-  const availableComps = competitions.filter(c => !cols.some(col => col.id === c.id))
+  const hasCol = (key) => cols.some(col => col.key === key)
+  const availableComps = competitions.filter(c => !hasCol(`comp:${c.id}`))
+  const availableEvents = budgetEvents.filter(e => !hasCol(`event:${e.id}`))
 
   return (
     <div>
@@ -882,8 +746,15 @@ function MatrixView({ lines, competitions, expenseAccounts, department, canEdit,
                   {t('budget.account')}
                 </th>
                 {cols.map(c => (
-                  <th key={c.id} className="px-3 py-2.5 text-right min-w-[110px] max-w-[160px]">
-                    <span className="block truncate" title={c.name}>{c.name}</span>
+                  <th key={c.key} className="px-3 py-2.5 text-right min-w-[110px] max-w-[160px]">
+                    <span className="block truncate" title={c.isEvent ? `${c.name} — ${t('budget.budgetEvent')}` : c.name}>
+                      {c.name}
+                    </span>
+                    {c.isEvent && (
+                      <span className="block text-2xs font-normal normal-case text-blue-400">
+                        {t('budget.budgetEvent')}
+                      </span>
+                    )}
                   </th>
                 ))}
                 <th className="px-3 py-2.5 text-right min-w-[110px]">{t('budget.total')}</th>
@@ -899,17 +770,17 @@ function MatrixView({ lines, competitions, expenseAccounts, department, canEdit,
                     </span>
                   </td>
                   {cols.map(c => {
-                    const key = `${a.code}|${c.id}`
+                    const key = `${a.code}|${c.key}`
                     const group = cells[key] || []
                     const total = cellTotal(key)
                     const isEditing = editing === key
 
                     if (group.length > 1) {
                       return (
-                        <td key={c.id} className="px-3 py-2 text-right">
+                        <td key={c.key} className="px-3 py-2 text-right">
                           <button onClick={() => onOpenCell({
                             accountLabel: a.label,
-                            competitionName: c.id === GENERAL ? null : c.name,
+                            eventName: c.key === GENERAL ? null : c.name,
                             lines: group,
                           })} title={t('budget.cellMultiple')}
                             className="text-ink-900 dark:text-white hover:underline">
@@ -923,7 +794,7 @@ function MatrixView({ lines, competitions, expenseAccounts, department, canEdit,
                     }
 
                     return (
-                      <td key={c.id} className="px-3 py-2 text-right">
+                      <td key={c.key} className="px-3 py-2 text-right">
                         {isEditing ? (
                           <input
                             autoFocus type="number" step="0.01" min="0" value={draft}
@@ -968,8 +839,8 @@ function MatrixView({ lines, competitions, expenseAccounts, department, canEdit,
                     </button>
                   </td>
                   {cols.map(c => (
-                    <td key={c.id} className="px-3 py-2 text-right text-fiba-muted">
-                      {c.id === GENERAL
+                    <td key={c.key} className="px-3 py-2 text-right text-fiba-muted">
+                      {c.key === GENERAL
                         ? money(generalOnly.reduce((s, a) => s + cellTotal(`${a.code}|${GENERAL}`), 0))
                         : '—'}
                     </td>
@@ -996,8 +867,8 @@ function MatrixView({ lines, competitions, expenseAccounts, department, canEdit,
                   {t('budget.total')}
                 </td>
                 {cols.map(c => (
-                  <td key={c.id} className="px-3 py-2.5 text-right text-ink-900 dark:text-white">
-                    {money(colTotal(c.id))}
+                  <td key={c.key} className="px-3 py-2.5 text-right text-ink-900 dark:text-white">
+                    {money(colTotal(c.key))}
                   </td>
                 ))}
                 <td className="px-3 py-2.5 text-right text-ink-900 dark:text-white">{money(grandTotal)}</td>
@@ -1017,7 +888,16 @@ function MatrixView({ lines, competitions, expenseAccounts, department, canEdit,
           <select value="" onChange={e => e.target.value && setExtraCols(c => [...c, e.target.value])}
             className="fiba-select !w-auto min-w-[220px]">
             <option value="">+ {t('budget.addColumn')}</option>
-            {availableComps.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+            <optgroup label={t('budget.competitionsGroup')}>
+              {availableComps.map(c => <option key={c.id} value={`comp:${c.id}`}>{c.name}</option>)}
+            </optgroup>
+            {availableEvents.length > 0 && (
+              <optgroup label={t('budget.budgetEventsGroup')}>
+                {availableEvents.map(e => (
+                  <option key={e.id} value={`event:${e.id}`}>{e.name} ({e.year})</option>
+                ))}
+              </optgroup>
+            )}
           </select>
         </div>
       )}
@@ -1067,7 +947,7 @@ function ListView({ lines, year, t, canEdit, onEdit }) {
                   <tr key={l.id} className="hover:bg-fiba-surface/40 transition-colors">
                     <td className="px-4 py-2.5 pl-8 text-ink-900 dark:text-white">{l.description}</td>
                     <td className="px-4 py-2.5 text-fiba-muted">
-                      {l.competition_name || <span className="italic">{t('budget.general')}</span>}
+                      {l.event_display || <span className="italic">{t('budget.general')}</span>}
                     </td>
                     <td className="px-4 py-2.5 text-right text-fiba-muted">{l.qty ?? '—'}</td>
                     <td className="px-4 py-2.5 text-right text-fiba-muted">
@@ -1118,13 +998,14 @@ function ListView({ lines, year, t, canEdit, onEdit }) {
 
 function BudgetLineEditor({
   line, year, defaultDepartment, onClose, onSaved, onDeleted,
-  t, push, departments, expenseAccounts, competitions, canEdit,
+  t, push, departments, expenseAccounts, competitions, budgetEvents, canEdit,
 }) {
   const isNew = !line.id
   const [form, setForm] = useState({
     department_code: line.department_code || defaultDepartment || departments[0]?.code || '',
     account_code: line.account_code || '',
-    competition_id: line.competition_id || '',
+    // Un solo campo para las dos columnas excluyentes — ver `TargetSelect`.
+    target: targetKey(line),
     description: line.description || '',
     qty: line.qty ?? '',
     monthly_amount: line.monthly_amount ?? '',
@@ -1160,7 +1041,7 @@ function BudgetLineEditor({
         year,
         department_code: form.department_code,
         account_code: form.account_code,
-        competition_id: form.competition_id || null,
+        ...targetBody(form.target),
         description: form.description.trim(),
         qty: form.qty === '' ? null : Number(form.qty),
         monthly_amount: form.monthly_amount === '' ? null : Number(form.monthly_amount),
@@ -1229,10 +1110,12 @@ function BudgetLineEditor({
         </select>
       </Field>
       <Field label={t('budget.competition')}>
-        <select className="fiba-select" value={form.competition_id} onChange={e => set('competition_id', e.target.value)}>
-          <option value="">{t('budget.general')}</option>
-          {competitions.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-        </select>
+        <TargetSelect
+          value={form.target} onChange={v => set('target', v)}
+          competitions={competitions} budgetEvents={budgetEvents} t={t}
+          fallbackLabel={line.event_display}
+        />
+        <p className="text-2xs text-fiba-muted mt-1">{t('budget.targetHint')}</p>
       </Field>
       <div className="grid grid-cols-3 gap-3">
         <Field label={t('budget.qty')}>
@@ -1255,7 +1138,7 @@ function BudgetLineEditor({
 }
 
 /* ──────────────────────────── Gastos ──────────────────────────── */
-function ExpensesTab({ t, push, canEdit, departments, expenseAccounts, competitions, vendors, employees }) {
+function ExpensesTab({ t, push, canEdit, departments, expenseAccounts, competitions, budgetEvents, vendors, employees }) {
   const thisYear = new Date().getFullYear()
   const [rows, setRows] = useState([])
   const [summary, setSummary] = useState({ paid: 0, committed: 0, draft: 0, total: 0, count: 0 })
@@ -1264,7 +1147,8 @@ function ExpensesTab({ t, push, canEdit, departments, expenseAccounts, competiti
   const [year, setYear] = useState(thisYear)
   const [department, setDepartment] = useState('')
   const [account, setAccount] = useState('')
-  const [competition, setCompetition] = useState('')   // '' | 'general' | <uuid>
+  // '' = todos | GENERAL = ni competencia ni evento | 'comp:<id>' | 'event:<id>'
+  const [target, setTarget] = useState('')
   const [status, setStatus] = useState('')
   const [search, setSearch] = useState('')
 
@@ -1283,10 +1167,9 @@ function ExpensesTab({ t, push, canEdit, departments, expenseAccounts, competiti
     if (account) p.account = account
     if (status) p.status = status
     if (search) p.search = search
-    if (competition === 'general') p.general_only = true
-    else if (competition) p.competition_id = competition
+    Object.assign(p, targetParams(target))
     return p
-  }, [year, department, account, status, search, competition])
+  }, [year, department, account, status, search, target])
 
   async function load() {
     setLoading(true)
@@ -1365,12 +1248,13 @@ function ExpensesTab({ t, push, canEdit, departments, expenseAccounts, competiti
           <option value="">{department ? t('budget.allAccountsOfDepartment') : t('budget.allAccounts')}</option>
           {accountOptions.map(accountOption)}
         </select>
-        <select value={competition} onChange={e => setCompetition(e.target.value)}
-          className="fiba-select !w-auto min-w-[200px] flex-shrink-0">
-          <option value="">{t('budget.allEvents')}</option>
-          <option value="general">{t('budget.generalOnly')}</option>
-          {competitions.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-        </select>
+        <TargetSelect
+          value={target} onChange={setTarget}
+          competitions={competitions} budgetEvents={budgetEvents} t={t}
+          generalLabel={t('budget.allEvents')}
+          extraOption={{ value: GENERAL, label: t('budget.generalOnly') }}
+          className="fiba-select !w-auto min-w-[200px] flex-shrink-0"
+        />
         <select value={status} onChange={e => setStatus(e.target.value)}
           className="fiba-select !w-auto min-w-[150px] flex-shrink-0">
           <option value="">{t('budget.allStatuses')}</option>
@@ -1413,7 +1297,7 @@ function ExpensesTab({ t, push, canEdit, departments, expenseAccounts, competiti
                   <td className="px-4 py-3 text-fiba-muted">{r.department_label || r.department_code}</td>
                   <td className="px-4 py-3 text-fiba-muted text-xs">{r.account_code}</td>
                   <td className="px-4 py-3 text-fiba-muted">
-                    {r.competition_name || <span className="italic">{t('budget.general')}</span>}
+                    {r.event_display || <span className="italic">{t('budget.general')}</span>}
                   </td>
                   <td className="px-4 py-3 text-fiba-muted">{r.payee_display || '—'}</td>
                   <td className="px-4 py-3 text-fiba-muted whitespace-nowrap">{r.expense_date}</td>
@@ -1454,18 +1338,19 @@ function ExpensesTab({ t, push, canEdit, departments, expenseAccounts, competiti
 
       {editing && (
         <ExpenseEditor expense={editing} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); load() }}
-          {...{ t, push, departments, expenseAccounts, competitions, vendors, employees }} />
+          {...{ t, push, departments, expenseAccounts, competitions, budgetEvents, vendors, employees }} />
       )}
     </div>
   )
 }
 
-function ExpenseEditor({ expense, onClose, onSaved, t, push, departments, expenseAccounts, competitions, vendors, employees }) {
+function ExpenseEditor({ expense, onClose, onSaved, t, push, departments, expenseAccounts, competitions, budgetEvents, vendors, employees }) {
   const isNew = !expense.id
   const [form, setForm] = useState({
     department_code: expense.department_code || departments[0]?.code || '',
     account_code: expense.account_code || '',
-    competition_id: expense.competition_id || '',
+    // Competencia XOR evento presupuestario, en un solo campo — ver `TargetSelect`.
+    target: targetKey(expense),
     payee_type: expense.payee_type || 'vendor',
     vendor_id: expense.vendor_id || '',
     employee_id: expense.employee_id || '',
@@ -1502,7 +1387,7 @@ function ExpenseEditor({ expense, onClose, onSaved, t, push, departments, expens
       const body = {
         department_code: form.department_code,
         account_code: form.account_code,
-        competition_id: form.competition_id || null,
+        ...targetBody(form.target),
         payee_type: form.payee_type,
         vendor_id: form.payee_type === 'vendor' ? (form.vendor_id || null) : null,
         employee_id: form.payee_type === 'employee' ? (form.employee_id || null) : null,
@@ -1598,10 +1483,12 @@ function ExpenseEditor({ expense, onClose, onSaved, t, push, departments, expens
       </Field>
 
       <Field label={t('budget.competition')}>
-        <select className="fiba-select" value={form.competition_id} onChange={e => set('competition_id', e.target.value)}>
-          <option value="">{t('budget.general')}</option>
-          {competitions.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-        </select>
+        <TargetSelect
+          value={form.target} onChange={v => set('target', v)}
+          competitions={competitions} budgetEvents={budgetEvents} t={t}
+          fallbackLabel={expense.event_display}
+        />
+        <p className="text-2xs text-fiba-muted mt-1">{t('budget.targetHint')}</p>
       </Field>
 
       <Field label={t('budget.payee')}>
