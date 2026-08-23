@@ -547,6 +547,36 @@ const translations = {
       es: 'Sin fases colgadas: esto es el gasto propio del evento.',
     },
 
+    // Resultado del evento (fase 11) — ingresos contra gasto.
+    //
+    // Son DOS cifras a propósito y la pantalla tiene que decir por qué: una es
+    // lo que ya pasó y la otra es cómo termina el evento si todo lo esperado
+    // entra y todo lo comprometido sale.
+    eventResult: { en: 'Event result', es: 'Resultado del evento' },
+    eventResultHint: {
+      en: 'Two readings on purpose: the result is what already happened, the projected result is how the event ends if every expected revenue lands and every committed cost goes out. The gap between them is money that has not moved yet.',
+      es: 'Dos lecturas a propósito: el resultado es lo que ya pasó y el proyectado es cómo termina el evento si todo lo esperado entra y todo lo comprometido sale. La distancia entre los dos es plata que todavía no se movió.',
+    },
+    revenueReceived: { en: 'Revenue received', es: 'Ingresos cobrados' },
+    revenueExpected: { en: 'Revenue expected', es: 'Ingresos esperados' },
+    revenueExpectedHint: { en: 'Not collected yet', es: 'Todavía sin cobrar' },
+    result: { en: 'Result', es: 'Resultado' },
+    resultHint: {
+      en: 'Received minus executed. Only money that already moved.',
+      es: 'Cobrado menos ejecutado. Solo plata que ya se movió.',
+    },
+    projectedResult: { en: 'Projected result', es: 'Resultado proyectado' },
+    projectedResultHint: {
+      en: 'Received plus expected, minus executed and committed.',
+      es: 'Cobrado más esperado, menos ejecutado y comprometido.',
+    },
+    deficit: { en: 'Deficit', es: 'Déficit' },
+    surplus: { en: 'Surplus', es: 'Superávit' },
+    noRevenuesForEvent: {
+      en: 'No revenues loaded for this event: the result is just the executed spend, in negative.',
+      es: 'No hay ingresos cargados para este evento: el resultado es el gasto ejecutado, en negativo.',
+    },
+
     // Errores
     required: { en: 'Fill in the required fields', es: 'Completa los campos obligatorios' },
   },
@@ -554,7 +584,10 @@ const translations = {
   // ===== Payments =====
   payments: {
     selectEvent: { en: 'Select an event...', es: 'Selecciona un evento...' },
-    pickEventHint: { en: 'Pick an event to see its nominated people and manage payments.', es: 'Selecciona un evento para ver sus personas nominadas y administrar los pagos.' },
+    pickEventHint: {
+      en: 'Pick an event to see everything it spends: the people nominated to it and the operating costs with no person behind them.',
+      es: 'Selecciona un evento para ver todo lo que gasta: las personas nominadas y el gasto operativo sin persona detrás.',
+    },
     nominated: { en: 'Nominated', es: 'Nominados' },
     withPayment: { en: 'With payment', es: 'Con pago' },
     nominee: { en: 'Nominee', es: 'Nominado' },
@@ -607,6 +640,112 @@ const translations = {
     errorSaving: { en: 'Error saving payment', es: 'Error guardando el pago' },
     errorUpload: { en: 'Error uploading file', es: 'Error subiendo el archivo' },
     errorDownload: { en: 'Error downloading file', es: 'Error descargando el archivo' },
+
+    // ── Bandeja única del evento (fase 9) ──────────────────────────────────
+    tabPeople: { en: 'People', es: 'Personas' },
+    tabExpenses: { en: 'Event spend', es: 'Gasto del evento' },
+    personFees: { en: 'Fees', es: 'Fees' },
+    eventExpenses: { en: 'Event spend', es: 'Gasto del evento' },
+    totalsAreWholeEvent: {
+      en: 'The cards add up the whole event. The department filter narrows the tables and their subtotal.',
+      es: 'Las tarjetas suman el evento entero. El filtro por departamento recorta las tablas y su subtotal.',
+    },
+    filteredSubtotal: { en: 'Filtered subtotal', es: 'Subtotal filtrado' },
+    newExpense: { en: 'New expense', es: 'Nuevo gasto' },
+    deleteExpense: { en: 'Delete expense', es: 'Eliminar gasto' },
+    confirmDeleteExpense: { en: 'Delete this expense and its files?', es: '¿Eliminar este gasto y sus archivos?' },
+    expenseDeleted: { en: 'Expense deleted', es: 'Gasto eliminado' },
+    noEventExpenses: { en: 'No event spend', es: 'Sin gasto del evento' },
+    noEventExpensesBody: {
+      en: 'What it costs to run the competition with no nominated person behind it: shipping, branding, insurance, vendors.',
+      es: 'Lo que cuesta operar la competencia sin una persona nominada detrás: shipping, branding, seguros, proveedores.',
+    },
+    expensesScopeHint: {
+      en: 'Only the spend of the departments you have access to is listed.',
+      es: 'Solo se listan los gastos de los departamentos a los que tienes acceso.',
+    },
+    expenseBelongsToEvent: {
+      en: 'An expense loaded from here always belongs to this event.',
+      es: 'Un gasto cargado desde acá siempre pertenece a este evento.',
+    },
+    expenseStatusHint: {
+      en: 'Only a paid expense consumes budget; approved and unpaid counts as committed.',
+      es: 'Solo el gasto pagado consume presupuesto; lo aprobado sin pagar cuenta como comprometido.',
+    },
+    expenseAttachmentsHint: {
+      en: 'Invoices and receipts are attached from the Budget module.',
+      es: 'Las facturas y recibos se adjuntan desde el módulo de Presupuesto.',
+    },
+    payeeCatalogueHint: {
+      en: 'The vendor and employee catalogues need their own module permission. Without them, write the payee by hand under “Other”.',
+      es: 'Los catálogos de proveedores y empleados necesitan su propio permiso de módulo. Sin ellos, escribe el destinatario a mano en «Otro».',
+    },
+    descriptionRequired: { en: 'Please write a description', es: 'Escribe una descripción' },
+    amountRequired: { en: 'Enter an amount of zero or more', es: 'Ingresa un monto de cero o más' },
+    dateRequired: { en: 'Please pick a date', es: 'Elige una fecha' },
+    vendorRequired: { en: 'Please select a vendor', es: 'Selecciona un proveedor' },
+    employeeRequired: { en: 'Please select an employee', es: 'Selecciona un empleado' },
+    payeeNameRequired: { en: 'Please write who gets paid', es: 'Escribe a quién se le paga' },
+
+    // Recorte por departamento: el backend exige acceso de edición sobre el
+    // área a la que se imputa, así que el formulario no ofrece lo que va a
+    // rechazar con un 403.
+    yourDepartments: { en: 'Your departments', es: 'Tus departamentos' },
+    lockedDepartments: { en: 'No spending access', es: 'Sin acceso para gastar' },
+    departmentScopeHint: {
+      en: 'You can only book spend to the departments you have edit access to.',
+      es: 'Solo puedes imputar gasto a los departamentos sobre los que tienes acceso de edición.',
+    },
+    departmentNotAllowed: {
+      en: 'You have no spending access to that department',
+      es: 'No tienes acceso para gastar de ese departamento',
+    },
+    readOnlyDepartment: {
+      en: 'This record belongs to a department you cannot spend from, so it is read-only. The tray shows the whole event on purpose.',
+      es: 'Este registro es de un departamento del que no puedes gastar, así que se muestra solo para lectura. La bandeja muestra el evento entero a propósito.',
+    },
+
+    // ── Aprobación (fase 10) ───────────────────────────────────────────────
+    approve: { en: 'Approve', es: 'Aprobar' },
+    approved: { en: 'Approved', es: 'Aprobado' },
+    notApproved: { en: 'Not approved', es: 'Sin aprobar' },
+    unapprove: { en: 'Undo approval', es: 'Desaprobar' },
+    approvedOn: { en: 'Approved on', es: 'Aprobado el' },
+    approvedOk: { en: 'Payment approved', es: 'Pago aprobado' },
+    unapprovedOk: { en: 'Approval undone', es: 'Aprobación revertida' },
+    approvedNoAuthor: {
+      en: 'Historical approval: it has no author on record.',
+      es: 'Aprobación histórica: no tiene autor registrado.',
+    },
+    approvalGate: {
+      en: 'A payment that is not approved cannot be marked as completed.',
+      es: 'Un pago sin aprobar no puede marcarse como completado.',
+    },
+    approveBeforeCompleting: {
+      en: 'Approve the payment before marking it completed.',
+      es: 'Aprueba el pago antes de marcarlo como completado.',
+    },
+    newCannotBeCompleted: {
+      en: 'A new payment cannot start as completed: create it, approve it, and then complete it.',
+      es: 'Un pago nuevo no puede nacer completado: créalo, apruébalo y después complétalo.',
+    },
+    approveNeedsDepartment: {
+      en: 'Book the payment to a department before approving it.',
+      es: 'Imputa el pago a un departamento antes de aprobarlo.',
+    },
+    unapproveBlocked: {
+      en: 'Move the payment out of “completed” before undoing its approval.',
+      es: 'Saca el pago de «completado» antes de revertir su aprobación.',
+    },
+    pendingApprovalTitle: { en: 'Waiting for your approval', es: 'Esperando tu aprobación' },
+    pendingCount: { en: 'payments', es: 'pagos' },
+    pendingScopeHint: {
+      en: 'only what you can approve',
+      es: 'solo lo que puedes aprobar',
+    },
+    reviewPending: { en: 'Review', es: 'Revisar' },
+    hideList: { en: 'Hide', es: 'Ocultar' },
+
     statusLabel: {
       new: { en: 'New', es: 'Nuevo' },
       in_process: { en: 'In Process', es: 'En Proceso' },

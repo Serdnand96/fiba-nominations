@@ -72,6 +72,25 @@ export const downloadNominationBlob = async (id, filename) => {
 export const getPaymentImputation = () => api.get('/payments/imputation').then(r => r.data)
 export const getPaymentNominees = (competitionId) =>
   api.get('/payments/nominees', { params: { competition_id: competitionId } }).then(r => r.data)
+// Bandeja única del evento (fase 9): las personas nominadas con su pago Y el
+// gasto operativo sin persona (shipping, branding, seguros) en una sola
+// respuesta, con los totales ya sumados por el backend.
+export const getPaymentEvent = (competitionId) =>
+  api.get('/payments/event', { params: { competition_id: competitionId } }).then(r => r.data)
+// Alta/edición/baja de gasto operativo desde la bandeja. El backend delega en
+// las mismas funciones que usa Budget, así que el body es el de /budget/expenses;
+// lo único propio es que el gasto SIEMPRE cuelga del evento.
+export const createEventExpense = (data) => api.post('/payments/event-expenses', data).then(r => r.data)
+export const updateEventExpense = (id, data) => api.patch(`/payments/event-expenses/${id}`, data).then(r => r.data)
+export const deleteEventExpense = (id) => api.delete(`/payments/event-expenses/${id}`).then(r => r.data)
+// Aprobación (fase 10). `pending-approval` ya viene recortado a lo que el
+// usuario puede aprobar — es una bandeja de trabajo, no un listado.
+export const getPendingApprovalPayments = (competitionId) =>
+  api.get('/payments/pending-approval', {
+    params: competitionId ? { competition_id: competitionId } : {},
+  }).then(r => r.data)
+export const approvePayment = (id) => api.post(`/payments/${id}/approve`).then(r => r.data)
+export const unapprovePayment = (id) => api.post(`/payments/${id}/unapprove`).then(r => r.data)
 export const getPayments = (params) => api.get('/payments', { params }).then(r => r.data)
 export const getPaymentsSummary = (competitionId, department) =>
   api.get('/payments/summary', { params: { competition_id: competitionId, ...(department ? { department } : {}) } }).then(r => r.data)
