@@ -1142,7 +1142,68 @@ Una sola cifra obligaría a elegir entre ser prudente y ser útil. Con las dos, 
 distancia entre ellas es en sí misma la información: si son muy distintas, el
 resultado del evento depende de plata que todavía no se movió.
 
-### 14.13 Preguntas abiertas
+### 14.13 Auditoría de las fases 8 a 11 — qué se corrigió
+
+Segunda ronda de auditoría, sobre el backend de las fases 8-11. Salió otro P0 y
+cinco problemas de integridad:
+
+1. **P0 — la aprobación no tenía dientes, tenía guillotina.** `approved_at` no
+   estaba en el `select` de `update_payment`, así que la guarda "un pago sin
+   aprobar no puede pasar a `completed`" leía siempre `None`. Aprobar un pago y
+   después completarlo daba 400, y —peor— **cualquier edición sobre un pago ya
+   completado** (corregir un comentario, reimputar la cuenta) también, porque el
+   status recalculado seguía siendo `completed`. Era exactamente el escenario
+   que el backfill de la 040 existe para evitar, reintroducido ignorando la
+   columna que ese backfill llena.
+2. **La bandeja validaba después de escribir.** `update_event_expense` llamaba a
+   `update_expense` y recién entonces verificaba que el gasto siguiera colgando
+   del evento. Sin transacción, un PATCH con `competition_id: null` ya había
+   movido el gasto al overhead anual del departamento y el 400 llegaba con el
+   daño hecho. Ahora el merge se hace antes y se valida sobre el resultado
+   previsto. `delete_event_expense`, además, no validaba nada: quien tenía
+   `payments` y no `budget` podía borrar por id cualquier gasto de su
+   departamento, incluidas las líneas generales.
+3. **Proyectar una temporada la mandaba a General.** `project_budget` copiaba
+   `competition_id` pero no `budget_event_id`, así que las líneas 2028-2030 de
+   Liga Sudamericana nacían sin evento: la temporada quedaba con presupuesto $0
+   y ejecutado real —la mitad huérfana que la fase 8 vino a eliminar— y el
+   overhead anual quedaba inflado con plata de la liga.
+4. **Se podían robar las fases de un evento ajeno.**
+   `PUT /events/{id}/competitions` no miraba si la competencia ya colgaba de
+   otra temporada: la desprendía en silencio, y con ella todo su ejecutado.
+   Ahora eso exige permiso de edición sobre el departamento del dueño actual —
+   el mismo criterio que mover una línea de departamento— y si no, devuelve 409
+   nombrando el evento dueño.
+5. **`delete_payment` era la única escritura sin recorte.** Borrar el pago de
+   otra área hace desaparecer plata de su ejecutado y de su bandeja de
+   aprobación, que es la misma falla de integridad que imputarle gasto.
+6. **La aprobación no se invalidaba al cambiar lo aprobado.** Se podía aprobar
+   un pago por $500 y editarlo a $50.000 con el sello puesto, o moverlo a otro
+   departamento con un OK que el responsable de ese departamento nunca dio.
+   Ahora cambiar monto, extra, airfare, departamento o cuenta lo devuelve a
+   pendiente.
+
+Del importador: un update podía dejar cargadas **las dos** columnas de destino
+y violar el CHECK a mitad de un commit que escribe fila por fila sin
+transacción, o —peor, en silencio— no mover a General una línea que la planilla
+mandaba ahí; el export no emitía el evento, así que el round-trip perdía el
+destino; y el pool de eventos no estaba recortado al alcance del que importa.
+
+Y tres cosas menores que valen la pena anotar: `/budget/summary` sumaba los
+ingresos de **todos** los años (preexistente, pero la fase 11 los convirtió en
+cifra de portada), un gasto cargado desde la bandeja podía nacer `paid` sin que
+nadie lo aprobara, y `by_competition` era un campo que nunca salía del backend
+porque los dos endpoints lo descartaban.
+
+⚠️ **Sobre el alcance real de la aprobación.** Con un nivel y sin umbral, el que
+puede editar es el mismo que puede aprobar: `approve_payment` exige exactamente
+lo mismo que `update_payment`. La aprobación **no agrega segregación de
+funciones** — agrega un acto explícito y un registro de quién lo hizo. Está
+alineado con la decisión 4, pero conviene tenerlo claro: si en algún momento hace
+falta que apruebe alguien distinto del que carga, hay que separar los permisos,
+no ajustar esta fase.
+
+### 14.14 Preguntas abiertas
 
 - **`VIDEO_OPERATOR` no tiene cuenta de fee ni de travel** (14.4). ¿Va contra
   COMP-13/COMP-14 junto con los VGO, o es una línea propia que el Excel no trae?

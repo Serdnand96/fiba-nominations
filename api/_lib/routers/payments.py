@@ -82,7 +82,7 @@ def _payment_date_for(status: str, payment_date: Optional[str]) -> Optional[str]
 # `VIDEO_OPERATOR` is deliberately absent: the Fees Breakdown sheet doesn't
 # have it and migration 036 gave it no fee account either, so those payments
 # need the account picked by hand until FIBA decides its line
-# (BUDGET_MODULE.md §14.13). Falling back to the VGO line would be a guess that
+# (BUDGET_MODULE.md §14.14). Falling back to the VGO line would be a guess that
 # lands real money on the wrong account.
 _ROLE_ACCOUNTS = {
     "TD":             {"fee": "COMP-11", "airfare": "COMP-12"},
@@ -260,17 +260,17 @@ def imputation_options(request: Request):
     # columna — la cuenta NO pertenece a un departamento (son dimensiones
     # separadas) — pero es lo que deja poner arriba del desplegable las 2-4
     # cuentas del área en la que estás parado en vez de las 34 del plan entero.
-    # Mismo cálculo que `/budget/accounts`, sin el recorte por scope: acá no se
-    # devuelven montos, y Payments todavía no respeta `budget_access` (fase 9).
+    # Mismo cálculo que `/budget/accounts`, y con el mismo recorte: sin él,
+    # cualquiera con `payments.can_view` deduce contra qué cuentas gasta un área
+    # ajena. No hay montos, pero recortarlo es gratis.
     used: dict = {}
-    for table in ("budget_lines", "expenses"):
-        rows = supabase.table(table).select("account_code, department_code").execute().data or []
+    for table in ("budget_lines", "expenses", "payments"):
+        rows = budget_router._scoped(
+            supabase.table(table).select("account_code, department_code"), request,
+        ).execute().data or []
         for row in rows:
             if row.get("account_code"):
                 used.setdefault(row["account_code"], set()).add(row["department_code"])
-    for row in (supabase.table("payments").select("account_code, department_code").execute().data or []):
-        if row.get("account_code"):
-            used.setdefault(row["account_code"], set()).add(row["department_code"])
     for account in accounts:
         account["used_by"] = sorted(c for c in used.get(account["code"], set()) if c)
 
@@ -327,6 +327,13 @@ def _event_expense_target(competition_id, budget_event_id) -> None:
         )
 
 
+def _event_expense_or_403(expense_id: str, request: Request) -> dict:
+    """La fila existe, el caller la puede editar, y pertenece a un evento."""
+    row = budget_router._row_or_403("expenses", expense_id, request, "edit")
+    _event_expense_target(row.get("competition_id"), row.get("budget_event_id"))
+    return row
+
+
 @router.get("/event")
 def event_tray(request: Request, competition_id: str = Query(...)):
     """Todo el gasto de una competencia, en una sola respuesta.
@@ -365,22 +372,40 @@ def event_tray(request: Request, competition_id: str = Query(...)):
 @router.post("/event-expenses", status_code=201, dependencies=[Depends(require_edit("payments"))])
 def create_event_expense(data: ExpenseCreate, request: Request):
     _event_expense_target(data.competition_id, data.budget_event_id)
+    # Ni un gasto nace pagado desde acá, igual que un pago no nace `completed`
+    # (fase 10). `paid` es lo que consume presupuesto: sin esta guarda, quien
+    # tiene `payments` y no `budget` podría cargar gasto ya ejecutado sin que
+    # nadie lo apruebe, que es la puerta que la fase 10 cerró del otro lado.
+    # En Budget sí se puede, y es deliberado: ese permiso es más ancho.
+    if data.status == "paid":
+        raise HTTPException(
+            status_code=400,
+            detail="An expense created from the event tray cannot start as paid; approve it first",
+        )
     return budget_router.create_expense(data, request)
 
 
 @router.patch("/event-expenses/{expense_id}", dependencies=[Depends(require_edit("payments"))])
 def update_event_expense(expense_id: str, data: ExpenseUpdate, request: Request):
-    updated = budget_router.update_expense(expense_id, data, request)
-    # Se valida DESPUÉS: `update_expense` ya resolvió el merge con la fila
-    # existente y verificó el acceso al departamento. Mirar el resultado evita
-    # tener que replicar acá ese merge, y un PATCH que dejaría el gasto sin
-    # evento se rechaza igual — solo que con el trabajo ya hecho.
-    _event_expense_target(updated.get("competition_id"), updated.get("budget_event_id"))
-    return updated
+    # El merge se hace ACÁ y se valida ANTES de escribir. No hay transacción: si
+    # se validara sobre el resultado, un PATCH con `competition_id: null` ya
+    # habría movido el gasto al overhead anual del departamento y el 400 llegaría
+    # con el daño hecho — justo la puerta lateral que esta guarda cierra.
+    current = _event_expense_or_403(expense_id, request)
+    sent = data.model_dump(exclude_unset=True)
+    _event_expense_target(
+        sent.get("competition_id", current.get("competition_id")),
+        sent.get("budget_event_id", current.get("budget_event_id")),
+    )
+    return budget_router.update_expense(expense_id, data, request)
 
 
 @router.delete("/event-expenses/{expense_id}", dependencies=[Depends(require_edit("payments"))])
 def delete_event_expense(expense_id: str, request: Request):
+    # Sin esta comprobación, quien tiene `payments` (y no `budget`) puede borrar
+    # por id cualquier gasto de su departamento, incluidas las líneas generales
+    # del overhead anual que nunca vería en esta pantalla.
+    _event_expense_or_403(expense_id, request)
     return budget_router.delete_expense(expense_id, request)
 
 
@@ -425,6 +450,8 @@ def _fetch_payments(
     competition_id: Optional[str] = None,
     status: Optional[str] = None,
     department: Optional[str] = None,
+    departments: Optional[list] = None,
+    unapproved: bool = False,
 ) -> list:
     # Shared by the endpoints below. Endpoints must not call each other as plain
     # functions: FastAPI Query() defaults leak through as truthy objects and
@@ -434,6 +461,10 @@ def _fetch_payments(
     ).order("record_no")
     if department:
         q = q.eq("department_code", department)
+    elif departments is not None:
+        q = q.in_("department_code", departments)
+    if unapproved:
+        q = q.is_("approved_at")
     if status:
         q = q.eq("status", status)
     rows = q.execute().data or []
@@ -529,8 +560,8 @@ def update_payment(payment_id: str, data: PaymentUpdate, request: Request):
 
     current = (
         supabase.table("payments")
-        .select("nomination_id, status, payment_date, department_code, "
-                "account_code, airfare_account_code, airfare")
+        .select("nomination_id, status, payment_date, approved_at, department_code, "
+                "account_code, airfare_account_code, airfare, amount, extra")
         .eq("id", payment_id).execute().data
     )
     if not current:
@@ -558,6 +589,20 @@ def update_payment(payment_id: str, data: PaymentUpdate, request: Request):
     _assert_can_spend(request, updates["department_code"])
     if current.get("department_code") and current["department_code"] != updates["department_code"]:
         _assert_can_spend(request, current["department_code"])
+
+    # Cambiar lo que se aprobó invalida la aprobación. Sin esto, aprobar un pago
+    # por $500 y después editarlo a $50.000 deja el sello puesto; y moverlo de
+    # departamento lo hace aterrizar en el presupuesto de otra área con un OK que
+    # el responsable de esa área nunca dio. Es lo mismo que ya hace `expenses`
+    # cuando un gasto aprobado vuelve a borrador.
+    material = ("amount", "extra", "airfare", "department_code", "account_code")
+    changed_material = any(
+        k in updates and updates[k] != current.get(k) for k in material
+    )
+    if changed_material and current.get("approved_at") and "approved_at" not in updates:
+        updates["approved_by"] = None
+        updates["approved_at"] = None
+        current = {**current, "approved_at": None}
 
     status = updates.get("status", current.get("status"))
     # Un pago sin aprobar no puede darse por pagado (fase 10). Es donde la
@@ -590,10 +635,14 @@ def pending_approval(request: Request, competition_id: Optional[str] = Query(Non
     entero— esta sí filtra por departamento: es una bandeja de trabajo, y ver en
     ella lo que no podés aprobar es solo ruido.
     """
-    rows = [p for p in _fetch_payments(competition_id=competition_id) if not p.get("approved_at")]
-    editable = budget_router._departments_for(request, "edit")
-    if editable is not None:
-        rows = [p for p in rows if p.get("department_code") in editable]
+    # Los dos filtros se resuelven en la base y no en Python: la bandeja lee la
+    # tabla entera de pagos y traerla completa para descartar el 95% acá no
+    # escala con el histórico.
+    rows = _fetch_payments(
+        competition_id=competition_id,
+        departments=budget_router._departments_for(request, "edit"),
+        unapproved=True,
+    )
     return {
         "count": len(rows),
         "total": round(sum(float(p.get("total") or 0) + float(p.get("airfare") or 0) for p in rows), 2),
@@ -753,7 +802,16 @@ def list_attachments(payment_id: str):
 
 # ─── Delete payment (cleans attachments in Storage first) ───────────────────
 @router.delete("/{payment_id}", dependencies=[Depends(require_edit("payments"))])
-def delete_payment(payment_id: str):
+def delete_payment(payment_id: str, request: Request):
+    # Borrar el pago de otra área es la misma falla de integridad que imputarle
+    # gasto: desaparecen $X del ejecutado de ese departamento y de su bandeja de
+    # aprobación, sin que el responsable pueda hacer nada. Era la única escritura
+    # de `payments` que había quedado fuera del recorte de la fase 9.
+    rows = supabase.table("payments").select("department_code").eq("id", payment_id).execute().data
+    if not rows:
+        raise HTTPException(status_code=404, detail="Payment not found")
+    _assert_can_spend(request, rows[0].get("department_code"))
+
     atts = (
         supabase.table("payment_attachments")
         .select("storage_path")

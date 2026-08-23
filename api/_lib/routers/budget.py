@@ -497,7 +497,13 @@ def delete_vendor(vendor_id: str):
 # las fases sueltas. Sin hijos es una bolsa suelta; con competencias colgadas
 # es una temporada que presupuesta lo que sus fases ejecutan (migración 039).
 def _budget_event(event_id: str, request: Request, action: str = "view") -> dict:
-    return _row_or_403("budget_events", event_id, request, action)
+    event = _row_or_403("budget_events", event_id, request, action)
+    # Un evento dado de baja se puede leer (su gasto histórico sigue existiendo)
+    # pero no recibir plata nueva: no aparece en el listado por defecto, así que
+    # sería un destino invisible.
+    if action == "edit" and not event.get("active"):
+        raise HTTPException(status_code=400, detail="This budget event is inactive")
+    return event
 
 
 def _check_target(competition_id, budget_event_id, request: Request, action: str = "view") -> None:
@@ -605,9 +611,32 @@ def set_budget_event_competitions(event_id: str, data: BudgetEventCompetitions, 
     wanted = list(dict.fromkeys(data.competition_ids or []))   # dedup, orden estable
 
     if wanted:
-        found = supabase.table("competitions").select("id").in_("id", wanted).execute().data or []
+        found = supabase.table("competitions").select("id, name, budget_event_id") \
+            .in_("id", wanted).execute().data or []
         if len(found) != len(wanted):
             raise HTTPException(status_code=400, detail="Some competitions do not exist")
+
+        # Una competencia que ya cuelga de OTRA temporada no se puede atraer sin
+        # más: el UPDATE la desprendería en silencio y el rollup del evento ajeno
+        # perdería todo su ejecutado, que pasaría a sumar acá. Se exige permiso
+        # de edición sobre el departamento del dueño actual — el mismo criterio
+        # que mover una línea de departamento.
+        taken = [c for c in found if c.get("budget_event_id") and c["budget_event_id"] != event_id]
+        if taken:
+            owners = supabase.table("budget_events").select("id, name, department_code") \
+                .in_("id", sorted({c["budget_event_id"] for c in taken})).execute().data or []
+            by_id = {o["id"]: o for o in owners}
+            for c in taken:
+                owner = by_id.get(c["budget_event_id"])
+                if not owner:
+                    continue
+                try:
+                    _assert_can_edit(request, owner["department_code"])
+                except HTTPException:
+                    raise HTTPException(
+                        status_code=409,
+                        detail=f"«{c['name']}» already belongs to «{owner['name']}»",
+                    )
 
     current = supabase.table("competitions").select("id") \
         .eq("budget_event_id", event_id).execute().data or []
@@ -858,6 +887,11 @@ def project_budget(data: BudgetProject, request: Request):
                 "department_code": line["department_code"],
                 "account_code": line["account_code"],
                 "competition_id": line.get("competition_id"),
+                # Sin esto, proyectar la temporada de Liga Sudamericana a
+                # 2028-2030 le sacaba el evento y esas líneas nacían como
+                # General: la temporada quedaba con presupuesto $0 y ejecutado
+                # real, que es la mitad huérfana que la fase 8 vino a eliminar.
+                "budget_event_id": line.get("budget_event_id"),
                 "kind": line.get("kind", "expense"),
                 "description": line["description"],
                 "qty": line.get("qty"),
@@ -1109,7 +1143,8 @@ def budget_summary(request: Request, year: int = Query(...), department: Optiona
     )
     rq = _scoped(
         supabase.table("revenues")
-        .select("amount, status, department_code, competition_id, budget_event_id"),
+        .select("amount, status, department_code, competition_id, budget_event_id, "
+                "expected_date, received_date"),
         request, department,
     )
     pq = _scoped(
@@ -1123,7 +1158,14 @@ def budget_summary(request: Request, year: int = Query(...), department: Optiona
 
     lines = lq.execute().data or []
     expenses = eq_.execute().data or []
-    revenues = rq.execute().data or []
+    # Un ingreso se imputa al año en que se recibió, o al que se espera si
+    # todavía no entró — el mismo criterio que `list_revenues`. Sin filtro, el
+    # dashboard de 2027 sumaba también los ingresos de 2026 y 2028, y la fase 11
+    # convirtió esa cifra en portada.
+    revenues = [
+        r for r in (rq.execute().data or [])
+        if ((r.get("received_date") or r.get("expected_date") or "")[:4] == str(year))
+    ]
 
     payments = _payment_expense_rows(pq.execute().data or [], year)
 
@@ -1179,7 +1221,7 @@ def budget_summary(request: Request, year: int = Query(...), department: Optiona
     # Un vuelo con departamento pero SIN cuenta no entra en el ámbar de arriba y
     # se escondía en la fila "General" de by_account, contra un presupuesto de
     # cero: restante en rojo sin ninguna pista de qué era. Los roles sin cuenta
-    # de travel (VIDEO_OPERATOR, §14.13) caen justo acá.
+    # de travel (VIDEO_OPERATOR, §14.14) caen justo acá.
     unallocated_accounts = round(sum(
         _num(p) for p in payments
         if p.get("department_code") and not p.get("account_code")), 2)
@@ -1249,7 +1291,7 @@ def budget_summary(request: Request, year: int = Query(...), department: Optiona
     }
 
 
-def _cost_core(competition_ids: list, event_ids: list) -> dict:
+def _cost_core(competition_ids: list, event_ids: list, by_competition: bool = True) -> dict:
     """Costo de un conjunto de destinos: pagos a personas + airfare + gastos.
 
     Lo comparten `/competitions/{id}/cost` (una competencia) y
@@ -1359,6 +1401,9 @@ def _cost_core(competition_ids: list, event_ids: list) -> dict:
 
     people = []
     for p in pays:
+        # ⚠️ Este loop tiene que correr ANTES del desglose por competencia: es el
+        # que aplana el embed y deja `competition_id` en la fila del pago. Si se
+        # reordenan, los pagos desaparecen de `by_phase` sin ningún error.
         nom = p.pop("nominations", None) or {}
         p["competition_id"] = nom.get("competition_id")
         person = nom.get("personnel") or {}
@@ -1370,8 +1415,8 @@ def _cost_core(competition_ids: list, event_ids: list) -> dict:
     people.sort(key=lambda r: (r["name"] or "").lower())
 
     # Desglose por competencia, con las filas que ya están en memoria. Es lo que
-    # le sirve a una temporada para ver qué aporta cada fase; se calcula siempre
-    # porque no cuesta una query más, y llamar a _cost_core una vez por fase
+    # le sirve a una temporada para ver qué aporta cada fase; sale gratis porque
+    # no hace falta una query más, y llamar a _cost_core una vez por fase
     # multiplicaba las consultas contra una base que tiene rate limit.
     by_comp: dict = {}
 
@@ -1430,15 +1475,18 @@ def _cost_core(competition_ids: list, event_ids: list) -> dict:
             "result": round(rev_received - executed, 2),
             "projected_result": round(rev_received + rev_expected - executed - committed, 2),
         },
-        "revenues": sorted(revenues, key=lambda r: -_n(r)),
         "by_department": dept_rows,
-        "by_competition": comp_rows,
         "people": people,
+        # Los cancelados no son ni recibidos ni esperados: mostrarlos en la lista
+        # del evento invita a sumarlos de más a ojo.
+        "revenues": [r for r in sorted(revenues, key=lambda r: -_n(r))
+                     if r.get("status") != "cancelled"],
+        **({"by_competition": comp_rows} if by_competition else {}),
     }
 
 
 @router.get("/competitions/{competition_id}/cost")
-def competition_cost(competition_id: str, request: Request):
+def competition_cost(competition_id: str):
     """Costo total de una competencia.
 
     ⚠️ EXCEPCIÓN EXPLÍCITA al recorte por departamento — este endpoint NO llama
@@ -1456,11 +1504,9 @@ def competition_cost(competition_id: str, request: Request):
     if not comp:
         raise HTTPException(status_code=404, detail="Competition not found")
 
-    core = _cost_core([competition_id], [])
-    # El desglose por competencia solo tiene sentido para una temporada con
-    # fases; acá sería una sola fila repitiendo los totales.
-    core.pop("by_competition", None)
-    return {"competition": comp[0], **core}
+    # `by_competition` sería una sola fila repitiendo los totales; el endpoint
+    # de temporada es el único que lo usa (como `by_phase`).
+    return {"competition": comp[0], **_cost_core([competition_id], [], by_competition=False)}
 
 
 @router.get("/events/{event_id}/cost")
@@ -1490,7 +1536,7 @@ def budget_event_cost(event_id: str, request: Request):
     # Cuánto aporta cada fase por separado — la pregunta inmediata cuando el
     # total de la temporada no cierra con lo presupuestado. Sale del desglose
     # que `_cost_core` ya calculó, sin una query por fase.
-    totals_by_comp = {r["competition_id"]: r for r in result.pop("by_competition", [])}
+    totals_by_comp = {r["competition_id"]: r for r in result.pop("by_competition", []) or []}
     empty = {"budgeted": 0.0, "executed": 0.0, "committed": 0.0, "remaining": 0.0}
     result["by_phase"] = [
         {"competition_id": c["id"], "name": c["name"],

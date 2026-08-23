@@ -499,8 +499,16 @@ class Catalog:
         # igual que una competencia: para la planilla son una columna más.
         # Mientras la tabla esté vacía el pool es idéntico al de antes, así que
         # esto no puede cambiar el resultado de un import ya validado.
-        self.budget_events = supabase.table("budget_events").select("id, name, year") \
-            .eq("active", True).execute().data or []
+        events_q = supabase.table("budget_events").select("id, name, year, department_code") \
+            .eq("active", True)
+        # Recortado al alcance del que importa. La ruta por API valida el acceso
+        # al evento en `_check_target`; el import no pasa por ahí, así que sin
+        # este filtro una planilla con una columna que se llama igual que un
+        # evento ajeno le colgaría líneas — y `/events/{id}/cost` no está
+        # scopeado por diseño, o sea que se verían sumadas del otro lado.
+        if viewable is not None:
+            events_q = events_q.in_("department_code", viewable)
+        self.budget_events = events_q.execute().data or []
         self.event_ids = {e["id"] for e in self.budget_events}
         self.accounts = supabase.table("accounts").select("code, label, kind, active").execute().data or []
         self.departments = supabase.table("departments").select("code, label, active").execute().data or []
@@ -1133,6 +1141,14 @@ def commit(content: bytes, *, created_by: Optional[str] = None, **kwargs) -> dic
         record = {k: item[k] for k in _LINE_FIELDS if item.get(k) is not None}
         if item["status"] == "update":
             record.pop("series_id", None)
+            # Las dos columnas de destino van SIEMPRE, aunque sean None. Sin
+            # esto, mover una línea de una competencia a un evento dejaba las
+            # dos cargadas y el CHECK *_one_target la rechazaba con un 500
+            # genérico a mitad del commit (que escribe fila por fila, sin
+            # transacción); y moverla a General no la movía: el preview decía
+            # una cosa y la base guardaba otra.
+            record["competition_id"] = item.get("competition_id")
+            record["budget_event_id"] = item.get("budget_event_id")
             supabase.table("budget_lines").update(record).eq("id", item["existing_id"]).execute()
             updated += 1
         else:
@@ -1208,7 +1224,7 @@ def export_lines_xlsx(lines: list, year: int, lang: str = "es") -> bytes:
             _safe(line.get("account_label")),
             _safe(line.get("description")),
             _safe(line.get("department_label") or line.get("department_code")),
-            _safe(line.get("competition_name")),
+            _safe(line.get("event_display") or line.get("competition_name")),
             line.get("qty"),
             line.get("monthly_amount"),
             line.get("escalation_pct"),
