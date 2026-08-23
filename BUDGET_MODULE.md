@@ -675,6 +675,9 @@ que lo importado siga cuadrando con la planilla.
 
 ## 12. Pendientes
 
+> Superado por **§14** (revisión de agosto 2026): la hoja de ruta vigente son
+> las fases 6-11 de esa sección. Lo de acá sigue pendiente y se repite en 14.6.
+
 - **Plan de cuentas oficial de Finance.** Hasta que llegue, los códigos de
   Competitions son `COMP-01`…`COMP-28` con `pending_mapping = true`.
 - **Gastos ejecutados 2026** para importar. Se importan al final, cuando estén
@@ -751,3 +754,174 @@ el chequeo es por fila, no solo sobre el departamento del formulario.
 Validado contra los archivos reales: el de IT reproduce **$215.015** para 2027
 (92 filas, 4 años) y el de Competitions **$970.416** con las 13 columnas
 mapeadas, dejando afuera los mismos **$563.416** de §10.
+
+---
+
+## 14. Revisión de agosto 2026 — Budget + Payments como una sola herramienta
+
+> Estado: **decisiones tomadas, implementación pendiente.** Esta sección es el
+> contrato de lo que sigue; las fases 6-11 reemplazan a "§12 Pendientes" como
+> hoja de ruta. Nada de acá está implementado todavía.
+
+El pedido que abrió la revisión: que la sección sea **la herramienta de control,
+diseño, manejo y trazabilidad del presupuesto de los departamentos**, y que
+Payments relacione **todo** el gasto derivado de una competencia — el personal,
+pero también lo que implica operar el evento.
+
+### 14.1 Lo que la revisión encontró roto
+
+Seis cosas, en orden de cuánta plata se pierde de vista con cada una:
+
+1. **El puente Payments → Budget está cortado en el alta.** La migración 036
+   agregó `payments.department_code` y `account_code` y backfilleó lo histórico,
+   pero ni `create_payment`/`update_payment` (`routers/payments.py:193-245`) ni
+   `src/pages/Payments.jsx` los escriben nunca: la UI sigue usando el catálogo
+   viejo `payment_budgets`, que es justamente el que mezcla departamento y línea
+   y que la 036 vino a reemplazar. **Todo pago cargado desde la 036 en adelante
+   cae en `unallocated_payments`** y no aparece en ningún total por área. El
+   summary lo reporta en ámbar, así que el síntoma se ve; la causa no.
+2. **El airfare no consume presupuesto en ningún lado.** `/budget/summary` suma
+   `payments.total` (= amount + extra) y `competition_cost` lo devuelve como
+   línea aparte, fuera de `executed`. Pero el presupuesto sí tiene líneas de
+   viaje — COMP-07, 09, 12, 14 — que entonces muestran 100% de remanente para
+   siempre, aunque los vuelos estén pagados.
+3. **Los pagos abiertos no se filtran por año en el summary.** En
+   `budget.py:884` la guarda es
+   `if status == "completed" and not payment_date.startswith(year): continue`.
+   Un pago `new`/`in_process`/`split` no tiene `payment_date`, así que **no se
+   descarta nunca**: los pagos abiertos de 2026 suman como comprometido en el
+   total de 2027, de 2028 y de cualquier año que se consulte. Se arregla
+   imputándolos por el año de la competencia de su nominación, que es el dato
+   que sí existe.
+4. **El gasto de evento sin persona ya existe, pero en otra pantalla y con otro
+   permiso.** Shipping, branding, seguros y doping van a `expenses` (pestaña
+   Gastos, permiso `budget`); las personas van a Payments (permiso `payments`).
+   Quien opera un evento necesita dos permisos y dos pantallas para ver el mismo
+   gasto, y ninguna de las dos le muestra el evento completo salvo el panel de
+   costo.
+5. **Dos ciclos de estado que no se hablan:** `expenses` es
+   `draft→approved→paid` con aprobador; `payments` es
+   `new→in_process→split→completed` sin aprobación de ningún tipo.
+6. **Trazabilidad a medias.** El activity log (middleware de `api/index.py`)
+   registra método + path + id, deliberadamente sin body. Sirve para "quién tocó
+   qué"; no responde "esta línea pasó de $80.000 a $95.000, quién y cuándo".
+
+### 14.2 Decisiones
+
+| # | Decisión | Por qué |
+|---|----------|---------|
+| 1 | **Payments pasa a ser la bandeja única del gasto de un evento**: personas nominadas *y* proveedores/gasto operativo en una sola grilla, con alta de ambos desde ahí. | Es el pedido literal. Budget queda como la herramienta de **diseñar y controlar** el presupuesto; Payments, la de **ejecutarlo** contra un evento. |
+| 2 | La bandeja se abre con el permiso **`payments`**, y sus filas se recortan con el mismo **`budget_access`** que Budget. | Quien opera un evento ve el evento entero (una competencia cruza departamentos), pero solo carga y edita en los suyos. Es la regla que `competition_cost` ya aplica — deja de ser una excepción y pasa a ser la norma de la sección. |
+| 3 | **El airfare consume presupuesto**, imputado a la cuenta de *travel* del rol de la persona. | Cierra las líneas de viaje, que hoy nunca se consumen. Requiere una segunda cuenta en el pago: el fee va a COMP-11 y el vuelo de la misma persona a COMP-12. |
+| 4 | **Aprobación de un solo nivel, sin umbral**: el designado con `can_edit` del departamento aprueba cualquier monto de su área. Los pagos a personas entran al mismo circuito, que hoy no tienen. | Se evita inventar un escalamiento que nadie pidió. El control real ya lo da el recorte por departamento: nadie aprueba plata ajena. |
+| 5 | **Todo en USD**, como hoy. Quien carga convierte antes de ingresar. | Sin columna de moneda ni tipo de cambio: cero cambios de schema y ningún FX que mantener. |
+| 6 | **El remanente descuenta lo comprometido**: `presupuestado − ejecutado − comprometido`. | Un gasto aprobado o un pago pendiente ya reservó la plata. El ejecutado se sigue mostrando aparte. |
+| 7 | **El presupuesto administrativo anual se respeta como tal** — IT y Admin son la operación anual de FIBA Américas, no un evento. Siguen siendo `competition_id = NULL`, la columna "General". | Ya está bien modelado. Disfrazarlo de evento sería peor: ensuciaría el reporte por competencia con overhead que no pertenece a ninguna. |
+| 8 | **Entidad nueva `budget_events`** para el gasto que no es ni competencia del calendario ni overhead anual: Draws, workshops, y las **temporadas** de las ligas. | Ver 14.3 — dos problemas distintos que resultan tener la misma solución. |
+| 9 | **Las temporadas presupuestan, las fases ejecutan.** Las fases del calendario cuelgan de un `budget_event` temporada; el presupuesto vive arriba, el gasto real se imputa a la fase donde ocurrió y el reporte suma hacia arriba. | Es la forma del dato real: el Excel presupuesta la temporada de Liga Sudamericana, la base modela sus 6 fases. Ninguna de las dos está mal. |
+| 10 | **Hospedaje y comidas quedan fuera** del presupuesto. Logística sigue sin hablarse con Budget. | Decisión del cliente: se liquidan por fuera del sistema. |
+| 11 | **Resultado por evento**: el panel de costo muestra ingresos contra gasto total. | `revenues` ya guarda `competition_id`; la cifra está, falta cruzarla. |
+
+### 14.3 `budget_events` — por qué una sola entidad para dos problemas
+
+Quedaron sin resolver dos cosas que parecían distintas:
+
+- **Los Draws de AmeriCup ($82.900) y los workshops de TDs.** Son operaciones
+  reales con gasto propio, pero no son competencias del calendario ni overhead
+  anual. Hoy no tienen dónde vivir salvo General, que los vuelve invisibles.
+- **Liga Sudamericana ($323.316), LSF ($44.800) y WBLA ($112.400).** El Excel
+  presupuesta la temporada entera; `competitions` tiene las fases sueltas
+  (Group A-D, QFs, Finals) y **ninguna noción de temporada ni de fase** — no hay
+  parent, ni grupo, ni nada que las una.
+
+Las dos necesitan lo mismo: **un contenedor de gasto con identidad propia, que
+no es una competencia**. Uno sin hijos es un Draw; uno con las fases colgadas es
+una temporada. Una entidad, dos usos:
+
+```sql
+-- 038 (propuesta)
+CREATE TABLE budget_events (
+    id              uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    name            text NOT NULL,
+    year            integer NOT NULL,
+    department_code text NOT NULL REFERENCES departments(code) ON UPDATE CASCADE,
+    kind            text NOT NULL CHECK (kind IN ('season', 'draw', 'workshop', 'other')),
+    start_date      date,
+    end_date        date,
+    active          boolean NOT NULL DEFAULT true,
+    notes           text
+);
+
+-- Las fases de una liga cuelgan de su temporada. NULL = competencia suelta,
+-- que es el 90% del calendario.
+ALTER TABLE competitions ADD COLUMN budget_event_id uuid
+    REFERENCES budget_events(id) ON DELETE SET NULL;
+
+-- Presupuesto y gasto pueden apuntar al contenedor en vez de a una competencia.
+ALTER TABLE budget_lines ADD COLUMN budget_event_id uuid REFERENCES budget_events(id) ON DELETE SET NULL;
+ALTER TABLE expenses     ADD COLUMN budget_event_id uuid REFERENCES budget_events(id) ON DELETE SET NULL;
+```
+
+**No aparece en nominaciones, logística ni juegos.** Es una entidad del módulo
+Budget: no tiene partidos, ni crew, ni cartas. La alternativa —darlos de alta
+como `competitions` con una marca de "no deportiva"— obligaría a que media
+docena de módulos aprendan a filtrarlas, y el primero que se olvide manda un
+Draw a la lista de nominables.
+
+**Regla de rollup:** el costo de un `budget_event` es el suyo propio **más** el
+de sus competencias hijas. Una fase nunca se cuenta dos veces porque su gasto
+vive solo en ella; lo que sube es la suma, no una copia.
+
+Con esto entran los **$563.416** que hoy quedan afuera del import (§10): las
+columnas del Excel que no matcheaban pasan a matchear contra un
+`budget_event` en vez de contra una competencia que no existe.
+
+### 14.4 El airfare y su cuenta
+
+Un pago tiene hoy **una** `account_code`, pero paga dos cosas que son líneas
+distintas del presupuesto: el fee de la persona y su vuelo. Se agrega
+`payments.airfare_account_code`, con este default por `personnel.role`:
+
+| Rol | Fee | Travel |
+|-----|-----|--------|
+| `TD` | COMP-11 Technical Delegate Fees | COMP-12 Technical Delegate Travel Expense |
+| `VGO` | COMP-13 TV Graphics Operator Fees | COMP-14 TV Graphics Operator Travel Expenses |
+| `REF` | COMP-10 Referees Fees | COMP-07 Referees Travel Expense |
+| `REF_INSTRUCTOR` | COMP-08 Referee Instructor / Commissioners Fees | COMP-09 Referee Instructor / Commissioners Travel Expense |
+| `VIDEO_OPERATOR` | ⚠️ sin cuenta | ⚠️ sin cuenta |
+
+El mapeo de fees es el mismo que ya hizo el backfill de la 036; el de travel es
+su columna paralela en el Excel de Competitions. **`VIDEO_OPERATOR` no tiene
+cuenta asignada** — el backfill de la 036 tampoco se la dio — y queda como
+pregunta abierta (14.6): es un rol distinto de `VGO` en este sistema, aunque el
+Excel solo trae "TV Graphics Operator".
+
+⚠️ **No hay doble conteo con las líneas calculadas de headcount.** Esas líneas
+son *presupuesto* (headcount × costo de vuelo promedio); el airfare imputado es
+*ejecutado*. Son los dos lados de la misma comparación, no dos sumas del mismo
+número.
+
+### 14.5 Fases
+
+| Fase | Alcance | Por qué en este orden |
+|------|---------|----------------------|
+| **6** | **El puente y el año.** Departamento + cuenta obligatorios al crear/editar un pago, con prefill por rol; `airfare_account_code`; la UI de Payments migra de `payment_budgets` a departamento + cuenta; los pagos abiertos se imputan por el año de su competencia; backfill de lo cargado sin imputar desde la 036. | Es el bug que hace que la plata no se vea. Alto valor, bajo riesgo, sin schema nuevo salvo una columna. |
+| **7** | **Remanente con compromiso** en `/budget/summary`, `competition_cost` y el dashboard. | Cambio de fórmula acotado, y hace falta antes de que alguien tome decisiones mirando el número viejo. |
+| **8** | **Migración 038: `budget_events`**, rollup temporada → fases, y reimport de los $563.416 que hoy quedan afuera. | Schema nuevo. Independiente de la 6 y la 7, se puede hacer en paralelo. |
+| **9** | **Bandeja única del evento**: Payments muestra personas + proveedores + gasto operativo, con `budget_access` recortando filas y el alta de gasto de proveedor desde ahí. | Es la fase grande de UI y necesita que la 6 y la 8 ya hayan pasado: sin imputación ni contenedor de evento, la bandeja mostraría totales que no cierran. |
+| **10** | **Aprobación de un nivel** para gastos y pagos, con bandeja de pendientes del departamento. | Depende de la 9: la bandeja de aprobación vive en la misma pantalla. |
+| **11** | **Resultado por evento**: ingresos contra costo total en el panel de la competencia y del `budget_event`. | Cierra el reporting. Necesita el rollup de la 8. |
+
+### 14.6 Preguntas abiertas
+
+- **`VIDEO_OPERATOR` no tiene cuenta de fee ni de travel** (14.4). ¿Va contra
+  COMP-13/COMP-14 junto con los VGO, o es una línea propia que el Excel no trae?
+- **Historial de montos.** El activity log no guarda valores (14.1 #6). ¿Hace
+  falta historial campo a campo — quién cambió un monto, de cuánto a cuánto — en
+  las líneas de presupuesto, en los gastos, o en ninguno?
+- **Plan de cuentas oficial de Finance** — sigue pendiente desde §12. Mientras
+  tanto los códigos `COMP-*` y `COMM-*` son provisorios.
+- **Gastos ejecutados 2026** para importar: faltan los archivos.
+- **A quién se le otorga `budget` y `payments`,** y qué filas de `budget_access`
+  lleva cada designado. Hoy el permiso `budget` no está sembrado a nadie y
+  `budget_access` vacío significa que nadie ve nada.
