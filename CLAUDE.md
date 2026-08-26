@@ -155,6 +155,24 @@ legacy `fibaamericascloud.com`).
       distingue lo cargado en la cancha (`self`) de lo transcripto en la oficina
       (`admin`).
 
+12. **`date`/`time` de un partido son hora LOCAL de la sede.** No UTC, no hora
+    de Argentina, no la del navegador. Es lo que ve el TD en el gimnasio y lo
+    que muestra la web de FIBA. El ancla para convertir a cualquier otra zona
+    es `game_schedule.datetime_utc` (migración 039), que sale de
+    `gameDateTimeUTC` de FIBA.
+
+    - **Nunca sumes un offset a la hora local.** La competencia toca 16 zonas
+      IANA que cambian de horario de verano en fechas distintas, y algunas no
+      cambian. Convertí desde `datetime_utc`.
+    - Cuidado con la fecha: México juega 20:10 local y eso es **02:10 UTC del
+      día siguiente**. `datetime_utc` es timestamptz justamente por eso, y la
+      card marca `+1`/`-1` cuando en la zona destino el partido cae otro día.
+    - `NULL` significa que FIBA todavía no fijó horario
+      (`hasTimeGameDateTime=false`); la UI muestra `--:--` en vez de inventar.
+      `'00:00'` en `time` es lo mismo: relleno, no medianoche.
+    - La hora del war room (Miami) vive en `src/lib/warRoom.js`, con la zona en
+      una sola constante `WAR_ROOM_TZ`.
+
 ---
 
 ## 🗺️ Mapa del repo
