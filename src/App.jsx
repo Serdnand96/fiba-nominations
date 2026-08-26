@@ -15,6 +15,7 @@ const PublicAvailability = lazy(() => import('./pages/PublicAvailability'))
 // Vista pública de logística (ruta sin auth, lazy: solo la abre quien recibe
 // el link compartido de una competencia)
 const PublicLogistics = lazy(() => import('./pages/PublicLogistics'))
+const PublicChecklist = lazy(() => import('./pages/PublicChecklist'))
 
 // Lazy-load every authenticated page so the initial bundle is small
 const Calendar     = lazy(() => import('./pages/Calendar'))
@@ -156,6 +157,23 @@ export default function App() {
       }>
         <Routes>
           <Route path="/logistica/:token" element={<PublicLogistics />} />
+        </Routes>
+      </Suspense>
+    )
+  }
+
+  // Checklist de sede: /checklist/<token>. Mismo criterio de token largo que
+  // las dos anteriores. OJO: a diferencia de esas, esta vista ESCRIBE — el
+  // oficial marca los ítems desde acá (ver public_checklists.py).
+  if (typeof window !== 'undefined' && /^\/checklist\/[A-Za-z0-9_-]{16,}$/.test(window.location.pathname)) {
+    return (
+      <Suspense fallback={
+        <div className="min-h-screen bg-ink-50 dark:bg-navy-950 flex items-center justify-center">
+          <div className="w-6 h-6 border-2 border-basketball-500 border-t-transparent rounded-full animate-spin" />
+        </div>
+      }>
+        <Routes>
+          <Route path="/checklist/:token" element={<PublicChecklist />} />
         </Routes>
       </Suspense>
     )

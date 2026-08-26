@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo, useLayoutEffect } from 'react'
+import { useState, useEffect, useRef, useMemo, useCallback, useLayoutEffect } from 'react'
 import { createPortal } from 'react-dom'
 import {
   getGames, getGameDates, getGameTeams, createGame, updateGame, deleteGame,
@@ -8,7 +8,10 @@ import {
   setTeamCountries, getCompetitionFlights, setFlightBooked,
   getCompetitionCrew, addCrewMember, removeCrewMember,
   getStaffing, getStaffingCandidates, addStaffing, updateStaffing, removeStaffing,
+  getChecklistTemplates, getChecklistSummary,
 } from '../api/client'
+import ChecklistPanel from './games/ChecklistPanel'
+import GameChecklistModal from './games/GameChecklistModal'
 import { Icon } from '../lib/icons'
 import { useLanguage } from '../i18n/LanguageContext'
 import { useToast } from '../components/ui/Toast'
@@ -161,6 +164,13 @@ export default function Games() {
   const [staffForm, setStaffForm] = useState({ event_role: '', start_date: '', end_date: '' })
   const [staffMsg, setStaffMsg] = useState('')
   const [staffSaving, setStaffSaving] = useState(false)
+  // Control de operación: checklists de sede por partido (migración 038).
+  // El resumen viene en una sola llamada — la página pinta N cards y no puede
+  // pedir una corrida por card.
+  const [checklistTemplates, setChecklistTemplates] = useState([])
+  const [checklistSummary, setChecklistSummary] = useState({})
+  const [showChecklistPanel, setShowChecklistPanel] = useState(false)
+  const [checklistGame, setChecklistGame] = useState(null)
   // Club country mapping panel (club competitions only)
   const [showTeamCountries, setShowTeamCountries] = useState(false)
   const [teamCountryDraft, setTeamCountryDraft] = useState({}) // team name → code
@@ -409,6 +419,26 @@ export default function Games() {
       push({ type: 'error', title: typeof detail === 'string' ? detail : 'Error' })
     }
   }
+
+  // ── Control de operación (checklists de sede) ────────────────────────────
+
+  // Las plantillas son globales; el resumen es por competencia.
+  useEffect(() => {
+    let cancelled = false
+    getChecklistTemplates()
+      .then(data => { if (!cancelled) setChecklistTemplates(data || []) })
+      .catch(() => { if (!cancelled) setChecklistTemplates([]) })
+    return () => { cancelled = true }
+  }, [])
+
+  const reloadChecklistSummary = useCallback(() => {
+    if (!selectedCompId) { setChecklistSummary({}); return Promise.resolve() }
+    return getChecklistSummary(selectedCompId)
+      .then(data => setChecklistSummary(data || {}))
+      .catch(() => setChecklistSummary({}))
+  }, [selectedCompId])
+
+  useEffect(() => { reloadChecklistSummary() }, [reloadChecklistSummary])
 
   // ── Staffing plan (FIBA staff) ───────────────────────────────────────────
 
@@ -1026,6 +1056,13 @@ export default function Games() {
                   </span>
                 )}
               </button>
+              {/* Control de operación: plantillas de checklist + el link con el
+                  que el oficial las completa desde la sede. */}
+              <button onClick={() => setShowChecklistPanel(true)}
+                className="btn-fiba-ghost"
+                title={t('games.checklistsHint')}>
+                {t('games.checklists')}
+              </button>
               {isClubComp && canEdit && games.length > 0 && (
                 <button onClick={() => setShowTeamCountries(s => !s)}
                   className="btn-fiba-ghost relative"
@@ -1566,7 +1603,10 @@ export default function Games() {
                       refConflictFor={refConflictFor}
                       defaultExpanded={detailed}
                       flightByPersonnel={flightByPersonnel}
-                      onToggleFlight={handleToggleFlight} />
+                      onToggleFlight={handleToggleFlight}
+                      checklist={checklistSummary[game.id]}
+                      hasChecklistTemplates={checklistTemplates.length > 0}
+                      onOpenChecklist={() => setChecklistGame(game)} />
                   ))}
                 </div>
               </div>
@@ -1821,6 +1861,27 @@ export default function Games() {
           </div>
         </div>
       )}
+
+      {/* Control de operación — plantillas de checklist y link para la sede. */}
+      {showChecklistPanel && selectedCompId && (
+        <ChecklistPanel
+          competitionId={selectedCompId}
+          competitionName={selectedComp?.name || ''}
+          canEdit={canEdit}
+          onTemplatesChange={setChecklistTemplates}
+          onClose={() => { setShowChecklistPanel(false); reloadChecklistSummary() }} />
+      )}
+
+      {/* Los checklists de un partido. El mismo dato que carga el VGO en la
+          sede por el link público; acá el desk lo corrige y lo cierra. */}
+      {checklistGame && (
+        <GameChecklistModal
+          game={checklistGame}
+          templates={checklistTemplates}
+          canEdit={canEdit}
+          onChanged={reloadChecklistSummary}
+          onClose={() => setChecklistGame(null)} />
+      )}
     </div>
   )
 }
@@ -1900,6 +1961,7 @@ function GameCard({
   coveringCrew = [], crewOverrides = {}, onToggleCrewGame,
   onAssign, onUnassign, refConflictFor, defaultExpanded = false,
   flightByPersonnel = {}, onToggleFlight,
+  checklist = null, hasChecklistTemplates = false, onOpenChecklist,
 }) {
   // Staff is collapsed by default; the global Compacto/Detallado toggle drives
   // every card, and this one's "+" overrides it for a single game.
@@ -2152,6 +2214,36 @@ function GameCard({
             {renderSlots(officiatingSlots)}
           </div>
         )
+      )}
+
+      {/* Operación — el control técnico de sede. Vive al pie de la card porque
+          es lo último que pasa antes del partido, y porque lo que importa a
+          simple vista es una sola cosa: si algo falló. */}
+      {(hasChecklistTemplates || checklist) && (
+        <button type="button" onClick={onOpenChecklist}
+          className="border-t border-fiba-border mt-2 pt-2 flex items-center gap-2 text-left w-full group">
+          <span className="text-[10px] font-bold uppercase tracking-wider text-fiba-muted/70 flex-shrink-0">
+            {t('games.checklistsShort')}
+          </span>
+          <span className="flex-1 min-w-0 text-[11px] text-fiba-muted truncate">
+            {!checklist || checklist.runs === 0
+              ? t('games.checklistNone')
+              : checklist.failed > 0
+                ? t('games.checklistFailed').replace('{count}', checklist.failed)
+                : checklist.submitted === checklist.runs
+                  ? t('games.checklistDone')
+                  : t('games.checklistOpen')}
+          </span>
+          <span className={`flex-shrink-0 text-[10px] font-bold tabular-nums px-1.5 py-0.5 rounded border ${
+            checklist?.failed > 0
+              ? 'border-red-500/50 text-red-400'
+              : checklist && checklist.runs > 0 && checklist.submitted === checklist.runs
+                ? 'border-emerald-500/50 text-emerald-400'
+                : 'border-fiba-border text-fiba-muted group-hover:text-fiba-accent'
+          }`}>
+            {checklist ? `${checklist.done}/${checklist.total}` : '0/0'}
+          </span>
+        </button>
       )}
     </div>
   )

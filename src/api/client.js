@@ -602,3 +602,49 @@ export const getEmployee = (id) => api.get(`/employees/${id}`).then(r => r.data)
 export const createEmployee = (data) => api.post('/employees', data).then(r => r.data)
 export const updateEmployee = (id, data) => api.put(`/employees/${id}`, data).then(r => r.data)
 export const deleteEmployee = (id) => api.delete(`/employees/${id}`).then(r => r.data)
+
+// ── Control de operación por partido (checklists de sede) ───────────────────
+// Las plantillas son datos, no código: agregar un checklist de TD o de médico
+// se hace desde la UI. Permiso `games`, igual que el crew (ver migración 038).
+export const getChecklistTemplates = (includeInactive = false) =>
+  api.get('/checklists/templates', { params: includeInactive ? { include_inactive: true } : {} }).then(r => r.data)
+export const createChecklistTemplate = (data) => api.post('/checklists/templates', data).then(r => r.data)
+export const updateChecklistTemplate = (id, data) => api.put(`/checklists/templates/${id}`, data).then(r => r.data)
+export const deleteChecklistTemplate = (id) => api.delete(`/checklists/templates/${id}`).then(r => r.data)
+
+// Resumen por competencia en una sola llamada: la página pinta N cards y no
+// puede pedir una corrida por card.
+export const getChecklistSummary = (competitionId) =>
+  api.get('/checklists/summary', { params: { competition_id: competitionId } }).then(r => r.data)
+export const getGameChecklists = (gameId) => api.get(`/checklists/games/${gameId}`).then(r => r.data)
+export const startGameChecklist = (gameId, templateId) =>
+  api.post(`/checklists/games/${gameId}`, { template_id: templateId }).then(r => r.data)
+export const deleteGameChecklist = (runId) => api.delete(`/checklists/runs/${runId}`).then(r => r.data)
+export const updateChecklistItem = (itemId, patch) =>
+  api.patch(`/checklists/items/${itemId}`, patch).then(r => r.data)
+export const submitGameChecklist = (runId, payload = {}) =>
+  api.post(`/checklists/runs/${runId}/submit`, payload).then(r => r.data)
+export const reopenGameChecklist = (runId) => api.post(`/checklists/runs/${runId}/reopen`).then(r => r.data)
+
+// Link para que el oficial cargue el checklist desde la sede. OJO: este link
+// ESCRIBE, a diferencia del de logística. Rotarlo invalida el ya compartido.
+export const getChecklistLink = (competitionId) => api.get(`/checklists/link/${competitionId}`).then(r => r.data)
+export const rotateChecklistLink = (competitionId) => api.post(`/checklists/link/${competitionId}/rotate`).then(r => r.data)
+export const toggleChecklistLink = (competitionId, enabled) =>
+  api.put(`/checklists/link/${competitionId}/toggle`, null, { params: { enabled } }).then(r => r.data)
+export const getChecklistLinkQr = async (competitionId) => {
+  const resp = await api.get(`/checklists/link/${competitionId}/qr.png`, { responseType: 'blob' })
+  return URL.createObjectURL(resp.data)
+}
+
+// Vista pública del checklist (sin auth, token en la URL)
+export const getPublicChecklists = (token, date) =>
+  api.get(`/public/checklists/${token}`, { params: date ? { date } : {} }).then(r => r.data)
+export const getPublicChecklistGame = (token, gameId, role) =>
+  api.get(`/public/checklists/${token}/games/${gameId}`, { params: role ? { role } : {} }).then(r => r.data)
+export const startPublicChecklist = (token, gameId, payload) =>
+  api.post(`/public/checklists/${token}/games/${gameId}`, payload).then(r => r.data)
+export const updatePublicChecklistItem = (token, itemId, patch) =>
+  api.patch(`/public/checklists/${token}/items/${itemId}`, patch).then(r => r.data)
+export const submitPublicChecklist = (token, runId, payload = {}) =>
+  api.post(`/public/checklists/${token}/runs/${runId}/submit`, payload).then(r => r.data)

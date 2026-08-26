@@ -1335,6 +1335,17 @@ const translations = {
       en: 'Neutrality conflict: {names}',
       es: 'Conflicto de neutralidad: {names}',
     },
+    // Control de operación: checklists técnicos de sede por partido (038).
+    checklists: { en: 'Ops control', es: 'Control de operación' },
+    checklistsHint: {
+      en: 'Venue checklists: what the VGO tests before the game, and the link they fill it in from.',
+      es: 'Checklists de sede: lo que el VGO prueba antes del partido, y el link con el que lo carga.',
+    },
+    checklistsShort: { en: 'Ops', es: 'Operación' },
+    checklistNone: { en: 'No check run yet', es: 'Sin control todavía' },
+    checklistOpen: { en: 'Check in progress', es: 'Control en curso' },
+    checklistDone: { en: 'Checked and signed', es: 'Controlado y firmado' },
+    checklistFailed: { en: '{count} failing', es: '{count} con falla' },
     // Staffing plan: FIBA staff on site. Not nominated — no letter, no fee.
     staffing: { en: 'Staffing Plan', es: 'Staffing Plan' },
     staffingHint: {

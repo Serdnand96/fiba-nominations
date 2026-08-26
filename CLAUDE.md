@@ -133,6 +133,28 @@ legacy `fibaamericascloud.com`).
     `user_permissions.module`, `MODULES` en `permissions.py` y `MODULES` en
     `src/pages/Users.jsx`.
 
+11. **Los checklists de sede son datos, no código** (migración 038,
+    `checklists.py` + `public_checklists.py`). "El VGO llega a la sede y prueba
+    reloj, fill & key, software, GFX y stats" es *una* plantilla
+    (`checklist_templates`), editable desde el panel **Control de operación** en
+    Games. Agregar la del TD o la del médico no toca el backend.
+
+    - La corrida se engancha al **partido**, no a la sede ni al día.
+    - Abrir una corrida **copia** los ítems de la plantilla a
+      `game_checklist_items`. Editar la plantilla en octubre no reescribe lo que
+      se firmó en agosto — por eso hay `label` duplicado, no es un descuido.
+    - **El estado no se guarda.** `pending` / en curso / cerrado / con falla se
+      derivan de los ítems en `run_state()`. No agregar una columna `status`.
+    - Permiso `games`, el mismo del crew y del staffing plan. No es una página.
+    - Hay una **tercera vista pública**, `/checklist/<token>` →
+      `/api/public/checklists/<token>`. A diferencia de logística y
+      availability, esta **escribe**: cada PATCH revalida la cadena ítem →
+      corrida → partido → competencia contra el token, y una corrida cerrada es
+      de solo lectura desde afuera (reabrirla exige permiso `games`). La firma
+      se pide una vez al abrir la corrida, no ítem por ítem; `checked_source`
+      distingue lo cargado en la cancha (`self`) de lo transcripto en la oficina
+      (`admin`).
+
 ---
 
 ## 🗺️ Mapa del repo

@@ -7,7 +7,7 @@ from api._lib.routers import (
     availability, permissions, training, games,
     assets, loans, public_assets, public_availability, employees, templates, payments,
     activity, reports, evaluations, logistics, public_logistics, staffing,
-    budget,
+    budget, checklists, public_checklists,
 )
 
 app = FastAPI(title="FIBA Americas Administration API", docs_url=None, redoc_url=None)
@@ -249,6 +249,8 @@ app.include_router(logistics.router, prefix="/api")
 app.include_router(public_logistics.router, prefix="/api")
 app.include_router(staffing.router, prefix="/api")
 app.include_router(budget.router, prefix="/api")
+app.include_router(checklists.router, prefix="/api")
+app.include_router(public_checklists.router, prefix="/api")
 
 
 @app.get("/api")
