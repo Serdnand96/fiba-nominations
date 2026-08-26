@@ -1980,6 +1980,11 @@ function GameCard({
   const isLive = game.status === 'live'
   const scoreA = game.score_a ?? '-'
   const scoreB = game.score_b ?? '-'
+  // '00:00' no es medianoche: es el relleno que manda FIBA cuando todavía no
+  // fijó el horario (hasTimeGameDateTime=false, ver games.py) y el que dejó el
+  // import viejo. Un partido de básquet no arranca a las 00:00, así que se
+  // muestra como "--:--" en vez de mentir una hora.
+  const gameTime = game.time && game.time !== '00:00' ? game.time : null
   const locationLine = [game.venue, [game.city, displayCountry].filter(Boolean).join(', ')]
     .filter(Boolean).join(' · ')
   // Slots offered per game. On a tournament the TD/VGO of the crew already
@@ -2109,14 +2114,20 @@ function GameCard({
           {isCompleted || isLive ? (
             <span className="text-ink-900 dark:text-white">{scoreA}<span className="text-fiba-muted font-normal mx-1">-</span>{scoreB}</span>
           ) : (
-            <span className="text-fiba-accent">{game.time || '--:--'}</span>
+            <span className="text-fiba-accent">{gameTime || '--:--'}</span>
           )}
         </span>
       </div>
 
-      {/* Location line */}
-      {(locationLine || game.game_number) && (
+      {/* Location line. Una vez que hay resultado el lugar grande es del
+          marcador, pero la hora sigue haciendo falta —el crew la usa para
+          llegar a la sede, y un "FINAL" con horario de mañana es justo lo que
+          conviene poder detectar de un vistazo—, así que baja acá. */}
+      {(locationLine || game.game_number || ((isCompleted || isLive) && gameTime)) && (
         <div className="flex items-center gap-2 mt-0.5 min-w-0">
+          {(isCompleted || isLive) && gameTime && (
+            <span className="text-[11px] font-semibold text-fiba-accent tabular-nums flex-shrink-0">{gameTime}</span>
+          )}
           {locationLine && (
             <span className="text-[11px] text-fiba-muted truncate" title={locationLine}>{locationLine}</span>
           )}
