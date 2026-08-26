@@ -30,6 +30,11 @@ ASSIGNMENT_TEMPLATES = {"WCQ", "BCLA", "LSB"}
 
 _MAX_UPLOAD_BYTES = 5 * 1024 * 1024
 
+# Campos del cronograma que manda FIBA y que el sync pisa sobre lo que haya.
+# `phase` NO está: la deriva _detect_phase() por heurística y pisaría una fase
+# corregida a mano.
+_SCHEDULE_FIELDS = ("date", "time", "venue", "city", "country", "group_label", "game_number")
+
 
 # ── Schemas ──────────────────────────────────────────────────────────────────
 
@@ -253,6 +258,7 @@ def sync_results(competition_id: str = Query(...)):
     synced = 0
     created = 0
     errors = []
+    rescheduled = []
 
     for fiba_game in games_data:
         # Try to match by fiba_game_id first
@@ -271,7 +277,6 @@ def sync_results(competition_id: str = Query(...)):
             )
 
         if match:
-            # Update scores and status
             update_data = {"updated_at": datetime.utcnow().isoformat()}
             if fiba_game.get("score_a") is not None:
                 update_data["score_a"] = fiba_game["score_a"]
@@ -279,6 +284,35 @@ def sync_results(competition_id: str = Query(...)):
                 update_data["score_b"] = fiba_game["score_b"]
             if fiba_game.get("status"):
                 update_data["status"] = fiba_game["status"]
+
+            # FIBA es la fuente del CRONOGRAMA, no solo del resultado. Hasta acá
+            # el sync escribía score y estado nada más, así que un cambio de
+            # horario o de sede no llegaba nunca: la fila se quedaba con lo que
+            # tenía del import original (por eso había partidos en 00:00 y sin
+            # sede después de sincronizar).
+            #
+            # `phase` queda afuera a propósito: sale de _detect_phase(), que es
+            # una heurística sobre el nombre del partido y pisaría una fase
+            # corregida a mano.
+            for field in _SCHEDULE_FIELDS:
+                value = fiba_game.get(field)
+                if value not in (None, ""):
+                    update_data[field] = value
+
+            # Un partido que se mueve de hora o de sede arrastra traslados,
+            # crew y checklists. Que el sync lo devuelva callado y el desk se
+            # entere por el grupo de WhatsApp no sirve.
+            moved = {
+                field: {"antes": match.get(field), "ahora": update_data[field]}
+                for field in _SCHEDULE_FIELDS
+                if field in update_data and (match.get(field) or None) != (update_data[field] or None)
+            }
+            if moved:
+                rescheduled.append({
+                    "game": f"{match.get('team_a')} vs {match.get('team_b')}",
+                    "game_number": match.get("game_number"),
+                    "changes": moved,
+                })
 
             supabase.table("game_schedule").update(update_data).eq("id", match["id"]).execute()
             synced += 1
@@ -302,7 +336,13 @@ def sync_results(competition_id: str = Query(...)):
                     "error": str(e),
                 })
 
-    return {"synced": synced, "created": created, "total_from_fiba": len(games_data), "errors": errors}
+    return {
+        "synced": synced,
+        "created": created,
+        "total_from_fiba": len(games_data),
+        "errors": errors,
+        "rescheduled": rescheduled,
+    }
 
 
 # ── FIBA API integration ────────────────────────────────────────────────────
@@ -390,19 +430,34 @@ def _extract_fiba_competition_id(fiba_url: str) -> str | None:
 
 def _fiba_json_to_game(g: dict) -> dict:
     """Convert a FIBA API game object to our schema."""
+    # `gameDateTime` es hora LOCAL de la sede; `gameDateTimeUTC` es la otra cara
+    # del mismo dato. Va la local a propósito: es la que le sirve al VGO parado
+    # en el gimnasio y la que muestra la web de FIBA.
     game_dt = g.get("gameDateTime", "") or ""
     date_str = game_dt[:10] if game_dt else ""
-    time_str = game_dt[11:16] if len(game_dt) >= 16 else ""
+    # hasTimeGameDateTime=false → FIBA todavía no fijó el horario y la parte de
+    # hora es relleno (hoy, 24 de 84 partidos). Mejor sin hora que con una
+    # inventada: el front ya muestra "--:--".
+    has_time = g.get("hasTimeGameDateTime", True)
+    time_str = game_dt[11:16] if (has_time and len(game_dt) >= 16) else None
 
     score_a = g.get("teamAScore")
     score_b = g.get("teamBScore")
 
+    # El estado sale de `statusCode`, no del score: FIBA manda 0-0 en todo lo
+    # que no se jugó, así que derivarlo del score marcaba como "FINAL 0-0" cada
+    # partido futuro. INIT = programado, VALID = resultado oficial.
+    status_code = (g.get("statusCode") or "").upper()
     if g.get("isLive", False):
         status = "live"
-    elif score_a is not None and score_b is not None:
+    elif status_code == "VALID":
         status = "completed"
-    else:
+    elif status_code == "INIT":
         status = "scheduled"
+    else:
+        # statusCode que no conocemos: volver al score, pero un partido de
+        # básquet no termina 0-0.
+        status = "completed" if (score_a or 0) or (score_b or 0) else "scheduled"
 
     team_a = g.get("teamA") or {}
     team_b = g.get("teamB") or {}
