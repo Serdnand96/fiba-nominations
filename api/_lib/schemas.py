@@ -52,6 +52,9 @@ class CompetitionCreate(BaseModel):
     template_key: str
     year: Optional[int] = None
     fiba_games_url: Optional[str] = None
+    # W1..W6 — acota el sync a una ventana del clasificatorio. FIBA devuelve el
+    # clasificatorio entero por la misma URL (migración 040). None = sin filtro.
+    fiba_window_code: Optional[str] = None
     fee_type: Optional[FeeType] = "per_game"
     # National-team event → referee neutrality restriction applies.
     # None → derived from template_key (WCQ) at creation.
@@ -63,6 +66,7 @@ class CompetitionUpdate(BaseModel):
     template_key: Optional[str] = None
     year: Optional[int] = None
     fiba_games_url: Optional[str] = None
+    fiba_window_code: Optional[str] = None
     fee_type: Optional[FeeType] = None
     is_national_team: Optional[bool] = None
     # Nomination defaults used by the per-game assignment workflow

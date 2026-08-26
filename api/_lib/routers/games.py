@@ -276,19 +276,29 @@ def _team_mismatch(ours: dict, fiba: dict) -> dict | None:
 def sync_results(competition_id: str = Query(...)):
     """Fetch latest results from FIBA website and update scores."""
     # Get competition to find the FIBA URL
-    comp = supabase.table("competitions").select("fiba_games_url").eq("id", competition_id).execute().data
+    comp = (
+        supabase.table("competitions")
+        .select("fiba_games_url,fiba_window_code")
+        .eq("id", competition_id)
+        .execute()
+        .data
+    )
     if not comp or not comp[0].get("fiba_games_url"):
         raise HTTPException(400, "Competition has no FIBA games URL configured")
 
     fiba_url = comp[0]["fiba_games_url"]
+    # FIBA devuelve el clasificatorio entero, no la ventana. Ver _scrape_fiba_games.
+    window_code = comp[0].get("fiba_window_code")
 
     try:
-        games_data = _scrape_fiba_games(fiba_url)
+        games_data, fetch_info = _scrape_fiba_games(fiba_url, window_code)
     except Exception as e:
         raise HTTPException(500, f"Failed to fetch games from FIBA: {str(e)}")
 
     if not games_data:
-        return {"synced": 0, "message": "No games found on FIBA page"}
+        return {"synced": 0, "created": 0, "errors": [], "rescheduled": [],
+                "mismatches": [], **fetch_info,
+                "message": "No games found on FIBA page"}
 
     # Get existing games
     existing = supabase.table("game_schedule").select("*").eq("competition_id", competition_id).execute().data
@@ -390,10 +400,15 @@ def sync_results(competition_id: str = Query(...)):
     return {
         "synced": synced,
         "created": created,
-        "total_from_fiba": len(games_data),
         "errors": errors,
         "rescheduled": rescheduled,
         "mismatches": mismatches,
+        # total_from_fiba / window_applied / skipped_other_windows: cuántos
+        # partidos trajo FIBA y cuántos quedaron afuera por no ser de esta
+        # ventana. Va al reporte para que "84 en FIBA, 12 importados" se lea
+        # como lo correcto que es y no como que se perdió algo.
+        **fetch_info,
+        "imported_from_window": len(games_data),
     }
 
 
@@ -405,10 +420,22 @@ _FIBA_API_BASE = "https://digital-api.fiba.basketball/hapi"
 _FIBA_API_KEY = os.environ.get("FIBA_API_KEY", "")
 
 
-def _scrape_fiba_games(fiba_url: str) -> list:
-    """Fetch game data from FIBA's API. Accepts either:
-    - A FIBA event page URL (extracts competitionId from the page)
-    - A direct GDAP competition ID (numeric string)
+def _scrape_fiba_games(fiba_url: str, window_code: str | None = None) -> tuple[list, dict]:
+    """Partidos de FIBA para esta competencia. Acepta:
+    - la URL de la página del evento (saca el competitionId del HTML)
+    - un GDAP competition ID directo (string numérico)
+
+    `window_code` (W1..W6) acota el resultado a una ventana. Hace falta porque
+    FIBA **no devuelve una ventana: devuelve el clasificatorio entero**. El feed
+    del WC 2027 Americas Qualifiers trae los 84 partidos de las seis ventanas,
+    de noviembre 2025 a marzo 2027, y acá cada ventana es una competencia
+    aparte. Sin este filtro cada una se lleva el calendario completo.
+
+    Falla del lado seguro: si la competencia declara una ventana pero **ningún**
+    partido del feed trae `windowCode`, no se filtra nada. Un feed sin ventanas
+    (una AmeriCup, la BCLA) tiene que devolver sus partidos, no cero.
+
+    Devuelve (partidos, info) — `info` es lo que el sync le cuenta al usuario.
     """
     import httpx
 
@@ -438,7 +465,28 @@ def _scrape_fiba_games(fiba_url: str) -> list:
     if not isinstance(games_list, list):
         raise Exception(f"Unexpected FIBA API format: {type(data).__name__}")
 
-    return [_fiba_json_to_game(g) for g in games_list if g.get("gameId")]
+    games_list = [g for g in games_list if g.get("gameId")]
+    total = len(games_list)
+
+    info = {"total_from_fiba": total, "window_code": window_code,
+            "window_applied": False, "skipped_other_windows": 0}
+
+    if window_code:
+        want = window_code.strip().upper()
+        # El feed puede no tener ventanas en absoluto. Filtrar ahí devolvería
+        # cero partidos y parecería que FIBA se cayó.
+        if any((g.get("windowCode") or "").strip() for g in games_list):
+            kept = [g for g in games_list if (g.get("windowCode") or "").strip().upper() == want]
+            info["window_applied"] = True
+            info["skipped_other_windows"] = total - len(kept)
+            games_list = kept
+        else:
+            logger.info(
+                "sync: la competencia declara ventana %s pero el feed no trae windowCode; "
+                "se importan los %d partidos sin filtrar", want, total,
+            )
+
+    return [_fiba_json_to_game(g) for g in games_list], info
 
 
 def _extract_fiba_competition_id(fiba_url: str) -> str | None:

@@ -26,7 +26,7 @@ _CLEARABLE_DATE_FIELDS = {
     "default_letter_date", "default_arrival_date", "default_departure_date",
     "default_confirmation_deadline",
 }
-_CLEARABLE_TEXT_FIELDS = {"fiba_games_url", "default_location", "default_venue"}
+_CLEARABLE_TEXT_FIELDS = {"fiba_games_url", "fiba_window_code", "default_location", "default_venue"}
 
 
 @router.put("/{competition_id}", dependencies=[Depends(require_edit("competitions"))])

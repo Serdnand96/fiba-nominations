@@ -38,7 +38,7 @@ export default function Competitions() {
   const [showModal, setShowModal] = useState(false)
   const [saving, setSaving] = useState(false)
   const [editing, setEditing] = useState(null)
-  const [form, setForm] = useState({ name: '', template_key: 'WCQ', year: new Date().getFullYear(), fiba_games_url: '', fee_type: 'per_game', is_national_team: true })
+  const [form, setForm] = useState({ name: '', template_key: 'WCQ', year: new Date().getFullYear(), fiba_games_url: '', fiba_window_code: '', fee_type: 'per_game', is_national_team: true })
 
   // Search & filter — restored from the persisted last search
   const [search, setSearch] = useState(() => loadLastSearch()?.search || '')
@@ -101,13 +101,13 @@ export default function Competitions() {
 
   function openCreate() {
     setEditing(null)
-    setForm({ name: '', template_key: 'WCQ', year: new Date().getFullYear(), fiba_games_url: '', fee_type: 'per_game', is_national_team: true })
+    setForm({ name: '', template_key: 'WCQ', year: new Date().getFullYear(), fiba_games_url: '', fiba_window_code: '', fee_type: 'per_game', is_national_team: true })
     setShowModal(true)
   }
 
   function openEdit(comp) {
     setEditing(comp)
-    setForm({ name: comp.name, template_key: comp.template_key, year: comp.year || new Date().getFullYear(), fiba_games_url: comp.fiba_games_url || '', fee_type: comp.fee_type || 'per_game', is_national_team: !!comp.is_national_team })
+    setForm({ name: comp.name, template_key: comp.template_key, year: comp.year || new Date().getFullYear(), fiba_games_url: comp.fiba_games_url || '', fiba_window_code: comp.fiba_window_code || '', fee_type: comp.fee_type || 'per_game', is_national_team: !!comp.is_national_team })
     setShowModal(true)
   }
 
@@ -269,6 +269,21 @@ export default function Competitions() {
               <div>
                 <input placeholder={t('games.fibaUrl')} value={form.fiba_games_url} onChange={e => setForm(f => ({ ...f, fiba_games_url: e.target.value }))} className="fiba-input" />
                 <p className="text-xs text-fiba-muted/60 mt-1">{t('games.fibaUrlHint')}</p>
+              </div>
+              {/* Ventana del clasificatorio. Hace falta porque FIBA devuelve el
+                  clasificatorio ENTERO por esa misma URL — las seis ventanas —
+                  y acá cada ventana es una competencia aparte (migración 040). */}
+              <div>
+                <label className="text-xs text-fiba-muted block mb-1">{t('competitions.fibaWindow')}</label>
+                <select value={form.fiba_window_code}
+                  onChange={e => setForm(f => ({ ...f, fiba_window_code: e.target.value }))}
+                  className="fiba-select">
+                  <option value="">{t('competitions.fibaWindowNone')}</option>
+                  {['W1', 'W2', 'W3', 'W4', 'W5', 'W6'].map(w => (
+                    <option key={w} value={w}>{w}</option>
+                  ))}
+                </select>
+                <p className="text-xs text-fiba-muted/60 mt-1">{t('competitions.fibaWindowHint')}</p>
               </div>
               <div>
                 <label className="text-xs text-fiba-muted block mb-1">Fee type</label>

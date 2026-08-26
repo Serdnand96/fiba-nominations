@@ -765,6 +765,12 @@ const translations = {
 
   // ===== Competitions =====
   competitions: {
+    fibaWindow: { en: 'FIBA window', es: 'Ventana de FIBA' },
+    fibaWindowNone: { en: 'No window (import everything)', es: 'Sin ventana (importar todo)' },
+    fibaWindowHint: {
+      en: 'FIBA returns the whole qualifier on one URL — all six windows. Pick this competition’s window so the sync only imports its games.',
+      es: 'FIBA devuelve el clasificatorio entero en una sola URL — las seis ventanas. Elegí la ventana de esta competencia para que el sync importe solo sus partidos.',
+    },
     title: { en: 'Competitions', es: 'Competencias' },
     newCompetition: { en: '+ New competition', es: '+ Nueva competencia' },
     name: { en: 'Name', es: 'Nombre' },
@@ -1335,7 +1341,7 @@ const translations = {
       en: 'Neutrality conflict: {names}',
       es: 'Conflicto de neutralidad: {names}',
     },
-    // Hora del war room de seguimiento (Miami) — ver src/lib/warRoom.jsx.
+    // Hora del war room de seguimiento (Miami) — ver src/lib/warRoom.js.
     warRoomHint: {
       en: 'Time in the Miami war room ({tz}). At the venue it tips off at {local}.',
       es: 'Hora en el war room de Miami ({tz}). En la sede arranca a las {local}.',

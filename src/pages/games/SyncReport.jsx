@@ -63,11 +63,26 @@ export default function SyncReport({ report, onClose, onApplied, canEdit }) {
           </div>
           <div className="text-xs text-fiba-muted">
             {t(
-              `${report.synced} actualizados · ${report.created} creados · ${report.total_from_fiba} en FIBA`,
-              `${report.synced} updated · ${report.created} created · ${report.total_from_fiba} on FIBA`,
+              `${report.synced} actualizados · ${report.created} creados`,
+              `${report.synced} updated · ${report.created} created`,
             )}
             {quiet && ` · ${t('sin cambios', 'no changes')}`}
           </div>
+          {/* FIBA devuelve el clasificatorio entero por una sola URL. Sin esta
+              línea, "84 en FIBA / 12 importados" se lee como que se perdieron
+              72 partidos, cuando es exactamente lo correcto. */}
+          {report.window_applied ? (
+            <div className="text-[11px] text-fiba-muted/80 mt-0.5">
+              {t(
+                `Ventana ${report.window_code}: ${report.imported_from_window} de los ${report.total_from_fiba} partidos que devuelve FIBA. Los otros ${report.skipped_other_windows} son de otras ventanas.`,
+                `Window ${report.window_code}: ${report.imported_from_window} of the ${report.total_from_fiba} games FIBA returns. The other ${report.skipped_other_windows} belong to other windows.`,
+              )}
+            </div>
+          ) : (
+            <div className="text-[11px] text-fiba-muted/80 mt-0.5">
+              {t(`${report.total_from_fiba} partidos en FIBA`, `${report.total_from_fiba} games on FIBA`)}
+            </div>
+          )}
         </div>
         <button onClick={onClose}
           className="text-fiba-muted hover:text-ink-900 dark:hover:text-white text-lg leading-none shrink-0">&times;</button>
