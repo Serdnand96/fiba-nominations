@@ -12,6 +12,7 @@ import {
 } from '../api/client'
 import ChecklistPanel from './games/ChecklistPanel'
 import GameChecklistModal from './games/GameChecklistModal'
+import SyncReport from './games/SyncReport'
 import { Icon } from '../lib/icons'
 import { useLanguage } from '../i18n/LanguageContext'
 import { useToast } from '../components/ui/Toast'
@@ -134,6 +135,9 @@ export default function Games() {
   const [form, setForm] = useState({ ...EMPTY_FORM })
   const [syncing, setSyncing] = useState(false)
   const [syncMsg, setSyncMsg] = useState('')
+  // Qué hizo el último sync. Se queda hasta que lo cierren: un cambio de
+  // horario o un cruce invertido no se puede leer en 6 segundos.
+  const [syncReport, setSyncReport] = useState(null)
   const [showImport, setShowImport] = useState(false)
   const [importFile, setImportFile] = useState(null)
   const [importing, setImporting] = useState(false)
@@ -946,19 +950,16 @@ export default function Games() {
     }
     setSyncing(true)
     setSyncMsg('')
+    setSyncReport(null)
     try {
       const result = await syncGameResults(selectedCompId)
-      setSyncMsg(t('games.syncSuccess', {
-        synced: result.synced,
-        created: result.created,
-        total: result.total_from_fiba,
-      }))
+      setSyncReport(result)
       await loadGames()
     } catch (err) {
       setSyncMsg(err.response?.data?.detail || 'Sync failed')
+      setTimeout(() => setSyncMsg(''), 6000)
     }
     setSyncing(false)
-    setTimeout(() => setSyncMsg(''), 6000)
   }
 
   async function handleImport() {
@@ -1094,6 +1095,12 @@ export default function Games() {
 
       {syncMsg && (
         <div className="mb-4 px-4 py-2 bg-blue-100 text-blue-700 dark:bg-blue-500/10 dark:text-blue-400 rounded-lg text-sm">{syncMsg}</div>
+      )}
+
+      {syncReport && (
+        <SyncReport report={syncReport} canEdit={canEdit}
+          onApplied={loadGames}
+          onClose={() => setSyncReport(null)} />
       )}
       {nomMsg && (
         <div className="mb-4 px-4 py-2 bg-emerald-100 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400 rounded-lg text-sm">{nomMsg}</div>

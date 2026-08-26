@@ -234,6 +234,35 @@ def delete_game(game_id: str):
 
 # ── Sync results (update scores from FIBA) ───────────────────────────────────
 
+def _team_mismatch(ours: dict, fiba: dict) -> dict | None:
+    """¿Nuestra fila y FIBA discrepan en los equipos? Devuelve el detalle o None.
+
+    El caso frecuente es `swapped`: los mismos dos equipos con el local y el
+    visitante al revés. Se nota poco a simple vista y se paga caro, porque el
+    local define la sede — un partido cargado "COL vs MEX" jugándose en
+    Zacatecas es Mexico de local con el nombre invertido.
+
+    `differs` es que FIBA cambió el cruce para ese mismo gameId. Es raro y
+    merece que alguien lo mire, no que el sync lo aplique solo.
+    """
+    ours_pair = ((ours.get("team_a_code") or "").upper(), (ours.get("team_b_code") or "").upper())
+    fiba_pair = ((fiba.get("team_a_code") or "").upper(), (fiba.get("team_b_code") or "").upper())
+    # Sin códigos de los dos lados no hay comparación posible que valga la pena.
+    if not all(ours_pair) or not all(fiba_pair) or ours_pair == fiba_pair:
+        return None
+
+    kind = "swapped" if ours_pair == fiba_pair[::-1] else "differs"
+    return {
+        "game_id": ours["id"],
+        "game_number": ours.get("game_number"),
+        "date": fiba.get("date") or ours.get("date"),
+        "kind": kind,
+        "ours": {k: ours.get(k) for k in ("team_a", "team_a_code", "team_b", "team_b_code")},
+        # Lo que la UI manda de vuelta por PUT /games/{id} si el usuario acepta.
+        "fiba": {k: fiba.get(k) for k in ("team_a", "team_a_code", "team_b", "team_b_code")},
+    }
+
+
 @router.post("/sync-results", dependencies=[Depends(require_edit("games"))])
 def sync_results(competition_id: str = Query(...)):
     """Fetch latest results from FIBA website and update scores."""
@@ -259,6 +288,7 @@ def sync_results(competition_id: str = Query(...)):
     created = 0
     errors = []
     rescheduled = []
+    mismatches = []
 
     for fiba_game in games_data:
         # Try to match by fiba_game_id first
@@ -303,16 +333,28 @@ def sync_results(competition_id: str = Query(...)):
             # crew y checklists. Que el sync lo devuelva callado y el desk se
             # entere por el grupo de WhatsApp no sirve.
             moved = {
-                field: {"antes": match.get(field), "ahora": update_data[field]}
+                field: {"before": match.get(field), "after": update_data[field]}
                 for field in _SCHEDULE_FIELDS
                 if field in update_data and (match.get(field) or None) != (update_data[field] or None)
             }
             if moved:
                 rescheduled.append({
+                    "game_id": match["id"],
                     "game": f"{match.get('team_a')} vs {match.get('team_b')}",
                     "game_number": match.get("game_number"),
+                    "date": update_data.get("date") or match.get("date"),
                     "changes": moved,
                 })
+
+            # Los equipos NO se pisan automáticamente: cambiar quién es local
+            # cambia la sede, los traslados y el texto de las cartas, así que es
+            # una decisión de una persona, no del sync. Pero tampoco puede pasar
+            # inadvertida — antes solo se descubría mirando la web de FIBA al
+            # lado del calendario. Se reporta con los dos valores para que la UI
+            # pueda ofrecer aplicarlo de un clic.
+            mismatch = _team_mismatch(match, fiba_game)
+            if mismatch:
+                mismatches.append(mismatch)
 
             supabase.table("game_schedule").update(update_data).eq("id", match["id"]).execute()
             synced += 1
@@ -342,6 +384,7 @@ def sync_results(competition_id: str = Query(...)):
         "total_from_fiba": len(games_data),
         "errors": errors,
         "rescheduled": rescheduled,
+        "mismatches": mismatches,
     }
 
 
