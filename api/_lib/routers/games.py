@@ -33,7 +33,16 @@ _MAX_UPLOAD_BYTES = 5 * 1024 * 1024
 # Campos del cronograma que manda FIBA y que el sync pisa sobre lo que haya.
 # `phase` NO está: la deriva _detect_phase() por heurística y pisaría una fase
 # corregida a mano.
+#
+# Son también los que se reportan en `rescheduled`: lo que una persona lee y lo
+# que arrastra operación (traslados, crew, checklists).
 _SCHEDULE_FIELDS = ("date", "time", "venue", "city", "country", "group_label", "game_number")
+
+# Se sincronizan igual, pero NO se reportan: son la misma hora contada de otra
+# forma —el instante en UTC y la zona de la sede— para poder mostrar el partido
+# en la hora del war room. Meterlos en el reporte sería contar cada cambio de
+# horario dos veces.
+_DERIVED_TIME_FIELDS = ("datetime_utc", "venue_timezone")
 
 
 # ── Schemas ──────────────────────────────────────────────────────────────────
@@ -324,7 +333,7 @@ def sync_results(competition_id: str = Query(...)):
             # `phase` queda afuera a propósito: sale de _detect_phase(), que es
             # una heurística sobre el nombre del partido y pisaría una fase
             # corregida a mano.
-            for field in _SCHEDULE_FIELDS:
+            for field in _SCHEDULE_FIELDS + _DERIVED_TIME_FIELDS:
                 value = fiba_game.get(field)
                 if value not in (None, ""):
                     update_data[field] = value
@@ -471,6 +480,22 @@ def _extract_fiba_competition_id(fiba_url: str) -> str | None:
     return None
 
 
+def _utc_iso(raw: str | None) -> str | None:
+    """`gameDateTimeUTC` de FIBA → ISO con zona explícita.
+
+    FIBA lo manda sin sufijo ("2026-08-27T23:10:00") aunque el nombre del campo
+    diga UTC. Guardarlo así deja que Postgres lo interprete en la zona del
+    servidor, que es exactamente el bug que esta columna viene a evitar.
+    """
+    raw = (raw or "").strip()
+    if len(raw) < 19:
+        return None
+    # Por si algún día viene ya con zona.
+    if raw.endswith("Z") or raw[19:].startswith(("+", "-")):
+        return raw
+    return raw + "Z"
+
+
 def _fiba_json_to_game(g: dict) -> dict:
     """Convert a FIBA API game object to our schema."""
     # `gameDateTime` es hora LOCAL de la sede; `gameDateTimeUTC` es la otra cara
@@ -483,6 +508,10 @@ def _fiba_json_to_game(g: dict) -> dict:
     # inventada: el front ya muestra "--:--".
     has_time = g.get("hasTimeGameDateTime", True)
     time_str = game_dt[11:16] if (has_time and len(game_dt) >= 16) else None
+    # El instante real, para poder mostrar el partido en la hora del war room.
+    # Sin horario fijado no hay instante que valga: el UTC de esos partidos es
+    # el reflejo del mismo relleno.
+    datetime_utc = _utc_iso(g.get("gameDateTimeUTC")) if has_time else None
 
     score_a = g.get("teamAScore")
     score_b = g.get("teamBScore")
@@ -510,6 +539,8 @@ def _fiba_json_to_game(g: dict) -> dict:
         "game_number": g.get("gameName"),
         "date": date_str,
         "time": time_str,
+        "datetime_utc": datetime_utc,
+        "venue_timezone": g.get("ianaTimeZone") or None,
         "team_a": team_a.get("officialName") or team_a.get("shortName", ""),
         "team_a_code": team_a.get("code", ""),
         "team_b": team_b.get("officialName") or team_b.get("shortName", ""),

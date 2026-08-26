@@ -1335,6 +1335,11 @@ const translations = {
       en: 'Neutrality conflict: {names}',
       es: 'Conflicto de neutralidad: {names}',
     },
+    // Hora del war room de seguimiento (Miami) — ver src/lib/warRoom.jsx.
+    warRoomHint: {
+      en: 'Time in the Miami war room ({tz}). At the venue it tips off at {local}.',
+      es: 'Hora en el war room de Miami ({tz}). En la sede arranca a las {local}.',
+    },
     // Control de operación: checklists técnicos de sede por partido (038).
     checklists: { en: 'Ops control', es: 'Control de operación' },
     checklistsHint: {

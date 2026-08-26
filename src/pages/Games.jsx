@@ -21,6 +21,7 @@ import CompetitionSearch from '../components/CompetitionSearch'
 import { COUNTRIES, countryName } from '../lib/countries'
 import { findRefereeGameConflict } from '../lib/refereeNeutrality'
 import { readLastSearch, writeLastSearch } from '../lib/lastSearch'
+import { warRoomTime, formatWarRoom, WAR_ROOM_TZ } from '../lib/warRoom'
 
 const PHASE_OPTIONS = ['Group Phase', 'Quarterfinals', 'Semifinals', 'Classification', 'Finals']
 const ASSIGNMENT_TEMPLATES = new Set(['WCQ', 'BCLA', 'LSB'])
@@ -1985,6 +1986,10 @@ function GameCard({
   // import viejo. Un partido de básquet no arranca a las 00:00, así que se
   // muestra como "--:--" en vez de mentir una hora.
   const gameTime = game.time && game.time !== '00:00' ? game.time : null
+  // Hora del war room (Miami). Sale del instante UTC que guarda el sync, así
+  // que un partido que nunca se sincronizó simplemente no la muestra en vez de
+  // mostrar una hora inventada a partir de un offset.
+  const warRoom = warRoomTime(game.datetime_utc, game.date)
   const locationLine = [game.venue, [game.city, displayCountry].filter(Boolean).join(', ')]
     .filter(Boolean).join(' · ')
   // Slots offered per game. On a tournament the TD/VGO of the crew already
@@ -2123,10 +2128,20 @@ function GameCard({
           marcador, pero la hora sigue haciendo falta —el crew la usa para
           llegar a la sede, y un "FINAL" con horario de mañana es justo lo que
           conviene poder detectar de un vistazo—, así que baja acá. */}
-      {(locationLine || game.game_number || ((isCompleted || isLive) && gameTime)) && (
+      {(locationLine || game.game_number || warRoom || ((isCompleted || isLive) && gameTime)) && (
         <div className="flex items-center gap-2 mt-0.5 min-w-0">
           {(isCompleted || isLive) && gameTime && (
             <span className="text-[11px] font-semibold text-fiba-accent tabular-nums flex-shrink-0">{gameTime}</span>
+          )}
+          {/* La hora a la que hay que mirar este partido desde el war room.
+              Siempre visible cuando se conoce, incluso si coincide con la de la
+              sede: quien sigue seis partidos a la vez no debería tener que
+              deducir por qué en una card está y en otra no. */}
+          {warRoom && (
+            <span className="text-[11px] text-fiba-muted tabular-nums flex-shrink-0"
+              title={t('games.warRoomHint', { tz: WAR_ROOM_TZ, local: gameTime || '--:--' })}>
+              {formatWarRoom(warRoom)}
+            </span>
           )}
           {locationLine && (
             <span className="text-[11px] text-fiba-muted truncate" title={locationLine}>{locationLine}</span>
