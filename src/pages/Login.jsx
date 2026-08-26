@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useAuth } from '../contexts/AuthContext'
 import { useLanguage } from '../i18n/LanguageContext'
+import { LogoMonogram } from '../components/brand/Logo'
 
 export default function Login() {
   const { signIn } = useAuth()
@@ -41,11 +42,7 @@ export default function Login() {
       <div className="relative z-10 w-full max-w-sm">
         {/* Brand */}
         <div className="text-center mb-8">
-          <img
-            src="/favicon.png"
-            alt="FIBA"
-            className="w-20 h-20 rounded-2xl mx-auto mb-4 shadow-pop"
-          />
+          <LogoMonogram size={80} rounded={false} className="rounded-2xl mx-auto mb-4 shadow-pop" />
           <h1 className="text-2xl font-semibold text-white tracking-tight">FIBA Americas</h1>
           <p className="text-sm text-navy-300 mt-1">{t('app.subtitle')}</p>
         </div>

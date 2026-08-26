@@ -1,1 +1,9 @@
-export { LogoMonogram, LogoRoundel, LogoWordmark, LogoShield, LogoWordmarkCompact, LogoSidebar } from './Logo';
+export {
+  LogoMonogram,
+  LogoMark,
+  LogoRoundel,
+  LogoShield,
+  LogoWordmark,
+  LogoWordmarkCompact,
+  LogoSidebar,
+} from './Logo';

@@ -242,9 +242,9 @@ export default function App() {
         {/* Brand */}
         <div className="h-14 px-4 flex items-center gap-2.5 border-b border-navy-800 flex-shrink-0">
           <img
-            src="/fiba-logo.png"
+            src={sidebarCollapsed ? '/fiba-mark.png' : '/fiba-logo.png'}
             alt="FIBA"
-            className={`flex-shrink-0 ${sidebarCollapsed ? 'h-8 w-8 object-cover object-left' : 'h-8 w-auto'}`}
+            className={`flex-shrink-0 object-contain ${sidebarCollapsed ? 'h-8 w-8 rounded-md' : 'h-8 w-auto'}`}
           />
           <div className={`leading-tight min-w-0 ${sidebarCollapsed ? 'md:hidden' : ''}`}>
             <div className="text-[13px] font-semibold truncate">Americas</div>

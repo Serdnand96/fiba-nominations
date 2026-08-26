@@ -3,6 +3,7 @@ import { useParams } from 'react-router-dom'
 import { getPublicAsset } from '../api/client'
 import { useLanguage } from '../i18n/LanguageContext'
 import { camel } from '../lib/utils'
+import { LogoMonogram } from '../components/brand/Logo'
 
 // Tonos dark-aware: -700 sobre la card blanca (claro), -400 sobre navy (oscuro).
 // Los -400 sueltos daban ~1.5-2.5:1 sobre blanco.
@@ -49,9 +50,7 @@ export default function PublicAsset() {
     <div className="min-h-screen bg-fiba-dark p-6 flex items-center justify-center">
       <div className="max-w-md w-full">
         <div className="text-center mb-6">
-          <div className="w-12 h-12 mx-auto bg-fiba-accent rounded-xl flex items-center justify-center mb-3">
-            <span className="text-2xl text-white font-bold">F</span>
-          </div>
+          <LogoMonogram size={48} className="mx-auto mb-3 rounded-xl" />
           <p className="text-fiba-muted text-xs">FIBA Americas Inventory</p>
         </div>
 
