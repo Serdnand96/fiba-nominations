@@ -173,6 +173,29 @@ legacy `fibaamericascloud.com`).
     - La hora del war room (Miami) vive en `src/lib/warRoom.js`, con la zona en
       una sola constante `WAR_ROOM_TZ`.
 
+13. **La API de FIBA no devuelve una ventana: devuelve el clasificatorio
+    entero.** `getgdapgamesbycompetitionid` para el WC 2027 Americas Qualifiers
+    trae los **84 partidos de las seis ventanas**, de noviembre 2025 a marzo
+    2027, por la misma URL. Acá, en cambio, cada ventana es una **competencia
+    aparte** con su crew, sus nominaciones y sus fees.
+
+    Por eso existe `competitions.fiba_window_code` (W1..W6, migración 040): si
+    está seteado, `sync-results` importa solo los partidos con ese `windowCode`.
+    `NULL` = sin filtro, que es lo correcto para una competencia no dividida en
+    ventanas (AmeriCup, CentroBasket) — la mayoría.
+
+    - **No filtres por el rango de fechas de la competencia.** Window 3 de FIBA
+      termina el 2026-07-08 y la competencia declara hasta el 07-07: ese filtro
+      se come un partido, y en el caso real ese partido tenía TD y VGO
+      asignados. Los bordes de una ventana no coinciden con las fechas que
+      carga el equipo, que incluyen viaje.
+    - El filtro **falla del lado seguro**: si la competencia declara ventana
+      pero ningún partido del feed trae `windowCode`, no filtra nada. Un feed
+      sin ventanas tiene que devolver sus partidos, no cero.
+    - Sin esto (hasta agosto 2026) W3 y W4 tenían 84 filas cada una, de las
+      cuales 17 y 12 eran suyas; los partidos de agosto se veían dentro de la
+      ventana de julio. Se limpiaron 139 filas.
+
 ---
 
 ## 🗺️ Mapa del repo
