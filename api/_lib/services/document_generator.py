@@ -244,8 +244,8 @@ def generate_preview(template_key: str) -> tuple[str, str, str | None]:
     """Render a sample letter for `template_key` and convert it to PDF.
 
     Uses the same builders as the real nominations, so the preview reflects what
-    a generated letter actually looks like — including LSB, which has no base
-    .docx and is built entirely in code. Never uploads to Storage.
+    a generated letter actually looks like — letterhead, footer and signature
+    block included. Never uploads to Storage.
 
     Writes into a fresh temp dir per call rather than a shared fixed filename:
     two concurrent previews would otherwise fight over the same path, and a
@@ -371,7 +371,8 @@ def _fee_lines(data: dict, *, incidentals_label: str = "Incidentals",
 # survives edits to the .docx and an uploaded file can be validated by
 # rendering it.
 #
-# Migrated: GENERIC, WCQ, BCLA. LSB still uses its from-scratch builder.
+# Migrated: all four — GENERIC, WCQ, BCLA and LSB. The positional builders
+# below survive only as the fallback for a missing template file.
 
 RED_HEX = "ED0000"
 DARK_HEX = "2A2A2A"
@@ -605,12 +606,20 @@ def _bcla_context(data: dict, variant: str, font: str) -> dict:
     }
 
 
-def _lsb_context(data: dict, font: str) -> dict:
+def _lsb_context(data: dict, font: str, *, signature: bool = True) -> dict:
     """Values for the LSB confirmation template.
 
+    Also the context of every template type created from the UI with the
+    `confirmation` shape — they have no bespoke Python, they reuse this letter.
+
     Mirrors _build_confirmation_from_scratch: short date form, detail bullets
-    that vanish when empty, game dates centred in red, and the signature as a
-    single line.
+    that vanish when empty and game dates centred in red.
+
+    `signature` is False for LSB itself: its letterhead carries the real
+    signature block (Respectfully, + the handwritten name + the contact lines),
+    so a `signature` value would only be an extra placeholder offered in the
+    Templates UI for a line the letter no longer has. Custom types still get it
+    — their uploaded .docx has to print a signatory from somewhere.
     """
     from docxtpl import RichText
 
@@ -632,7 +641,7 @@ def _lsb_context(data: dict, font: str) -> dict:
 
     sig_name, sig_title, sig_org = SIGNATORIES.get("LSB", SIGNATORIES["BCLA"])
 
-    return {
+    context = {
         "heading": f"Confirmation – {comp_name} {data.get('competition_year', '')}",
         "greeting": _dear_line(data, font, size=10),
         "role": role_label,
@@ -644,8 +653,10 @@ def _lsb_context(data: dict, font: str) -> dict:
         "game_dates": games,
         "payment_lines": [rich(text, bold=bold, color=RED_HEX)
                       for text, bold in _fee_lines(data)],
-        "signature": f"{sig_name} {sig_title} {sig_org}",
     }
+    if signature:
+        context["signature"] = f"{sig_name} {sig_title} {sig_org}"
+    return context
 
 
 def bcla_variant(data: dict) -> str:
@@ -672,7 +683,7 @@ TEMPLATE_SPECS = {
     },
     "LSB": {
         "file": "LSB_TEMPLATE_TPL.docx",
-        "context": lambda d: _lsb_context(d, FONT_WCQ),
+        "context": lambda d: _lsb_context(d, FONT_GENERIC, signature=False),
     },
 }
 
@@ -713,6 +724,10 @@ def spec_for(template_key: str) -> dict | None:
     ) if p)
 
     if row["kind"] == "confirmation":
+        # Still IBM Plex Sans, and still carrying a `signature`: a custom type
+        # is not LSB. It prints on its own uploaded letterhead and signs with
+        # its own signatory, so neither the font swap nor the baked-in
+        # signature block that LSB gained applies here.
         def context(d, _sig=signature):
             ctx = _lsb_context(d, FONT_WCQ)
             ctx["signature_line"] = _sig
@@ -830,10 +845,15 @@ def template_path(template_key: str) -> Path | None:
 
 def _build_lsb(data: dict):
     """LSB confirmation — placeholder template if available, else the
-    from-scratch builder."""
+    from-scratch builder.
+
+    Univers because that is the letterhead's own font: the fallback below still
+    writes IBM Plex Sans, but it prints on blank paper, where nothing clashes.
+    """
     path = template_path("LSB")
     if path:
-        return _render_template(path, _lsb_context(data, FONT_WCQ))
+        return _render_template(path, _lsb_context(data, FONT_GENERIC,
+                                                   signature=False))
     return _build_confirmation_from_scratch(data)
 
 

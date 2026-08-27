@@ -281,6 +281,8 @@ fiba-nominations/
 │                                 implementación final difiere — ver nota adentro)
 ├── BUDGET_MODULE.md           ← contrato del módulo Budget (schema, endpoints,
 │                                 scoping por departamento, datos cargados)
+├── LSB_LETTER_SPEC.md         ← la carta de LSB: su texto, su membrete y por qué
+│                                 el starter de `confirmation` no es el de LSB
 ├── .claude/                   ← subagentes + skills para sesiones de IA (ver abajo)
 │
 ├── api/                       ← FastAPI backend

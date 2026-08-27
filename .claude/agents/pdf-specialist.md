@@ -29,7 +29,11 @@ Seguí la estructura precargada en el skill **pdf-templates**.
      `USE_LOCAL_LIBREOFFICE=1`. El resultado se sube al bucket privado
      `nominations` como `storage://nominations/...`.
    - Colores de marca: `COLOR_DARK #2A2A2A`, `COLOR_RED #ED0000`. Fuentes:
-     IBM Plex Sans (WCQ), Univers (GENERIC/BCLA).
+     IBM Plex Sans (WCQ), Univers (GENERIC/BCLA/LSB).
+   - **Ojo con la fuente: ninguna de las dos está instalada en el droplet.**
+     `fc-match` de "Univers" y de "IBM Plex Sans" cae en DejaVu Sans, así que el
+     PDF que recibe el nominado sale en la fallback. La fuente del `.docx` igual
+     importa: es lo que ve quien abre el archivo en Word.
 2. **Export de training schedule** — `api/_lib/routers/training.py`
    (`_generate_schedule_pdf`). Arma una tabla con python-docx desde cero y
    convierte con un `_convert_to_pdf` **propio que usa CloudConvert únicamente**

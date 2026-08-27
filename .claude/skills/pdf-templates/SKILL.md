@@ -27,8 +27,15 @@ más elaborado.
 
 - Archivos `.docx` en `templates/`: `WCQ`, `GENERIC`, `BCLA`, `LSB`.
   - Las variantes **`*_TPL.docx`** son las de placeholders `docxtpl`
-    (preferidas). Las `.docx` "planas" son para los builders posicionales
-    legacy (fallback).
+    (preferidas). Las `.docx` "planas" son el membrete de origen, del que
+    `scripts/build_letter_templates.py` genera la `_TPL`; los builders
+    posicionales legacy quedan solo como fallback.
+  - **`GENERIC_CONFIRMATION_TPL.docx` no es una carta de nadie.** Es el punto de
+    partida que se le entrega a un tipo `confirmation` creado desde la UI
+    (`STARTER_FOR_KIND` en `routers/templates.py`). Es papel en blanco a
+    propósito: hasta agosto 2026 el starter era el de LSB, y desde que LSB tiene
+    membrete propio eso le estamparía el logo de la Liga Sudamericana —y la
+    firma de Gino Rullo— a la competencia de otro.
 - `TEMPLATE_SPECS` mapea `template_key → {file, context}`. `spec_for(key)`
   resuelve primero los built-in y después **tipos custom** creados desde la UI
   (tabla `letter_templates`, con `.docx` subido a Storage).
@@ -39,6 +46,10 @@ más elaborado.
   - WCQ/GENERIC → `_render_template(path, _letter_context(...))` si hay `_TPL`,
     si no cae al builder posicional (`_build_wcq_letter`, etc.).
   - BCLA (variantes `F4`/`RS`) → `_bcla_context`; LSB → `_lsb_context`.
+  - `_lsb_context` sirve **dos** casos: la carta de LSB, que pasa
+    `signature=False` porque su membrete ya trae el bloque de firma, y los tipos
+    `confirmation` creados desde la UI, que sí reciben `signature` y además
+    `signature_line` con su propio firmante.
 - Los **context builders** (`_letter_context`, `_bcla_context`, `_lsb_context`)
   producen el diccionario que se inyecta en el template. Valores posibles:
   - **strings planos** → tag `{{ campo }}`

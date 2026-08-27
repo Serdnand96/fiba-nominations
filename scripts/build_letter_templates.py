@@ -149,6 +149,57 @@ BCLA_BODY = [
 BCLA_BOLD = {"Game Information", "Financial Details"}
 
 
+# LSB is a confirmation like BCLA, but its own shape: a title instead of a
+# date, detail bullets, the gamedays centred in red, and no travel or banking
+# paragraph. The text is unchanged from the builder that preceded it — what
+# changed is the container. It now sits inside the Liga Sudamericana letterhead
+# (LSB_TEMPLATE.docx), whose signature block is part of the file, so the body
+# stops at the closing line and carries no {{ signature }}.
+LSB_BODY = [
+    ("{{ heading }}", None, 14, None),                 # bold via LSB_BOLD
+    ("", None, None, None),
+    ("{{r greeting }}", None, None, None),
+    ("", None, None, None),
+    ("This letter confirms your assignment as {{ role }} for the "
+     "{{ competition }}.", None, 10, None),
+    ("", None, None, None),
+    # Detail bullets — each guarded so the line disappears when the value is
+    # absent, exactly like the `if data.get(...)` chain in the old builder. The
+    # bullet is literal text, not a Word list: that is how the letter has always
+    # printed and the reference PDF shows it that way.
+    ("{%p if location %}", None, None, None),
+    ("  •  Location: {{ location }}", None, 10, None),
+    ("{%p endif %}", None, None, None),
+    ("{%p if venue %}", None, None, None),
+    ("  •  Venue: {{ venue }}", None, 10, None),
+    ("{%p endif %}", None, None, None),
+    ("{%p if arrival_date %}", None, None, None),
+    ("  •  Arrival Date: {{ arrival_date }}", None, 10, None),
+    ("{%p endif %}", None, None, None),
+    ("{%p if departure_date %}", None, None, None),
+    ("  •  Departure Date: {{ departure_date }}", None, 10, None),
+    ("{%p endif %}", None, None, None),
+    ("", None, None, None),
+    ("{%p for game in game_dates %}", None, None, None),
+    ("{{r game }}", CENTER, 10, None),
+    ("{%p endfor %}", None, None, None),
+    ("", None, None, None),
+    ("Below list the details of payment you will receive as {{ role }} "
+     "assigned to the competition listed above:", None, 10, None),
+    ("", None, None, None),
+    ("{%p for fee in payment_lines %}", None, None, None),
+    ("{{r fee }}", None, 10, None),
+    ("{%p endfor %}", None, None, None),
+    ("", None, None, None),
+    ("Thank you for your commitment and professionalism.", None, 10, None),
+    ("", None, None, None),
+    ("", None, None, None),
+]
+
+# The title is the only bold line; everything else takes the run's default.
+LSB_BOLD = {"{{ heading }}"}
+
+
 SPECS = {
     "GENERIC": {
         "src": "GENERIC_TEMPLATE.docx",
@@ -182,21 +233,43 @@ SPECS = {
         "bold": BCLA_BOLD,
     },
     "LSB": {
-        # No source file: the letter was built entirely in code.
-        "scratch": True,
+        # Liga Sudamericana letterhead: logos in the header, graphic footer, and
+        # the signature block (Respectfully, + the handwritten name + Gino
+        # Rullo's contact lines) already in the file at paragraphs 33-40. The 33
+        # blank paragraphs above it are the hole the body drops into; the
+        # leftovers are removed so the signature stays on page one.
+        "src": "LSB_TEMPLATE.docx",
         "dst": "LSB_TEMPLATE_TPL.docx",
+        "font": "Univers",
+        "body_start": 0,
+        # This letterhead's signature is text in a script font, not a scanned
+        # image, so there is no drawing for build() to anchor on.
+        "sig_marker": "Respectfully,",
+        "body": LSB_BODY,
+        "bold": LSB_BOLD,
+    },
+    # Not a letter anyone sends: the starting point handed to a template type
+    # created from the UI with the `confirmation` shape (STARTER_FOR_KIND in
+    # routers/templates.py). Blank paper on purpose — a new type brings its own
+    # letterhead, and inheriting LSB's would put the Liga Sudamericana logo on
+    # somebody else's competition. It keeps IBM Plex Sans: the move to Univers
+    # was a decision about the LSB letter, not about custom types.
+    "GENERIC_CONFIRMATION": {
+        "scratch": True,
+        "dst": "GENERIC_CONFIRMATION_TPL.docx",
         "font": "IBM Plex Sans",
     },
 }
 
 
-def build_lsb(name, spec):
-    """Create the LSB template from nothing.
+def build_confirmation_starter(name, spec):
+    """Create the blank-paper confirmation template from nothing.
 
-    LSB has no base .docx — _build_confirmation_from_scratch builds the whole
-    letter in code. To guarantee the template's formatting matches byte for
-    byte, this reuses that builder's own helpers and feeds them Jinja tags
-    instead of values.
+    There is no base .docx to start from: this is the shape
+    _build_confirmation_from_scratch writes in code, which is also the fallback
+    used when a template file is missing. To guarantee the two stay identical,
+    this reuses that builder's own helpers and feeds them Jinja tags instead of
+    values.
     """
     import sys
     sys.path.insert(0, ".")
@@ -246,7 +319,11 @@ def build_lsb(name, spec):
     _add_body_text(doc, "Thank you for your commitment and professionalism.")
     _add_empty(doc)
     _add_empty(doc)
-    _add_body_text(doc, "{{ signature }}")
+    # Not {{ signature }}: a type created from the UI supplies its own
+    # signatory and spec_for() passes it as `signature_line`. With the old tag
+    # the alias fell back to _lsb_context's `signature`, so every custom
+    # confirmation letter printed LSB's signatory instead of its own.
+    _add_body_text(doc, "{{ signature_line }}")
 
     dst = TEMPLATES / spec["dst"]
     doc.save(str(dst))
@@ -322,9 +399,37 @@ def build_insert(name, spec):
           f"({len(out.paragraphs)} paras, inserted), images at {imgs}")
 
 
+def sig_start(name, paras, spec):
+    """Index of the first paragraph of the signature block.
+
+    Everything between `body_start` and this is the body: whatever the source
+    file has there gets overwritten, and the leftovers are deleted.
+
+    Two ways to find it, because the letterheads differ. WCQ and GENERIC sign
+    with a scanned image, so the last drawing in the body is the anchor — a
+    fixed offset from the end would silently eat that image the day the file
+    gains a trailing paragraph. LSB has no image at all: its signature is text
+    in a script font and its logos live in the header, so it names the line to
+    stop at instead.
+    """
+    marker = spec.get("sig_marker")
+    if marker:
+        for i, para in enumerate(paras):
+            if i > spec["body_start"] and para.text.strip().startswith(marker):
+                return i
+        raise SystemExit(f"{name}: no paragraph starting {marker!r} "
+                         f"after the body start")
+
+    images = [i for i, p in enumerate(paras) if "graphic" in p._p.xml]
+    tail_images = [i for i in images if i > spec["body_start"]]
+    if not tail_images:
+        raise SystemExit(f"{name}: no signature image found after the body start")
+    return tail_images[-1]
+
+
 def build(name, spec):
     if spec.get("scratch"):
-        return build_lsb(name, spec)
+        return build_confirmation_starter(name, spec)
     if "anchor" in spec:
         return build_insert(name, spec)
 
@@ -345,30 +450,23 @@ def build(name, spec):
     paras = doc.paragraphs
     src_para_count = len(paras)  # before any insertion, for the report below
 
-    # Find the signature block by locating its scanned image rather than using
-    # a fixed offset from the end — an offset silently eats the image when a
-    # letterhead gains or loses a trailing paragraph.
-    images = [i for i, p in enumerate(paras) if "graphic" in p._p.xml]
-    tail_images = [i for i in images if i > spec["body_start"]]
-    if not tail_images:
-        raise SystemExit(f"{name}: no signature image found after the body start")
-    sig_start = tail_images[-1]
+    sig = sig_start(name, paras, spec)
 
-    body = paras[spec["body_start"]:sig_start]
+    body = paras[spec["body_start"]:sig]
     content = spec["body"]
     if len(content) > len(body):
         # The source has fewer paragraphs than the body needs: insert the
         # missing ones right before the signature block, so the letterhead
         # above and the signature below stay exactly where they are.
         from docx.oxml.ns import qn
-        sig_element = paras[sig_start]._element
+        sig_element = paras[sig]._element
         for _ in range(len(content) - len(body)):
             sig_element.addprevious(doc.element.makeelement(qn("w:p"), {}))
         paras = doc.paragraphs
-        images = [i for i, p in enumerate(paras) if "graphic" in p._p.xml]
-        sig_start = [i for i in images if i > spec["body_start"]][-1]
-        body = paras[spec["body_start"]:sig_start]
+        sig = sig_start(name, paras, spec)
+        body = paras[spec["body_start"]:sig]
 
+    bold_set = spec.get("bold", set())
     for para, (text, align, size, style_name) in zip(body, content):
         for run in list(para.runs):
             run._element.getparent().remove(run._element)
@@ -383,6 +481,11 @@ def build(name, spec):
             run = para.add_run(text)
             run.font.name = font
             run.font.color.rgb = DARK
+            # Only turn bold ON. Assigning False writes an explicit <w:b
+            # w:val="0"> into every run, which overrides the style instead of
+            # inheriting from it — and rewrites WCQ and GENERIC for nothing.
+            if text in bold_set:
+                run.bold = True
             if size:
                 run.font.size = Pt(size)
 
@@ -395,9 +498,11 @@ def build(name, spec):
     doc.save(str(dst))
 
     out = Document(str(dst))
-    sig = [i for i, p in enumerate(out.paragraphs) if "graphic" in p._p.xml]
+    out_paras = out.paragraphs
+    imgs = [i for i, p in enumerate(out_paras) if "graphic" in p._p.xml]
     print(f"{name}: {src.name} ({src_para_count} paras) -> {dst.name} "
-          f"({len(out.paragraphs)} paras), images at {sig}")
+          f"({len(out_paras)} paras), body images at {imgs}, "
+          f"signature at {sig_start(name, out_paras, spec)}")
 
 
 if __name__ == "__main__":

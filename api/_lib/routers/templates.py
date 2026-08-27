@@ -168,13 +168,20 @@ def delete_template_type(template_key: str):
     return {"deleted": True}
 
 
-# A brand-new type has no file of its own, so its starting point is the
-# built-in template of the same shape: that file already carries the FIBA
-# letterhead, footer, signature image AND the placeholders, so the user can
-# restyle it in Word instead of authoring the tags from scratch.
+# A brand-new type has no file of its own, so its starting point is a built-in
+# template of the same shape, already carrying the placeholders: the user
+# restyles it in Word instead of authoring the tags from scratch.
+#
+# The two starters differ on purpose. The nomination one is the FIBA Americas
+# letterhead, which is the right paper for a type that has none of its own.
+# The confirmation one is deliberately BLANK PAPER: it used to be
+# LSB_TEMPLATE_TPL.docx, and now that LSB prints on the Liga Sudamericana
+# letterhead, handing it over would stamp that logo — and Gino Rullo's signature
+# block — on somebody else's competition. GENERIC_CONFIRMATION_TPL.docx is the
+# same shape with nothing on the page but the tags.
 STARTER_FOR_KIND = {
     "nomination": "GENERIC_TEMPLATE_TPL.docx",
-    "confirmation": "LSB_TEMPLATE_TPL.docx",
+    "confirmation": "GENERIC_CONFIRMATION_TPL.docx",
 }
 
 
