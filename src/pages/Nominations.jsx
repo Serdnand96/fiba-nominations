@@ -262,6 +262,14 @@ export default function Nominations() {
         delete payload.confirmation_deadline
       }
 
+      // Un <input type="date"> vacío vale "", y Postgres rechaza el string
+      // vacío en una columna date (22007: invalid input syntax for type date).
+      // Las cuatro son nullable, así que "sin fecha" es null, no "".
+      for (const field of ['letter_date', 'arrival_date', 'departure_date',
+                           'confirmation_deadline']) {
+        if (payload[field] === '') payload[field] = null
+      }
+
       let createdIds = []
 
       if (form.personnel_ids.length > 1) {
@@ -326,6 +334,9 @@ export default function Nominations() {
       }
 
       await load()
+    } catch (err) {
+      push({ type: 'error', title: err.response?.data?.detail || err.message })
+      console.error('Create nomination error:', err)
     } finally {
       setLoading(false)
     }

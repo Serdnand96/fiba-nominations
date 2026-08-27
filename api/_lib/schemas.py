@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from typing import Literal, Optional
 
 # fee_type gobierna todo el dispatch per-game vs. tournament. Un str libre dejaba
@@ -96,6 +96,20 @@ class GameDate(BaseModel):
     date: str
 
 
+# Un <input type="date"> que el usuario deja vacío manda "", no null, y estas
+# columnas son `date` en Postgres: el string vacío no es una fecha ausente, es
+# una fecha inválida, y el insert muere con 22007 (invalid input syntax for type
+# date). Como el campo es opcional de verdad —las cuatro columnas son nullable—
+# lo correcto es leer "" como "sin fecha" acá, en el borde, y no confiar en que
+# cada cliente lo normalice.
+_DATE_FIELDS = ("letter_date", "arrival_date", "departure_date",
+                "confirmation_deadline")
+
+
+def _blank_date_is_none(value):
+    return None if isinstance(value, str) and not value.strip() else value
+
+
 class NominationCreate(BaseModel):
     personnel_id: str
     competition_id: str
@@ -108,6 +122,8 @@ class NominationCreate(BaseModel):
     window_fee: Optional[float] = None
     incidentals: Optional[float] = None
     confirmation_deadline: Optional[str] = None
+
+    _blank_dates = field_validator(*_DATE_FIELDS, mode="before")(_blank_date_is_none)
 
 
 class BulkNominationCreate(BaseModel):
@@ -122,6 +138,8 @@ class BulkNominationCreate(BaseModel):
     window_fee: Optional[float] = None
     incidentals: Optional[float] = None
     confirmation_deadline: Optional[str] = None
+
+    _blank_dates = field_validator(*_DATE_FIELDS, mode="before")(_blank_date_is_none)
 
 
 # ─── INVENTORY ─────────────────────────────────────────────────────────────
