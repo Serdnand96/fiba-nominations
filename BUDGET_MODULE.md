@@ -4,8 +4,8 @@
 > 033-037 **aplicadas a prod**, `api/_lib/routers/budget.py` (31 endpoints),
 > `src/pages/Budget.jsx` (6 pestañas).
 >
-> Queda pendiente de terceros: el plan de cuentas de Finance y los gastos
-> históricos 2026 (ver §11).
+> Queda pendiente de terceros: el plan de cuentas de Finance, los gastos
+> históricos 2026 y la cadencia de los recurrentes de IT (ver §12).
 >
 > **Datos cargados:** los presupuestos 2027 de IT (2027-2030) y de Competitions
 > están importados — ver §10.
@@ -523,10 +523,45 @@ Los gastos se imputan al año por `expense_date`; los pagos, por `payment_date`.
 La imputación de un pago (`department_code`, `account_code`) es **derivada, no
 pedida al usuario**: sale del `budget_code` que ya eligió el formulario y del
 rol de la persona nominada. La migración 036 lo hizo por SQL para los pagos que
-ya existían; desde entonces lo hace también el write path de `payments.py`
-(`_DEPARTMENT_BY_BUDGET` / `_ACCOUNT_BY_ROLE`, el mismo criterio que el backfill
-— si cambia uno, cambia el otro). Editar el `budget_code` de un pago lo
-reimputa; el frontend de pagos no toca esas columnas.
+ya existían; desde entonces lo hace también el write path de `payments.py`.
+Editar el `budget_code` de un pago lo reimputa; el frontend de pagos no toca
+esas columnas.
+
+Ninguno de los dos mapeos vive dentro de `payments.py`, a propósito:
+
+| | Dónde | Por qué ahí |
+|---|---|---|
+| budget → departamento | columna `payment_budgets.department_code` (migración **041**) | Es dato: agregar un budget obliga a decir de qué área sale. Un dict en código no sigue al catálogo. |
+| rol → cuenta | `api/_lib/budget_accounts.py` | Lo comparte el read path: `budget.py` usa el mismo mapa para mandar el pasaje a la cuenta de travel. |
+
+Cuando alguno devuelve `None` el backend **loguea un warning**. Sin eso el
+agujero se abre en silencio y recién se nota cuando alguien pregunta por qué
+creció el ámbar del dashboard.
+
+### El pasaje va a la línea de travel, no a la de fees
+
+Un pago aporta **dos** imputaciones, no una: el fee (`total` = amount + extra) a
+la cuenta de fees del rol, y el pasaje (`airfare`, migración 013) a la de
+travel. El plan de cuentas viene apareado, así que el destino no hay que
+inventarlo:
+
+| Rol | Fee | Travel |
+|---|---|---|
+| TD | COMP-11 | COMP-12 |
+| VGO | COMP-13 | COMP-14 |
+| REF | COMP-10 | COMP-07 |
+| REF_INSTRUCTOR | COMP-08 | COMP-09 |
+
+Hasta agosto 2026 el pasaje **no consumía presupuesto en ningún lado**: el
+summary ni lo miraba y la vista de costo lo mostraba como un número suelto que
+no entraba en el ejecutado. Eran $284.446 de líneas de travel presupuestadas
+para 2027 condenadas a figurar 100% disponibles para siempre. Ahora se suma
+como una fila más del mismo pago, así que el ejecutado, el comprometido, los
+tres rollups y el sin-imputar lo cuentan sin saber que existe un segundo
+concepto.
+
+⚠️ **Nunca imputar el pasaje a la cuenta del fee.** Infla una línea y deja la
+otra en cero: es peor que dejarlo afuera, porque encima parece correcto.
 
 Los pagos **sin departamento** se reportan aparte en `unallocated_payments` y no
 se reparten a ciegas en ningún total por área — así se ve qué falta clasificar
@@ -693,6 +728,14 @@ que lo importado siga cuadrando con la planilla.
   dict en Python y no lo sigue.
 - **Gastos ejecutados 2026** para importar. Se importan al final, cuando estén
   los archivos.
+- **La cadencia de los recurrentes de IT.** `scripts/seed_recurring_from_budget.py`
+  arma las 23 plantillas desde las líneas de presupuesto ($215.015, el total de
+  IT 2027 al centavo), pero la planilla presupuesta un ANUAL y no dice cada
+  cuánto se factura. Todo entra como `annual` salvo lo que esté en `MONTHLY`
+  dentro del script; las 17 líneas de cuentas de servicios (611000, 612300) se
+  listan aparte para que IT confirme cuáles son mensuales. Marcar mensual por
+  parecido dejaría al panel del mes reclamando doce veces un gasto que se paga
+  una.
 - **Regla de visibilidad cruzada** dentro de una competencia (§4): decidida por
   defecto, confirmar con los designados cuando usen el módulo.
 

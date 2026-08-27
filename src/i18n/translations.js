@@ -433,8 +433,8 @@ const translations = {
     eventExpenses: { en: 'Event expenses', es: 'Gastos del evento' },
     peopleCount: { en: 'People', es: 'Personas' },
     airfareApart: {
-      en: 'Airfare is settled with the travel agency and is not part of what the person is paid.',
-      es: 'Los pasajes se liquidan con la agencia y no son parte de lo que cobra la persona.',
+      en: 'Airfare is settled with the travel agency and is not part of what the person is paid, but it does count as executed — against the travel line of the role, not the fee line.',
+      es: 'Los pasajes se liquidan con la agencia y no son parte de lo que cobra la persona, pero sí cuentan como ejecutado: contra la línea de travel del rol, no la de fees.',
     },
     nobody: { en: 'Nobody nominated yet', es: 'Nadie nominado todavía' },
     pickEvent: { en: 'Pick an event...', es: 'Elige un evento...' },

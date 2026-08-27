@@ -35,6 +35,7 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Reques
 from fastapi.responses import Response
 
 from api._lib.auth import is_superadmin_request, require_edit, require_superadmin, require_view
+from api._lib.budget_accounts import travel_account_for_role
 from api._lib.database import supabase
 from api._lib.schemas import (
     AccountCreate,
@@ -848,9 +849,14 @@ def budget_summary(request: Request, year: int = Query(...), department: Optiona
     departamento y cuenta). Un pago cuenta como ejecutado cuando su status es
     `completed` — es el equivalente de `paid` en el enum viejo de payments.
 
-    Los pagos sin imputar (sin departamento, por venir de antes del backfill) se
-    reportan aparte en `unallocated_payments` en vez de repartirse a ciegas: así
-    se ve qué falta clasificar en lugar de esconderlo dentro de un total.
+    Los pagos sin imputar (sin departamento) se reportan aparte en
+    `unallocated_payments` en vez de repartirse a ciegas: así se ve qué falta
+    clasificar en lugar de esconderlo dentro de un total.
+
+    Un pago aporta DOS imputaciones, no una: el fee (`total`) a la cuenta de
+    fees del rol y el pasaje (`airfare`) a la de travel. Son líneas distintas
+    del presupuesto — COMP-11 vs. COMP-12 para un TD — y meter el pasaje en la
+    del fee infla una y deja la otra en cero para siempre.
     """
     lq = _scoped(supabase.table("budget_lines").select("*").eq("year", year), request, department)
     eq_ = _scoped(
@@ -865,8 +871,8 @@ def budget_summary(request: Request, year: int = Query(...), department: Optiona
     )
     pq = _scoped(
         supabase.table("payments").select(
-            "total, status, department_code, account_code, payment_date, "
-            "nominations(competition_id)"
+            "total, airfare, status, department_code, account_code, payment_date, "
+            "nominations(competition_id, personnel(role))"
         ),
         request, department,
     )
@@ -885,13 +891,20 @@ def budget_summary(request: Request, year: int = Query(...), department: Optiona
         if p.get("status") == "completed" and not pd.startswith(str(year)):
             continue
         nom = p.pop("nominations", None) or {}
-        payments.append({
-            "amount": p.get("total"),
+        base = {
             "status": p.get("status"),
             "department_code": p.get("department_code"),
-            "account_code": p.get("account_code"),
             "competition_id": nom.get("competition_id"),
-        })
+        }
+        payments.append({**base, "amount": p.get("total"), "account_code": p.get("account_code")})
+        # El pasaje se imputa a la cuenta de travel del rol, no a la del fee.
+        # Se agrega como una fila más para que todo lo de abajo —ejecutado,
+        # comprometido, los tres rollups, el sin-imputar— lo cuente sin
+        # enterarse de que existe un segundo concepto.
+        if float(p.get("airfare") or 0):
+            role = (nom.get("personnel") or {}).get("role")
+            payments.append({**base, "amount": p.get("airfare"),
+                             "account_code": travel_account_for_role(role)})
 
     depts = {d["code"]: d["label"] for d in (supabase.table("departments").select("code, label").execute().data or [])}
     accts = {a["code"]: a["label"] for a in (supabase.table("accounts").select("code, label").execute().data or [])}
@@ -992,7 +1005,10 @@ def competition_cost(competition_id: str, request: Request):
       - `budget_lines` → contra qué se compara
 
     El airfare va como línea propia y NO dentro del fee: en `payments` el total
-    es amount + extra y el vuelo se liquida con la agencia (migración 013).
+    es amount + extra y el vuelo se liquida con la agencia (migración 013). Pero
+    línea propia no es plata invisible: cuenta como ejecutado igual que el fee y
+    entra en el desglose por departamento — lo que cambia es la cuenta (la de
+    travel del rol, ver `budget_accounts.py`).
     """
     comp = supabase.table("competitions").select("id, name, year, subzone, tier") \
         .eq("id", competition_id).execute().data
@@ -1026,9 +1042,13 @@ def competition_cost(competition_id: str, request: Request):
     fees_paid = round(sum(_n(p, "total") for p in pays if p.get("status") == "completed"), 2)
     fees_open = round(sum(_n(p, "total") for p in pays
                           if p.get("status") in ("new", "in_process", "split")), 2)
-    airfare = round(sum(_n(p, "airfare") for p in pays), 2)
+    airfare_paid = round(sum(_n(p, "airfare") for p in pays
+                             if p.get("status") == "completed"), 2)
+    airfare_open = round(sum(_n(p, "airfare") for p in pays
+                             if p.get("status") in ("new", "in_process", "split")), 2)
+    airfare = round(airfare_paid + airfare_open, 2)
 
-    executed = round(exp_paid + fees_paid, 2)
+    executed = round(exp_paid + fees_paid + airfare_paid, 2)
 
     # Desglose por departamento, con las tres fuentes juntas.
     by_dept: dict = {}
@@ -1049,10 +1069,13 @@ def competition_cost(competition_id: str, request: Request):
             entry["committed"] += _n(e)
     for p in pays:
         entry = _entry(p.get("department_code"))
+        # Fee y pasaje van al mismo departamento (cambia la cuenta, y acá el
+        # desglose es por departamento), así que se suman juntos.
+        both = _n(p, "total") + _n(p, "airfare")
         if p.get("status") == "completed":
-            entry["executed"] += _n(p, "total")
+            entry["executed"] += both
         elif p.get("status") in ("new", "in_process", "split"):
-            entry["committed"] += _n(p, "total")
+            entry["committed"] += both
 
     labels = {d["code"]: d["label"] for d in
               (supabase.table("departments").select("code, label").execute().data or [])}
@@ -1080,7 +1103,7 @@ def competition_cost(competition_id: str, request: Request):
         "totals": {
             "budgeted": budgeted,
             "executed": executed,
-            "committed": round(exp_open + fees_open, 2),
+            "committed": round(exp_open + fees_open + airfare_open, 2),
             "remaining": round(budgeted - executed, 2),
             "person_fees": round(fees_paid + fees_open, 2),
             "airfare": airfare,
