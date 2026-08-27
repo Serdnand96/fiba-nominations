@@ -520,10 +520,21 @@ Desde la migración 036, `/budget/summary` suma **las dos fuentes de gasto**:
 
 Los gastos se imputan al año por `expense_date`; los pagos, por `payment_date`.
 
-Los pagos **sin departamento** (históricos, anteriores al backfill de la 036) se
-reportan aparte en `unallocated_payments` y no se reparten a ciegas en ningún
-total por área — así se ve qué falta clasificar en vez de esconderlo. La UI los
-muestra en ámbar.
+La imputación de un pago (`department_code`, `account_code`) es **derivada, no
+pedida al usuario**: sale del `budget_code` que ya eligió el formulario y del
+rol de la persona nominada. La migración 036 lo hizo por SQL para los pagos que
+ya existían; desde entonces lo hace también el write path de `payments.py`
+(`_DEPARTMENT_BY_BUDGET` / `_ACCOUNT_BY_ROLE`, el mismo criterio que el backfill
+— si cambia uno, cambia el otro). Editar el `budget_code` de un pago lo
+reimputa; el frontend de pagos no toca esas columnas.
+
+Los pagos **sin departamento** se reportan aparte en `unallocated_payments` y no
+se reparten a ciegas en ningún total por área — así se ve qué falta clasificar
+en vez de esconderlo. La UI los muestra en ámbar. Con la derivación en el alta,
+lo único que puede caer ahí es un `budget_code` o un rol sin mapeo: hoy los 6
+códigos de `payment_budgets` y los 4 roles de `personnel` están cubiertos, así
+que **un pago nuevo nace imputado**. Un rol nuevo (o un budget nuevo) sin agregar
+al mapeo vuelve a llenar esa bolsa en silencio.
 
 `excludes_person_payments` ahora devuelve `false`. El campo se mantiene para que
 un frontend viejo cacheado no muestre una advertencia que ya no aplica.
@@ -676,7 +687,10 @@ que lo importado siga cuadrando con la planilla.
 ## 12. Pendientes
 
 - **Plan de cuentas oficial de Finance.** Hasta que llegue, los códigos de
-  Competitions son `COMP-01`…`COMP-28` con `pending_mapping = true`.
+  Competitions son `COMP-01`…`COMP-28` con `pending_mapping = true`. Cuando se
+  renombren, acordarse de `_ACCOUNT_BY_ROLE` en `payments.py`: el `ON UPDATE
+  CASCADE` arregla las filas ya escritas, pero el mapeo del write path es un
+  dict en Python y no lo sigue.
 - **Gastos ejecutados 2026** para importar. Se importan al final, cuando estén
   los archivos.
 - **Regla de visibilidad cruzada** dentro de una competencia (§4): decidida por

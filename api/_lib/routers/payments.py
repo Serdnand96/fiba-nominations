@@ -8,6 +8,11 @@ attached (EXPENSES / W8 / BANK INFO).
 Sensitive data (amounts, bank confirmations, W8 docs) lives here, so the
 tables are backend-only (RLS on, no policies) and this router is gated by the
 `payments` module permission — view separate from edit.
+
+Cada pago se imputa además al presupuesto (`department_code` / `account_code`,
+migración 036) para que cuente como ejecutado en `/budget/summary`. Esas dos
+columnas se derivan acá — ver `_budget_dimensions()` — y no se piden en el
+formulario.
 """
 import logging
 import os
@@ -50,6 +55,62 @@ def _now_iso() -> str:
 def _valid_budget(code: str) -> bool:
     row = supabase.table("payment_budgets").select("code").eq("code", code).eq("active", True).execute().data
     return bool(row)
+
+
+# ─── Imputación al presupuesto (módulo Budget) ───────────────────────────────
+#
+# `payments.department_code` / `account_code` (migración 036) son lo que hace
+# que un pago cuente como ejecutado en `/budget/summary`. Esa migración
+# clasificó los pagos que ya existían; estos dos mapeos son el MISMO criterio
+# aplicado en el write path, para que un pago nuevo no nazca sin imputar y
+# termine en `unallocated_payments`. Si cambia uno, cambia el otro.
+#
+# El `budget_code` viejo (`payment_budgets`, migración 012) mezcla departamento
+# y línea presupuestaria en una sola columna: de ahí sale el DEPARTAMENTO. La
+# CUENTA sale del rol de la persona — el fee de un TD y el de un árbitro son
+# líneas distintas del presupuesto de Competitions.
+_DEPARTMENT_BY_BUDGET = {
+    "comms":          "comms",
+    "competitions":   "competitions",
+    "administration": "admin",
+    "referees":       "competitions",   # los árbitros los paga Competitions
+    "bcla":           "club_competitions",
+    "it":             "it",
+}
+
+_ACCOUNT_BY_ROLE = {
+    "TD":             "COMP-11",   # Technical Delegate Fees
+    "VGO":            "COMP-13",   # TV Graphics Operator Fees
+    "REF":            "COMP-10",   # Referees Fees
+    "REF_INSTRUCTOR": "COMP-08",   # Referee Instructor / Commissioners Fees
+}
+
+
+def _budget_dimensions(budget_code: Optional[str], role: Optional[str]) -> dict:
+    """Departamento y cuenta de un pago. Devuelve las dos claves siempre.
+
+    Un código o un rol sin mapear da `None` a propósito: el summary de budget
+    lo reporta aparte como *sin imputar* en vez de esconderlo en el total de un
+    área que no le corresponde. En el alta las claves en `None` se descartan
+    junto con el resto; en la edición se escriben, porque cambiar el
+    presupuesto de un pago tiene que poder despintar la imputación vieja.
+    """
+    return {
+        "department_code": _DEPARTMENT_BY_BUDGET.get(budget_code or ""),
+        "account_code": _ACCOUNT_BY_ROLE.get(role or ""),
+    }
+
+
+def _nomination_role(nomination_id: str) -> Optional[str]:
+    """Rol (TD / VGO / REF / …) de la persona nominada."""
+    rows = (
+        supabase.table("nominations")
+        .select("personnel(role)")
+        .eq("id", nomination_id)
+        .execute()
+        .data
+    )
+    return ((rows[0] if rows else {}).get("personnel") or {}).get("role")
 
 
 # ─── Storage helpers (private bucket) ────────────────────────────────────────
@@ -194,7 +255,7 @@ def payments_summary(
 def create_payment(data: PaymentCreate, request: Request):
     nom = (
         supabase.table("nominations")
-        .select("id, total")
+        .select("id, total, personnel(role)")
         .eq("id", data.nomination_id)
         .execute()
         .data
@@ -222,6 +283,11 @@ def create_payment(data: PaymentCreate, request: Request):
         "payment_date": data.payment_date,
         "bank_confirmation": data.bank_confirmation,
         "created_by": _user_id(request),
+        # Imputación al presupuesto: derivada, no pedida al usuario. El
+        # formulario ya eligió el budget y la nominación ya dice el rol.
+        **_budget_dimensions(
+            data.budget_code, (nom[0].get("personnel") or {}).get("role")
+        ),
     }
     record = {k: v for k, v in record.items() if v is not None}
     result = supabase.table("payments").insert(record).execute()
@@ -238,6 +304,15 @@ def update_payment(payment_id: str, data: PaymentUpdate):
         raise HTTPException(status_code=400, detail="Invalid status")
     if not updates:
         raise HTTPException(status_code=400, detail="Nothing to update")
+    if "budget_code" in updates:
+        # Cambiar el presupuesto cambia de qué área sale la plata: se reimputa
+        # acá y no en el frontend. Puede escribir NULL (ver _budget_dimensions).
+        row = supabase.table("payments").select("nomination_id").eq("id", payment_id).execute().data
+        if not row:
+            raise HTTPException(status_code=404, detail="Payment not found")
+        updates.update(_budget_dimensions(
+            updates["budget_code"], _nomination_role(row[0]["nomination_id"])
+        ))
     updates["updated_at"] = _now_iso()
     result = supabase.table("payments").update(updates).eq("id", payment_id).execute()
     if not result.data:
