@@ -196,6 +196,74 @@ legacy `fibaamericascloud.com`).
       cuales 17 y 12 eran suyas; los partidos de agosto se veían dentro de la
       ventana de julio. Se limpiaron 139 filas.
 
+14. **Hay DOS tablas de gasto y el reporte suma las dos.** No son alternativas
+    ni una reemplaza a la otra:
+    - `payments` (migración 012) → pago a **una persona nominada a un evento**.
+      `nomination_id` es NOT NULL UNIQUE: sin nominación no hay pago. De ahí
+      salen los fees de TDs, VGOs y árbitros.
+    - `expenses` (migración 034) → **todo lo demás**: gasto de departamento sin
+      evento (licencias, internet, leasing) y gasto de evento sin persona
+      (shipping, branding, seguros).
+
+    `/budget/summary` suma las dos fuentes. Un pago cuenta como ejecutado con
+    `status = 'completed'`; un gasto, con `paid`. Lo aprobado-sin-pagar se
+    reporta como *comprometido* y no descuenta del restante.
+
+    **No metas un `nomination_id` nullable en `payments`** para unificarlas: eso
+    volvería condicional el prefill desde `nominations.total`, la lógica de
+    W8/bank info y el bloqueo de borrado de la migración 028.
+
+    El contrato completo del módulo está en `BUDGET_MODULE.md` y se actualiza en
+    el mismo PR que el código.
+
+15. **La imputación de un pago al presupuesto es derivada, y son DOS.**
+    `payments.department_code` / `account_code` (migración 036) no se piden en
+    el formulario: salen del `budget_code` que el usuario ya eligió y del rol de
+    la persona nominada. Y un pago aporta **dos** imputaciones, no una:
+
+    | Concepto | Va a la cuenta | Mapeo |
+    |---|---|---|
+    | fee (`total` = amount + extra) | de **fees** del rol | `api/_lib/budget_accounts.py` |
+    | pasaje (`airfare`, migración 013) | de **travel** del rol | el mismo archivo |
+    | (departamento) | — | columna `payment_budgets.department_code` (migración **041**) |
+
+    - **Nunca imputes el pasaje a la cuenta del fee.** Infla una línea y deja la
+      otra en cero, y encima parece correcto. El plan de cuentas viene apareado:
+      TD 11/12, VGO 13/14, REF 10/07, REF_INSTRUCTOR 08/09.
+    - El departamento es **dato, no código**: agregar un `payment_budgets` sin
+      mapear manda esos pagos a `unallocated_payments` (el ámbar del dashboard).
+      El backend loguea un warning cuando pasa, pero es lo único que avisa.
+    - Un valor sin mapear queda en `NULL` **a propósito**: se reporta como sin
+      imputar en vez de esconderse dentro del total de un área ajena.
+
+16. **Budget es el único módulo con filtrado por FILA.** En todos los demás un
+    permiso abre o cierra el endpoint entero: quien tiene `logistics` ve toda la
+    logística. Acá no alcanza — el designado de IT ve los gastos de IT y no los
+    de Competitions.
+
+    Y **no se resuelve con RLS**: el backend pega con el `service_role`, que la
+    bypassa por diseño. El recorte vive en el código, en **cada** query del
+    router, vía `_scoped()` (`budget.py`) contra la tabla `budget_access`.
+
+    - Una query de budget sin `_scoped()` es un agujero **P0**, igual que un
+      endpoint sin `require_view`.
+    - `_scoped()` resuelve el scope y el filtro que pidió el usuario en **un
+      solo** `.eq`/`.in_`: el query builder guarda un filtro por columna, así que
+      encadenar dos pisa el scope en silencio. Eso sería el bypass.
+    - `/budget/access/{user_id}` es **solo superadmin**: quién ve qué plata no lo
+      decide alguien que ya tiene el módulo.
+
+17. **Las migraciones de Budget (033-041) NO van en el deploy automático.** Se
+    aplican a mano contra Supabase **antes** de pushear el código que las usa —
+    si no, el deploy encuentra una columna que no existe. Cada archivo lo dice en
+    su cabecera. El resto del schema sigue la misma convención, pero acá es
+    especialmente fácil olvidarlo porque son nueve migraciones seguidas.
+
+    **Estado hoy (agosto 2026):** el presupuesto está cargado ($1.627.431 para
+    2027, entre IT, Competitions y Comms) pero el **ejecutado está casi vacío**
+    — 1 pago, 0 gastos, 0 proveedores. Si el dashboard te da todo en cero, es el
+    dato y no un bug.
+
 ---
 
 ## 🗺️ Mapa del repo
@@ -211,6 +279,8 @@ fiba-nominations/
 ├── SECURITY_RUNBOOK.md        ← acciones manuales pendientes (Supabase, DNS)
 ├── PAYMENTS_MODULE.md         ← análisis del legacy vbills (histórico; la
 │                                 implementación final difiere — ver nota adentro)
+├── BUDGET_MODULE.md           ← contrato del módulo Budget (schema, endpoints,
+│                                 scoping por departamento, datos cargados)
 ├── .claude/                   ← subagentes + skills para sesiones de IA (ver abajo)
 │
 ├── api/                       ← FastAPI backend
@@ -218,6 +288,7 @@ fiba-nominations/
 │   └── _lib/
 │       ├── auth.py            ← require_view, require_edit dependencies
 │       ├── database.py        ← lightweight supabase client (httpx)
+│       ├── budget_accounts.py ← rol → cuenta de fees / de travel (payments ↔ budget)
 │       ├── routers/           ← uno por módulo (nominations, training, …)
 │       └── services/
 │           └── document_generator.py  ← docx (docxtpl) → pdf (LibreOffice)
@@ -404,6 +475,12 @@ explicación del truco de CSS variables para los aliases legacy
   mount en `api/index.py`, página en `src/pages/X.jsx`, ruta en
   `App.jsx`, icono en el map `moduleIcon`, permiso en `user_permissions`.
 
+- **"Tocá algo de plata"** (budget, payments, fees) → leé `BUDGET_MODULE.md`
+  primero: es el contrato del módulo y se actualiza en el mismo PR. Checklist
+  corto: `_scoped()` en toda query nueva de budget, la migración aplicada a mano
+  ANTES del push, y si tocás la imputación de un pago acordate de que son dos
+  (fee y pasaje, puntos 15 a 17).
+
 - **"Cambiá el deploy"** → modificá `.github/workflows/deploy.yml`. Hay
   un user en el droplet llamado `fiba` con clave SSH agregada via
   `DROPLET_SSH_KEY` secret.
@@ -429,3 +506,7 @@ explicación del truco de CSS variables para los aliases legacy
 - ❌ Borrar registros directamente con SQL si tocan storage — usar
   el endpoint que llama a Storage API (`_delete_pdf_from_storage`).
 - ❌ Confundir `personnel` con `employees` (TDs/VGOs vs staff interno).
+- ❌ Escribir una query en `budget.py` sin `_scoped()` — es un P0 (punto 16).
+- ❌ Imputar el pasaje de un pago a la cuenta de fees (punto 15).
+- ❌ Pushear código que usa una migración de Budget sin haberla aplicado antes
+  a mano en Supabase (punto 17).
