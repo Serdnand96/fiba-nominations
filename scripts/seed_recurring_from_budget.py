@@ -6,18 +6,18 @@ convierte en `recurring_expenses`, que es lo que hace que el panel del mes
 avise qué falta cargar en vez de que se olvide.
 
 Dos pasos como el resto de los importadores del repo: preview por defecto,
---commit para escribir. Idempotente: borra lo sembrado antes (marcado en
-`notes`) y reinserta.
+--commit para escribir.
 
-NO ADIVINA LA FRECUENCIA. La planilla presupuesta un monto ANUAL por línea y no
-dice cada cuánto se factura. Todo entra como `annual` salvo lo que esté listado
-explícitamente en MONTHLY acá abajo — y las líneas de las cuentas de servicios
-se reportan aparte como "a confirmar", porque son las candidatas obvias a ser
-mensuales. Poner 'monthly' por parecido dejaría al panel del mes reclamando
-doce veces un gasto que se paga una.
+NO PISA LO QUE YA EXISTE. La cadencia de acá es un punto de partida razonable,
+no la verdad: cada plantilla se edita después en **Budget → Recurrentes**
+(frecuencia, monto, día, proveedor, vigencia). Por eso una segunda corrida solo
+agrega lo que falta y deja intacto lo que ya está cargado — si el equipo pasó
+una suscripción a trimestral, no se la volvemos a pisar. `--replace` fuerza el
+borrado y la resiembra, y ahí sí se pierden esos ajustes.
 
     ./venv/bin/python scripts/seed_recurring_from_budget.py                 # preview
-    ./venv/bin/python scripts/seed_recurring_from_budget.py --commit        # escribe
+    ./venv/bin/python scripts/seed_recurring_from_budget.py --commit        # agrega lo que falta
+    ./venv/bin/python scripts/seed_recurring_from_budget.py --commit --replace
     ./venv/bin/python scripts/seed_recurring_from_budget.py --year 2027 --department it
 """
 import argparse
@@ -31,17 +31,18 @@ load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
 from api._lib.database import supabase   # noqa: E402
 
-# Facturación mensual CONFIRMADA (la planilla lo dice en el texto de la línea).
-# El monto de la plantilla es el anual / 12. Agregá acá lo que el equipo de IT
-# confirme y volvé a correr el script: es idempotente.
-MONTHLY = {
-    "Zoom Audio Conferencing (Monthly)",
+# Cadencia por CUENTA, no por proveedor. La planilla presupuesta un monto anual
+# y en ningún lado dice cada cuánto se factura; mirar el nombre ("AWS suena
+# mensual") sería adivinar. Lo que sí se puede afirmar es qué tipo de gasto es:
+# un servicio se paga todos los meses y una compra no.
+#
+# Todo entra como `monthly` con monto = anual / 12, salvo las cuentas de acá,
+# que son compras y reemplazos puntuales: ahí `annual` con el monto tal cual,
+# que es literalmente lo que dice el presupuesto.
+ANNUAL_ACCOUNTS = {
+    "612100",   # Hardware Purchase — Office (computers, monitores, periféricos)
+    "612200",   # Accessory Replacements / Office Equipment Maintenance
 }
-
-# Cuentas de servicios y suscripciones: si una línea de acá quedó como `annual`
-# es probable que en realidad se facture mensual, pero eso lo confirma una
-# persona. Se listan al final del preview para que la decisión sea explícita.
-SERVICE_ACCOUNTS = {"611000", "612300"}
 
 # Cuentas de la matriz por evento (Competitions / Comms). Quedan afuera aunque
 # la línea no cuelgue de una competencia: la columna "General Expenses" del
@@ -50,11 +51,18 @@ SERVICE_ACCOUNTS = {"611000", "612300"}
 EVENT_ACCOUNT_PREFIXES = ("COMP-", "COMM-")
 
 
+def _key(row: dict) -> tuple:
+    """Identidad de una plantilla. Sobrevive a que la editen en la UI."""
+    return (row["department_code"], row["account_code"], row["description"].strip())
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--year", type=int, default=2027)
     ap.add_argument("--department", default="it")
     ap.add_argument("--commit", action="store_true")
+    ap.add_argument("--replace", action="store_true",
+                    help="borra lo sembrado antes y resiembra (pisa ediciones manuales)")
     args = ap.parse_args()
 
     mark = f"seed:recurring:{args.year}:{args.department}"
@@ -78,11 +86,11 @@ def main() -> int:
         print(f"Sin líneas para {args.department} {args.year}.")
         return 1
 
-    rows, to_confirm = [], []
+    proposed = []
     for line in sorted(lines, key=lambda l: (l["account_code"], l["description"])):
         annual = float(line.get("amount") or 0)
-        monthly = line["description"] in MONTHLY
-        rows.append({
+        monthly = line["account_code"] not in ANNUAL_ACCOUNTS
+        proposed.append({
             "department_code": args.department,
             "account_code": line["account_code"],
             "description": line["description"],
@@ -92,31 +100,47 @@ def main() -> int:
             "active": True,
             "notes": mark,
         })
-        if not monthly and line["account_code"] in SERVICE_ACCOUNTS:
-            to_confirm.append((line["account_code"], line["description"], annual))
+
+    existing = (
+        supabase.table("recurring_expenses")
+        .select("id, department_code, account_code, description, frequency, amount, notes")
+        .eq("department_code", args.department)
+        .execute()
+        .data
+    ) or []
+    seen = {_key(r) for r in existing}
+    new_rows = [r for r in proposed if _key(r) not in seen]
 
     print(f"\n{'CUENTA':<10} {'FREQ':<8} {'MONTO':>10}  DESCRIPCIÓN")
     print("─" * 100)
-    for r in rows:
-        print(f"{r['account_code']:<10} {r['frequency']:<8} {r['amount']:>10,.2f}  {r['description'][:66]}")
-    total = sum(r["amount"] * (12 if r["frequency"] == "monthly" else 1) for r in rows)
+    for r in proposed:
+        flag = "  " if _key(r) not in seen else "= "   # '=' ya existe, no se toca
+        print(f"{flag}{r['account_code']:<8} {r['frequency']:<8} {r['amount']:>10,.2f}  {r['description'][:64]}")
     print("─" * 100)
-    print(f"{len(rows)} plantillas · equivalente anual ${total:,.2f}")
+    anual_eq = sum(r["amount"] * (12 if r["frequency"] == "monthly" else 1) for r in proposed)
+    print(f"{len(proposed)} plantillas · equivalente anual ${anual_eq:,.2f}")
+    if len(proposed) != len(new_rows):
+        print(f"{len(proposed) - len(new_rows)} ya existen (marcadas '=') y NO se tocan"
+              + (" — salvo con --replace" if not args.replace else " → --replace las va a pisar"))
 
-    if to_confirm:
-        print(f"\n⚠️  {len(to_confirm)} líneas de cuentas de servicios quedaron ANUALES.")
-        print("   La planilla no dice la cadencia. Si alguna se factura mensual,")
-        print("   agregala a MONTHLY en este script y volvé a correrlo:")
-        for code, desc, annual in to_confirm:
-            print(f"     · [{code}] {desc[:60]:<60} ${annual:,.2f}/año → ${annual/12:,.2f}/mes")
+    monthly_n = sum(1 for r in proposed if r["frequency"] == "monthly")
+    print(f"\n{monthly_n} mensuales · {len(proposed) - monthly_n} anuales (compras puntuales).")
+    print("La cadencia es un punto de partida: se ajusta plantilla por plantilla")
+    print("en Budget → Recurrentes. Si pasás una a anual, acordate del monto: acá")
+    print("el mensual es el anual dividido 12.")
 
     if not args.commit:
         print("\nPreview. Nada escrito. Agregá --commit para sembrar.")
         return 0
 
-    supabase.table("recurring_expenses").delete().eq("notes", mark).execute()
-    supabase.table("recurring_expenses").insert(rows).execute()
-    print(f"\n✓ {len(rows)} plantillas sembradas ({mark}).")
+    if args.replace:
+        supabase.table("recurring_expenses").delete().eq("notes", mark).execute()
+        new_rows = proposed
+    if not new_rows:
+        print("\nNada para agregar: ya estaban todas.")
+        return 0
+    supabase.table("recurring_expenses").insert(new_rows).execute()
+    print(f"\n✓ {len(new_rows)} plantillas sembradas ({mark}).")
     return 0
 
 

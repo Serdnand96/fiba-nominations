@@ -634,6 +634,15 @@ antes de reinsertar.
 | `CompsDraftBudget2027` | 168 | $970.416 |
 | `2027_Budget_Comms_Americas` | 62 (54 + 8 del reparto U16) | $412.500 |
 
+**Recurrentes de IT 2027** (2026-08-27): 23 plantillas sembradas con
+`scripts/seed_recurring_from_budget.py` desde las líneas ya importadas — 20
+mensuales + 3 anuales, equivalente anual $215.015,04, el total de IT 2027 al
+centavo. El panel del mes las empieza a pedir en **enero 2027** (23 en enero:
+las 20 mensuales más las 3 anuales, que caen en el mes de inicio; 20 de febrero
+en adelante), porque el presupuesto sembrado es el de 2027. Una segunda corrida
+del script **no pisa lo editado a mano**: solo agrega lo que falte, salvo que se
+le pase `--replace`.
+
 El de Comms se cargó el 2026-08-12 ya con el import del módulo
 (`scripts/import_budget_comms_2027.py` solo aporta el mapeo acordado). Las
 decisiones del cliente sobre sus 10 grupos:
@@ -728,14 +737,15 @@ que lo importado siga cuadrando con la planilla.
   dict en Python y no lo sigue.
 - **Gastos ejecutados 2026** para importar. Se importan al final, cuando estén
   los archivos.
-- **La cadencia de los recurrentes de IT.** `scripts/seed_recurring_from_budget.py`
-  arma las 23 plantillas desde las líneas de presupuesto ($215.015, el total de
-  IT 2027 al centavo), pero la planilla presupuesta un ANUAL y no dice cada
-  cuánto se factura. Todo entra como `annual` salvo lo que esté en `MONTHLY`
-  dentro del script; las 17 líneas de cuentas de servicios (611000, 612300) se
-  listan aparte para que IT confirme cuáles son mensuales. Marcar mensual por
-  parecido dejaría al panel del mes reclamando doce veces un gasto que se paga
-  una.
+- **Afinar la cadencia de los recurrentes de IT.** Las 23 plantillas ya están
+  sembradas (§10). La cadencia sale de la CUENTA y no del proveedor —la
+  planilla presupuesta un anual y no dice cada cuánto se factura, así que mirar
+  el nombre sería adivinar—: servicios y suscripciones entran `monthly` con
+  monto anual/12, y las compras puntuales (612100 hardware, 612200 reemplazos y
+  mantenimiento) entran `annual` con el monto tal cual. Es un punto de partida:
+  cada plantilla se ajusta en **Budget → Recurrentes**, que ya edita frecuencia,
+  monto, día, proveedor y vigencia. Ojo al pasar una a anual: el monto sembrado
+  es el mensual, hay que multiplicarlo.
 - **Regla de visibilidad cruzada** dentro de una competencia (§4): decidida por
   defecto, confirmar con los designados cuando usen el módulo.
 
