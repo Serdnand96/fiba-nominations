@@ -199,6 +199,21 @@ def validate_template(template_key: str, data: bytes) -> dict:
             return {"ok": False, "unknown": [], "unused": [],
                     "error": f"Not a readable .docx template: {type(exc).__name__}"}
 
+        # A file with no placeholders at all renders perfectly — it just prints
+        # whatever is typed in it, the same words for every nominee. That is a
+        # letterhead, not a template, and it is the easy mistake to make: upload
+        # the blank stationery instead of the tagged version. It happened, and
+        # nothing caught it — the letters went out with the logo, the signature
+        # and no body, with not a single error in the log. Partial use is fine
+        # (WCQ and GENERIC legitimately ignore several fields); zero is not.
+        if not used:
+            return {"ok": False, "unknown": [], "unused": sorted(context),
+                    "error": ("This file uses none of the letter's fields, so "
+                              "every letter would come out with no content. It "
+                              "looks like the blank letterhead rather than the "
+                              "template — download the current one to see the "
+                              "placeholders it needs.")}
+
         try:
             tpl.render(context, jinja_env=_sandboxed_jinja_env())
         except Exception as exc:
