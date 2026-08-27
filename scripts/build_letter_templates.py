@@ -156,6 +156,9 @@ BCLA_BOLD = {"Game Information", "Financial Details"}
 # (LSB_TEMPLATE.docx), whose signature block is part of the file, so the body
 # stops at the closing line and carries no {{ signature }}.
 LSB_BODY = [
+    # One blank before the title: body_start is 0, so without it the heading
+    # butts against the letterhead logo, which hangs below the top margin.
+    ("", None, None, None),
     ("{{ heading }}", None, 14, None),                 # bold via LSB_BOLD
     ("", None, None, None),
     ("{{r greeting }}", None, None, None),
@@ -179,10 +182,15 @@ LSB_BODY = [
     ("{%p if departure_date %}", None, None, None),
     ("  •  Departure Date: {{ departure_date }}", None, 10, None),
     ("{%p endif %}", None, None, None),
+    # El bloque entero es condicional, no solo el loop: una carta de torneo no
+    # lista partidos, y sin el if quedaban los dos blancos de alrededor
+    # abriendo un hueco doble justo en el medio de la carta.
+    ("{%p if game_dates %}", None, None, None),
     ("", None, None, None),
     ("{%p for game in game_dates %}", None, None, None),
     ("{{r game }}", CENTER, 10, None),
     ("{%p endfor %}", None, None, None),
+    ("{%p endif %}", None, None, None),
     ("", None, None, None),
     ("Below list the details of payment you will receive as {{ role }} "
      "assigned to the competition listed above:", None, 10, None),
@@ -192,8 +200,12 @@ LSB_BODY = [
     ("{%p endfor %}", None, None, None),
     ("", None, None, None),
     ("Thank you for your commitment and professionalism.", None, 10, None),
-    ("", None, None, None),
-    ("", None, None, None),
+    # Aire antes de la firma. La carta de LSB es corta —sin párrafo de travel
+    # ni de banco— y con dos blancos la firma quedaba en el tercio superior con
+    # media página vacía debajo. Seis la bajan a un lugar razonable sin empujar
+    # nada a una segunda hoja: el caso más largo (cuatro bullets y una tanda de
+    # gamedays) sigue entrando cómodo.
+    *[("", None, None, None)] * 6,
 ]
 
 # The title is the only bold line; everything else takes the run's default.
