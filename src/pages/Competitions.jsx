@@ -1,9 +1,12 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, Fragment } from 'react'
 import { getCompetitions, createCompetition, updateCompetition, deleteCompetition, getNominations, getTemplates } from '../api/client'
 import { useLanguage } from '../i18n/LanguageContext'
 import { useAuth } from '../contexts/AuthContext'
 import { useToast } from '../components/ui/Toast'
 import { readLastSearch, writeLastSearch } from '../lib/lastSearch'
+import {
+  competitionYear, competitionYears, competitionDateRange, groupCompetitionsByYear,
+} from '../lib/competitions'
 
 const TEMPLATE_BADGES = {
   WCQ: 'bg-red-500/20 text-red-400',
@@ -13,10 +16,14 @@ const TEMPLATE_BADGES = {
   GENERIC: 'bg-fiba-surface text-fiba-muted',
 }
 
-// Last search (text + template filter), persisted across visits — same
-// pattern as Games. Restored synchronously as the initial state; the
-// template filter is re-validated against the data once it loads.
+// Last search (text + template + year filter), persisted across visits — same
+// pattern as Games. Restored synchronously as the initial state; los filtros de
+// template y año se re-validan contra los datos una vez que cargan.
 const LAST_SEARCH_KEY = 'fiba_competitions_last_search'
+
+// El filtro de año usa 'all' para "todos" y `null` para "todavía no se eligió",
+// que es lo que dispara el default al año en curso cuando cargan los datos.
+const ALL_YEARS = 'all'
 
 function loadLastSearch() {
   const parsed = readLastSearch(LAST_SEARCH_KEY)
@@ -24,11 +31,14 @@ function loadLastSearch() {
   return {
     search: typeof parsed.search === 'string' ? parsed.search : '',
     template: typeof parsed.template === 'string' ? parsed.template : '',
+    year: parsed.year === ALL_YEARS ? ALL_YEARS
+      : (Number.isFinite(parsed.year) ? parsed.year : null),
   }
 }
 
 export default function Competitions() {
   const { t } = useLanguage()
+  const MONTHS_SHORT = t('months.short')
   const { hasEdit } = useAuth()
   const { push } = useToast()
   const canEdit = hasEdit('competitions')
@@ -43,10 +53,14 @@ export default function Competitions() {
   // Search & filter — restored from the persisted last search
   const [search, setSearch] = useState(() => loadLastSearch()?.search || '')
   const [filterTemplate, setFilterTemplate] = useState(() => loadLastSearch()?.template || '')
+  const [filterYear, setFilterYear] = useState(() => loadLastSearch()?.year ?? null)
 
   useEffect(() => {
-    writeLastSearch(LAST_SEARCH_KEY, { search, template: filterTemplate })
-  }, [search, filterTemplate])
+    // `null` es un estado transitorio (todavía no resolvió el default), no una
+    // elección: guardarlo haría que la próxima visita vuelva a resolver sola.
+    if (filterYear === null) return
+    writeLastSearch(LAST_SEARCH_KEY, { search, template: filterTemplate, year: filterYear })
+  }, [search, filterTemplate, filterYear])
 
   // Template types created on the Templates page — the built-ins are listed
   // statically in the select below.
@@ -68,6 +82,18 @@ export default function Competitions() {
       // Drop a restored template filter that no longer matches any competition,
       // so a stale value can't leave the list silently empty.
       setFilterTemplate(ft => (ft && !c.some(x => x.template_key === ft) ? '' : ft))
+      // Mismo criterio para el año, más el default: sin elección previa se abre
+      // en el año en curso, que es el que se está trabajando. Si ese año no
+      // tiene competencias cargadas, cae al más cercano hacia adelante (recién
+      // arrancado el año que viene, la lista útil es la del año que viene).
+      const years = competitionYears(c)
+      setFilterYear(fy => {
+        if (fy !== null && fy !== ALL_YEARS && !years.includes(fy)) return ALL_YEARS
+        if (fy !== null) return fy
+        if (!years.length) return ALL_YEARS
+        const current = new Date().getFullYear()
+        return years.includes(current) ? current : (years.find(y => y > current) ?? years[years.length - 1])
+      })
     } catch (err) {
       console.error('Load error:', err)
       push({ type: 'error', title: t('competitions.errorLoading') })
@@ -84,20 +110,38 @@ export default function Competitions() {
   const filtered = useMemo(() => {
     return competitions.filter(c => {
       if (filterTemplate && c.template_key !== filterTemplate) return false
+      if (filterYear !== null && filterYear !== ALL_YEARS && competitionYear(c) !== filterYear) return false
       if (search) {
         const q = search.toLowerCase()
         return (c.name || '').toLowerCase().includes(q)
+          || (c.short_name || '').toLowerCase().includes(q)
           || (c.template_key || '').toLowerCase().includes(q)
           || String(c.year || '').includes(q)
       }
       return true
     })
-  }, [competitions, search, filterTemplate])
+  }, [competitions, search, filterTemplate, filterYear])
+
+  // Agrupado por año. Con un solo año elegido queda un grupo, pero el
+  // encabezado se muestra igual: es lo que dice de qué año es la lista.
+  const groups = useMemo(() => groupCompetitionsByYear(filtered), [filtered])
 
   const templateOptions = useMemo(() =>
     [...new Set(competitions.map(c => c.template_key).filter(Boolean))].sort(),
     [competitions]
   )
+  const yearOptions = useMemo(() => competitionYears(competitions), [competitions])
+
+  // Cuántas competencias hay por año, para el contador de cada pill: sirve para
+  // ver de un vistazo qué año está cargado y cuál todavía no.
+  const countByYear = useMemo(() => {
+    const counts = {}
+    for (const c of competitions) {
+      const y = competitionYear(c)
+      if (y) counts[y] = (counts[y] || 0) + 1
+    }
+    return counts
+  }, [competitions])
 
   function openCreate() {
     setEditing(null)
@@ -158,6 +202,34 @@ export default function Competitions() {
         )}
       </div>
 
+      {/* Year filter — arriba de todo porque es el corte principal: hay
+          competencias con el mismo nombre en años distintos (LSB – Group A
+          existe en 2026 y en 2027) y sin esto la lista las mezclaba. */}
+      <div className="flex flex-wrap items-center gap-2 mb-3">
+        <span className="text-xs font-medium text-fiba-muted mr-1">{t('competitions.year')}</span>
+        {yearOptions.map(y => (
+          <button key={y} onClick={() => setFilterYear(y)}
+            className={`px-3 py-1.5 rounded-full text-xs font-medium tabular-nums transition-colors border ${
+              filterYear === y
+                ? 'bg-basketball-700 text-white border-basketball-700'
+                : 'bg-fiba-surface text-fiba-muted border-fiba-border hover:bg-fiba-surface-2'
+            }`}>
+            {y}
+            <span className={`ml-1.5 ${filterYear === y ? 'text-white/70' : 'text-fiba-muted/60'}`}>
+              {countByYear[y]}
+            </span>
+          </button>
+        ))}
+        <button onClick={() => setFilterYear(ALL_YEARS)}
+          className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors border ${
+            filterYear === ALL_YEARS
+              ? 'bg-basketball-700 text-white border-basketball-700'
+              : 'bg-fiba-surface text-fiba-muted border-fiba-border hover:bg-fiba-surface-2'
+          }`}>
+          {t('competitions.allYears')}
+        </button>
+      </div>
+
       {/* Search & filter bar */}
       <div className="flex flex-col sm:flex-row gap-3 mb-4">
         <div className="relative flex-1 max-w-md">
@@ -184,10 +256,10 @@ export default function Competitions() {
           onChange={e => setFilterTemplate(e.target.value)}
           className="fiba-select !w-auto min-w-[160px] flex-shrink-0"
         >
-          <option value="">All templates</option>
+          <option value="">{t('competitions.allTemplates')}</option>
           {templateOptions.map(t => <option key={t} value={t}>{t}</option>)}
         </select>
-        {(search || filterTemplate) && (
+        {(search || filterTemplate || filterYear !== ALL_YEARS) && (
           <span className="text-xs text-fiba-muted/60 self-center">{filtered.length} / {competitions.length}</span>
         )}
       </div>
@@ -199,13 +271,27 @@ export default function Competitions() {
             <tr>
               <th>{t('competitions.name')}</th>
               <th>{t('competitions.template')}</th>
-              <th>{t('competitions.year')}</th>
+              <th>{t('competitions.dates')}</th>
               <th>{t('competitions.nominations')}</th>
               <th></th>
             </tr>
           </thead>
           <tbody>
-            {filtered.map(c => (
+            {groups.map(g => (
+              <Fragment key={g.year ?? 'sin-año'}>
+                {/* Encabezado de año. Se muestra aunque haya un solo grupo:
+                    es la respuesta a "qué año estoy viendo". */}
+                <tr>
+                  <td colSpan={5} className="px-4 py-2 bg-fiba-surface border-y border-fiba-border">
+                    <span className="text-sm font-bold text-ink-900 dark:text-white tabular-nums">
+                      {g.year ?? t('competitions.noYear')}
+                    </span>
+                    <span className="ml-2 text-xs text-fiba-muted/60">
+                      {g.items.length} {g.items.length === 1 ? t('competitions.oneCompetition') : t('competitions.manyCompetitions')}
+                    </span>
+                  </td>
+                </tr>
+                {g.items.map(c => (
               <tr key={c.id}>
                 <td className="px-4 py-3">
                   <div className="font-medium">{c.name}</div>
@@ -223,7 +309,16 @@ export default function Competitions() {
                     {c.template_key}
                   </span>
                 </td>
-                <td className="px-4 py-3">{c.year || '--'}</td>
+                {/* Las fechas llevan el año adentro aunque el grupo ya lo diga:
+                    es el único dato que separa "LSB – Group A" de 2026 de la de
+                    2027, y no puede depender de hasta dónde llegó el scroll. */}
+                <td className="px-4 py-3 whitespace-nowrap text-sm tabular-nums">
+                  {competitionDateRange(c, MONTHS_SHORT, { year: true }) || (
+                    <span className="text-xs bg-amber-100 text-amber-800 dark:bg-amber-500/20 dark:text-amber-400 px-1.5 py-0.5 rounded font-medium">
+                      {c.year ? `TBD ${c.year}` : 'TBD'}
+                    </span>
+                  )}
+                </td>
                 <td className="px-4 py-3">{nomCount(c.id)}</td>
                 <td className="px-4 py-3">
                   {canEdit && (
@@ -234,10 +329,12 @@ export default function Competitions() {
                   )}
                 </td>
               </tr>
+                ))}
+              </Fragment>
             ))}
             {filtered.length === 0 && (
               <tr><td colSpan={5} className="px-4 py-8 text-center text-fiba-muted/60">
-                {search || filterTemplate ? 'No results' : t('competitions.noCompetitions')}
+                {search || filterTemplate || filterYear !== ALL_YEARS ? t('competitions.noResults') : t('competitions.noCompetitions')}
               </td></tr>
             )}
           </tbody>
