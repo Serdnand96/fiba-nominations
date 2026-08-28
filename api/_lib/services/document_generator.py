@@ -656,6 +656,15 @@ def _lsb_context(data: dict, font: str, *, signature: bool = True) -> dict:
 
     sig_name, sig_title, sig_org = SIGNATORIES.get("LSB", SIGNATORIES["BCLA"])
 
+    # Líneas en blanco entre el cierre y la firma. Es lo único que decide dónde
+    # cae el bloque de firma, y no puede ser fijo: esta carta mide entre ocho y
+    # quince líneas según cuántos gamedays liste, y un hueco que deja bien a la
+    # más corta manda a la más larga a una segunda hoja. Medido contra el
+    # LibreOffice del droplet, cada gameday ocupa alrededor de línea y media de
+    # las de relleno; el piso de 2 es para que la firma nunca quede pegada al
+    # "Thank you".
+    gap = max(2, 7 - round(1.4 * len(games)))
+
     context = {
         "heading": f"Confirmation – {comp_name} {data.get('competition_year', '')}",
         "greeting": _dear_line(data, font, size=10),
@@ -668,6 +677,8 @@ def _lsb_context(data: dict, font: str, *, signature: bool = True) -> dict:
         "game_dates": games,
         "payment_lines": [rich(text, bold=bold, color=RED_HEX)
                       for text, bold in _fee_lines(data)],
+        # Solo importa el largo; el contenido de cada elemento no se imprime.
+        "signature_gap": [""] * gap,
     }
     if signature:
         context["signature"] = f"{sig_name} {sig_title} {sig_org}"

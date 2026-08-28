@@ -156,8 +156,10 @@ BCLA_BOLD = {"Game Information", "Financial Details"}
 # (LSB_TEMPLATE.docx), whose signature block is part of the file, so the body
 # stops at the closing line and carries no {{ signature }}.
 LSB_BODY = [
-    # One blank before the title: body_start is 0, so without it the heading
-    # butts against the letterhead logo, which hangs below the top margin.
+    # Dos blancos antes del título. body_start es 0 y el membrete cuelga por
+    # debajo del margen superior, así que sin esto el título queda pegado al
+    # logo. WCQ arranca su cuerpo al 19% de la página por la misma razón.
+    ("", None, None, None),
     ("", None, None, None),
     ("{{ heading }}", None, 14, None),                 # bold via LSB_BOLD
     ("", None, None, None),
@@ -200,12 +202,15 @@ LSB_BODY = [
     ("{%p endfor %}", None, None, None),
     ("", None, None, None),
     ("Thank you for your commitment and professionalism.", None, 10, None),
-    # Aire antes de la firma. La carta de LSB es corta —sin párrafo de travel
-    # ni de banco— y con dos blancos la firma quedaba en el tercio superior con
-    # media página vacía debajo. Seis la bajan a un lugar razonable sin empujar
-    # nada a una segunda hoja: el caso más largo (cuatro bullets y una tanda de
-    # gamedays) sigue entrando cómodo.
-    *[("", None, None, None)] * 6,
+    # El aire antes de la firma es variable, no fijo: lo calcula
+    # _lsb_context() según cuántos gamedays lista la carta, para que el bloque
+    # de firma caiga más o menos a la misma altura sea corta o larga. Con un
+    # número fijo no hay valor que sirva para las dos: el que deja bien la
+    # carta de torneo (sin partidos) empuja la de cinco gamedays a una segunda
+    # hoja. Es la misma idea del `keep_empty` que tenía el builder posicional.
+    ("{%p for _ in signature_gap %}", None, None, None),
+    ("", None, None, None),
+    ("{%p endfor %}", None, None, None),
 ]
 
 # The title is the only bold line; everything else takes the run's default.
@@ -254,6 +259,10 @@ SPECS = {
         "dst": "LSB_TEMPLATE_TPL.docx",
         "font": "Univers",
         "body_start": 0,
+        # 6pt entre párrafos. La carta es corta y sin esto el texto queda
+        # amontonado en el tercio superior; con esto ocupa la página como las
+        # otras cartas y la firma baja sola.
+        "space_after": 6,
         # This letterhead's signature is text in a script font, not a scanned
         # image, so there is no drawing for build() to anchor on.
         "sig_marker": "Respectfully,",
@@ -479,6 +488,12 @@ def build(name, spec):
         body = paras[spec["body_start"]:sig]
 
     bold_set = spec.get("bold", set())
+    # Aire entre párrafos como espaciado real (space_after), no como líneas en
+    # blanco extra. Una carta corta con un blanco entre secciones queda apretada
+    # arriba y con un pozo abajo; el espaciado la reparte parejo y es lo que
+    # hace que se lea como carta y no como formulario. Solo sobre los párrafos
+    # con texto: un blanco ya ocupa su propia altura.
+    space_after = spec.get("space_after")
     for para, (text, align, size, style_name) in zip(body, content):
         for run in list(para.runs):
             run._element.getparent().remove(run._element)
@@ -490,6 +505,8 @@ def build(name, spec):
             except KeyError:
                 pass
         if text:
+            if space_after is not None and not text.startswith("{%"):
+                para.paragraph_format.space_after = Pt(space_after)
             run = para.add_run(text)
             run.font.name = font
             run.font.color.rgb = DARK
