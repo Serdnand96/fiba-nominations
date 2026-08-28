@@ -8,7 +8,19 @@ router = APIRouter(prefix="/competitions", tags=["competitions"], dependencies=[
 
 @router.get("")
 def list_competitions():
-    result = supabase.table("competitions").select("*").order("name").execute()
+    # Cronológico, no alfabético. Ordenar por `name` apilaba juntas las 13 LSB
+    # mezclando 2026 con 2027, y además rompía el orden dentro de una misma
+    # temporada: "BCLA Season 7 – Final 4" caía antes que "– QFs" y que
+    # "– Window 1", o sea al revés de como pasan.
+    result = (
+        supabase.table("competitions")
+        .select("*")
+        .order("year")
+        .order("month")
+        .order("start_date", nulls_last=True)
+        .order("name")
+        .execute()
+    )
     return result.data
 
 

@@ -131,9 +131,22 @@ class _QueryBuilder:
             self._params[column] = f"in.({quoted})"
         return self
 
-    def order(self, column: str, desc: bool = False):
+    def order(self, column: str, desc: bool = False, nulls_last: bool = False):
+        # ACUMULA en vez de pisar: PostgREST ordena por varias columnas con
+        # ?order=a.asc,b.asc, y encadenar .order("year").order("month") tiene
+        # que significar eso. Con la versión anterior el segundo .order()
+        # descartaba el primero en silencio — el mismo problema que el .eq
+        # encadenado que documenta _scoped() en budget.py: el builder guarda un
+        # valor por clave. Hoy no hay ningún llamador que dependa del pisado
+        # (ninguno de los 63 .order() del backend se encadena).
         direction = "desc" if desc else "asc"
-        self._params["order"] = f"{column}.{direction}"
+        term = f"{column}.{direction}"
+        if nulls_last:
+            # Sin esto, en un asc los NULL van primero: una competencia TBD
+            # (sin start_date) se colaba arriba de las que sí tienen fecha.
+            term += ".nullslast"
+        prev = self._params.get("order")
+        self._params["order"] = f"{prev},{term}" if prev else term
         return self
 
     def execute(self) -> _SupabaseResult:

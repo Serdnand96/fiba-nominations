@@ -1,5 +1,5 @@
 from fastapi import APIRouter, HTTPException, Query, Depends
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from typing import Optional
 from collections import Counter
 
@@ -16,6 +16,22 @@ class AssignmentCreate(BaseModel):
     role: str
 
 
+# Campos de texto libre que se tipean en el modal del calendario. Se recortan
+# en el borde, como los _DATE_FIELDS de schemas.py: en la base había un
+# " León, Guanajuato" con un espacio adelante, que ordena distinto, no matchea
+# contra el mismo string sin espacio y en la carta sale con la sangría de más.
+_TEXT_FIELDS = ("name", "short_name", "location")
+
+
+def _trimmed(value):
+    if not isinstance(value, str):
+        return value
+    stripped = value.strip()
+    # Un campo opcional que quedó en blanco es NULL, no "": es la misma
+    # distinción que ya hace _blank_date_is_none.
+    return stripped or None
+
+
 class CalendarEventCreate(BaseModel):
     name: str
     short_name: Optional[str] = None
@@ -30,6 +46,8 @@ class CalendarEventCreate(BaseModel):
     location: Optional[str] = None
     is_tbd: bool = False
 
+    _trim = field_validator(*_TEXT_FIELDS, mode="before")(_trimmed)
+
 
 class CalendarEventUpdate(BaseModel):
     name: Optional[str] = None
@@ -43,6 +61,8 @@ class CalendarEventUpdate(BaseModel):
     location: Optional[str] = None
     is_tbd: Optional[bool] = None
 
+    _trim = field_validator(*_TEXT_FIELDS, mode="before")(_trimmed)
+
 
 # ---------------------------------------------------------------------------
 # GET /calendar/competitions — list all competitions with assignment counts
@@ -54,7 +74,15 @@ def list_competitions(
     type: Optional[str] = Query(None),
 ):
     # Fetch competitions
-    q = supabase.table("competitions").select("*").order("month")
+    # Mismo orden cronológico que /competitions: con .order("month") solo, dos
+    # eventos del mismo mes salían en el orden en que se cargaron.
+    q = (
+        supabase.table("competitions")
+        .select("*")
+        .order("year")
+        .order("month")
+        .order("start_date", nulls_last=True)
+    )
     if type:
         q = q.eq("competition_type", type)
     if month:
