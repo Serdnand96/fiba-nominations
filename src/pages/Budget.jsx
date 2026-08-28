@@ -26,6 +26,7 @@ import { useToast } from '../components/ui/Toast'
 import { useAuth } from '../contexts/AuthContext'
 import { Icon } from '../lib/icons'
 import BudgetImport from './budget/BudgetImport'
+import { competitionLabel } from '../lib/competitions'
 
 const TABS = ['dashboard', 'plan', 'expenses', 'recurring', 'revenues', 'vendors']
 const GENERAL = '__general__'   // clave de la columna "sin evento" en la matriz
@@ -395,7 +396,7 @@ function DashboardTab({ t, push, canEdit, departments, competitions }) {
           <select value={costEvent} onChange={e => setCostEvent(e.target.value)}
             className="fiba-select !w-auto min-w-[260px]">
             <option value="">{t('budget.pickEvent')}</option>
-            {competitions.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+            {competitions.map(c => <option key={c.id} value={c.id}>{competitionLabel(c, t('months.short'))}</option>)}
           </select>
         </div>
         <p className="text-xs text-fiba-muted mb-4">{t('budget.eventCostHint')}</p>
@@ -539,7 +540,7 @@ function FeesPanel({ t, push, canEdit, competitions }) {
           <select value={target} onChange={e => setTarget(e.target.value)}
             className="fiba-select !w-auto min-w-[260px]">
             <option value="">{t('budget.pickEvent')}</option>
-            {competitions.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+            {competitions.map(c => <option key={c.id} value={c.id}>{competitionLabel(c, t('months.short'))}</option>)}
           </select>
           <label className="flex items-center gap-2 text-sm text-fiba-muted cursor-pointer">
             <input type="checkbox" checked={overwrite} onChange={() => setOverwrite(v => !v)}
@@ -1223,7 +1224,7 @@ function BudgetLineEditor({
       <Field label={t('budget.competition')}>
         <select className="fiba-select" value={form.competition_id} onChange={e => set('competition_id', e.target.value)}>
           <option value="">{t('budget.general')}</option>
-          {competitions.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+          {competitions.map(c => <option key={c.id} value={c.id}>{competitionLabel(c, t('months.short'))}</option>)}
         </select>
       </Field>
       <div className="grid grid-cols-3 gap-3">
@@ -1361,7 +1362,7 @@ function ExpensesTab({ t, push, canEdit, departments, expenseAccounts, competiti
           className="fiba-select !w-auto min-w-[200px] flex-shrink-0">
           <option value="">{t('budget.allEvents')}</option>
           <option value="general">{t('budget.generalOnly')}</option>
-          {competitions.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+          {competitions.map(c => <option key={c.id} value={c.id}>{competitionLabel(c, t('months.short'))}</option>)}
         </select>
         <select value={status} onChange={e => setStatus(e.target.value)}
           className="fiba-select !w-auto min-w-[150px] flex-shrink-0">
@@ -1592,7 +1593,7 @@ function ExpenseEditor({ expense, onClose, onSaved, t, push, departments, expens
       <Field label={t('budget.competition')}>
         <select className="fiba-select" value={form.competition_id} onChange={e => set('competition_id', e.target.value)}>
           <option value="">{t('budget.general')}</option>
-          {competitions.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+          {competitions.map(c => <option key={c.id} value={c.id}>{competitionLabel(c, t('months.short'))}</option>)}
         </select>
       </Field>
 
@@ -2151,7 +2152,7 @@ function RevenueEditor({ revenue, onClose, onSaved, t, push, departments, revenu
       <Field label={t('budget.competition')}>
         <select className="fiba-select" value={form.competition_id} onChange={e => set('competition_id', e.target.value)}>
           <option value="">{t('budget.general')}</option>
-          {competitions.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+          {competitions.map(c => <option key={c.id} value={c.id}>{competitionLabel(c, t('months.short'))}</option>)}
         </select>
       </Field>
       <div className="grid grid-cols-2 gap-3">

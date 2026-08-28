@@ -3,6 +3,7 @@ import { Icon } from '../lib/icons.jsx'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 import { useLanguage } from '../i18n/LanguageContext'
+import { competitionLabel, competitionDateRange, competitionPeriod } from '../lib/competitions'
 
 // localStorage is the offline cache; user_pinned_competitions in Supabase is the source of truth.
 // On mount we render the cache instantly, then reconcile against the server.
@@ -103,6 +104,7 @@ export default function CompetitionSearch({ competitions, value, onChange, place
   const pinnedIds = usePinnedIds()
   const { user } = useAuth()
   const { t } = useLanguage()
+  const MONTHS_SHORT = t('months.short')
   const userId = user?.id || null
   const wrapperRef = useRef(null)
   const inputRef = useRef(null)
@@ -192,16 +194,13 @@ export default function CompetitionSearch({ competitions, value, onChange, place
     setSearch('')
   }
 
-  function formatDateRange(comp) {
-    if (!comp.start_date) return ''
-    const start = new Date(comp.start_date + 'T00:00:00')
-    const opts = { month: 'short', day: 'numeric' }
-    let s = start.toLocaleDateString(undefined, opts)
-    if (comp.end_date) {
-      const end = new Date(comp.end_date + 'T00:00:00')
-      s += ' - ' + end.toLocaleDateString(undefined, opts)
-    }
-    return s
+  // El renglón secundario de cada opción. Lleva el año SIEMPRE: antes decía
+  // "Oct 2 - Oct 4" y el año sólo aparecía cuando no había fechas
+  // (`formatDateRange(c) || c.year`), así que las dos "LSB – Group A" —la de
+  // 2026 y la de 2027— se distinguían únicamente por el día del mes.
+  function competitionSubtitle(comp) {
+    return competitionDateRange(comp, MONTHS_SHORT, { year: true })
+      || competitionPeriod(comp, MONTHS_SHORT)
   }
 
   return (
@@ -213,7 +212,10 @@ export default function CompetitionSearch({ competitions, value, onChange, place
         className="w-full flex items-center justify-between px-3 py-2 border border-fiba-border rounded-lg text-sm bg-fiba-surface hover:bg-fiba-surface-2 text-left min-w-[260px]"
       >
         <span className={selected ? 'text-ink-900 dark:text-ink-100 font-medium truncate' : 'text-fiba-muted'}>
-          {selected ? selected.name : placeholder}
+          {/* Ya elegida y con el desplegable cerrado, el nombre solo no dice de
+              qué año es. Es el estado en el que queda la pantalla mientras se
+              trabaja, así que es justo donde más importa. */}
+          {selected ? competitionLabel(selected, MONTHS_SHORT) : placeholder}
         </span>
         <svg className={`w-4 h-4 text-fiba-muted transition-transform flex-shrink-0 ml-2 ${open ? 'rotate-180' : ''}`}
           fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -273,9 +275,9 @@ export default function CompetitionSearch({ competitions, value, onChange, place
                       >
                         <div className="flex-1 min-w-0">
                           <div className="font-medium truncate">{c.name}</div>
-                          {(c.start_date || c.year) && (
+                          {competitionSubtitle(c) && (
                             <div className="text-xs text-fiba-muted mt-0.5">
-                              {formatDateRange(c) || c.year}
+                              {competitionSubtitle(c)}
                             </div>
                           )}
                         </div>

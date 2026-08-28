@@ -22,6 +22,7 @@ import { useToast } from '../components/ui/Toast'
 import { InfoHint } from '../components/ui/Tooltip'
 import NominationsMatrix from '../components/NominationsMatrix'
 import PersonProfilePanel from '../components/PersonProfilePanel'
+import { competitionLabel } from '../lib/competitions'
 
 const BCLA_F4_ROUNDS = ['Semifinals', '3rd Place', 'Final']
 
@@ -776,7 +777,7 @@ export default function Nominations() {
                   className="fiba-select">
                   <option value="">{t('nominations.selectCompetition')}</option>
                   {competitions.map(c => (
-                    <option key={c.id} value={c.id}>{c.name} ({c.template_key})</option>
+                    <option key={c.id} value={c.id}>{competitionLabel(c, t('months.short'))} ({c.template_key})</option>
                   ))}
                 </select>
               </div>

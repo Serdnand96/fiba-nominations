@@ -11,6 +11,7 @@ import {
   downloadTrainingScheduleXlsx, checkTrainingConflicts, getTrainingCrew,
 } from '../api/client'
 import { readLastSearch, writeLastSearch } from '../lib/lastSearch'
+import { competitionLabel } from '../lib/competitions'
 
 function formatTime(t) {
   if (!t) return ''
@@ -825,7 +826,7 @@ export default function Training() {
                 <div>
                   <label className="fiba-label">{t('training.selectCompetition')}</label>
                   <select value={importCompId} onChange={e => setImportCompId(e.target.value)} className="fiba-select">
-                    {competitions.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                    {competitions.map(c => <option key={c.id} value={c.id}>{competitionLabel(c, t('months.short'))}</option>)}
                   </select>
                 </div>
                 <div>
