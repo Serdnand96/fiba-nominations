@@ -8,27 +8,20 @@ import {
 import { useLanguage } from '../i18n/LanguageContext'
 import { useToast } from '../components/ui/Toast'
 import { useAuth } from '../contexts/AuthContext'
+import { SELECTABLE_COMPETITION_TYPES, competitionTypeColor } from '../lib/competitions'
 
-const COMP_TYPES = [
-  { key: 'All', label: 'All' },
-  { key: 'BCLA', label: 'BCLA', color: '#185FA5' },
-  { key: 'WCQ', label: 'WCQ', color: '#3B6D11' },
-  { key: 'LSB', label: 'LSB', color: '#534AB7' },
-  { key: 'LSBF', label: 'LSBF', color: '#993556' },
-  { key: 'WBLA', label: 'WBLA', color: '#BA7517' },
-  { key: 'AmeriCup', label: 'AmeriCup', color: '#993C1D' },
-  { key: 'U-Series', label: 'U-Series', color: '#0F6E56' },
-]
+// El registro de tipos vive en src/lib/competitions.js — estaba duplicado acá y
+// en Availability.jsx, y las dos copias habían quedado desactualizadas.
+const COMP_TYPES = [{ key: 'All', label: 'All' }, ...SELECTABLE_COMPETITION_TYPES]
 // Roles the competition crew accepts (mirrors api/_lib/roles.py). On
 // tournament-fee competitions this roster covers every game and training slot.
 const CREW_ROLES = ['TD', 'VGO', 'REF', 'REF_INSTRUCTOR', 'VIDEO_OPERATOR']
-const TYPE_COLORS = Object.fromEntries(COMP_TYPES.filter(t => t.color).map(t => [t.key, t.color]))
-function getTypeColor(type) { return TYPE_COLORS[type] || '#6B7280' }
+const getTypeColor = competitionTypeColor
 
 const TEMPLATE_MAP = {
   'BCLA': 'BCLA_RS', 'WCQ': 'WCQ', 'LSB': 'LSB', 'LSBF': 'LSB',
   'WBLA': 'GENERIC', 'AmeriCup': 'GENERIC', 'U-Series': 'GENERIC',
-  'Other': 'GENERIC',
+  'Zonal': 'GENERIC', 'WC': 'GENERIC', '3x3': 'GENERIC', 'Other': 'GENERIC',
 }
 
 function groupByMonth(events) {
@@ -555,10 +548,12 @@ export default function Calendar() {
                   <label className="fiba-label">{t('calendar.competitionType')}</label>
                   <select value={eventForm.competition_type} onChange={e => handleTypeChange(e.target.value)}
                     className="fiba-select">
+                    {/* 'Other' ya sale del map: antes estaba hardcodeado acá y
+                        por eso se podía crear un evento con un tipo que la
+                        barra de filtros no ofrecía. */}
                     {COMP_TYPES.filter(ct => ct.key !== 'All').map(ct => (
                       <option key={ct.key} value={ct.key}>{ct.label}</option>
                     ))}
-                    <option value="Other">Other</option>
                   </select>
                 </div>
                 <div>

@@ -9,6 +9,7 @@ import { Card } from '../components/ui/Card'
 import { Avatar } from '../components/ui/Avatar'
 import { Button } from '../components/ui/Button'
 import { InfoHint } from '../components/ui/Tooltip'
+import { SELECTABLE_COMPETITION_TYPES } from '../lib/competitions'
 
 // Personnel roles with a self-service availability roster (all of them).
 const ROLES = ['TD', 'VGO', 'REF', 'REF_INSTRUCTOR', 'VIDEO_OPERATOR']
@@ -30,7 +31,10 @@ const NOMINATION_STYLES = {
   pending:   { cell: 'bg-basketball-50 dark:bg-basketball-500/10 hover:bg-basketball-100 dark:hover:bg-basketball-500/20 ring-1 ring-basketball-500/40', dot: 'bg-basketball-300' },
 }
 
-const COMP_TYPES = ['BCLA', 'WCQ', 'LSB', 'LSBF', 'WBLA', 'AmeriCup', 'U-Series']
+// Del registro compartido, no una copia: esta lista estaba hardcodeada y le
+// faltaba 'Other', así que las competencias de ese tipo no se podían filtrar acá
+// tampoco.
+const COMP_TYPES = SELECTABLE_COMPETITION_TYPES.map(t => t.key)
 
 const isWeekend = (d) => [0, 6].includes(d.getDay())
 
