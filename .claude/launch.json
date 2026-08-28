@@ -10,8 +10,8 @@
     },
     {
       "name": "api",
-      "runtimeExecutable": "./venv/bin/uvicorn",
-      "runtimeArgs": ["api.index:app", "--port", "8000", "--env-file", ".env"],
+      "runtimeExecutable": "./venv/bin/python",
+      "runtimeArgs": ["-m", "uvicorn", "api.index:app", "--port", "8000", "--env-file", ".env"],
       "port": 8000
     }
   ]

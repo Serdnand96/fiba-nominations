@@ -22,9 +22,10 @@ siempre sobre el monto del archivo, así que correrlo dos veces da lo mismo.
 """
 import sys
 
+from pathlib import Path
 from dotenv import load_dotenv
 
-load_dotenv("/Users/varga/Downloads/fiba-nominations/.env")
+load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
 from api._lib.database import supabase                      # noqa: E402
 from api._lib.services import budget_import as bi           # noqa: E402

@@ -8,8 +8,9 @@ Excel ($166.500) y ensuciarla arruinaria el reporte.
 Idempotente: borra lo importado antes (marcado en notes) y reinserta.
 """
 import json, sys, uuid
+from pathlib import Path
 from dotenv import load_dotenv
-load_dotenv("/Users/varga/Downloads/fiba-nominations/.env")
+load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 from api._lib.database import supabase
 
 COMMIT = "--commit" in sys.argv

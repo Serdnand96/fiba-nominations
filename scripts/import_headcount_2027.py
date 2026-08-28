@@ -1,7 +1,8 @@
 """Carga el sheet `Staffing (travel)` en budget_headcount. Preview/--commit."""
 import sys, openpyxl
+from pathlib import Path
 from dotenv import load_dotenv
-load_dotenv("/Users/varga/Downloads/fiba-nominations/.env")
+load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 from api._lib.database import supabase
 
 COMMIT = "--commit" in sys.argv
