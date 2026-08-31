@@ -85,7 +85,7 @@ export default function ChecklistPanel({ competitionId, competitionName, canEdit
       .map(i => ({ label: (i.label || '').trim(), hint: (i.hint || '').trim() || null, required: !!i.required }))
       .filter(i => i.label)
     if (!draft.name.trim()) {
-      push({ type: 'error', title: t('Poné un nombre a la plantilla.', 'Give the template a name.') })
+      push({ type: 'error', title: t('Ponle un nombre a la plantilla.', 'Give the template a name.') })
       return
     }
     if (items.length === 0) {
@@ -347,7 +347,7 @@ function ShareTab({ t, lang, competitionId, canEdit }) {
       setCopied(true)
       setTimeout(() => setCopied(false), 2000)
     } catch {
-      setError(t('El navegador bloqueó el portapapeles. Copiá el link a mano.',
+      setError(t('El navegador bloqueó el portapapeles. Copia el link a mano.',
                  'The browser blocked the clipboard. Copy the link manually.'))
     }
   }
@@ -391,7 +391,7 @@ function ShareTab({ t, lang, competitionId, canEdit }) {
                'Anyone with this link can open the checklist of any game in this competition and fill it in from their phone, with no account.')}
           </p>
           <p className="text-amber-500">
-            {t('A diferencia del link de logística, este ESCRIBE: no lo publiques más allá del grupo de oficiales. Si se filtra, rotalo.',
+            {t('A diferencia del link de logística, este ESCRIBE: no lo publiques más allá del grupo de oficiales. Si se filtra, rótalo.',
                'Unlike the logistics link, this one WRITES: do not share it beyond the officials’ group. If it leaks, rotate it.')}
           </p>
           <p>

@@ -106,7 +106,7 @@ export default function PublicChecklist() {
   async function confirmStart() {
     const name = who.signed_name.trim()
     if (!who.personnel_id && !name) {
-      setError(t('Decinos quién está haciendo el control.', 'Tell us who is running the check.'))
+      setError(t('Dinos quién está haciendo el control.', 'Tell us who is running the check.'))
       return
     }
     const tpl = signing
@@ -135,7 +135,7 @@ export default function PublicChecklist() {
             {t('Este link no está disponible', 'This link is not available')}
           </h1>
           <p className="text-sm text-ink-500 dark:text-ink-400">
-            {t('Puede haber vencido o haber sido reemplazado. Pedile uno nuevo a la organización.',
+            {t('Puede haber vencido o haber sido reemplazado. Pídele uno nuevo a la organización.',
                'It may have expired or been replaced. Ask the organisers for a new one.')}
           </p>
         </div>
@@ -198,7 +198,7 @@ export default function PublicChecklist() {
                 {signingRoster.length > 0 && (
                   <select className="fiba-input mb-2" value={who.personnel_id}
                     onChange={e => setWho({ personnel_id: e.target.value, signed_name: '' })}>
-                    <option value="">{t('Elegí tu nombre...', 'Pick your name...')}</option>
+                    <option value="">{t('Elige tu nombre...', 'Pick your name...')}</option>
                     {signingRoster.map(p => (
                       <option key={p.id} value={p.id}>{p.name}{p.role ? ` — ${p.role}` : ''}</option>
                     ))}
@@ -207,7 +207,7 @@ export default function PublicChecklist() {
                 {!who.personnel_id && (
                   <input className="fiba-input mb-2" value={who.signed_name}
                     onChange={e => setWho({ personnel_id: '', signed_name: e.target.value })}
-                    placeholder={t('...o escribí tu nombre', '...or type your name')} />
+                    placeholder={t('...o escribe tu nombre', '...or type your name')} />
                 )}
                 <div className="flex justify-end gap-2">
                   <button onClick={() => setSigning(null)} className="btn-fiba-ghost text-xs">{t('Cancelar', 'Cancel')}</button>

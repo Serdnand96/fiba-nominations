@@ -88,7 +88,7 @@ def delete_competition(competition_id: str, force: bool = False):
             status_code=409,
             detail=(
                 f"No se puede eliminar: hay pago(s) {records} asociado(s) a "
-                f"nominaciones de esta competencia. Eliminá el/los pago(s) primero "
+                f"nominaciones de esta competencia. Elimina el/los pago(s) primero "
                 f"en el módulo Pagos."
             ),
         )
@@ -97,7 +97,7 @@ def delete_competition(competition_id: str, force: bool = False):
         raise HTTPException(
             status_code=409,
             detail=(
-                f"Tiene {len(noms)} nominación(es) asociada(s). Confirmá para "
+                f"Tiene {len(noms)} nominación(es) asociada(s). Confirma para "
                 f"eliminarla: también se borrarán reportes, evaluaciones y "
                 f"logística de esta competencia."
             ),

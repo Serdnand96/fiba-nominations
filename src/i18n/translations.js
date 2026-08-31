@@ -769,7 +769,7 @@ const translations = {
     fibaWindowNone: { en: 'No window (import everything)', es: 'Sin ventana (importar todo)' },
     fibaWindowHint: {
       en: 'FIBA returns the whole qualifier on one URL — all six windows. Pick this competition’s window so the sync only imports its games.',
-      es: 'FIBA devuelve el clasificatorio entero en una sola URL — las seis ventanas. Elegí la ventana de esta competencia para que el sync importe solo sus partidos.',
+      es: 'FIBA devuelve el clasificatorio entero en una sola URL — las seis ventanas. Elige la ventana de esta competencia para que el sync importe solo sus partidos.',
     },
     title: { en: 'Competitions', es: 'Competencias' },
     newCompetition: { en: '+ New competition', es: '+ Nueva competencia' },

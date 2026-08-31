@@ -966,7 +966,7 @@ def commit_rooming(content: bytes, competition_id: str) -> dict:
                 "message": (
                     f"Habitación compartida por {len(comp)} personas "
                     f"(filas {sorted(comp)}): el modelo solo guarda parejas, "
-                    f"revisá esta habitación en el rooming a mano."
+                    f"revisa esta habitación en el rooming a mano."
                 ),
             })
 

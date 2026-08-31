@@ -208,7 +208,7 @@ def delete_personnel(person_id: str, force: bool = False):
             status_code=409,
             detail=(
                 f"No se puede eliminar: hay pago(s) {records} asociado(s) a "
-                f"nominaciones de esta persona. Eliminá el/los pago(s) primero "
+                f"nominaciones de esta persona. Elimina el/los pago(s) primero "
                 f"en el módulo Pagos."
             ),
         )
