@@ -126,11 +126,11 @@ def main() -> int:
     monthly_n = sum(1 for r in proposed if r["frequency"] == "monthly")
     print(f"\n{monthly_n} mensuales · {len(proposed) - monthly_n} anuales (compras puntuales).")
     print("La cadencia es un punto de partida: se ajusta plantilla por plantilla")
-    print("en Budget → Recurrentes. Si pasás una a anual, acordate del monto: acá")
+    print("en Budget → Recurrentes. Si pasas una a anual, acuérdate del monto: acá")
     print("el mensual es el anual dividido 12.")
 
     if not args.commit:
-        print("\nPreview. Nada escrito. Agregá --commit para sembrar.")
+        print("\nPreview. Nada escrito. Agrega --commit para sembrar.")
         return 0
 
     if args.replace:

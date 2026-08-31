@@ -5,10 +5,10 @@
 -- cero filas violan estos constraints hoy (nominations sin duplicados de
 -- (competition_id, personnel_id), staff_evaluations sin duplicados con
 -- created_by, ningún fee_type/month/score/pax fuera de rango), así que los
--- ADD no fallan. Igual, aplicá en staging primero.
+-- ADD no fallan. Igual, aplica en staging primero.
 --
 -- NO forma parte del deploy automático: es un cambio de schema en prod,
--- revisalo y aplicalo a mano cuando quieras (ver DEPLOYMENT / runbook).
+-- revísalo y aplícalo a mano cuando quieras (ver DEPLOYMENT / runbook).
 --
 -- Nota aparte (no cubierta acá, es P0 de mantenibilidad): 17 tablas no tienen
 -- DDL versionado en supabase/migrations/. El fix de fondo es un
@@ -73,11 +73,11 @@ commit;
 
 
 -- ─────────────────────────────────────────────────────────────────────────────
--- OPCIONAL — decisión de producto, NO lo apliqués sin definirlo.
+-- OPCIONAL — decisión de producto, NO lo apliques sin definirlo.
 --
 -- Hoy borrar una competencia con force=true cascadea y destruye sus reportes y
 -- evaluaciones en silencio. El fix de código (competitions.py) ya avisa antes de
--- borrar, pero si querés que la base lo IMPIDA directamente, cambiá esas dos FKs
+-- borrar, pero si quieres que la base lo IMPIDA directamente, cambia esas dos FKs
 -- a RESTRICT: el force-delete de una competencia con reportes/evaluaciones
 -- fallará con 23503 → 409 legible (ya mapeado en api/index.py). El costo es que
 -- para borrar la competencia habrá que borrar antes sus reportes/evaluaciones.

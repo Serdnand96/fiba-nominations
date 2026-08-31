@@ -20,7 +20,7 @@
 -- tiene una competencia, y multiplicar por una cuenta inventada sería peor que
 -- dejarlo explícito.
 --
--- NO forma parte del deploy automático: aplicá a mano contra Supabase.
+-- NO forma parte del deploy automático: aplica a mano contra Supabase.
 
 begin;
 

@@ -87,9 +87,9 @@ filas con estado `current_date` + `in_partidos`.
 ### Gotchas al modificar
 
 - `import_excel` y `preview_excel` **comparten** `_parse_fiba_schedule`: un
-  cambio en el parser afecta a ambos — verificá los dos.
+  cambio en el parser afecta a ambos — verifica los dos.
 - Los índices de columna están **hardcodeados**; un off-by-one rompe el import
-  en silencio (no tira error, simplemente no genera slots). Corré una planilla
+  en silencio (no tira error, simplemente no genera slots). Corre una planilla
   real de ejemplo antes/después de tocar índices.
 - La hora de fin sale de la col E con fallback a inicio + 90 min: si FIBA
   cambia la duración por defecto, es acá.
@@ -159,7 +159,7 @@ Reglas de diseño (distintas de los otros dos importers):
 - También exporta: `export_manifest_xlsx()` / `export_rooming_xlsx()`
   (openpyxl directo, `GET /api/logistics/export/{manifest,rooming}.xlsx`).
 
-El mapeo fino de columnas vive en `logistics_import.py` — **leelo antes de
+El mapeo fino de columnas vive en `logistics_import.py` — **léelo antes de
 tocar nada**; este resumen no reemplaza el código.
 
 ---

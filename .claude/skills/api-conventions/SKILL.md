@@ -37,8 +37,8 @@ def create_slot(data: SlotCreate):
     return supabase.table("training_slots").insert(data.model_dump()).execute().data[0]
 ```
 
-Para montar un módulo nuevo: agregá el import y el `include_router` en
-`api/index.py` y creá la fila de permiso en `user_permissions`.
+Para montar un módulo nuevo: agrega el import y el `include_router` en
+`api/index.py` y crea la fila de permiso en `user_permissions`.
 
 ## Autorización — a nivel de aplicación (NO RLS)
 
@@ -76,7 +76,7 @@ Este es el punto más importante del backend.
 ## Acceso a datos — el wrapper de Supabase
 
 `from api._lib.database import supabase`. Es un query builder mínimo de
-PostgREST (`api/_lib/database.py`). Encadenás y terminás en `.execute()`, que
+PostgREST (`api/_lib/database.py`). Encadenas y terminas en `.execute()`, que
 devuelve un objeto con `.data` (siempre una lista). Lanza `Exception` si el
 status HTTP ≥ 400.
 
@@ -85,7 +85,7 @@ Métodos disponibles: `.table(name)` → `.select(cols)`, `.insert(data)`,
 `.order(col, desc=)`, `.limit(n)`, `.offset(n)`.
 
 Notas:
-- PostgREST no ordena por más de una columna: cuando necesitás orden secundario
+- PostgREST no ordena por más de una columna: cuando necesitas orden secundario
   se hace en Python (`slots.sort(key=lambda s: (s["date"], s["start_time"]))`).
 - No hay joins arbitrarios; se usa el embedding de PostgREST en `select`
   (`"*, personnel(name, role), competitions(name, template_key)"`) o se batchea
@@ -117,7 +117,7 @@ módulos chicos como transport). En el endpoint:
 - Bucket privado único: `nominations` (los adjuntos de payments y reports
   viven ahí bajo los prefijos `payments/…` y `reports/…`; **no existe** un
   bucket "payments"). **Nunca** construyas ni devuelvas URLs públicas
-  (`get_public_url`) para él; serví los archivos por endpoints de descarga
+  (`get_public_url`) para él; sirve los archivos por endpoints de descarga
   autenticados (`FileResponse` / blob).
 - Convención de paths: `storage://<bucket>/<key>`. En `nominations.py`,
   `_extract_storage_key()` normaliza 3 formatos

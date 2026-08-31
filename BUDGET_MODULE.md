@@ -287,7 +287,7 @@ CREATE TABLE revenues (
     created_at      timestamptz DEFAULT now()
 );
 
--- Permiso del módulo. Recordá: hay que tocar TRES lugares (ver CLAUDE.md §10):
+-- Permiso del módulo. Recuerda: hay que tocar TRES lugares (ver CLAUDE.md §10):
 -- este CHECK, MODULES en permissions.py, y MODULES en src/pages/Users.jsx.
 ALTER TABLE user_permissions DROP CONSTRAINT IF EXISTS user_permissions_module_check;
 ALTER TABLE user_permissions ADD CONSTRAINT user_permissions_module_check
@@ -364,7 +364,7 @@ Al nominar, si la competencia tiene `fee_event_type`, se prellenan
 ⚠️ **Este es el punto más delicado del módulo.** El sistema hoy no filtra filas
 por usuario en ningún módulo: un permiso abre o cierra un endpoint entero.
 `budget` sería el primero, y el filtrado **tiene que vivir en el backend** —
-recordá que se pega a Supabase con `service_role`, que bypassa RLS.
+recuerda que se pega a Supabase con `service_role`, que bypassa RLS.
 
 Regla, en orden:
 

@@ -81,7 +81,7 @@ _PERIOD_RE = re.compile(r"^\d{4}-(0[1-9]|1[0-2])$")
 
 # Campos que un PATCH puede cambiar pero nunca vaciar. Los updates usan
 # model_dump(exclude_unset=True) — no `if v is not None` — para distinguir "no
-# lo mandé" de "ponelo en null"; sin eso no habría forma de sacarle la
+# lo mandé" de "ponlo en null"; sin eso no habría forma de sacarle la
 # competencia a un gasto y pasarlo a general. El precio es tener que rechazar a
 # mano los null sobre las columnas NOT NULL.
 _REQUIRED_ON_UPDATE = {
@@ -1568,7 +1568,7 @@ def update_expense(expense_id: str, data: ExpenseUpdate, request: Request):
         raise HTTPException(status_code=400, detail="Invalid status")
 
     # payment_date solo se puede limpiar saliendo de 'paid'; el modelo Optional
-    # no distingue "no lo mando" de "ponelo en null", así que el desmarcado va
+    # no distingue "no lo mando" de "ponlo en null", así que el desmarcado va
     # implícito con el cambio de status.
     payment_date = updates.get("payment_date", current.get("payment_date"))
     if status != "paid":

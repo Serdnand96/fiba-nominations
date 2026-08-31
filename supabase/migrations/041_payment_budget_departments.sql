@@ -15,7 +15,7 @@
 -- un warning — eso es visible, que es lo que se busca. Un NOT NULL acá rompería
 -- el alta de pagos, que es un módulo que ya funciona.
 --
--- NO forma parte del deploy automático: aplicá a mano contra Supabase.
+-- NO forma parte del deploy automático: aplica a mano contra Supabase.
 
 begin;
 

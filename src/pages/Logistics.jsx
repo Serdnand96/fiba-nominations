@@ -55,7 +55,7 @@ export default function Logistics() {
 
   // Se resuelve durante el render y no en un efecto: si no, hay un instante en
   // que competitionId ya está pero selectedComp todavía es null, y la sección
-  // de transporte corre dos veces su "buscá o creá el evento" — dos veces en
+  // de transporte corre dos veces su "busca o crea el evento" — dos veces en
   // paralelo significa dos transport_events para la misma competencia.
   const selectedComp = useMemo(
     () => competitions.find(c => c.id === competitionId) || null,

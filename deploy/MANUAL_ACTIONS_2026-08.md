@@ -35,7 +35,7 @@ fiba ALL=(ALL) NOPASSWD: /bin/systemctl restart fiba-api, /bin/systemctl is-acti
 
 ### 3. Aislar el trading-bot Docker de la interfaz pública
 `trading-bot-dashboard` escucha en `0.0.0.0:8080` y, como Docker escribe iptables
-directo, **saltea ufw**. Publicalo solo en localhost (o detrás de auth):
+directo, **saltea ufw**. Publícalo solo en localhost (o detrás de auth):
 en el `docker run`/compose, mapear `127.0.0.1:8080:8080` en vez de `8080:8080`.
 Idealmente, mover FIBA a su propio droplet.
 
@@ -76,8 +76,8 @@ Planificar una ventana: `sudo apt update && sudo apt upgrade && sudo reboot`.
 Constraints verificados contra los datos de prod (nada los viola hoy):
 `total` con COALESCE, `UNIQUE(competition_id, personnel_id)` en nominations,
 índice parcial de staff_evaluations, CHECKs de fee_type/month/score/pax.
-Es cambio de schema en prod — aplicalo a mano (SQL editor de Supabase o psql),
-**en staging primero** si tenés. La sección `ON DELETE RESTRICT` está comentada:
+Es cambio de schema en prod — aplícalo a mano (SQL editor de Supabase o psql),
+**en staging primero** si tienes. La sección `ON DELETE RESTRICT` está comentada:
 es decisión de producto (ver el archivo).
 
 ### 8. Toggles en el dashboard de Supabase

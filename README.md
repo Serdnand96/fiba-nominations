@@ -12,7 +12,7 @@ Sistema admin de FIBA Americas para gestión de nominaciones de oficiales
 
 | Doc                         | Para qué                                                       |
 |-----------------------------|----------------------------------------------------------------|
-| [`CLAUDE.md`](CLAUDE.md)               | **Onboarding para sesiones AI.** Léelo si arrancás de cero. |
+| [`CLAUDE.md`](CLAUDE.md)               | **Onboarding para sesiones AI.** Léelo si arrancas de cero. |
 | [`ARCHITECTURE.md`](ARCHITECTURE.md)   | Cómo encajan frontend / backend / DB / storage / deploy.      |
 | [`DEPLOYMENT.md`](DEPLOYMENT.md)       | Pipeline GitHub Actions → DigitalOcean droplet.               |
 | [`DEVELOPMENT.md`](DEVELOPMENT.md)     | Correr el stack local.                                        |
@@ -133,12 +133,12 @@ inicial.
 ## Adding a New Competition Template
 
 1. Coloca el `.docx` template en `templates/`
-2. Agregá la `template_key` al CHECK constraint en `competitions.template_key`
-3. Agregá el spec en `api/_lib/services/document_generator.py` →
+2. Agrega la `template_key` al CHECK constraint en `competitions.template_key`
+3. Agrega el spec en `api/_lib/services/document_generator.py` →
    `TEMPLATE_SPECS` (archivo `_TPL.docx` + contexto/builder)
-4. Registralo en `api/_lib/routers/templates.py` → `TEMPLATES` para que
+4. Regístralo en `api/_lib/routers/templates.py` → `TEMPLATES` para que
    aparezca en la UI de Templates
-5. Actualizá `src/pages/Nominations.jsx` para lógica template-specific
+5. Actualiza `src/pages/Nominations.jsx` para lógica template-specific
 
 ---
 

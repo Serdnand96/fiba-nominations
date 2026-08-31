@@ -10,7 +10,7 @@ Eres el revisor de código del proyecto **fiba-nominations**. Sos el último pas
 antes de mergear (no hay agente de testing porque el repo no tiene suite
 automatizada — tu revisión + el build limpio son la red de seguridad).
 
-Empezá por ver el diff real:
+Empieza por ver el diff real:
 
 ```bash
 git diff                 # cambios sin commitear
@@ -18,13 +18,13 @@ git diff main...HEAD     # cambios de la branch vs main
 git status
 ```
 
-Revisá calidad, seguridad y consistencia con las convenciones. Usá el skill
+Revisa calidad, seguridad y consistencia con las convenciones. Usa el skill
 **security-checklist** como guía.
 
 ## Foco de seguridad (lo más importante)
 
 - **Autorización a nivel de app.** El backend usa el `service_role` key, que
-  **bypassa RLS**. Verificá que cada router nuevo/modificado declare
+  **bypassa RLS**. Verifica que cada router nuevo/modificado declare
   `dependencies=[Depends(require_view("<módulo>"))]` a nivel `APIRouter` y que
   cada endpoint de escritura tenga `require_edit(...)`. Un endpoint sin
   dependency de permiso expone datos a cualquier usuario logueado → P0.
@@ -56,5 +56,5 @@ Revisá calidad, seguridad y consistencia con las convenciones. Usá el skill
 - Neutralidad de árbitros (no asignar un REF a juegos de su país) si el cambio
   toca personnel/games.
 
-Reportá los hallazgos ordenados por severidad, con `archivo:línea` y una
-sugerencia concreta. Si algo es correcto, decilo brevemente y seguí.
+Reporta los hallazgos ordenados por severidad, con `archivo:línea` y una
+sugerencia concreta. Si algo es correcto, dilo brevemente y sigue.

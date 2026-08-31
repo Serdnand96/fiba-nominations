@@ -47,7 +47,7 @@ const { user, loading, signIn, signOut, isSuperadmin, hasView, hasEdit } = useAu
 - La sesión se maneja con Supabase Auth (un único cliente en `lib/supabase.js`,
   anon key). Al loguear/refrescar se cargan los permisos desde el backend
   (`getUserPermissions`).
-- Gate de UI de edición: `const canEdit = hasEdit('training')` y escondé
+- Gate de UI de edición: `const canEdit = hasEdit('training')` y esconde
   botones/acciones según eso. **Esto es solo UX** — la seguridad real la aplica
   el backend; nunca confíes en el guard del frontend para proteger datos.
 
@@ -59,21 +59,21 @@ const { t, lang, setLang } = useLanguage()
 
 - **Todo** string visible pasa por `t('clave')`. ES es el default; el switch
   ES/EN está en el sidebar.
-- Agregá las claves nuevas en **ambos** idiomas en `src/i18n/translations.js`.
+- Agrega las claves nuevas en **ambos** idiomas en `src/i18n/translations.js`.
 
 ## Llamadas al API (`src/api/client.js`)
 
 - Instancia `axios` con `baseURL = import.meta.env.VITE_API_URL || '/api'` y un
   interceptor que inyecta el JWT de Supabase (`supabase.auth.getSession()`) en
   cada request.
-- **No** llames `axios`/`fetch` directo desde una página: agregá una función
+- **No** llames `axios`/`fetch` directo desde una página: agrega una función
   exportada acá (`export const getX = (p) => api.get('/x', { params: p }).then(r => r.data)`)
   y reutilizala.
 - Uploads: `FormData` con header `multipart/form-data`.
 
 ### Descargas de buckets privados (patrón obligatorio)
 
-Los buckets son privados. Descargá con blob + JWT, nunca con `<a href>` a una
+Los buckets son privados. Descarga con blob + JWT, nunca con `<a href>` a una
 URL pública:
 
 ```js
@@ -88,18 +88,18 @@ Ejemplos existentes: `downloadNominationBlob`, `downloadPaymentAttachment`,
 
 ## Estilos — Tailwind + design system
 
-- **Antes de tocar colores/clases, leé `DESIGN_SYSTEM.md`.** Los aliases
+- **Antes de tocar colores/clases, lee `DESIGN_SYSTEM.md`.** Los aliases
   `fiba-*` son dark-aware mediante CSS variables (no es Tailwind nativo).
 - Tokens de marca: `navy` (`#0c2340`), `basketball` (`#F57C2A`), `ink`
   (neutrales), `danger`. Escalas 50–950. Definidos en `tailwind.config.js`.
 - **Dark mode:** clase `.dark` en `<html>`, persistida en
-  `localStorage.fiba_dark`, **default dark**. Estilá siempre con variantes
+  `localStorage.fiba_dark`, **default dark**. Estiliza siempre con variantes
   `dark:` (ej: `bg-white dark:bg-navy-900 text-ink-800 dark:text-ink-100`).
 - Fuentes: IBM Plex Sans + IBM Plex Mono.
 
 ## Primitivos de UI e iconos
 
-- Importá de `src/components/ui/` (hay un `index.js` barrel): `Button`,
+- Importa de `src/components/ui/` (hay un `index.js` barrel): `Button`,
   `IconButton`, `Card`, `Input`, `Table`, `Modal`, `Badge`, `Toast`, `Stat`,
   `MultiSelect`, `Avatar`, `Empty`. Reutilizalos antes de inventar markup.
   - `Button` tiene `variant` (`primary|secondary|ghost|navy|danger|link`) y
@@ -119,5 +119,5 @@ Ejemplos existentes: `downloadNominationBlob`, `downloadPaymentAttachment`,
 
 ## Verificación
 
-No hay tests automatizados. Después de un cambio corré `npm run build` para
-confirmar que compila, y revisá el diff.
+No hay tests automatizados. Después de un cambio corre `npm run build` para
+confirmar que compila, y revisa el diff.

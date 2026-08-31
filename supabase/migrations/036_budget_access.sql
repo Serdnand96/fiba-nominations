@@ -18,7 +18,7 @@
 -- su propio par (can_view, can_edit); en `user_permissions` sería una fila por
 -- (usuario, módulo) y no hay dónde poner el departamento.
 --
--- NO forma parte del deploy automático: aplicá a mano contra Supabase.
+-- NO forma parte del deploy automático: aplica a mano contra Supabase.
 
 begin;
 

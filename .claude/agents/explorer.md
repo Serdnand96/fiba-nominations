@@ -23,7 +23,7 @@ resumen claro y accionable. No propongas cambios ni edites nada.
 - **DB:** el esquema está en `supabase/migrations/*.sql` (numeradas). Ahí ves
   las tablas reales de cada módulo.
 - **Docs:** `CLAUDE.md`, `ARCHITECTURE.md`, `DESIGN_SYSTEM.md`,
-  `SECURITY_RUNBOOK.md`, `PAYMENTS_MODULE.md` — leelos si aplican al módulo.
+  `SECURITY_RUNBOOK.md`, `PAYMENTS_MODULE.md` — léelos si aplican al módulo.
 
 ## Qué buscar y reportar
 
@@ -40,4 +40,4 @@ resumen claro y accionable. No propongas cambios ni edites nada.
    columnas de Excel, builders posicionales de .docx).
 
 Prioriza un resumen conciso y estructurado por sobre volcar contenido crudo de
-archivos. Citá rutas como `archivo.py:línea` para que sean clicables.
+archivos. Cita rutas como `archivo.py:línea` para que sean clicables.

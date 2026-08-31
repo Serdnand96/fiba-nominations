@@ -41,7 +41,7 @@ Copia `.env.example` a `.env`:
 cp .env.example .env
 ```
 
-Y llená:
+Y llena:
 
 ```bash
 SUPABASE_URL=https://mckaplalscnvaanukrmz.supabase.co
@@ -58,7 +58,7 @@ CORS_ORIGINS=http://localhost:5173,http://localhost:3000
 > **No commitees `.env`** (ya está en `.gitignore`).
 >
 > Las keys actuales viven en `/opt/fiba-nominations/.env` en el droplet;
-> pedile al admin si necesitás conectarte al proyecto Supabase real.
+> pídele al admin si necesitas conectarte al proyecto Supabase real.
 > Alternativa: usar un proyecto Supabase de staging propio.
 
 ---
@@ -170,11 +170,11 @@ export const Icon = {
 }
 ```
 
-Paths SVG de Tabler Icons (MIT). Buscá en https://tabler.io/icons.
+Paths SVG de Tabler Icons (MIT). Busca en https://tabler.io/icons.
 
 ### Tocar tokens de color
 
-Si añadís un shade nuevo, va en `tailwind.config.js`. Si querés que un
+Si añades un shade nuevo, va en `tailwind.config.js`. Si quieres que un
 alias `fiba-*` cambie con dark mode, va con la sintaxis CSS-var (ver
 `DESIGN_SYSTEM.md`).
 
@@ -231,20 +231,20 @@ Si vas a agregar tests:
 
 ## Trampas conocidas
 
-1. **LibreOffice locks** — si corrés muchas generaciones de PDF en
+1. **LibreOffice locks** — si corres muchas generaciones de PDF en
    paralelo, LO se traba. Usar profile dir por request (ya manejado
    en `document_generator.py`).
 
 2. **CORS** — si tu frontend está en otro puerto (ej. Storybook en
-   :6006) agregalo a `CORS_ORIGINS`.
+   :6006) agrégalo a `CORS_ORIGINS`.
 
-3. **Auth middleware bypassa `/api`** — si testeás un endpoint vía
-   curl sin JWT, le pegás directo y devuelve 401 — eso es esperado.
-   Sacá un JWT con `await supabase.auth.signInWithPassword(...)` y
-   pegalo al header.
+3. **Auth middleware bypassa `/api`** — si testeas un endpoint vía
+   curl sin JWT, le pegas directo y devuelve 401 — eso es esperado.
+   Saca un JWT con `await supabase.auth.signInWithPassword(...)` y
+   pégalo al header.
 
 4. **`storage://nominations/X` paths** — son convención propia, no son
-   URLs reales. El backend los traduce. Si necesitás el URL real:
+   URLs reales. El backend los traduce. Si necesitas el URL real:
    `await supabase.storage.from_("nominations").createSignedUrl(...)`.
 
 5. **Vercel está muerto.** `vercel.json` ya no existe (a lo sumo queda un

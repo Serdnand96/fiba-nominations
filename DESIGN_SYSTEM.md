@@ -107,7 +107,7 @@ fiba: {
 ```
 
 **Esto significa que `bg-fiba-card` SE COMPORTA distinto según el
-modo**, sin tocar el JSX. Si migras una página, podés:
+modo**, sin tocar el JSX. Si migras una página, puedes:
 
 - Dejar los tokens `fiba-*` (siguen funcionando)
 - O reemplazar por los explícitos: `bg-white dark:bg-navy-900`,
@@ -176,8 +176,8 @@ ChevronDown, ArrowUp, ArrowDown, Alert, Info, Bell, Clock, Globe, Pin,
 Pushpin, PushpinFilled, Plane, Moon, Sun, Cog, Logout, Eye, History,
 Report, Star, StarFilled.
 
-Si necesitás otro: agregalo a `lib/icons.jsx` con la sintaxis
-`I(<><path d="…"/></>)` o instalá `@tabler/icons-react`.
+Si necesitas otro: agrégalo a `lib/icons.jsx` con la sintaxis
+`I(<><path d="…"/></>)` o instala `@tabler/icons-react`.
 
 ---
 

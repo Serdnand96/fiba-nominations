@@ -7,7 +7,7 @@ description: Checklist de seguridad de fiba-nominations — autorización a nive
 
 El modelo mental correcto: **la base de datos no protege nada por sí sola**, y
 **el frontend tampoco**. La seguridad vive en las dependencies de permiso del
-backend. Revisá cada cambio con eso en mente.
+backend. Revisa cada cambio con eso en mente.
 
 ## 1. Autorización a nivel de aplicación (lo central)
 
@@ -25,7 +25,7 @@ backend. Revisá cada cambio con eso en mente.
 
 **❗ Revisión P0:** cualquier endpoint nuevo/modificado **sin** dependency de
 permiso es un agujero — expone datos a cualquier usuario autenticado (o al mundo
-si cuelga de `/api/public/*`). Buscá routers o rutas sin `require_*` y marcalos.
+si cuelga de `/api/public/*`). Busca routers o rutas sin `require_*` y márcalos.
 
 ```bash
 # Ayudas para revisar:
@@ -69,7 +69,7 @@ grep -rn "@router\.\(post\|put\|patch\|delete\)" api/_lib/routers/  # ¿cada uno
   `AuthContext` y el mismo cliente de Supabase** (`src/lib/supabase.js`) que
   todo el resto.
 - **No existe** una "Supabase Auth standalone" ni un aislamiento especial.
-  Revisalo con **el mismo** checklist de permisos que cualquier otro módulo: lo
+  Revísalo con **el mismo** checklist de permisos que cualquier otro módulo: lo
   que hay que verificar es que cada endpoint lleve su dependency, no un supuesto
   sandbox separado.
 - El permiso `transport` **ya no existe** (migración 025 lo renombró a
@@ -89,7 +89,7 @@ grep -rn "@router\.\(post\|put\|patch\|delete\)" api/_lib/routers/  # ¿cada uno
   `_redact()`; si alguna vez hay que ocultar campos, se cambia ahí y no en los
   cuatro endpoints.
 - Las respuestas bajo `/api/public/` llevan `X-Robots-Tag: noindex` (middleware
-  en `api/index.py`). Si agregás una vista pública nueva, cae bajo esa regla
+  en `api/index.py`). Si agregas una vista pública nueva, cae bajo esa regla
   sola — pero no la saques del prefijo `/api/public/`, porque ahí también viven
   el bypass de auth y el rate limit por IP.
 
@@ -131,7 +131,7 @@ grep -rn "@router\.\(post\|put\|patch\|delete\)" api/_lib/routers/  # ¿cada uno
 - No se nomina/asigna un árbitro a juegos que involucran su país. La lógica se
   apoya en `country_code`/`nationalities` (migraciones `014_referee_neutrality`,
   `016_referee_nationalities_and_crew_roles`; ver `personnel.py`, `games.py`).
-  Si un cambio toca asignaciones de REFs, verificá que los checks de neutralidad
+  Si un cambio toca asignaciones de REFs, verifica que los checks de neutralidad
   sigan intactos.
 
 ---

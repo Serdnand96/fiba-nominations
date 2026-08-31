@@ -25,7 +25,7 @@
 -- (Adobe, AWS, Zoom, Dropbox…). La celda de la matriz es la SUMA de las líneas
 -- que caen ahí; con una sola se edita inline, con varias se abre el detalle.
 --
--- NO forma parte del deploy automático: aplicá a mano contra Supabase.
+-- NO forma parte del deploy automático: aplica a mano contra Supabase.
 
 begin;
 

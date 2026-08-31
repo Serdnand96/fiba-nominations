@@ -18,7 +18,7 @@
 --
 -- Backend-only vía service_role: RLS habilitada sin políticas.
 --
--- NO forma parte del deploy automático: aplicá a mano contra Supabase.
+-- NO forma parte del deploy automático: aplica a mano contra Supabase.
 
 begin;
 

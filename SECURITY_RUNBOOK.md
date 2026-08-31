@@ -62,7 +62,7 @@ Setear:
 
 👉 GoDaddy → DNS de `fibaamericascloud.com`
 
-Agregá estos 4 records:
+Agrega estos 4 records:
 
 | Type | Name | Value | TTL |
 |---|---|---|---|
@@ -71,7 +71,7 @@ Agregá estos 4 records:
 | CAA | @ | `0 issuewild ";"` | 3600 |
 | CAA | @ | `0 iodef "mailto:vargas20057@gmail.com"` | 3600 |
 
-(Si `_dmarc` ya existe, editalo en vez de duplicar.)
+(Si `_dmarc` ya existe, edítalo en vez de duplicar.)
 
 `fibaapp.com` ya está configurado.
 
@@ -126,8 +126,8 @@ done
 sudo ufw reload
 ```
 
-> Si te conectás directo al droplet por IP en algún momento (debug),
-> agregá tu IP residencial al whitelist primero.
+> Si te conectas directo al droplet por IP en algún momento (debug),
+> agrega tu IP residencial al whitelist primero.
 
 ---
 

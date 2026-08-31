@@ -16,7 +16,7 @@
 -- payments (012), availability_links (017) y logística (025). Son datos
 -- financieros: montos, datos bancarios de proveedores, tax IDs.
 --
--- NO forma parte del deploy automático: aplicá a mano contra Supabase.
+-- NO forma parte del deploy automático: aplica a mano contra Supabase.
 
 begin;
 

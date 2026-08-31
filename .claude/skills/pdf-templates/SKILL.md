@@ -125,7 +125,7 @@ más elaborado.
 
 - Los **builders posicionales** (`_build_wcq_letter`, `_build_generic_letter`,
   `_build_bcla_letter`) direccionan párrafos por índice (`paras[2]`, `paras[4]`…)
-  y **descartan contenido en silencio** si el `.docx` cambia de layout. Preferí
+  y **descartan contenido en silencio** si el `.docx` cambia de layout. Prefiere
   siempre los `_TPL` con placeholders.
 - Los párrafos que mezclan tintas (el saludo "Dear <nombre>," con el nombre en
   rojo, la línea de confirmación) se arman como `RichText` en el código, **no**
@@ -143,7 +143,7 @@ Código: `api/_lib/routers/training.py::_generate_schedule_pdf`.
   ÚNICAMENTE** (`engine: libreoffice` del lado de CloudConvert). Si no hay
   `CLOUDCONVERT_API_KEY`, **sirve el `.docx`** en vez del PDF.
 - ⚠️ Este camino **no** tiene la rama `USE_LOCAL_LIBREOFFICE` del camino 1: es
-  una inconsistencia conocida. Si querés PDF local acá, hay que portar la lógica
+  una inconsistencia conocida. Si quieres PDF local acá, hay que portar la lógica
   de `document_generator._convert_to_pdf`.
 
 ---
@@ -179,10 +179,10 @@ Código: `api/_lib/services/schedule_workbook.py`, servido por
 
 ## Al modificar una carta — checklist
 
-1. Editá el `.docx` `_TPL` con los tags (`{{ }}`, `{{r }}`, `{%p for %}`).
-2. Agregá/ajustá el valor en el context builder correspondiente.
-3. Registrá keys nuevos en `TEMPLATE_SPECS` si aplica.
-4. Validá con `generate_preview(template_key)` y revisá el PDF resultante
+1. Edita el `.docx` `_TPL` con los tags (`{{ }}`, `{{r }}`, `{%p for %}`).
+2. Agrega/ajusta el valor en el context builder correspondiente.
+3. Registra keys nuevos en `TEMPLATE_SPECS` si aplica.
+4. Valida con `generate_preview(template_key)` y revisa el PDF resultante
    (membrete, firma al pie, colores de marca, fechas en formato largo).
-5. Si tocás nombres de placeholder, actualizá `LEGACY_FIELD_ALIASES` para no
+5. Si tocas nombres de placeholder, actualiza `LEGACY_FIELD_ALIASES` para no
    romper `.docx` ya subidos.

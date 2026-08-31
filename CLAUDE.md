@@ -1,6 +1,6 @@
 # CLAUDE.md — Onboarding para sesiones de IA
 
-> Leé este archivo primero si arrancás una sesión nueva sobre este repo.
+> Lee este archivo primero si arrancas una sesión nueva sobre este repo.
 > Acá está el contexto crítico para no caminar a tientas.
 
 ---
@@ -55,7 +55,7 @@ legacy `fibaamericascloud.com`).
    (`downloadNominationBlob`, `downloadTrainingPdf`).
 
 6. **CSS variables hacen los tokens `fiba-*` dark-aware.** No es
-   Tailwind nativo — ver `DESIGN_SYSTEM.md`. Si tocás colores, leelo
+   Tailwind nativo — ver `DESIGN_SYSTEM.md`. Si tocas colores, léelo
    primero.
 
 7. **Transport ya no es un módulo: es una sección de Logística.** Desde la
@@ -71,7 +71,7 @@ legacy `fibaamericascloud.com`).
    `logistics_participants`, el padrón de quién viene a la competencia
    (oficiales de `personnel`, staff de `employees`, VIPs y delegaciones sin
    vínculo). **No hay "Supabase Auth standalone"** ni sandbox separado:
-   revisalo con el mismo checklist de permisos que cualquier otro módulo.
+   revísalo con el mismo checklist de permisos que cualquier otro módulo.
 
    Ojo con dos cosas que se ven raras y son correctas:
    - Las **noches** de la rooming list se derivan de `check_in`/`check_out`;
@@ -163,7 +163,7 @@ legacy `fibaamericascloud.com`).
 
     - **Nunca sumes un offset a la hora local.** La competencia toca 16 zonas
       IANA que cambian de horario de verano en fechas distintas, y algunas no
-      cambian. Convertí desde `datetime_utc`.
+      cambian. Convierte desde `datetime_utc`.
     - Cuidado con la fecha: México juega 20:10 local y eso es **02:10 UTC del
       día siguiente**. `datetime_utc` es timestamptz justamente por eso, y la
       card marca `+1`/`-1` cuando en la zona destino el partido cae otro día.
@@ -332,8 +332,8 @@ repo, para no reconstruirlas de cero en cada sesión:
   `api-conventions`, `frontend-conventions`, `fiba-excel-format`,
   `pdf-templates`, `security-checklist`.
 
-⚠️ Son una **foto del código**: si refactorizás auth, la generación de PDF o
-el import de Excel, actualizá el skill correspondiente en el mismo PR — un
+⚠️ Son una **foto del código**: si refactorizas auth, la generación de PDF o
+el import de Excel, actualiza el skill correspondiente en el mismo PR — un
 skill desactualizado es peor que ninguno.
 
 ---
@@ -473,22 +473,22 @@ explicación del truco de CSS variables para los aliases legacy
 
 ## 🎯 Si te piden algo
 
-- **"Agregá un módulo nuevo"** → router en `api/_lib/routers/X.py`,
+- **"Agrega un módulo nuevo"** → router en `api/_lib/routers/X.py`,
   mount en `api/index.py`, página en `src/pages/X.jsx`, ruta en
   `App.jsx`, icono en el map `moduleIcon`, permiso en `user_permissions`.
 
-- **"Tocá algo de plata"** (budget, payments, fees) → leé `BUDGET_MODULE.md`
+- **"Toca algo de plata"** (budget, payments, fees) → lee `BUDGET_MODULE.md`
   primero: es el contrato del módulo y se actualiza en el mismo PR. Checklist
   corto: `_scoped()` en toda query nueva de budget, la migración aplicada a mano
-  ANTES del push, y si tocás la imputación de un pago acordate de que son dos
+  ANTES del push, y si tocas la imputación de un pago acuérdate de que son dos
   (fee y pasaje, puntos 15 a 17).
 
-- **"Cambiá el deploy"** → modificá `.github/workflows/deploy.yml`. Hay
+- **"Cambia el deploy"** → modifica `.github/workflows/deploy.yml`. Hay
   un user en el droplet llamado `fiba` con clave SSH agregada via
   `DROPLET_SSH_KEY` secret.
 
-- **"Probá un cambio en el droplet"** → `ssh fiba`, navegá a
-  `/opt/fiba-nominations`, podés correr el venv directamente con
+- **"Prueba un cambio en el droplet"** → `ssh fiba`, navega a
+  `/opt/fiba-nominations`, puedes correr el venv directamente con
   `./venv/bin/python` o reiniciar el servicio.
 
 - **"Hay algo lento"** → `ssh fiba sudo journalctl -u fiba-api`,

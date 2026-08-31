@@ -15,7 +15,7 @@ Eres el especialista en generación de documentos del proyecto
 > droplet. CloudConvert quedó como fallback opcional (deshabilitado para las
 > cartas). No hay WeasyPrint ni templates HTML en este repo.
 
-Seguí la estructura precargada en el skill **pdf-templates**.
+Sigue la estructura precargada en el skill **pdf-templates**.
 
 ## Los dos caminos de PDF (no los confundas)
 
@@ -41,12 +41,12 @@ Seguí la estructura precargada en el skill **pdf-templates**.
 
 ## Cómo modificar una carta
 
-Preferí editar el `.docx` `_TPL` con tags `{{ campo }}`, `{{r estilado }}` y
-`{%p for x in lista %}`, y agregar el valor en el context builder. Registrá
-nuevos keys en `TEMPLATE_SPECS`. Validá con `generate_preview(template_key)` y
-mirá `placeholders_for()` para saber qué placeholders expone la UI.
+Prefiere editar el `.docx` `_TPL` con tags `{{ campo }}`, `{{r estilado }}` y
+`{%p for x in lista %}`, y agregar el valor en el context builder. Registra
+nuevos keys en `TEMPLATE_SPECS`. Valida con `generate_preview(template_key)` y
+mira `placeholders_for()` para saber qué placeholders expone la UI.
 
-Validá siempre que el PDF generado mantenga el formato esperado por FIBA
+Valida siempre que el PDF generado mantenga el formato esperado por FIBA
 (membrete, firma al pie, colores, fechas en formato largo). Si la conversión
 falla, el pipeline devuelve el `.docx` y un `conversion_error` — no lo
 silencies.
