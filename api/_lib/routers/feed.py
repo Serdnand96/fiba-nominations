@@ -47,6 +47,8 @@ _BUCKET = "inventory"
 _IMAGE_PREFIX = "feed"
 _MAX_IMAGE_BYTES = 5 * 1024 * 1024
 _IMAGE_EXTS = ("jpg", "jpeg", "png", "webp", "gif")
+# Allowlist, no "image/*": un SVG puede llevar script y el bucket es público.
+_IMAGE_TYPES = ("image/jpeg", "image/png", "image/webp", "image/gif")
 
 CATEGORIES = ("general", "news", "event", "hr", "fun", "kudos")
 EMOJIS = ("👍", "❤️", "🏀", "🎉", "😂", "👏")
@@ -208,8 +210,8 @@ def _delete_image(image_url: Optional[str]) -> None:
 
 
 async def _store_image(image: UploadFile, post_id: str) -> str:
-    if not (image.content_type or "").startswith("image/"):
-        raise HTTPException(status_code=400, detail="Only image files are allowed")
+    if (image.content_type or "").lower() not in _IMAGE_TYPES:
+        raise HTTPException(status_code=400, detail="Only JPG, PNG, WebP or GIF images are allowed")
     content = await image.read()
     if len(content) > _MAX_IMAGE_BYTES:
         raise HTTPException(status_code=413, detail="Image too large (max 5 MB)")
