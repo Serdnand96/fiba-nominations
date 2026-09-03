@@ -162,7 +162,7 @@ function Composer({ me, events, onPosted }) {
   return (
     <Card padding="p-4 md:p-5">
       <div className="flex gap-3">
-        <Avatar name={me?.name} tone="basketball" size="lg" />
+        <Avatar name={me?.name} src={me?.avatar_url} tone="basketball" size="lg" />
         <div className="flex-1 min-w-0">
           <textarea
             ref={textRef}
@@ -375,7 +375,7 @@ function Comments({ post, onCount }) {
         <div className="text-xs text-ink-400">{t('feed.noComments')}</div>
       ) : items.map(c => (
         <div key={c.id} className="flex gap-2.5 group">
-          <Avatar name={c.author_name} size="sm" tone="ink" />
+          <Avatar name={c.author_name} src={c.author_avatar_url} size="sm" tone="ink" />
           <div className="flex-1 min-w-0">
             <div className="inline-block max-w-full rounded-2xl rounded-tl-md bg-ink-50 dark:bg-navy-800 px-3 py-2">
               <div className="text-xs font-semibold text-ink-900 dark:text-ink-50">{c.author_name}</div>
@@ -476,7 +476,7 @@ function PostCard({ post, isModerator, onUpdate, onDelete }) {
     <Card padding="p-4 md:p-5" className={`screen-enter ${highlight}`}>
       {/* Header */}
       <div className="flex items-start gap-3">
-        <Avatar name={post.author_name} tone={post.is_official ? 'basketball' : 'navy'} size="lg" />
+        <Avatar name={post.author_name} src={post.author_avatar_url} tone={post.is_official ? 'basketball' : 'navy'} size="lg" />
         <div className="flex-1 min-w-0">
           <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
             <span className="text-[14px] font-semibold text-ink-900 dark:text-ink-50 truncate">{post.author_name}</span>

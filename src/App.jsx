@@ -3,6 +3,8 @@ import { Routes, Route, NavLink, Navigate } from 'react-router-dom'
 import { useAuth } from './contexts/AuthContext'
 import { useLanguage } from './i18n/LanguageContext'
 import { Icon } from './lib/icons'
+import { Avatar } from './components/ui'
+import ProfileModal from './components/ProfileModal'
 
 // Eager-load Login (always shown when logged out) and PublicAsset (no-auth route)
 import Login from './pages/Login'
@@ -414,17 +416,35 @@ function LanguageSwitcher() {
 }
 
 function UserCard({ collapsed }) {
-  const { signOut, user, isSuperadmin } = useAuth()
+  const { signOut, user, isSuperadmin, profile } = useAuth()
   const { t } = useLanguage()
-  const initial = (user.email || '?')[0].toUpperCase()
+  const [open, setOpen] = useState(false)
   const role = isSuperadmin ? t('common.superadmin') : t('common.user')
+  const avatarSrc = profile?.avatar_url || null
+
+  // La primera letra del email como fallback, igual que antes del avatar.
+  const avatar = avatarSrc
+    ? <Avatar name={user.email} src={avatarSrc} size="md" />
+    : (
+      <span className="w-8 h-8 rounded-full bg-basketball-500/20 text-basketball-300 flex items-center justify-center text-xs font-semibold flex-shrink-0">
+        {(user.email || '?')[0].toUpperCase()}
+      </span>
+    )
+
+  const modal = <ProfileModal open={open} onClose={() => setOpen(false)} />
 
   if (collapsed) {
     return (
       <div className="hidden md:flex flex-col items-center gap-2">
-        <div className="w-8 h-8 rounded-full bg-basketball-500/20 text-basketball-300 flex items-center justify-center text-xs font-semibold">
-          {initial}
-        </div>
+        <button
+          type="button"
+          onClick={() => setOpen(true)}
+          title={t('profile.editProfile')}
+          aria-label={t('profile.editProfile')}
+          className="rounded-full ring-offset-2 ring-offset-navy-900 hover:ring-2 hover:ring-basketball-500 transition"
+        >
+          {avatar}
+        </button>
         <button
           onClick={signOut}
           title={t('common.signOut')}
@@ -433,26 +453,34 @@ function UserCard({ collapsed }) {
         >
           <Icon.Logout className="w-4 h-4" />
         </button>
+        {modal}
       </div>
     )
   }
 
   return (
     <div className="flex items-center gap-2.5">
-      <div className="w-8 h-8 rounded-full bg-basketball-500/20 text-basketball-300 flex items-center justify-center text-xs font-semibold flex-shrink-0">
-        {initial}
-      </div>
-      <div className="flex-1 min-w-0 leading-tight">
-        <div className="text-[13px] font-medium text-white truncate">{user.email}</div>
-        <div className="text-2xs text-navy-300 truncate">{role}</div>
-      </div>
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        title={t('profile.editProfile')}
+        className="flex items-center gap-2.5 flex-1 min-w-0 text-left rounded-md -m-1 p-1 hover:bg-white/5 transition"
+      >
+        {avatar}
+        <div className="flex-1 min-w-0 leading-tight">
+          <div className="text-[13px] font-medium text-white truncate">{user.email}</div>
+          <div className="text-2xs text-navy-300 truncate">{role}</div>
+        </div>
+      </button>
       <button
         onClick={signOut}
-        title="Cerrar sesión"
+        title={t('common.signOut')}
+        aria-label={t('common.signOut')}
         className="text-navy-300 hover:text-white flex-shrink-0"
       >
         <Icon.Logout className="w-4 h-4" />
       </button>
+      {modal}
     </div>
   )
 }

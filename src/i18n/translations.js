@@ -1596,6 +1596,25 @@ const translations = {
     errorSaving: { en: 'Error saving permissions', es: 'Error guardando permisos' },
   },
 
+  // ===== Perfil propio (avatar) =====
+  profile: {
+    title: { en: 'My profile', es: 'Mi perfil' },
+    subtitle: { en: 'Your photo is shown in the sidebar, on the feed and in the users list.', es: 'Tu foto se ve en la barra lateral, en el Muro y en la lista de usuarios.' },
+    editProfile: { en: 'Edit profile', es: 'Editar perfil' },
+    choosePhoto: { en: 'Choose photo', es: 'Elegir foto' },
+    changePhoto: { en: 'Change photo', es: 'Cambiar foto' },
+    removePhoto: { en: 'Remove photo', es: 'Quitar foto' },
+    savePhoto: { en: 'Save photo', es: 'Guardar foto' },
+    hint: { en: 'JPG, PNG, WebP or GIF. It is cropped to a square automatically.', es: 'JPG, PNG, WebP o GIF. Se recorta en cuadrado automáticamente.' },
+    uploaded: { en: 'Profile photo updated', es: 'Foto de perfil actualizada' },
+    removed: { en: 'Profile photo removed', es: 'Foto de perfil quitada' },
+    confirmRemove: { en: 'Remove your profile photo?', es: '¿Quitar tu foto de perfil?' },
+    invalidType: { en: 'Only JPG, PNG, WebP or GIF images', es: 'Solo imágenes JPG, PNG, WebP o GIF' },
+    tooLarge: { en: 'Image too large (max 2 MB)', es: 'Imagen muy grande (máx. 2 MB)' },
+    errorUpload: { en: 'Could not upload the photo', es: 'No se pudo subir la foto' },
+    errorRemove: { en: 'Could not remove the photo', es: 'No se pudo quitar la foto' },
+  },
+
   // ===== Common =====
   common: {
     error: { en: 'Error', es: 'Error' },

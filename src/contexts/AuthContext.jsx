@@ -1,6 +1,6 @@
 import { createContext, useContext, useState, useEffect, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
-import { getUserPermissions } from '../api/client'
+import { getUserPermissions, getMyProfile } from '../api/client'
 
 const AuthContext = createContext(null)
 
@@ -9,6 +9,9 @@ export function AuthProvider({ children }) {
   const [loading, setLoading] = useState(true)
   const [permissions, setPermissions] = useState({})
   const [isSuperadmin, setIsSuperadmin] = useState(false)
+  // Perfil propio (hoy: avatar_url). Null hasta que carga o si falla: la foto
+  // nunca bloquea el login, el sidebar cae a las iniciales.
+  const [profile, setProfile] = useState(null)
 
   async function loadPermissions(userId) {
     try {
@@ -26,11 +29,24 @@ export function AuthProvider({ children }) {
     }
   }
 
+  async function loadProfile() {
+    try {
+      setProfile(await getMyProfile())
+    } catch {
+      setProfile(null)
+    }
+  }
+
+  const updateProfile = useCallback((patch) => {
+    setProfile(prev => ({ ...(prev || {}), ...patch }))
+  }, [])
+
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       const u = session?.user ?? null
       setUser(u)
       if (u) {
+        loadProfile()
         loadPermissions(u.id).then(() => setLoading(false))
       } else {
         setLoading(false)
@@ -42,9 +58,11 @@ export function AuthProvider({ children }) {
       setUser(u)
       if (u) {
         loadPermissions(u.id)
+        loadProfile()
       } else {
         setPermissions({})
         setIsSuperadmin(false)
+        setProfile(null)
       }
     })
 
@@ -55,7 +73,10 @@ export function AuthProvider({ children }) {
     const { data, error } = await supabase.auth.signInWithPassword({ email, password })
     if (error) throw error
     // Load permissions after sign in
-    if (data.user) await loadPermissions(data.user.id)
+    if (data.user) {
+      await loadPermissions(data.user.id)
+      loadProfile()
+    }
     return data
   }
 
@@ -64,6 +85,7 @@ export function AuthProvider({ children }) {
     if (error) throw error
     setPermissions({})
     setIsSuperadmin(false)
+    setProfile(null)
   }
 
   const hasView = useCallback((module) => {
@@ -77,7 +99,7 @@ export function AuthProvider({ children }) {
   }, [isSuperadmin, permissions])
 
   return (
-    <AuthContext.Provider value={{ user, loading, signIn, signOut, isSuperadmin, hasView, hasEdit }}>
+    <AuthContext.Provider value={{ user, loading, signIn, signOut, isSuperadmin, hasView, hasEdit, profile, updateProfile }}>
       {children}
     </AuthContext.Provider>
   )

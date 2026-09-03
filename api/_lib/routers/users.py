@@ -76,8 +76,9 @@ def list_users():
         res = client.auth.admin.list_users()
 
         # Fetch all superadmin flags
-        profiles = supabase.table("user_profiles").select("user_id,is_superadmin").execute().data
+        profiles = supabase.table("user_profiles").select("user_id,is_superadmin,avatar_url").execute().data
         sa_set = {p["user_id"] for p in profiles if p.get("is_superadmin")}
+        avatars = {p["user_id"]: p.get("avatar_url") for p in profiles}
 
         users = [
             {
@@ -86,6 +87,7 @@ def list_users():
                 "created_at": u.created_at if u.created_at else None,
                 "last_sign_in_at": u.last_sign_in_at if u.last_sign_in_at else None,
                 "is_superadmin": u.id in sa_set,
+                "avatar_url": avatars.get(u.id),
             }
             for u in res
         ]

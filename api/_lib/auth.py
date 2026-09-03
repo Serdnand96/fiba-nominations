@@ -103,6 +103,17 @@ def has_edit(request: Request, module: str) -> bool:
     return _has_permission(request, _user_id(request), module, "edit")
 
 
+def require_user(request: Request):
+    """Dependency: 401 unless the auth middleware put a user on request.state.
+
+    Para lo que es del usuario mismo y no de un módulo — hoy `/me`
+    (api/_lib/routers/profile.py): su avatar. Sin permiso de módulo, pero
+    falla cerrado igual que require_view.
+    """
+    if not getattr(request.state, "user", None):
+        raise HTTPException(status_code=401, detail="Authentication required")
+
+
 def require_superadmin(request: Request):
     """Dependency that allows only superadmins."""
     if not _is_superadmin_cached(request, _user_id(request)):
