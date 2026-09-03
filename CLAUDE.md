@@ -312,6 +312,11 @@ legacy `fibaamericascloud.com`).
       en lo ya publicado.
     - El frontend recorta en cuadrado y baja a 512px (canvas) antes de subir; el
       backend igual valida tipo (sin SVG) y tamaño (2 MB).
+    - **La pestaña "Avatar" no es otro camino:** genera un dibujo con DiceBear
+      (`src/lib/avatars.js`, cargado con `import()` para no engordar el bundle),
+      lo pasa a PNG con canvas y lo sube por el **mismo** endpoint. El backend
+      no sabe si fue foto o avatar, y el bucket sigue sin SVG. Los estilos son
+      MIT o "free for commercial use"; no agregar uno que exija atribución.
 
 ---
 

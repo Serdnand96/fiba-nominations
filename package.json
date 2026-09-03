@@ -10,6 +10,12 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@dicebear/avataaars": "^9.4.2",
+    "@dicebear/bottts": "^9.4.2",
+    "@dicebear/core": "^9.4.3",
+    "@dicebear/lorelei": "^9.4.2",
+    "@dicebear/pixel-art": "^9.4.2",
+    "@dicebear/thumbs": "^9.4.2",
     "@fontsource/ibm-plex-mono": "^5.3.0",
     "@fontsource/ibm-plex-sans": "^5.3.0",
     "@supabase/supabase-js": "^2.45.0",
