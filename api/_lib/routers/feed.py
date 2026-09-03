@@ -34,6 +34,7 @@ from pydantic import BaseModel, Field
 
 from api._lib.auth import has_edit, require_edit, require_view
 from api._lib.database import supabase
+from api._lib.routers.profile import avatars_for
 
 logger = logging.getLogger(__name__)
 
@@ -294,6 +295,10 @@ def _shape_posts(rows: list[dict], request: Request) -> list[dict]:
         if poll_ids else []
     )
 
+    # La foto del autor se lee en vivo (no se congela como author_name):
+    # cambiar el avatar tiene que verse en lo ya publicado.
+    avatars = avatars_for([r.get("author_id") for r in rows])
+
     by_post: dict[str, dict] = {pid: {"reactions": [], "comments": 0, "votes": []} for pid in ids}
     for r in reactions:
         by_post[r["post_id"]]["reactions"].append(r)
@@ -312,6 +317,7 @@ def _shape_posts(rows: list[dict], request: Request) -> list[dict]:
         item.update(_reaction_summary(extra["reactions"], uid))
         item["comment_count"] = extra["comments"]
         item["poll"] = _poll_summary(row.get("poll_options"), extra["votes"], uid)
+        item["author_avatar_url"] = avatars.get(row.get("author_id"))
         item["is_mine"] = row.get("author_id") == uid
         item["can_manage"] = item["is_mine"] or moderator
         out.append(item)
@@ -323,7 +329,12 @@ def _shape_posts(rows: list[dict], request: Request) -> list[dict]:
 @router.get("/me")
 def me(request: Request):
     """Cómo me ve el muro: nombre a mostrar y si puedo moderar."""
-    return {"name": _display_name(request), "is_moderator": _is_moderator(request)}
+    uid = _user_id(request)
+    return {
+        "name": _display_name(request),
+        "is_moderator": _is_moderator(request),
+        "avatar_url": avatars_for([uid]).get(uid),
+    }
 
 
 # ── Publicaciones ────────────────────────────────────────────────────────────
@@ -487,10 +498,13 @@ def unreact(post_id: str, request: Request):
 
 # ── Comentarios ──────────────────────────────────────────────────────────────
 
-def _shape_comment(c: dict, request: Request) -> dict:
+def _shape_comment(c: dict, request: Request, avatars: Optional[dict] = None) -> dict:
     uid = _user_id(request)
+    if avatars is None:
+        avatars = avatars_for([c.get("author_id")])
     return {
         **c,
+        "author_avatar_url": avatars.get(c.get("author_id")),
         "is_mine": c.get("author_id") == uid,
         "can_manage": c.get("author_id") == uid or _is_moderator(request),
     }
@@ -504,7 +518,8 @@ def list_comments(post_id: str, request: Request):
         .select("id, post_id, author_id, author_name, body, created_at")
         .eq("post_id", row["id"]).order("created_at").execute().data
     )
-    return [_shape_comment(c, request) for c in rows]
+    avatars = avatars_for([c.get("author_id") for c in rows])
+    return [_shape_comment(c, request, avatars) for c in rows]
 
 
 @router.post("/posts/{post_id}/comments", status_code=201)

@@ -355,6 +355,16 @@ export const getPublicLogisticsRooming = (token) => api.get(`/public/logistics/$
 
 // Permissions
 export const getUserPermissions = (userId) => api.get(`/permissions/${userId}`).then(r => r.data)
+
+// Mi perfil (avatar) — ver api/_lib/routers/profile.py. Sin permiso de módulo:
+// es lo propio de quien está logueado.
+export const getMyProfile = () => api.get('/me').then(r => r.data)
+export const uploadMyAvatar = (file) => {
+  const fd = new FormData()
+  fd.append('photo', file)
+  return api.post('/me/avatar', fd, { headers: { 'Content-Type': 'multipart/form-data' } }).then(r => r.data)
+}
+export const deleteMyAvatar = () => api.delete('/me/avatar').then(r => r.data)
 export const updateUserPermissions = (userId, permissions) => api.put(`/permissions/${userId}`, { permissions }).then(r => r.data)
 
 // Training

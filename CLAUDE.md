@@ -292,6 +292,27 @@ legacy `fibaamericascloud.com`).
     - Si el usuario tiene `feed`, el Muro es su página de entrada (va primero
       en `allNavItems`).
 
+19. **El avatar del usuario vive en `user_profiles.avatar_url`** (migración
+    044, router `profile.py`, prefijo `/api/me`). Es la foto de perfil de quien
+    usa la plataforma: se ve en el sidebar, como autor en el Muro y en la lista
+    de Usuarios. Se edita desde el modal "Mi perfil" (clic en el usuario del
+    sidebar, `src/components/ProfileModal.jsx`).
+
+    - `/me` **no lleva permiso de módulo**: es lo propio del logueado, con
+      `require_user` (401 sin usuario, falla cerrado). Cada uno sube y borra
+      **solo su** foto; no hay endpoint para cambiar la de otro.
+    - `user_profiles` tenía fila solo para superadmins. Subir un avatar crea la
+      fila del usuario **sin tocar `is_superadmin`** (queda en `false`). No usar
+      esa tabla como "existe el usuario".
+    - La imagen va al bucket público `inventory` bajo `avatars/<user_id>.<ext>`,
+      como personnel y el muro. La URL guardada lleva `?v=<timestamp>` porque la
+      key es siempre la misma y si no el navegador muestra la foto anterior.
+    - En el muro la foto **no se congela** como `author_name`: se lee en vivo por
+      `author_id` con `avatars_for()` (batch, sin N+1). Cambiar el avatar se ve
+      en lo ya publicado.
+    - El frontend recorta en cuadrado y baja a 512px (canvas) antes de subir; el
+      backend igual valida tipo (sin SVG) y tamaño (2 MB).
+
 ---
 
 ## 🗺️ Mapa del repo

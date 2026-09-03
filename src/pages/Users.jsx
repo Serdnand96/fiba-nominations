@@ -6,6 +6,7 @@ import {
 } from '../api/client'
 import { useLanguage } from '../i18n/LanguageContext'
 import { useToast } from '../components/ui/Toast'
+import { Avatar } from '../components/ui'
 import { useAuth } from '../contexts/AuthContext'
 
 const MODULES = ['feed', 'calendar', 'nominations', 'payments', 'budget', 'personnel', 'competitions', 'templates', 'users', 'logistics', 'availability', 'training', 'games', 'assets', 'loans', 'employees', 'reports', 'evaluations', 'comp_days']
@@ -258,6 +259,7 @@ export default function Users() {
                 <tr key={u.id} className={permUser?.id === u.id ? 'bg-fiba-accent/10' : ''}>
                   <td className="px-6 py-4 text-sm text-ink-900 dark:text-white">
                     <div className="flex items-center gap-2">
+                      <Avatar name={u.email} src={u.avatar_url} size="sm" tone="ink" />
                       {u.email}
                       {u.is_superadmin && (
                         <span className="inline-block px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-500/20 text-amber-400">
