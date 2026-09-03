@@ -18,6 +18,7 @@ const PublicLogistics = lazy(() => import('./pages/PublicLogistics'))
 const PublicChecklist = lazy(() => import('./pages/PublicChecklist'))
 
 // Lazy-load every authenticated page so the initial bundle is small
+const Feed         = lazy(() => import('./pages/Feed'))
 const Calendar     = lazy(() => import('./pages/Calendar'))
 const Nominations  = lazy(() => import('./pages/Nominations'))
 const Personnel    = lazy(() => import('./pages/Personnel'))
@@ -41,6 +42,7 @@ const Activity     = lazy(() => import('./pages/Activity'))
 
 /* ── Module → icon map (uses Tabler-style icons from lib/icons) ──── */
 const moduleIcon = {
+  feed:         Icon.Feed,
   calendar:     Icon.Calendar,
   nominations:  Icon.Trophy,
   payments:     Icon.Doc,
@@ -194,7 +196,10 @@ export default function App() {
     return <Login />
   }
 
+  // El Muro va primero a propósito: para quien lo tiene, es la página de
+  // entrada (defaultRoute es el primer item visible).
   const allNavItems = [
+    { to: '/muro',         label: t('nav.feed'),         module: 'feed' },
     { to: '/calendar',     label: t('nav.calendar'),     module: 'calendar' },
     { to: '/nominations',  label: t('nav.nominations'),  module: 'nominations' },
     { to: '/payments',     label: t('nav.payments'),     module: 'payments' },
@@ -350,6 +355,7 @@ export default function App() {
             }>
               <Routes>
                 <Route path="/" element={<Navigate to={defaultRoute} replace />} />
+                <Route path="/muro"            element={<PermissionGuard module="feed"><Feed /></PermissionGuard>} />
                 <Route path="/calendar"        element={<PermissionGuard module="calendar"><Calendar /></PermissionGuard>} />
                 <Route path="/nominations"     element={<PermissionGuard module="nominations"><Nominations /></PermissionGuard>} />
                 <Route path="/payments"        element={<PermissionGuard module="payments"><Payments /></PermissionGuard>} />

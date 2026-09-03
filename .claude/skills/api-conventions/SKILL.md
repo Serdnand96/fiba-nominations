@@ -57,6 +57,11 @@ Este es el punto más importante del backend.
   superadmin se cachea por request en `request.state._is_superadmin`.
 - **Fail-closed:** si un request llega a una ruta guardada sin usuario en
   `request.state`, se rechaza.
+- Variantes bool, sin excepción: `has_view(request, module)` y
+  `has_edit(request, module)`. Para permisos que recortan datos (`comp_days`
+  en employees.py) o cambian qué se puede hacer adentro (`feed`: `can_view`
+  publica y comenta, `can_edit` modera — es la única excepción a "toda
+  escritura lleva require_edit", ver feed.py).
 - **Regla:** cualquier endpoint sin dependency de permiso expone datos a
   cualquier usuario autenticado (o al mundo si cuelga de `/api/public/*`). Es un
   bug de seguridad P0.

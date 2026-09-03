@@ -8,7 +8,7 @@ import { useLanguage } from '../i18n/LanguageContext'
 import { useToast } from '../components/ui/Toast'
 import { useAuth } from '../contexts/AuthContext'
 
-const MODULES = ['calendar', 'nominations', 'payments', 'budget', 'personnel', 'competitions', 'templates', 'users', 'logistics', 'availability', 'training', 'games', 'assets', 'loans', 'employees', 'reports', 'evaluations', 'comp_days']
+const MODULES = ['feed', 'calendar', 'nominations', 'payments', 'budget', 'personnel', 'competitions', 'templates', 'users', 'logistics', 'availability', 'training', 'games', 'assets', 'loans', 'employees', 'reports', 'evaluations', 'comp_days']
 // Permisos que gobiernan un dato, no una página: solo tienen sentido en "ver".
 // Marcar "editar" no haría nada, así que el checkbox va deshabilitado.
 const VIEW_ONLY_MODULES = new Set(['comp_days'])

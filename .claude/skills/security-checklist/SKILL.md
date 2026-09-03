@@ -33,6 +33,23 @@ grep -rn "APIRouter(" api/_lib/routers/            # ¿cada uno con require_view
 grep -rn "@router\.\(post\|put\|patch\|delete\)" api/_lib/routers/  # ¿cada uno con require_edit?
 ```
 
+### 1b. La excepción: el Muro (`feed`)
+
+`api/_lib/routers/feed.py` es el **único** router donde escrituras van con
+`require_view`. Es a propósito y no es un hallazgo:
+
+- `feed:view` = **participar** (publicar, reaccionar, comentar, votar, editar y
+  borrar lo propio). El router lleva `require_view("feed")` y cada escritura
+  sobre contenido ajeno pasa por `_assert_can_manage()` → autor o moderador.
+- `feed:edit` = **moderar** (fijar, marcar oficial, borrar ajeno). Eso sí lleva
+  `require_edit("feed")` o el chequeo `has_edit()` (la variante bool de
+  `auth.py`).
+
+Lo que SÍ hay que revisar ahí: que toda escritura sobre algo ajeno pase por
+`_assert_can_manage()`, que `is_official` no lo pueda setear un no-moderador, y
+que las fotos sigan bajo el prefijo `feed/` del bucket público `inventory` (no
+documentos: el muro es solo fotos).
+
 ## 2. Middleware de auth
 
 - Valida el `Bearer <JWT>` contra `GET {SUPABASE_URL}/auth/v1/user` y guarda el
@@ -96,7 +113,9 @@ grep -rn "@router\.\(post\|put\|patch\|delete\)" api/_lib/routers/  # ¿cada uno
 ## 6. Storage privado
 
 - Hay un único bucket **privado**: `nominations` (payments y reports guardan
-  bajo los prefijos `payments/…` / `reports/…` dentro de él). Reglas:
+  bajo los prefijos `payments/…` / `reports/…` dentro de él). El bucket
+  `inventory` es **público** a propósito: fotos de assets (QR), de personnel y
+  del Muro (`feed/…`). Solo imágenes; un documento jamás va ahí. Reglas:
   - Nunca construir/devolver URLs públicas (`get_public_url`) para ellos.
   - Servir archivos solo por endpoints de descarga **autenticados** (blob+JWT).
   - Borrados que tocan storage van por la Storage API

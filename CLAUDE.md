@@ -264,6 +264,34 @@ legacy `fibaamericascloud.com`).
     — 1 pago, 0 gastos, 0 proveedores. Si el dashboard te da todo en cero, es el
     dato y no un bug.
 
+18. **El Muro (`feed`) es el único permiso donde `can_view` ESCRIBE.** Es el
+    feed interno a lo Facebook (`api/_lib/routers/feed.py`, página
+    `src/pages/Feed.jsx`, ruta `/muro`, migración 043): novedades de los
+    compañeros, eventos, avisos de RRHH, encuestas, reacciones y comentarios.
+    Es deliberadamente el módulo menos formal del sistema, y por eso el permiso
+    no sigue la regla "toda escritura lleva `require_edit`":
+
+    | Permiso | Qué habilita |
+    |---|---|
+    | `feed:view` | **participar**: leer, publicar, reaccionar, comentar, votar y editar/borrar lo propio |
+    | `feed:edit` | **moderar**: fijar arriba, marcar una publicación como oficial, borrar ajeno |
+
+    - Las escrituras sobre contenido propio van con el `require_view` del
+      router más `_assert_can_manage()` (autor o moderador, vía `has_edit()` de
+      `auth.py`, la hermana bool de `has_view()`). Lo que solo modera sí lleva
+      `require_edit`. Un `require_edit` en `POST /feed/posts` dejaría el muro
+      mudo para casi todos: no lo "arregles".
+    - Las fotos van al bucket **público** `inventory` bajo `feed/`, como las de
+      personnel. El muro no lleva documentos.
+    - `author_name` es una foto al publicar (sale de `employees` por email o
+      del email mismo). Renombrar al empleado no reescribe el muro.
+    - La barra lateral (`/feed/sidebar`) muestra competencias próximas y quién
+      viaja (`competition_staffing`) a quien tenga `feed` aunque no tenga
+      `calendar`, `games` ni `employees`. Solo nombres, fechas y ciudades: es
+      información de pasillo. Si alguna vez hay que recortar, es ahí.
+    - Si el usuario tiene `feed`, el Muro es su página de entrada (va primero
+      en `allNavItems`).
+
 ---
 
 ## 🗺️ Mapa del repo
@@ -477,6 +505,9 @@ explicación del truco de CSS variables para los aliases legacy
   mount en `api/index.py`, página en `src/pages/X.jsx`, ruta en
   `App.jsx`, icono en el map `moduleIcon`, permiso en `user_permissions`.
 
+- **"Tocá el Muro"** (feed) → punto 18: `can_view` publica, `can_edit`
+  modera. No le pongas `require_edit` a publicar/comentar/reaccionar.
+
 - **"Tocá algo de plata"** (budget, payments, fees) → leé `BUDGET_MODULE.md`
   primero: es el contrato del módulo y se actualiza en el mismo PR. Checklist
   corto: `_scoped()` en toda query nueva de budget, la migración aplicada a mano
@@ -509,6 +540,8 @@ explicación del truco de CSS variables para los aliases legacy
   el endpoint que llama a Storage API (`_delete_pdf_from_storage`).
 - ❌ Confundir `personnel` con `employees` (TDs/VGOs vs staff interno).
 - ❌ Escribir una query en `budget.py` sin `_scoped()` — es un P0 (punto 16).
+- ❌ "Corregir" el Muro poniéndole `require_edit` a publicar o comentar: ahí
+  `can_view` participa y `can_edit` modera, a propósito (punto 18).
 - ❌ Imputar el pasaje de un pago a la cuenta de fees (punto 15).
 - ❌ Pushear código que usa una migración de Budget sin haberla aplicado antes
   a mano en Supabase (punto 17).

@@ -648,3 +648,28 @@ export const updatePublicChecklistItem = (token, itemId, patch) =>
   api.patch(`/public/checklists/${token}/items/${itemId}`, patch).then(r => r.data)
 export const submitPublicChecklist = (token, runId, payload = {}) =>
   api.post(`/public/checklists/${token}/runs/${runId}/submit`, payload).then(r => r.data)
+
+// Muro (feed) — ver api/_lib/routers/feed.py. Publicar va en multipart para
+// mandar la foto junto con el texto en un solo request.
+export const getFeedMe = () => api.get('/feed/me').then(r => r.data)
+export const getFeedPosts = (params) => api.get('/feed/posts', { params }).then(r => r.data)
+export const createFeedPost = ({ body, category, link_url, poll_options, competition_id, is_official, image }) => {
+  const fd = new FormData()
+  fd.append('body', body)
+  fd.append('category', category || 'general')
+  if (link_url) fd.append('link_url', link_url)
+  if (poll_options && poll_options.length) fd.append('poll_options', JSON.stringify(poll_options))
+  if (competition_id) fd.append('competition_id', competition_id)
+  if (is_official) fd.append('is_official', 'true')
+  if (image) fd.append('image', image)
+  return api.post('/feed/posts', fd, { headers: { 'Content-Type': 'multipart/form-data' } }).then(r => r.data)
+}
+export const updateFeedPost = (id, data) => api.patch(`/feed/posts/${id}`, data).then(r => r.data)
+export const deleteFeedPost = (id) => api.delete(`/feed/posts/${id}`).then(r => r.data)
+export const pinFeedPost = (id, pinned) => api.post(`/feed/posts/${id}/pin`, { pinned }).then(r => r.data)
+export const reactFeedPost = (id, emoji) => api.put(`/feed/posts/${id}/reaction`, { emoji }).then(r => r.data)
+export const getFeedComments = (id) => api.get(`/feed/posts/${id}/comments`).then(r => r.data)
+export const addFeedComment = (id, body) => api.post(`/feed/posts/${id}/comments`, { body }).then(r => r.data)
+export const deleteFeedComment = (commentId) => api.delete(`/feed/comments/${commentId}`).then(r => r.data)
+export const voteFeedPoll = (id, option_index) => api.post(`/feed/posts/${id}/vote`, { option_index }).then(r => r.data)
+export const getFeedSidebar = () => api.get('/feed/sidebar').then(r => r.data)

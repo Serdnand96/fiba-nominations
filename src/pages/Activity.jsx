@@ -8,7 +8,7 @@ const PAGE_SIZE = 50
 // `logistics` y `transport` son las dos mitades del mismo módulo: comparten el
 // permiso, pero siguen siendo dos prefijos distintos en la URL.
 const MODULE_OPTIONS = [
-  'nominations', 'payments', 'personnel', 'competitions', 'templates',
+  'feed', 'nominations', 'payments', 'personnel', 'competitions', 'templates',
   'users', 'calendar', 'logistics', 'transport', 'availability', 'training',
   'games', 'assets', 'loans', 'employees', 'reports', 'evaluations', 'permissions',
 ]

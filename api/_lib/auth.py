@@ -90,6 +90,19 @@ def has_view(request: Request, module: str) -> bool:
     return _has_permission(request, _user_id(request), module, "view")
 
 
+def has_edit(request: Request, module: str) -> bool:
+    """¿El caller tiene can_edit sobre `module`? Sin levantar excepción.
+
+    Hermana de has_view, para los módulos donde "editar" no cierra un endpoint
+    sino que cambia qué puede hacer adentro. Hoy: `feed`, donde can_view alcanza
+    para publicar y can_edit habilita moderar (fijar, borrar ajeno, marcar
+    oficial) — ver api/_lib/routers/feed.py.
+    """
+    if not getattr(request.state, "user", None):
+        return False
+    return _has_permission(request, _user_id(request), module, "edit")
+
+
 def require_superadmin(request: Request):
     """Dependency that allows only superadmins."""
     if not _is_superadmin_cached(request, _user_id(request)):

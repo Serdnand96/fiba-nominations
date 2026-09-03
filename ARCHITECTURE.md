@@ -223,7 +223,7 @@ en el backend (no en la DB) vía `require_view`/`require_edit`.
 | Bucket         | Visibilidad | Uso                                      |
 |----------------|-------------|------------------------------------------|
 | `nominations`  | **privada** | PDFs/docs de nominación, training        |
-| `inventory`    | pública     | Fotos de assets para PublicAsset (QR)    |
+| `inventory`    | pública     | Fotos de assets (QR), de personnel y del Muro (`feed/`) |
 
 `nominations` solo se accede vía service_role en el backend. El
 frontend pide blobs autenticados al endpoint `/api/nominations/{id}/download`.
