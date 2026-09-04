@@ -15,10 +15,13 @@ const variants = {
   link:     'bg-transparent text-navy-700 hover:text-navy-900 underline-offset-2 hover:underline dark:text-navy-300',
 };
 
-export function Button({ variant='primary', size='md', icon, iconRight, children, className='', ...rest }) {
+// forwardRef: hay flujos que necesitan mover el foco a un botón concreto
+// (p. ej. la confirmación inline del modal Mi perfil).
+export const Button = React.forwardRef(function Button({ variant='primary', size='md', icon, iconRight, children, className='', ...rest }, ref) {
   const iconCls = size==='xs' ? 'w-3.5 h-3.5' : 'w-4 h-4';
   return (
     <button
+      ref={ref}
       className={`inline-flex items-center justify-center transition-colors disabled:opacity-50 disabled:pointer-events-none ${sizes[size]} ${variants[variant]} ${className}`}
       {...rest}
     >
@@ -27,7 +30,7 @@ export function Button({ variant='primary', size='md', icon, iconRight, children
       {iconRight ? React.cloneElement(iconRight, { className: `${iconCls} ${iconRight.props?.className || ''}` }) : null}
     </button>
   );
-}
+});
 
 const iconBtnSizes = { xs:'w-7 h-7', sm:'w-8 h-8', md:'w-9 h-9', lg:'w-10 h-10' };
 const iconBtnVariants = {
@@ -38,7 +41,7 @@ const iconBtnVariants = {
 export function IconButton({ icon, label, size='md', variant='ghost', className='', ...rest }) {
   return (
     <button aria-label={label} title={label}
-      className={`inline-flex items-center justify-center rounded-md transition-colors ${iconBtnSizes[size]} ${iconBtnVariants[variant]} ${className}`} {...rest}>
+      className={`inline-flex items-center justify-center rounded-md transition-colors disabled:opacity-50 disabled:pointer-events-none ${iconBtnSizes[size]} ${iconBtnVariants[variant]} ${className}`} {...rest}>
       {React.cloneElement(icon, { className:'w-[18px] h-[18px]' })}
     </button>
   );

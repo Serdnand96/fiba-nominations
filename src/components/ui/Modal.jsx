@@ -8,6 +8,17 @@ const sizes = { sm:'max-w-md', md:'max-w-lg', lg:'max-w-2xl', xl:'max-w-3xl' };
 const FOCUSABLE = 'a[href],button:not([disabled]),textarea,input,select,[tabindex]:not([tabindex="-1"])';
 const isVisible = (el) => !!(el.offsetWidth || el.offsetHeight || el.getClientRects().length);
 
+// Bloqueo del scroll de fondo con contador: si hubiera dos modales abiertos,
+// solo el último en cerrarse restaura el overflow original del body.
+let lockCount = 0;
+let prevOverflow = '';
+function lockScroll() {
+  if (lockCount++ === 0) { prevOverflow = document.body.style.overflow; document.body.style.overflow = 'hidden'; }
+}
+function unlockScroll() {
+  if (--lockCount <= 0) { lockCount = 0; document.body.style.overflow = prevOverflow; }
+}
+
 // Se monta con un portal en <body>: un `position: fixed` toma como contenedor
 // al ancestro más cercano con `transform`, y el sidebar (App.jsx) siempre lleva
 // uno (`translate-x-*`). Sin portal, un modal abierto desde ahí medía 232px de
@@ -17,6 +28,10 @@ export function Modal({ open, onClose, title, subtitle, children, footer, size='
   const restoreFocusRef = useRef(null);
   const closeDisabledRef = useRef(closeDisabled);
   closeDisabledRef.current = closeDisabled;
+  // onClose en un ref: los callers pasan una arrow inline y, si fuera dep del
+  // efecto, cada render del padre reiniciaría el foco y el lock de scroll.
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
   const titleId = useId();
 
   useEffect(() => {
@@ -30,12 +45,10 @@ export function Modal({ open, onClose, title, subtitle, children, footer, size='
     const first = body ? [...body.querySelectorAll(FOCUSABLE)].find(isVisible) : null;
     (first || panel)?.focus();
 
-    // Sin scroll de fondo mientras el modal está abierto.
-    const prevOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
+    lockScroll();
 
     const onKeyDown = (e) => {
-      if (e.key === 'Escape') { e.stopPropagation(); if (!closeDisabledRef.current) onClose?.(); return; }
+      if (e.key === 'Escape') { e.stopPropagation(); if (!closeDisabledRef.current) onCloseRef.current?.(); return; }
       if (e.key !== 'Tab') return;
       // Trampa de foco: Tab no debe salir del modal.
       const items = panel ? [...panel.querySelectorAll(FOCUSABLE)].filter(isVisible) : [];
@@ -47,12 +60,14 @@ export function Modal({ open, onClose, title, subtitle, children, footer, size='
     document.addEventListener('keydown', onKeyDown, true);
     return () => {
       document.removeEventListener('keydown', onKeyDown, true);
-      document.body.style.overflow = prevOverflow;
-      // Devolver el foco al disparador al cerrar.
+      unlockScroll();
+      // Devolver el foco al disparador al cerrar, si sigue visible (en móvil el
+      // drawer que lo contenía puede haberse cerrado); si no, al contenido.
       const el = restoreFocusRef.current;
-      if (el && typeof el.focus === 'function') el.focus();
+      if (el && typeof el.focus === 'function' && isVisible(el)) el.focus();
+      else document.querySelector('main')?.focus?.();
     };
-  }, [open, onClose]);
+  }, [open]);
 
   if (!open) return null;
   const requestClose = () => { if (!closeDisabled) onClose?.(); };

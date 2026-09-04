@@ -53,10 +53,13 @@ export default function ProfileModal({ open, onClose }) {
   const [preview, setPreview] = useState(null)   // object URL del pending
   const [busy, setBusy] = useState(false)
   const [confirmRemove, setConfirmRemove] = useState(false)
+  const confirmBtnRef = useRef(null)
+  const removeBtnRef = useRef(null)
 
   // Pestaña Avatar: la librería se carga recién cuando se abre la pestaña.
   const [lib, setLib] = useState(null)
   const [libError, setLibError] = useState(false)
+  const [libAttempts, setLibAttempts] = useState(0)
   const [styleKey, setStyleKey] = useState('avataaars')
   const [seeds, setSeeds] = useState([])
   const [chosen, setChosen] = useState(null)     // seed elegida en la grilla
@@ -64,9 +67,17 @@ export default function ProfileModal({ open, onClose }) {
   useEffect(() => {
     if (!open) {
       setPending(null); setChosen(null); setBusy(false); setTab('photo')
-      setConfirmRemove(false); setLibError(false)
+      setConfirmRemove(false); setLibError(false); setLibAttempts(0)
     }
   }, [open])
+
+  // El footer se reemplaza entero al confirmar: el botón con foco se desmonta y
+  // el foco caería en <body>, fuera de la trampa del modal. Se lo reubica.
+  useEffect(() => {
+    if (!open) return
+    if (confirmRemove) confirmBtnRef.current?.focus()
+    else removeBtnRef.current?.focus()
+  }, [confirmRemove, open])
 
   useEffect(() => {
     if (!pending) { setPreview(null); return }
@@ -80,7 +91,7 @@ export default function ProfileModal({ open, onClose }) {
     let alive = true
     import('../lib/avatars')
       .then(m => { if (!alive) return; setLib(m); setSeeds(m.randomSeeds(CANDIDATES)) })
-      .catch(() => { if (alive) setLibError(true) })
+      .catch(() => { if (alive) { setLibError(true); setLibAttempts(n => n + 1) } })
     return () => { alive = false }
   }, [tab, lib, libError])
 
@@ -125,7 +136,7 @@ export default function ProfileModal({ open, onClose }) {
     e.target.value = ''
     if (!file) return
     if (!ALLOWED.includes(file.type)) {
-      push({ type: 'error', title: t('profile.invalidType') })
+      push({ type: 'error', title: t('myProfile.invalidType') })
       return
     }
     try {
@@ -133,7 +144,7 @@ export default function ProfileModal({ open, onClose }) {
     } catch {
       // El navegador no pudo decodificar la imagen: se sube tal cual si entra.
       if (file.size > MAX_BYTES) {
-        push({ type: 'error', title: t('profile.tooLarge') })
+        push({ type: 'error', title: t('myProfile.tooLarge') })
         return
       }
       setPending(file)
@@ -151,10 +162,10 @@ export default function ProfileModal({ open, onClose }) {
       if (!file) return
       const res = await uploadMyAvatar(file)
       updateProfile({ avatar_url: res.avatar_url })
-      push({ type: 'success', title: t('profile.uploaded') })
+      push({ type: 'success', title: t('myProfile.uploaded') })
       onClose()
     } catch (err) {
-      push({ type: 'error', title: err?.response?.data?.detail || t('profile.errorUpload') })
+      push({ type: 'error', title: err?.response?.data?.detail || t('myProfile.errorUpload') })
     } finally {
       setBusy(false)
     }
@@ -168,9 +179,9 @@ export default function ProfileModal({ open, onClose }) {
       setPending(null)
       setChosen(null)
       setConfirmRemove(false)
-      push({ type: 'success', title: t('profile.removed') })
+      push({ type: 'success', title: t('myProfile.removed') })
     } catch {
-      push({ type: 'error', title: t('profile.errorRemove') })
+      push({ type: 'error', title: t('myProfile.errorRemove') })
     } finally {
       setBusy(false)
     }
@@ -185,22 +196,22 @@ export default function ProfileModal({ open, onClose }) {
 
   const footer = confirmRemove ? (
     <>
-      <span className="text-[13px] text-ink-700 dark:text-ink-200 mr-auto">{t('profile.confirmRemove')}</span>
+      <span className="text-[13px] text-ink-700 dark:text-ink-200 mr-auto">{t('myProfile.confirmRemove')}</span>
       <Button variant="secondary" onClick={() => setConfirmRemove(false)} disabled={busy}>{t('common.cancel')}</Button>
-      <Button variant="danger" onClick={onRemove} disabled={busy} icon={<Icon.Trash />}>
-        {busy ? t('common.saving') : t('profile.confirmRemoveYes')}
+      <Button ref={confirmBtnRef} variant="danger" onClick={onRemove} disabled={busy} icon={<Icon.Trash />}>
+        {busy ? t('common.saving') : t('myProfile.confirmRemoveYes')}
       </Button>
     </>
   ) : (
     <>
       {current && (
-        <Button variant="ghost" size="sm" icon={<Icon.Trash />} onClick={() => setConfirmRemove(true)} disabled={busy} className="mr-auto">
-          {t('profile.removePhoto')}
+        <Button ref={removeBtnRef} variant="ghost" size="sm" icon={<Icon.Trash />} onClick={() => setConfirmRemove(true)} disabled={busy} className="mr-auto">
+          {t('myProfile.removePhoto')}
         </Button>
       )}
       <Button variant="secondary" onClick={onClose} disabled={busy}>{t('common.cancel')}</Button>
       <Button onClick={onSave} disabled={!canSave || busy} icon={<Icon.Check />}>
-        {busy ? t('common.saving') : t('profile.save')}
+        {busy ? t('common.saving') : t('myProfile.save')}
       </Button>
     </>
   )
@@ -210,8 +221,8 @@ export default function ProfileModal({ open, onClose }) {
       open={open}
       onClose={onClose}
       closeDisabled={busy}
-      title={t('profile.title')}
-      subtitle={t('profile.subtitle')}
+      title={t('myProfile.title')}
+      subtitle={t('myProfile.subtitle')}
       size="md"
       closeLabel={t('common.close')}
       footer={footer}
@@ -223,7 +234,7 @@ export default function ProfileModal({ open, onClose }) {
           <div className="text-xs text-ink-500 dark:text-ink-400">{role}</div>
         </div>
 
-        <div role="tablist" aria-label={t('profile.tabsLabel')} className="w-full flex gap-1 p-1 rounded-lg bg-ink-100 dark:bg-navy-800">
+        <div role="tablist" aria-label={t('myProfile.tabsLabel')} className="w-full flex gap-1 p-1 rounded-lg bg-ink-100 dark:bg-navy-800">
           {TABS.map(k => (
             <button
               key={k}
@@ -243,37 +254,37 @@ export default function ProfileModal({ open, onClose }) {
               }`}
             >
               {k === 'photo' ? <Icon.Photo className="w-4 h-4" /> : <Icon.Star className="w-4 h-4" />}
-              <span className="truncate">{k === 'photo' ? t('profile.tabPhoto') : t('profile.tabAvatar')}</span>
+              <span className="truncate">{k === 'photo' ? t('myProfile.tabPhoto') : t('myProfile.tabAvatar')}</span>
             </button>
           ))}
         </div>
 
-        {tab === 'photo' && (
-          <div role="tabpanel" id={panelId('photo')} aria-labelledby={tabId('photo')} className="w-full flex flex-col items-center gap-3">
+        <div role="tabpanel" id={panelId('photo')} aria-labelledby={tabId('photo')} hidden={tab !== 'photo'} className="w-full flex flex-col items-center gap-3">
             <input ref={inputRef} type="file" accept={ACCEPT} className="hidden" onChange={onPick} />
             <Button variant="secondary" icon={<Icon.Upload />} onClick={() => inputRef.current?.click()} disabled={busy}>
-              {current || pending ? t('profile.changePhoto') : t('profile.choosePhoto')}
+              {current || pending ? t('myProfile.changePhoto') : t('myProfile.choosePhoto')}
             </Button>
-            <p className="text-2xs text-ink-500 dark:text-ink-400 text-center">{t('profile.hint')}</p>
-          </div>
-        )}
+            <p className="text-2xs text-ink-500 dark:text-ink-400 text-center">{t('myProfile.hint')}</p>
+        </div>
 
-        {tab === 'avatar' && (
-          <div role="tabpanel" id={panelId('avatar')} aria-labelledby={tabId('avatar')} className="w-full flex flex-col gap-3">
+        <div role="tabpanel" id={panelId('avatar')} aria-labelledby={tabId('avatar')} hidden={tab !== 'avatar'} className="w-full flex flex-col gap-3">
             {libError ? (
               <div role="alert" className="flex flex-col items-center gap-2 py-4">
-                <p className="text-xs text-danger-600 dark:text-danger-100 text-center">{t('profile.avatarLoadError')}</p>
-                <Button variant="secondary" size="sm" onClick={() => setLibError(false)}>{t('profile.retry')}</Button>
+                <p className="text-xs text-danger-600 dark:text-danger-100 text-center">{t('myProfile.avatarLoadError')}</p>
+                {libAttempts < 2
+                  ? <Button variant="secondary" size="sm" onClick={() => setLibError(false)}>{t('myProfile.retry')}</Button>
+                  : <Button variant="secondary" size="sm" onClick={() => window.location.reload()}>{t('myProfile.reload')}</Button>}
               </div>
             ) : !lib ? (
-              <div className="grid grid-cols-4 sm:grid-cols-6 gap-2" aria-busy="true" aria-label={t('common.loading')}>
+              <div role="status" className="grid grid-cols-4 sm:grid-cols-6 gap-2">
+                <span className="sr-only">{t('common.loading')}</span>
                 {Array.from({ length: CANDIDATES }, (_, i) => (
                   <div key={i} className="aspect-square rounded-full bg-ink-100 dark:bg-navy-800 animate-pulse" />
                 ))}
               </div>
             ) : (
               <>
-                <div role="group" aria-label={t('profile.stylesLabel')} className="flex flex-wrap justify-center gap-1.5">
+                <div role="group" aria-label={t('myProfile.stylesLabel')} className="flex flex-wrap justify-center gap-1.5">
                   {lib.AVATAR_STYLES.map(s => (
                     <button
                       key={s.key}
@@ -291,14 +302,14 @@ export default function ProfileModal({ open, onClose }) {
                   ))}
                 </div>
 
-                <div className="grid grid-cols-4 sm:grid-cols-6 gap-2" aria-live="polite">
+                <div className="grid grid-cols-4 sm:grid-cols-6 gap-2">
                   {candidates.map((c, i) => (
                     <button
                       key={c.seed}
                       type="button"
                       onClick={() => setChosen(c.seed)}
                       aria-pressed={chosen === c.seed}
-                      aria-label={`${t('profile.avatarOption')} ${i + 1}`}
+                      aria-label={`${t('myProfile.avatarOption')} ${i + 1}`}
                       className={`relative aspect-square rounded-full overflow-hidden border-2 transition focus:outline-none focus-visible:ring-2 focus-visible:ring-basketball-500 ${
                         chosen === c.seed
                           ? 'border-basketball-700 ring-2 ring-basketball-500/40'
@@ -316,13 +327,12 @@ export default function ProfileModal({ open, onClose }) {
                 </div>
 
                 <div className="flex items-center justify-between gap-3">
-                  <p className="text-2xs text-ink-500 dark:text-ink-400">{t('profile.avatarHint')}</p>
-                  <Button variant="secondary" size="sm" onClick={shuffle} disabled={busy} className="whitespace-nowrap flex-shrink-0">{t('profile.moreAvatars')}</Button>
+                  <p className="text-2xs text-ink-500 dark:text-ink-400">{t('myProfile.avatarHint')}</p>
+                  <Button variant="secondary" size="sm" onClick={shuffle} disabled={busy} className="whitespace-nowrap flex-shrink-0">{t('myProfile.moreAvatars')}</Button>
                 </div>
               </>
             )}
-          </div>
-        )}
+        </div>
       </div>
     </Modal>
   )

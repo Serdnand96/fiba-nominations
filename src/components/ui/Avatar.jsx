@@ -3,7 +3,7 @@ import React, { useEffect, useState } from 'react';
 const sizes = { xs:'w-6 h-6 text-[10px]', sm:'w-7 h-7 text-[11px]', md:'w-8 h-8 text-xs', lg:'w-10 h-10 text-sm', xl:'w-24 h-24 text-2xl' };
 const tones = {
   navy:'bg-navy-100 text-navy-800 dark:bg-navy-700 dark:text-navy-100',
-  basketball:'bg-basketball-100 text-basketball-800',
+  basketball:'bg-basketball-100 text-basketball-800 dark:bg-basketball-900/40 dark:text-basketball-200',
   ink:'bg-ink-200 text-ink-700 dark:bg-navy-800 dark:text-ink-200',
 };
 
@@ -17,15 +17,19 @@ export function Avatar({ name, src, alt='', size='md', tone='navy', className=''
   const initials = (name||'').split(' ').filter(Boolean).slice(0,2).map(w=>w[0]).join('').toUpperCase();
   const base = `inline-flex items-center justify-center rounded-full font-semibold flex-shrink-0 overflow-hidden ${sizes[size]} ${className}`;
   if (src && !broken) {
-    // Lazy solo en los chicos (listas largas); un avatar grande siempre está a la vista.
-    const lazy = size === 'xs' || size === 'sm' || size === 'md';
+    // Lazy en todos menos el xl (el del modal): los demás pueden ir en listas largas.
+    const lazy = size !== 'xl';
     return (
       <span className={`${base} bg-ink-100 dark:bg-navy-800`}>
         <img src={src} alt={alt} className="w-full h-full object-cover" loading={lazy ? 'lazy' : undefined} onError={() => setBroken(true)} />
       </span>
     );
   }
-  return <span className={`${base} ${tones[tone]}`} aria-hidden={alt ? undefined : true}>{initials || '—'}</span>;
+  return (
+    <span className={`${base} ${tones[tone]}`} role={alt ? 'img' : undefined} aria-label={alt || undefined} aria-hidden={alt ? undefined : true}>
+      {initials || '—'}
+    </span>
+  );
 }
 
 export function NameCell({ name, country, flag, sub, src }) {

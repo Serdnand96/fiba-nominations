@@ -443,8 +443,8 @@ function UserCard({ collapsed, onOpen }) {
         <button
           type="button"
           onClick={openProfile}
-          title={t('profile.editProfile')}
-          aria-label={t('profile.editProfile')}
+          title={t('myProfile.editProfile')}
+          aria-label={t('myProfile.editProfile')}
           className="rounded-full ring-offset-2 ring-offset-navy-900 hover:ring-2 hover:ring-basketball-500 transition"
         >
           {avatar}
@@ -460,8 +460,8 @@ function UserCard({ collapsed, onOpen }) {
       <button
         type="button"
         onClick={openProfile}
-        title={t('profile.editProfile')}
-        aria-label={`${t('profile.editProfile')} · ${user.email}`}
+        title={t('myProfile.editProfile')}
+        aria-label={`${t('myProfile.editProfile')} · ${user.email}`}
         className="flex items-center gap-2.5 flex-1 min-w-0 text-left rounded-md -m-1.5 p-1.5 hover:bg-white/5 transition"
       >
         {avatar}

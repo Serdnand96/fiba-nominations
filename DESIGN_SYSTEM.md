@@ -131,6 +131,8 @@ Bajo `src/components/`:
 | `Card`             | `Card`, `SectionHeader`             | shadow-card por default                       |
 | `Badge`            | `Badge`, `StatusPill`               | tone: `navy/basketball/success/warning/danger/info` |
 | `Avatar`           | `Avatar`, `NameCell`                | iniciales o imagen + nombre + flag           |
+
+**Capas (z-index):** drawer móvil del sidebar `z-40` · `Modal` `z-50` (se monta con portal en `<body>`, porque el sidebar tiene `transform` y atraparía un `fixed`) · toasts `z-[70]`, siempre por encima de un modal.
 | `Table`            | `Table`                             | columns/rows, `selectable`, `dense`           |
 | `MultiSelect`      | `MultiSelect`                       | filtros Linear-style                          |
 | `Modal`            | `Modal`                             | overlay con backdrop blur                     |

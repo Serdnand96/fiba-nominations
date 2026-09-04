@@ -71,7 +71,8 @@ export function ToastProvider({ children }) {
         role="status"
         aria-live="polite"
         aria-atomic="false"
-        className="fixed bottom-5 right-5 z-50 flex flex-col gap-2 w-[340px]"
+        // z-[70]: por encima de los modales (z-50), que ahora viven en <body> vía portal.
+        className="fixed bottom-5 right-5 z-[70] flex flex-col gap-2 w-[340px]"
       >
         {toasts.map(t => <ToastItem key={t.id} toast={t} onDismiss={dismiss} />)}
       </div>

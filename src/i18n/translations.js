@@ -107,6 +107,7 @@ const translations = {
     loadMore: { en: 'Load more', es: 'Cargar más' },
     errorLoading: { en: 'Could not load the wall', es: 'No se pudo cargar el muro' },
     retry: { en: 'Retry', es: 'Reintentar' },
+    reload: { en: 'Reload page', es: 'Recargar página' },
 
     // Barra lateral
     upcomingEvents: { en: 'On the calendar', es: 'En el calendario' },
@@ -1596,14 +1597,17 @@ const translations = {
     errorSaving: { en: 'Error saving permissions', es: 'Error guardando permisos' },
   },
 
-  // ===== Perfil propio (avatar) =====
-  profile: {
+  // ===== Perfil propio (avatar, modal Mi perfil) =====
+  // Se llama `myProfile` porque `profile` ya existe más arriba (ficha de
+  // personnel): dos claves iguales en el objeto y la primera desaparece.
+  myProfile: {
     title: { en: 'My profile', es: 'Mi perfil' },
     subtitle: { en: 'Shown in the sidebar, the feed and the users list.', es: 'Se ve en la barra lateral, el Muro y Usuarios.' },
     tabsLabel: { en: 'Picture source', es: 'Origen de la imagen' },
     stylesLabel: { en: 'Style', es: 'Estilo' },
     avatarOption: { en: 'Avatar', es: 'Avatar' },
     retry: { en: 'Retry', es: 'Reintentar' },
+    reload: { en: 'Reload page', es: 'Recargar página' },
     confirmRemoveYes: { en: 'Yes, remove', es: 'Sí, quitar' },
     tabPhoto: { en: 'Photo', es: 'Foto' },
     tabAvatar: { en: 'Avatar', es: 'Avatar' },
