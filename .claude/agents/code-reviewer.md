@@ -47,6 +47,22 @@ Revisá calidad, seguridad y consistencia con las convenciones. Usá el skill
 - **RLS.** Existe como defensa en profundidad en algunas tablas (migraciones
   006/007) pero NO es el control principal. No asumas que una tabla está
   protegida por RLS.
+- **Budget filtra por fila.** Toda query de `budget.py` pasa por `_scoped()`
+  (tabla `budget_access`), con un solo filtro por columna: un `.eq()` encadenado
+  después del scope lo pisa. Una query sin `_scoped()` es P0.
+- **El Muro es la excepción a `require_edit`.** En `feed.py`, `can_view`
+  participa (publicar, comentar, reaccionar) y `can_edit` modera. No marques
+  como hallazgo un `POST /feed/posts` con `require_view`; sí marcá una
+  escritura sobre contenido ajeno que no pase por `_assert_can_manage()`.
+- **Checklists públicos escriben.** `public_checklists.py` es la única vista
+  pública que modifica datos: cada PATCH/POST tiene que revalidar ítem →
+  corrida → partido → competencia contra el token, y una corrida cerrada es
+  de solo lectura desde afuera.
+- **Permisos nuevos en tres lugares:** CHECK de `user_permissions.module`,
+  `MODULES` en `api/_lib/routers/permissions.py`, `MODULES` en `Users.jsx`.
+- **Migraciones:** si el diff usa una columna o tabla nueva, tiene que venir
+  con su `supabase/migrations/NNN_*.sql` y la advertencia de aplicarla a mano
+  antes del push. El deploy no corre migraciones.
 
 ## Otros focos
 
@@ -55,6 +71,13 @@ Revisá calidad, seguridad y consistencia con las convenciones. Usá el skill
 - Consistencia con el design system y con i18n (claves ES + EN).
 - Neutralidad de árbitros (no asignar un REF a juegos de su país) si el cambio
   toca personnel/games.
+- Horas de partido: `date`/`time` son hora local de la sede; cualquier
+  conversión sale de `datetime_utc`, nunca de un offset sumado a mano.
+- Selectores de competencia: usan `src/lib/competitions.js` (nombre con año y
+  tipos), no `c.name` pelado ni una lista de tipos local.
+- Docs en el mismo PR: `BUDGET_MODULE.md` si toca Budget, el skill de
+  `.claude/skills/` si toca auth/PDF/Excel, `MANUAL_USUARIO.md` si cambia lo
+  que ve el usuario.
 
 Reportá los hallazgos ordenados por severidad, con `archivo:línea` y una
 sugerencia concreta. Si algo es correcto, decilo brevemente y seguí.

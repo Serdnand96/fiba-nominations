@@ -22,6 +22,12 @@ backend. Revisá cada cambio con eso en mente.
   - Endpoints solo-superadmin: `Depends(require_superadmin)`.
 - Fuente de verdad de permisos: tabla `user_permissions` (`can_view`/`can_edit`
   por `user_id`+`module`) y `user_profiles.is_superadmin` (siempre pasa).
+- `require_user` (cualquier logueado, 401 si no) es solo para lo **propio**
+  del usuario: hoy `/api/me` (avatar). Un endpoint con `require_user` que
+  lea o escriba datos de otro usuario es un hallazgo.
+- Los paneles de Games (crew, `staffing.py`, `checklists.py`) van con el
+  permiso `games`, no con uno propio. `staffing` lista empleados desde
+  `/staffing/candidates` a propósito, para no exigir `employees`.
 
 **❗ Revisión P0:** cualquier endpoint nuevo/modificado **sin** dependency de
 permiso es un agujero — expone datos a cualquier usuario autenticado (o al mundo
@@ -50,13 +56,32 @@ Lo que SÍ hay que revisar ahí: que toda escritura sobre algo ajeno pase por
 que las fotos sigan bajo el prefijo `feed/` del bucket público `inventory` (no
 documentos: el muro es solo fotos).
 
+### 1c. La otra excepción: Budget filtra por FILA
+
+`api/_lib/routers/budget.py` es el único módulo donde tener el permiso no
+abre todo: el designado de IT ve IT y no Competitions. El recorte vive en
+`_scoped()` contra la tabla `budget_access`, y **no** se resuelve con RLS
+(el backend usa `service_role`).
+
+- Una query de budget sin `_scoped()` es un **P0**, igual que un endpoint sin
+  `require_view`.
+- `_scoped()` combina el scope y el filtro pedido por el usuario en **un solo**
+  `.eq`/`.in_`: el query builder guarda un filtro por columna, así que un
+  segundo filtro encadenado pisa el scope en silencio. Ese es el bypass a
+  buscar.
+- `/budget/access/{user_id}` es solo superadmin.
+
+El contrato completo está en `BUDGET_MODULE.md`.
+
 ## 2. Middleware de auth
 
 - Valida el `Bearer <JWT>` contra `GET {SUPABASE_URL}/auth/v1/user` y guarda el
   usuario en `request.state.user` (ver `api/index.py`).
 - **Bypassa auth solo para:** `OPTIONS`, `/api` (health) y `/api/public/*`.
-- Las rutas públicas (`/api/public/*`) llevan rate-limit por IP (60/min) y **no**
-  deben devolver datos sensibles ni aceptar escrituras sin token de un solo uso.
+- Las rutas públicas (`/api/public/*`) llevan rate-limit por IP (60/min). Hoy
+  son cuatro: `public_assets` (QR), `public_availability`, `public_logistics`
+  y `public_checklists`. Una escritura pública solo es aceptable atada a un
+  token de competencia (availability y checklists): sin token, nada se escribe.
 - `/download` y `/export/pdf` **requieren auth** (hallazgo de pen-test N1): el
   frontend manda el JWT vía fetch+blob. No los abras.
 
@@ -93,7 +118,7 @@ documentos: el muro es solo fotos).
   `logistics` en `user_permissions`). Un `require_view("transport")` que
   sobreviva en el código es un endpoint al que nadie puede entrar.
 
-## 5b. Vista pública de logística
+## 5b. Vistas públicas por token (logística y checklists)
 
 - `api/_lib/routers/public_logistics.py` sirve **sin auth** bajo
   `/api/public/logistics/{token}`. El token de `logistics_public_links` es el
@@ -109,13 +134,22 @@ documentos: el muro es solo fotos).
   en `api/index.py`). Si agregás una vista pública nueva, cae bajo esa regla
   sola — pero no la saques del prefijo `/api/public/`, porque ahí también viven
   el bypass de auth y el rate limit por IP.
+- **`public_checklists.py` escribe.** Es la única vista pública que modifica
+  datos: abre corridas y marca ítems. Lo que hay que verificar en cada
+  cambio: que cada PATCH/POST revalide la cadena ítem → corrida → partido →
+  competencia contra el token (no alcanza con que el ítem exista), que una
+  corrida cerrada sea de solo lectura desde afuera (reabrir exige permiso
+  `games`), y que el mismo 404 cubra token inválido, inexistente o
+  desactivado, igual que en logística.
 
 ## 6. Storage privado
 
 - Hay un único bucket **privado**: `nominations` (payments y reports guardan
   bajo los prefijos `payments/…` / `reports/…` dentro de él). El bucket
-  `inventory` es **público** a propósito: fotos de assets (QR), de personnel y
-  del Muro (`feed/…`). Solo imágenes; un documento jamás va ahí. Reglas:
+  `inventory` es **público** a propósito: fotos de assets (QR), de personnel,
+  del Muro (`feed/…`) y avatares de usuario (`avatars/<user_id>.<ext>`). Solo
+  imágenes y **sin SVG** (puede llevar script); el backend valida tipo y
+  tamaño aunque el frontend ya recorte. Un documento jamás va ahí. Reglas:
   - Nunca construir/devolver URLs públicas (`get_public_url`) para ellos.
   - Servir archivos solo por endpoints de descarga **autenticados** (blob+JWT).
   - Borrados que tocan storage van por la Storage API
@@ -172,3 +206,8 @@ de Supabase Auth). Tenelos presentes pero no son código de este repo.
 - [ ] ¿Uploads con cap de tamaño + extensión validada?
 - [ ] ¿Se preservan los headers/CSP/CORS y el activity log?
 - [ ] Si toca REFs: ¿neutralidad intacta?
+- [ ] Si toca Budget: ¿toda query nueva pasa por `_scoped()`, con un solo
+      filtro por columna?
+- [ ] Si toca el Muro: ¿`require_view` para participar y `_assert_can_manage()`
+      / `require_edit` para lo ajeno? (no le pongas `require_edit` a publicar)
+- [ ] Si agrega un permiso: ¿CHECK + `MODULES` backend + `MODULES` frontend?

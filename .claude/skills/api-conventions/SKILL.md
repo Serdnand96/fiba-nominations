@@ -38,7 +38,14 @@ def create_slot(data: SlotCreate):
 ```
 
 Para montar un módulo nuevo: agregá el import y el `include_router` en
-`api/index.py` y creá la fila de permiso en `user_permissions`.
+`api/index.py`, y declará el permiso en **tres** lugares: el CHECK de
+`user_permissions.module` (migración nueva), `MODULES` en
+`api/_lib/routers/permissions.py` y `MODULES` en `src/pages/Users.jsx`.
+Recién después las filas en `user_permissions`.
+
+Antes de crear un permiso, fijate si lo que pedís es un **panel** de un módulo
+existente: crew (`crew.py`), `staffing.py` y `checklists.py` cuelgan del
+permiso `games` con prefijos propios (`/staffing`, `/checklists`).
 
 ## Autorización — a nivel de aplicación (NO RLS)
 
@@ -62,6 +69,12 @@ Este es el punto más importante del backend.
   en employees.py) o cambian qué se puede hacer adentro (`feed`: `can_view`
   publica y comenta, `can_edit` modera — es la única excepción a "toda
   escritura lleva require_edit", ver feed.py).
+- `require_user` → 401 sin usuario, y nada más. Solo para lo propio del
+  logueado (`profile.py`, prefijo `/me`): el endpoint trabaja siempre sobre
+  `request.state.user["id"]`, nunca sobre un id que venga del cliente.
+- **Budget filtra por fila:** en `budget.py` cada lectura pasa por
+  `_scoped()`, que recorta por los departamentos de `budget_access`. Es
+  además del `require_view("budget")`, no en vez de. Ver `BUDGET_MODULE.md`.
 - **Regla:** cualquier endpoint sin dependency de permiso expone datos a
   cualquier usuario autenticado (o al mundo si cuelga de `/api/public/*`). Es un
   bug de seguridad P0.
@@ -77,6 +90,11 @@ Este es el punto más importante del backend.
 - También hay middleware de **security headers/CSP** y de **activity log**
   (audita `POST/PUT/PATCH/DELETE` exitosos que no sean `/api/public/*`, como
   background task).
+- Un handler global traduce `SupabaseError` con SQLSTATE de dato inválido
+  (CHECK, FK, largo de columna, NOT NULL) a **4xx con mensaje genérico**; el
+  nombre de la columna o constraint queda en el log. No hace falta envolver
+  cada insert en try/except para eso, pero tampoco dependas del handler para
+  validar: la validación de negocio va en Pydantic o en el endpoint.
 
 ## Acceso a datos — el wrapper de Supabase
 
@@ -90,6 +108,10 @@ Métodos disponibles: `.table(name)` → `.select(cols)`, `.insert(data)`,
 `.order(col, desc=)`, `.limit(n)`, `.offset(n)`.
 
 Notas:
+- **El builder guarda un filtro por columna.** Dos `.eq()`/`.in_()` sobre la
+  misma columna no se combinan: el segundo pisa al primero. En budget eso sería
+  un bypass del scope; en cualquier otro lado, un filtro que se pierde en
+  silencio.
 - PostgREST no ordena por más de una columna: cuando necesitás orden secundario
   se hace en Python (`slots.sort(key=lambda s: (s["date"], s["start_time"]))`).
 - No hay joins arbitrarios; se usa el embedding de PostgREST en `select`
@@ -134,5 +156,16 @@ módulos chicos como transport). En el endpoint:
 ## Datos: tablas que confunden
 
 - `personnel` = oficiales que se nominan (TDs, VGOs, REFs…).
-- `employees` = staff interno de FIBA (solo inventario), **no** se nomina.
-- El esquema real está en `supabase/migrations/*.sql` (numeradas).
+- `employees` = staff interno de FIBA (inventario, staffing plan, viajes),
+  **no** se nomina.
+- `competition_assignments` = crew del torneo (se nomina, cobra);
+  `competition_staffing` = empleados FIBA en el evento (no se nomina, no cobra).
+  No unificarlas: la primera alimenta `sync-nominations`, cartas y fees.
+- `payments` (una persona nominada) y `expenses` (todo lo demás) son dos
+  tablas de gasto y el reporte suma las dos. No metas un `nomination_id`
+  nullable en `payments`.
+- `games.date`/`time` son hora **local de la sede**; `game_schedule.datetime_utc`
+  es el ancla para convertir. `NULL` = FIBA no fijó horario.
+- El esquema real está en `supabase/migrations/*.sql` (numeradas). Las
+  migraciones se aplican **a mano** en Supabase antes del push; el deploy no
+  las corre.

@@ -6,6 +6,17 @@ Supabase, GoDaddy, Cloudflare). Status interno se trackea en
 
 ---
 
+## 🚨 Auditoría del droplet 2026-08
+
+La lista completa de acciones manuales (permisos del `.env` y rotación del
+`service_role`, acotar el sudo de la deploy key, hardening de systemd, nginx
+corregido, migración `032_audit_hardening.sql`, toggles de Supabase) está en
+[`deploy/MANUAL_ACTIONS_2026-08.md`](deploy/MANUAL_ACTIONS_2026-08.md), con
+las referencias versionadas en `deploy/nginx/` y `deploy/systemd/`. Varios
+ítems de abajo se repiten ahí con más detalle.
+
+---
+
 ## 🚨 Pendiente de la pasada de seguridad 2026-07-22
 
 Los fixes de código de esta auditoría ya están en el repo. Estos ítems
