@@ -36,9 +36,14 @@
   .dark body { @apply bg-navy-950 text-ink-100; }
 }
 
+@layer base {
+  /* Iconos Tabler: 1em por defecto. :where() deja la especificidad en 0, así
+     cualquier clase w- o h- del JSX le gana (antes .tabler pisaba a .w-4 y .h-4). */
+  :where(.tabler) { width: 1em; height: 1em; stroke-width: 1.75; stroke: currentColor; fill: none; stroke-linecap: round; stroke-linejoin: round; flex-shrink: 0; }
+}
+
 @layer utilities {
   .num { font-variant-numeric: tabular-nums; }
-  .tabler { width: 1em; height: 1em; stroke-width: 1.75; stroke: currentColor; fill: none; stroke-linecap: round; stroke-linejoin: round; flex-shrink: 0; }
   .row-divide > * + * { @apply border-t border-ink-100 dark:border-navy-800; }
   /* fill-mode must NOT be both/forwards: a filling transform animation keeps the
      element as containing block for position:fixed descendants, so every inline
@@ -136,5 +141,15 @@ button:focus-visible, a:focus-visible, [role="button"]:focus-visible {
   }
   .fiba-table tbody td {
     @apply px-4 py-3 text-ink-700 dark:text-ink-300;
+  }
+}
+
+/* Quien pide menos movimiento no recibe animaciones ni transiciones. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 }

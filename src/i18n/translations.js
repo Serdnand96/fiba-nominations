@@ -1599,11 +1599,16 @@ const translations = {
   // ===== Perfil propio (avatar) =====
   profile: {
     title: { en: 'My profile', es: 'Mi perfil' },
-    subtitle: { en: 'Your picture is shown in the sidebar, on the feed and in the users list.', es: 'Tu imagen se ve en la barra lateral, en el Muro y en la lista de usuarios.' },
+    subtitle: { en: 'Shown in the sidebar, the feed and the users list.', es: 'Se ve en la barra lateral, el Muro y Usuarios.' },
+    tabsLabel: { en: 'Picture source', es: 'Origen de la imagen' },
+    stylesLabel: { en: 'Style', es: 'Estilo' },
+    avatarOption: { en: 'Avatar', es: 'Avatar' },
+    retry: { en: 'Retry', es: 'Reintentar' },
+    confirmRemoveYes: { en: 'Yes, remove', es: 'Sí, quitar' },
     tabPhoto: { en: 'Photo', es: 'Foto' },
     tabAvatar: { en: 'Avatar', es: 'Avatar' },
     save: { en: 'Save', es: 'Guardar' },
-    avatarHint: { en: 'Pick a style and an avatar you like.', es: 'Elegí un estilo y el avatar que más te guste.' },
+    avatarHint: { en: 'Pick a style and an avatar you like.', es: 'Elige un estilo y el avatar que más te guste.' },
     moreAvatars: { en: 'Show others', es: 'Ver otros' },
     avatarLoadError: { en: 'Could not load the avatar styles', es: 'No se pudieron cargar los estilos de avatar' },
     editProfile: { en: 'Edit profile', es: 'Editar perfil' },

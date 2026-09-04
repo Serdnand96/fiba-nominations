@@ -300,7 +300,7 @@ export default function App() {
 
         {/* Bottom: user card + collapse */}
         <div className="border-t border-navy-800 p-3 space-y-2 flex-shrink-0">
-          <UserCard collapsed={sidebarCollapsed} />
+          <UserCard collapsed={sidebarCollapsed} onOpen={() => setMobileOpen(false)} />
           {!sidebarCollapsed && <LanguageSwitcher />}
           <button
             onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
@@ -415,44 +415,41 @@ function LanguageSwitcher() {
   )
 }
 
-function UserCard({ collapsed }) {
+function UserCard({ collapsed, onOpen }) {
   const { signOut, user, isSuperadmin, profile } = useAuth()
   const { t } = useLanguage()
   const [open, setOpen] = useState(false)
   const role = isSuperadmin ? t('common.superadmin') : t('common.user')
-  const avatarSrc = profile?.avatar_url || null
 
-  // La primera letra del email como fallback, igual que antes del avatar.
-  const avatar = avatarSrc
-    ? <Avatar name={user.email} src={avatarSrc} size="md" />
-    : (
-      <span className="w-8 h-8 rounded-full bg-basketball-500/20 text-basketball-300 flex items-center justify-center text-xs font-semibold flex-shrink-0">
-        {(user.email || '?')[0].toUpperCase()}
-      </span>
-    )
-
+  // Cierra el drawer móvil al abrir el perfil, si no queda abierto detrás.
+  const openProfile = () => { setOpen(true); onOpen?.() }
+  const avatar = <Avatar name={user.email} src={profile?.avatar_url || null} size="md" tone="basketball" />
   const modal = <ProfileModal open={open} onClose={() => setOpen(false)} />
+  const logoutBtn = (
+    <button
+      type="button"
+      onClick={signOut}
+      title={t('common.signOut')}
+      aria-label={t('common.signOut')}
+      className="p-2.5 -m-2.5 rounded-md text-navy-300 hover:text-white hover:bg-white/5 flex-shrink-0"
+    >
+      <Icon.Logout className="w-4 h-4" />
+    </button>
+  )
 
   if (collapsed) {
     return (
-      <div className="hidden md:flex flex-col items-center gap-2">
+      <div className="hidden md:flex flex-col items-center gap-4">
         <button
           type="button"
-          onClick={() => setOpen(true)}
+          onClick={openProfile}
           title={t('profile.editProfile')}
           aria-label={t('profile.editProfile')}
           className="rounded-full ring-offset-2 ring-offset-navy-900 hover:ring-2 hover:ring-basketball-500 transition"
         >
           {avatar}
         </button>
-        <button
-          onClick={signOut}
-          title={t('common.signOut')}
-          aria-label={t('common.signOut')}
-          className="text-navy-300 hover:text-white"
-        >
-          <Icon.Logout className="w-4 h-4" />
-        </button>
+        {logoutBtn}
         {modal}
       </div>
     )
@@ -462,9 +459,10 @@ function UserCard({ collapsed }) {
     <div className="flex items-center gap-2.5">
       <button
         type="button"
-        onClick={() => setOpen(true)}
+        onClick={openProfile}
         title={t('profile.editProfile')}
-        className="flex items-center gap-2.5 flex-1 min-w-0 text-left rounded-md -m-1 p-1 hover:bg-white/5 transition"
+        aria-label={`${t('profile.editProfile')} · ${user.email}`}
+        className="flex items-center gap-2.5 flex-1 min-w-0 text-left rounded-md -m-1.5 p-1.5 hover:bg-white/5 transition"
       >
         {avatar}
         <div className="flex-1 min-w-0 leading-tight">
@@ -472,14 +470,7 @@ function UserCard({ collapsed }) {
           <div className="text-2xs text-navy-300 truncate">{role}</div>
         </div>
       </button>
-      <button
-        onClick={signOut}
-        title={t('common.signOut')}
-        aria-label={t('common.signOut')}
-        className="text-navy-300 hover:text-white flex-shrink-0"
-      >
-        <Icon.Logout className="w-4 h-4" />
-      </button>
+      {logoutBtn}
       {modal}
     </div>
   )
