@@ -130,8 +130,8 @@ legacy `fibaamericascloud.com`).
     `has_view()` (la variante de `auth.py` que devuelve bool en vez de tirar
     403, para permisos que recortan datos en lugar de cerrar un endpoint).
     Al agregar un permiso hay que tocar **tres** lugares: el CHECK de
-    `user_permissions.module`, `MODULES` en `permissions.py` y `MODULES` en
-    `src/pages/Users.jsx`.
+    `user_permissions.module`, `MODULES` en `api/_lib/routers/permissions.py`
+    y `MODULES` en `src/pages/Users.jsx`.
 
 11. **Los checklists de sede son datos, no código** (migración 038,
     `checklists.py` + `public_checklists.py`). "El VGO llega a la sede y prueba
@@ -318,6 +318,20 @@ legacy `fibaamericascloud.com`).
       no sabe si fue foto o avatar, y el bucket sigue sin SVG. Los estilos son
       MIT o "free for commercial use"; no agregar uno que exija atribución.
 
+20. **Los tipos de competencia tienen un registro único:
+    `src/lib/competitions.js`.** `COMPETITION_TYPES` tiene que coincidir con
+    el CHECK de `competitions.competition_type` (migración 042, que agregó
+    `Zonal` y `WC` y sacó de `Other` lo que estaba mal clasificado). Antes la
+    lista estaba duplicada en Calendar y Availability y las dos quedaron
+    viejas: un tipo que existe en la base y no está acá no se puede filtrar y
+    se pinta gris. `WC` es el Mundial en sí; `WCQ` es el clasificatorio.
+
+    El mismo archivo resuelve el **nombre para mostrar**: hay seis pares de
+    competencias con `name` idéntico que solo difieren por el año (LSB Group
+    A 2026 y 2027, etc.). Todo `<select>` de competencias tiene que usar
+    `competitionLabel()` y no `c.name` pelado, o en Budget se imputa la plata al año
+    equivocado sin que nada avise.
+
 ---
 
 ## 🗺️ Mapa del repo
@@ -337,28 +351,43 @@ fiba-nominations/
 │                                 scoping por departamento, datos cargados)
 ├── LSB_LETTER_SPEC.md         ← la carta de LSB: su texto, su membrete y por qué
 │                                 el starter de `confirmation` no es el de LSB
+├── MANUAL_USUARIO.md          ← manual para usuarios finales (y su PDF exportado
+│                                 a mano, Manual_Usuario_FIBA.pdf)
 ├── .claude/                   ← subagentes + skills para sesiones de IA (ver abajo)
+├── deploy/                    ← referencias versionadas de nginx y systemd +
+│                                 MANUAL_ACTIONS_2026-08.md (auditoría del droplet)
 │
 ├── api/                       ← FastAPI backend
 │   ├── index.py               ← entry, middleware, mounting routers
 │   └── _lib/
-│       ├── auth.py            ← require_view, require_edit dependencies
+│       ├── auth.py            ← require_view / require_edit / require_superadmin /
+│       │                         require_user + has_view / has_edit (bool)
 │       ├── database.py        ← lightweight supabase client (httpx)
+│       ├── crew.py            ← crew del torneo (competition_assignments)
+│       ├── travel.py          ← sede y fechas de viaje derivadas de los partidos
 │       ├── budget_accounts.py ← rol → cuenta de fees / de travel (payments ↔ budget)
-│       ├── routers/           ← uno por módulo (nominations, training, …)
+│       ├── routers/           ← uno por módulo (nominations, training, feed, …)
 │       └── services/
-│           └── document_generator.py  ← docx (docxtpl) → pdf (LibreOffice)
+│           ├── document_generator.py  ← docx (docxtpl) → pdf (LibreOffice)
+│           ├── template_store.py      ← templates .docx subidos por el usuario
+│           ├── schedule_workbook.py   ← export Excel Game & Practice
+│           ├── bulk_import.py         ← import de personnel
+│           ├── logistics_import.py    ← flight manifest / rooming list (2 pasos)
+│           ├── budget_import.py       ← import del presupuesto desde Excel
+│           └── activity_log.py        ← auditoría (middleware)
 │
 ├── src/                       ← React frontend
 │   ├── App.jsx                ← shell (sidebar + topbar + router)
-│   ├── pages/                 ← una por ruta
+│   ├── pages/                 ← una por ruta (+ subcarpetas games/, budget/, logistics/)
 │   ├── components/
 │   │   ├── ui/                ← Button, Input, Table, … (DS primitivos)
-│   │   ├── layout/            ← Sidebar, Topbar, AppShell
-│   │   └── brand/             ← Logo.jsx (Monogram, Wordmark, …)
-│   ├── lib/icons.jsx          ← Tabler icons
-│   ├── contexts/              ← Auth, Language
-│   └── i18n/                  ← ES + EN
+│   │   ├── brand/             ← Logo.jsx (Monogram, Wordmark, …)
+│   │   ├── ProfileModal.jsx   ← "Mi perfil": foto o avatar ilustrado
+│   │   └── PersonProfilePanel.jsx, CompetitionSearch.jsx, NominationsMatrix.jsx
+│   ├── lib/                   ← icons.jsx, competitions.js (tipos + nombre con año),
+│   │                             warRoom.js, avatars.js, refereeNeutrality.js
+│   ├── contexts/              ← Auth
+│   └── i18n/                  ← LanguageContext + translations (ES + EN)
 │
 ├── public/favicon.png         ← monograma F + basketball seam
 ├── scripts/
@@ -509,6 +538,11 @@ Pendientes manuales (ver `SECURITY_RUNBOOK.md`):
 Hay scanner horario corriendo en `/var/log/fiba-security-alerts.log`
 (via cron `/etc/cron.d/fiba-security-scan`).
 
+La auditoría del droplet de agosto 2026 dejó su lista de acciones manuales
+(permisos del `.env`, sudo de la deploy key, hardening de systemd, nginx) en
+`deploy/MANUAL_ACTIONS_2026-08.md`, con las referencias versionadas en
+`deploy/nginx/` y `deploy/systemd/`.
+
 ---
 
 ## 🎨 Trabajo de UI / diseño
@@ -529,7 +563,17 @@ explicación del truco de CSS variables para los aliases legacy
 
 - **"Agregá un módulo nuevo"** → router en `api/_lib/routers/X.py`,
   mount en `api/index.py`, página en `src/pages/X.jsx`, ruta en
-  `App.jsx`, icono en el map `moduleIcon`, permiso en `user_permissions`.
+  `App.jsx`, icono en el map `moduleIcon`, y el permiso en **tres** lugares
+  (CHECK de `user_permissions.module`, `MODULES` en
+  `api/_lib/routers/permissions.py`, `MODULES` en `src/pages/Users.jsx`).
+  Paso a paso en `DEVELOPMENT.md`.
+
+- **"Tocá partidos, crew o checklists"** → puntos 9 a 13. Crew, Staffing
+  Plan y Control de operación comparten el permiso `games`; la hora del
+  partido es local de la sede y se convierte desde `datetime_utc`.
+
+- **"Tocá tipos o selectores de competencia"** → `src/lib/competitions.js`
+  (punto 20), no una lista local en la página.
 
 - **"Tocá el Muro"** (feed) → punto 18: `can_view` publica, `can_edit`
   modera. No le pongas `require_edit` a publicar/comentar/reaccionar.
@@ -571,3 +615,5 @@ explicación del truco de CSS variables para los aliases legacy
 - ❌ Imputar el pasaje de un pago a la cuenta de fees (punto 15).
 - ❌ Pushear código que usa una migración de Budget sin haberla aplicado antes
   a mano en Supabase (punto 17).
+- ❌ Sumar un offset a la hora local de un partido para "convertirla" (punto 12).
+- ❌ Hardcodear la lista de tipos de competencia en una página (punto 20).

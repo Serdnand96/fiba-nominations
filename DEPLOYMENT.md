@@ -35,30 +35,40 @@ bash verify_security.sh       # smoke test
 
 `.github/workflows/deploy.yml`:
 
-1. Trigger: `push` a `main` o `workflow_dispatch` manual
+1. Trigger: `push` a `main` o `workflow_dispatch` manual. Un solo deploy
+   a la vez (`concurrency: deploy-droplet`, sin cancelar el que corre):
+   dos pushes seguidos hacían `git reset` + `npm ci` en paralelo sobre el
+   mismo directorio.
 2. Setea SSH key desde el secret `DROPLET_SSH_KEY`
 3. SSH al droplet (`fiba@${{ secrets.DROPLET_HOST }}`)
-4. En el droplet, ejecuta:
+4. En el droplet, ejecuta (resumen; el script real está en el workflow):
 
 ```bash
 cd /opt/fiba-nominations
+PREV=$(git rev-parse HEAD)                      # para el rollback
 git fetch origin main && git reset --hard origin/main
 
 ./venv/bin/pip install -r requirements.txt -q   # incluye gunicorn/uvicorn pinneados
 
 set -a && . ./.env && set +a
 npm ci --silent --no-audit --no-fund
-npm run build
+npm run build -- --outDir dist.new --emptyOutDir # sin vaciar el dist en vivo
+mv dist dist.old && mv dist.new dist            # swap ~atómico
 
 sudo systemctl restart fiba-api
 sleep 2
 sudo systemctl is-active fiba-api
 
-curl -fsS -o /dev/null -w "HTTPS %{http_code}\n" \
-  https://www.fibaapp.com/
+curl -fsS -o /dev/null -w "HTTPS %{http_code}\n" https://www.fibaapp.com/
 ```
 
-5. Si algún paso falla, GH Action falla → notificación
+5. Si el smoke test falla, el workflow **hace rollback solo**: restaura
+   `dist.old`, vuelve el código a `$PREV`, reinstala deps y reinicia el
+   servicio. El run queda en rojo para que se note.
+6. Si algún otro paso falla, GH Action falla → notificación
+
+**Las migraciones de Supabase no forman parte del deploy.** Se aplican a
+mano en el SQL editor **antes** del push que usa la columna o tabla nueva.
 
 Tiempo típico de deploy: **~90-120 segundos** (npm install + vite build
 + pip install + restart).
@@ -84,6 +94,10 @@ ssh fiba 'echo "$(cat new_deploy_key.pub)" >> ~/.ssh/authorized_keys'
 ---
 
 ## Servicio (systemd)
+
+La referencia versionada, con el bloque de hardening (`NoNewPrivileges`,
+`PrivateTmp`, `ProtectSystem`…) está en `deploy/systemd/fiba-api.service.example`.
+La unit viva del droplet se reconcilia contra ese archivo. Lo esencial:
 
 ```ini
 # /etc/systemd/system/fiba-api.service
@@ -127,6 +141,11 @@ sudo journalctl -u fiba-api -f      # follow
 ---
 
 ## nginx
+
+La parte de seguridad (rate limits, CSP, HSTS) está versionada en
+`deploy/nginx/security.conf.example`; la config viva del droplet se
+reconcilia contra ese archivo. Ojo con un `add_header` dentro de un
+`location`: descarta todos los headers heredados del `server{}`.
 
 `/etc/nginx/sites-available/fiba-nominations` (resumen):
 
@@ -210,7 +229,13 @@ CORS_ORIGINS=https://www.fibaapp.com,https://fibaapp.com
 # CloudConvert — solo lo usa el export del training schedule
 # (sin la key ese export sirve .docx; las cartas no la necesitan)
 # CLOUDCONVERT_API_KEY=
+
+# API de FIBA (GDAP) — sin esto no funciona "Sincronizar resultados"
+FIBA_API_KEY=…
 ```
+
+El archivo tiene que ser `600` y de `fiba:fiba`: contiene el
+`service_role` key, que bypassa RLS.
 
 Después de tocar `.env`, **reiniciar el servicio** (`sudo systemctl
 restart fiba-api`).
@@ -267,7 +292,8 @@ ssh fiba
 cd /opt/fiba-nominations
 git fetch origin main && git reset --hard origin/main
 ./venv/bin/pip install -r requirements.txt
-npm install && npm run build
+set -a && . ./.env && set +a      # vite necesita las VITE_* en el build
+npm ci && npm run build
 sudo systemctl restart fiba-api
 ```
 

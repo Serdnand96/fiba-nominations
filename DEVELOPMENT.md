@@ -25,10 +25,9 @@ cd fiba-nominations
 # Frontend deps
 npm install
 
-# Backend venv
+# Backend venv (requirements.txt ya incluye gunicorn y uvicorn)
 python3.11 -m venv venv
 ./venv/bin/pip install -r requirements.txt
-./venv/bin/pip install "uvicorn[standard]"
 ```
 
 ---
@@ -53,6 +52,9 @@ VITE_SUPABASE_ANON_KEY=<anon key>
 VITE_API_URL=/api
 
 CORS_ORIGINS=http://localhost:5173,http://localhost:3000
+
+# Sync de partidos con la API de FIBA (sin esto, "Sincronizar resultados" falla)
+FIBA_API_KEY=<subscription key de FIBA>
 ```
 
 > **No commitees `.env`** (ya está en `.gitignore`).
@@ -148,8 +150,21 @@ FastAPI local sin CORS.
    nav: { modulo: { en: 'My Module', es: 'Mi Módulo' } }
    ```
 
-7. **Permission** — insertar fila en `user_permissions` para los users
-   que deban acceder (o superadmin lo tiene gratis).
+7. **Permission** — un permiso nuevo se declara en **tres** lugares, o la
+   grilla de Usuarios y el backend quedan desincronizados:
+   - el CHECK de `user_permissions.module` (nueva migración, ver la 043
+     como ejemplo);
+   - `MODULES` en `api/_lib/routers/permissions.py`;
+   - `MODULES` en `src/pages/Users.jsx`.
+
+   Después, la fila en `user_permissions` para los users que deban acceder
+   (superadmin lo tiene gratis). Si el permiso gobierna un dato y no una
+   página (como `comp_days`), va en `VIEW_ONLY_MODULES` de `Users.jsx`.
+
+8. **Migración** — si el módulo trae tablas, va en
+   `supabase/migrations/NNN_*.sql` con cabecera explicando el porqué, y se
+   aplica **a mano** contra Supabase antes de pushear el código que la usa.
+   El deploy no corre migraciones.
 
 ### Agregar un template `.docx` de competition
 
@@ -222,6 +237,9 @@ Si vas a agregar tests:
   `security:`). Ver `git log` para más patrones.
 - **Branches:** trabajo directo en `main` para hotfixes; feature
   branches para cambios grandes. Push a main = deploy automático.
+- **Docs en el mismo PR:** si tocás Budget, actualizá `BUDGET_MODULE.md`;
+  si tocás auth, PDF o imports de Excel, actualizá el skill correspondiente
+  en `.claude/skills/`; si cambia lo que ve el usuario, `MANUAL_USUARIO.md`.
 - **Imports:** absolute desde `src/` en frontend; absolute desde `api.`
   en backend.
 - **Lang:** mensajes user-facing en ES por default, traducción en EN.
@@ -253,3 +271,16 @@ Si vas a agregar tests:
 
 6. **`personnel` ≠ `employees`** — TDs/VGOs vs staff interno. Dos
    tablas distintas, no mezclar.
+
+7. **Las migraciones no viajan con el deploy.** Si el backend tira 500 con
+   "column does not exist" después de un push, falta aplicar una migración
+   a mano en Supabase (SQL editor). Es especialmente fácil olvidarlo con
+   las de Budget (033-041), que son nueve seguidas.
+
+8. **Hora de un partido = hora local de la sede.** `games.date`/`time` no
+   son UTC. Para convertir a otra zona usá `game_schedule.datetime_utc`,
+   nunca un offset a mano (ver punto 12 de `CLAUDE.md`).
+
+9. **`Manual_Usuario_FIBA.pdf`** es una exportación de `MANUAL_USUARIO.md`
+   hecha desde el navegador (Chrome → imprimir a PDF). Si editás el
+   manual, regenerá el PDF o queda desactualizado.

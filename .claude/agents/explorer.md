@@ -22,8 +22,10 @@ resumen claro y accionable. No propongas cambios ni edites nada.
   `src/api/client.js`.
 - **DB:** el esquema está en `supabase/migrations/*.sql` (numeradas). Ahí ves
   las tablas reales de cada módulo.
-- **Docs:** `CLAUDE.md`, `ARCHITECTURE.md`, `DESIGN_SYSTEM.md`,
-  `SECURITY_RUNBOOK.md`, `PAYMENTS_MODULE.md` — leelos si aplican al módulo.
+- **Docs:** `CLAUDE.md` (los 20 puntos que confunden), `ARCHITECTURE.md`,
+  `DESIGN_SYSTEM.md`, `SECURITY_RUNBOOK.md`, `BUDGET_MODULE.md` (contrato de
+  Budget), `LSB_LETTER_SPEC.md`, `PAYMENTS_MODULE.md` (histórico) y
+  `MANUAL_USUARIO.md` (qué ve el usuario) — leelos si aplican al módulo.
 
 ## Qué buscar y reportar
 
@@ -32,7 +34,10 @@ resumen claro y accionable. No propongas cambios ni edites nada.
 2. **Flujo de datos** — de dónde salen los datos, cómo llegan al frontend, qué
    endpoints se llaman y con qué permisos (`require_view`/`require_edit`).
 3. **Dependencias** — otros módulos, tablas compartidas (ojo: `personnel` =
-   TDs/VGOs vs `employees` = staff interno), constantes/servicios comunes.
+   TDs/VGOs vs `employees` = staff interno; `competition_assignments` = crew
+   que se nomina vs `competition_staffing` = empleados que no), constantes y
+   servicios comunes (`crew.py`, `travel.py`, `budget_accounts.py`,
+   `src/lib/competitions.js`).
 4. **Convenciones** — patrón del router (dependency de permiso a nivel
    `APIRouter`), patrón de la página (lazy-load + `PermissionGuard`), tokens de
    diseño, i18n.
