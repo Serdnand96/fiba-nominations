@@ -37,8 +37,8 @@
 }
 
 @layer utilities {
-  .num { font-variant-numeric: tabular-nums; }
   .tabler { width: 1em; height: 1em; stroke-width: 1.75; stroke: currentColor; fill: none; stroke-linecap: round; stroke-linejoin: round; flex-shrink: 0; }
+  .num { font-variant-numeric: tabular-nums; }
   .row-divide > * + * { @apply border-t border-ink-100 dark:border-navy-800; }
   /* fill-mode must NOT be both/forwards: a filling transform animation keeps the
      element as containing block for position:fixed descendants, so every inline
@@ -136,5 +136,16 @@ button:focus-visible, a:focus-visible, [role="button"]:focus-visible {
   }
   .fiba-table tbody td {
     @apply px-4 py-3 text-ink-700 dark:text-ink-300;
+  }
+}
+
+/* Quien pide menos movimiento no recibe animaciones ni transiciones. Los
+   spinners quedan afuera: son la única señal de "sigue trabajando". */
+@media (prefers-reduced-motion: reduce) {
+  *:not(.animate-spin), *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 }
