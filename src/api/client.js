@@ -54,6 +54,59 @@ export const updateNominationConfirmation = (id, status, notes = null) =>
 export const updateNominationApproval = (id, approved) =>
   api.patch(`/nominations/${id}/approval`, { approved }).then(r => r.data)
 
+// Prefill: what the system already knows for a competition (and, if
+// `personnel_ids` is passed, per-person data) so the "New nomination" form
+// stops asking for things the backend can already answer — see
+// api/_lib/routers/nominations.py `/prefill`.
+export const getNominationPrefill = (competitionId, personnelIds = []) =>
+  api.get('/nominations/prefill', {
+    params: {
+      competition_id: competitionId,
+      ...(personnelIds.length ? { personnel_ids: personnelIds.join(',') } : {}),
+    },
+  }).then(r => r.data)
+
+// Partial update of a draft (or already-generated) nomination — any subset of
+// the editable fields. Regenerating the letter after a PATCH is a separate,
+// explicit `generateNomination()` call; this endpoint never renders a PDF.
+export const updateNomination = (id, data) => api.patch(`/nominations/${id}`, data).then(r => r.data)
+
+// Preview blob pattern, same shape as `previewTemplate`: PDF unless
+// LibreOffice is down, in which case the server falls back to the .docx and
+// flags it via the `X-Conversion-Error` header. `X-Missing-Fields` (optional)
+// lists the placeholders the letter renders blank because the nomination —or
+// the draft payload— doesn't have them yet.
+function _parseNominationPreview(resp) {
+  const type = resp.headers['content-type'] || ''
+  const missingHeader = resp.headers['x-missing-fields']
+  return {
+    blob: resp.data,
+    isPdf: type.includes('pdf'),
+    missing: missingHeader ? missingHeader.split(',').map(s => s.trim()).filter(Boolean) : [],
+    conversionError: resp.headers['x-conversion-error'] || null,
+  }
+}
+export const previewNomination = async (id) => {
+  const resp = await api.post(`/nominations/${id}/preview`, null, { responseType: 'blob' })
+  return _parseNominationPreview(resp)
+}
+// Same preview, but for a nomination that doesn't exist yet — the "Ver carta"
+// button inside the New Nomination form. `payload` is the same shape as
+// `createNomination` (single `personnel_id`, not the bulk `personnel_ids`).
+export const previewNominationDraft = async (payload) => {
+  const resp = await api.post('/nominations/preview', payload, { responseType: 'blob' })
+  return _parseNominationPreview(resp)
+}
+
+// Bulk download after generating several letters in one go — one save dialog
+// instead of N. `X-Skipped` counts requested ids the server left out (e.g. not
+// generated yet), surfaced back to the caller instead of silently dropped.
+export const downloadNominationsZip = async (ids) => {
+  const resp = await api.post('/nominations/download-zip', { nomination_ids: ids }, { responseType: 'blob' })
+  const skippedHeader = resp.headers['x-skipped']
+  return { blob: resp.data, skipped: skippedHeader ? (parseInt(skippedHeader, 10) || 0) : 0 }
+}
+
 // Authenticated file download — fetches with JWT, returns a Blob the caller
 // turns into an object URL to trigger the browser save dialog. Replaces the
 // previous <a href={url}> pattern, which exposed the file without auth.
@@ -573,9 +626,15 @@ export const deleteLoan = (id) => api.delete(`/loans/${id}`).then(r => r.data)
 export const getTemplates = () => api.get('/templates').then(r => r.data)
 // Returns { blob, isPdf } — the server falls back to .docx if LibreOffice is down.
 // `staged` renders the pending upload instead of the active template.
-export const previewTemplate = async (key, staged = false) => {
+// `nominationId`, when given, renders that real nomination's data through
+// this template instead of the fictional sample (requires nominations:view
+// on top of templates:view — see preview_template() in templates.py).
+export const previewTemplate = async (key, staged = false, nominationId = null) => {
+  const params = {}
+  if (staged) params.staged = true
+  if (nominationId) params.nomination_id = nominationId
   const resp = await api.get(`/templates/${key}/preview`, {
-    params: staged ? { staged: true } : undefined,
+    params: Object.keys(params).length ? params : undefined,
     responseType: 'blob',
   })
   const type = resp.headers['content-type'] || ''
@@ -599,6 +658,10 @@ export const deleteTemplateType = (key) => api.delete(`/templates/${key}`).then(
 export const activateTemplate = (key) => api.post(`/templates/${key}/activate`).then(r => r.data)
 export const discardStagedTemplate = (key) => api.delete(`/templates/${key}/staged`).then(r => r.data)
 export const revertTemplate = (key) => api.delete(`/templates/${key}/custom`).then(r => r.data)
+// Creates a new template type by copying the origin's active .docx — active
+// immediately, no staging step (see duplicate_template() in templates.py).
+export const duplicateTemplate = (sourceKey, data) =>
+  api.post(`/templates/${sourceKey}/duplicate`, data).then(r => r.data)
 
 // Public asset (no auth)
 export const getPublicAsset = (id) => api.get(`/public/asset/${id}`).then(r => r.data)

@@ -836,6 +836,7 @@ const translations = {
 
     // Form
     newNominationTitle: { en: 'New Nomination', es: 'Nueva Nominación' },
+    editNominationTitle: { en: 'Edit Nomination', es: 'Editar Nominación' },
     persons: { en: 'Persons', es: 'Personas' },
     selected: { en: 'selected', es: 'seleccionadas' },
     searchPerson: { en: 'Search person...', es: 'Buscar persona...' },
@@ -843,19 +844,105 @@ const translations = {
     clear: { en: 'Clear', es: 'Limpiar' },
     noPersonsFound: { en: 'No persons found', es: 'No se encontraron personas' },
     selectCompetition: { en: 'Select...', es: 'Seleccionar...' },
-    gameDates: { en: 'Game Dates', es: 'Game Dates' },
+    gameDates: { en: 'Game Dates', es: 'Fechas de partido' },
     addDate: { en: '+ Add date', es: '+ Agregar fecha' },
-    confirmationDeadline: { en: 'Confirmation Deadline', es: 'Confirmation Deadline' },
-    perGameFee: { en: 'Per Game Fee', es: 'Per Game Fee' },
-    windowFee: { en: 'Window Fee', es: 'Window Fee' },
-    incidentals: { en: 'Incidentals', es: 'Incidentals' },
+    confirmationDeadline: { en: 'Confirmation deadline', es: 'Fecha límite de confirmación' },
+    perGameFee: { en: 'Per-game fee', es: 'Tarifa por partido' },
+    windowFee: { en: 'Window fee', es: 'Tarifa de ventana' },
+    tournamentFee: { en: 'Tournament fee', es: 'Tarifa de torneo' },
+    incidentals: { en: 'Incidentals', es: 'Viáticos (incidentals)' },
     cancel: { en: 'Cancel', es: 'Cancelar' },
     saving: { en: 'Saving...', es: 'Guardando...' },
     createCount: { en: 'Create {count} Nominations', es: 'Crear {count} Nominaciones' },
     createOne: { en: 'Create Nomination', es: 'Crear Nominación' },
-    arrivalDate: { en: 'Arrival Date', es: 'Arrival Date' },
-    departureDate: { en: 'Departure Date', es: 'Departure Date' },
-    venue: { en: 'Venue', es: 'Venue' },
+    saveChanges: { en: 'Save changes', es: 'Guardar cambios' },
+    arrivalDate: { en: 'Arrival date', es: 'Fecha de llegada' },
+    departureDate: { en: 'Departure date', es: 'Fecha de salida' },
+    venue: { en: 'Venue', es: 'Sede' },
+    location: { en: 'Location', es: 'Lugar' },
+
+    // Field names, reused for asterisks / "missing" lists / error messages
+    missingFieldsShort: { en: 'Missing', es: 'Faltan' },
+    field: {
+      letter_date: { en: 'Letter date', es: 'Fecha de la carta' },
+      window_fee: { en: 'Fee', es: 'Tarifa' },
+      incidentals: { en: 'Incidentals', es: 'Viáticos (incidentals)' },
+      confirmation_deadline: { en: 'Confirmation deadline', es: 'Fecha límite de confirmación' },
+      game_dates: { en: 'Game dates', es: 'Fechas de partido' },
+      location: { en: 'Location', es: 'Lugar' },
+      venue: { en: 'Venue', es: 'Sede' },
+      arrival_date: { en: 'Arrival date', es: 'Fecha de llegada' },
+      departure_date: { en: 'Departure date', es: 'Fecha de salida' },
+    },
+
+    // Competition picker: exactly one person selected, only shows chips for
+    // the roles actually present among the currently filtered personnel.
+    roleAll: { en: 'All', es: 'Todos' },
+    onlyAssigned: { en: 'Only assigned to this competition', es: 'Solo asignados a esta competencia' },
+
+    // Fees
+    feesHintKnown: {
+      en: 'Blank: the competition\'s fee for the role applies · {list}',
+      es: 'En blanco: se aplica la tarifa de la competencia por cargo · {list}',
+    },
+    feesHintEmpty: {
+      en: 'This competition has no fees loaded; set them in Games → Defaults, or type one here.',
+      es: 'La competencia no tiene tarifas cargadas; cargalas en Games → Defaults o escribilas acá.',
+    },
+    totalByRole: { en: 'depends on role', es: 'según cargo' },
+    feeBreakdownPerGame: {
+      en: '{count} games × ${fee} + ${incidentals}',
+      es: '{count} partidos × ${fee} + ${incidentals}',
+    },
+    feeBreakdownTournament: {
+      en: '${fee} + ${incidentals}',
+      es: '${fee} + ${incidentals}',
+    },
+
+    // Multi-person note when there's more than one selected person: dates
+    // come from the competition, not from each person's own crew assignment.
+    multiPersonDatesNote: {
+      en: 'With several people the competition dates are used; each person\'s own dates are adjusted from Games → Sync.',
+      es: 'Con varias personas se usan las fechas de la competencia; las de cada persona se ajustan desde Games → Sincronizar.',
+    },
+
+    missingFieldsLine: {
+      en: 'To generate the letter, missing: {fields}',
+      es: 'Para generar la carta faltan: {fields}',
+    },
+    missingFieldsError: {
+      en: 'Missing: {fields}',
+      es: 'Faltan: {fields}',
+    },
+    missingFieldsDraft: {
+      en: 'Created as a draft — it can\'t be generated yet ({fields}).',
+      es: 'Se creó como borrador — todavía no se puede generar ({fields}).',
+    },
+
+    viewLetter: { en: 'View letter', es: 'Ver carta' },
+    edit: { en: 'Edit', es: 'Editar' },
+    updated: { en: 'Nomination updated', es: 'Nominación actualizada' },
+    regenerated: { en: 'Letter regenerated', es: 'Carta regenerada' },
+    errorUpdating: { en: 'Error updating nomination', es: 'Error actualizando la nominación' },
+
+    // Preview modal
+    previewTitle: { en: 'Letter preview — {name}', es: 'Vista previa de la carta — {name}' },
+    previewMissing: {
+      en: 'This letter has gaps: missing {fields}.',
+      es: 'Esta carta sale con huecos: faltan {fields}.',
+    },
+    previewDocx: {
+      en: 'PDF conversion is unavailable — the .docx was downloaded instead.',
+      es: 'La conversión a PDF no está disponible — se descargó el .docx.',
+    },
+    previewError: { en: 'Could not generate the preview.', es: 'No se pudo generar la vista previa.' },
+    generatingPreview: { en: 'Generating preview…', es: 'Generando vista previa…' },
+
+    downloadZipCount: { en: 'Download ZIP ({count})', es: 'Descargar ZIP ({count})' },
+    zipSkipped: {
+      en: '{count} letter(s) were left out of the ZIP (not generated yet).',
+      es: '{count} carta(s) quedaron afuera del ZIP (todavía no generadas).',
+    },
   },
 
   // ===== Competitions =====
@@ -951,6 +1038,21 @@ const translations = {
     stagedPending: { en: 'Upload pending review', es: 'Subida pendiente de revisión' },
     newType: { en: 'New template', es: 'Nuevo template' },
     newTypeTitle: { en: 'New template for another event', es: 'Nuevo template para otro evento' },
+    duplicate: { en: 'Duplicate', es: 'Duplicar' },
+    duplicateTitle: { en: 'New template from a copy', es: 'Nuevo template a partir de una copia' },
+    duplicateFromNote: {
+      en: 'Starts from {source}’s letter — same wording, layout and placeholders, ready to edit.',
+      es: 'Se parte de la carta de {source} — mismo texto, diseño y campos, lista para editar.',
+    },
+    duplicateSubmit: { en: 'Duplicate', es: 'Duplicar' },
+    duplicated: {
+      en: 'Template created from {source}. It is already active.',
+      es: 'Plantilla creada a partir de {source}. Ya está activa.',
+    },
+    bclaVariantsNote: {
+      en: 'Also BCLA_F4 and BCLA_RS (picked in Competitions, same template).',
+      es: 'También BCLA_F4 y BCLA_RS (se eligen en Competencias, misma plantilla).',
+    },
     key: { en: 'Key', es: 'Clave' },
     keyHint: {
       en: '2-32 chars: A-Z, 0-9 and _, starting with a letter. Used to link competitions to this template.',
@@ -959,8 +1061,8 @@ const translations = {
     label: { en: 'Name', es: 'Nombre' },
     kind: { en: 'Letter shape', es: 'Forma de la carta' },
     kindHint: {
-      en: 'Nomination follows the WCQ/GENERIC layout, Confirmation the LSB one. It decides which data the template can use.',
-      es: 'Nominación sigue el formato WCQ/GENERIC, Confirmación el de LSB. Define qué datos puede usar el template.',
+      en: 'Only picks the starting document — the FIBA Americas letterhead or blank paper. The fields available are the same either way.',
+      es: 'Solo elige el documento de partida: el membrete de FIBA Americas o papel en blanco. Los campos disponibles son los mismos en los dos casos.',
     },
     signatoryName: { en: 'Signatory', es: 'Firmante' },
     signatoryTitle: { en: 'Title', es: 'Cargo' },
@@ -982,20 +1084,20 @@ const translations = {
     downloadStarter: { en: 'Download starter', es: 'Descargar base' },
     howTo: { en: 'How to design your own letter', es: 'Cómo diseñar tu propia carta' },
     step1: {
-      en: 'Download the .docx of the template you want to start from.',
-      es: 'Descarga el .docx del template del que quieres partir.',
+      en: 'Download the .docx of the template closest to what you need — or duplicate it from the catalog below to start from a real, working letter.',
+      es: 'Descarga el .docx del template más parecido — o duplícalo desde el catálogo de abajo para partir de una carta real y en uso.',
     },
     step2: {
       en: 'Open it in Word and design it freely: logo, letterhead, footer, fonts, colours, signature image, wording and order are all yours.',
       es: 'Ábrelo en Word y diséñalo con libertad: logo, membrete, footer, tipografías, colores, imagen de firma, redacción y orden son tuyos.',
     },
     step3: {
-      en: 'Leave the fields below wherever you want each piece of data to appear. Copy them exactly as shown.',
-      es: 'Deja los campos de abajo donde quieras que aparezca cada dato. Cópialos tal cual figuran.',
+      en: 'Write each field as {{ name }} wherever you want it to appear — no special syntax, no loops. You can use the Spanish names too, e.g. {{ saludo }}.',
+      es: 'Escribe cada dato como {{ nombre }} donde quieras que aparezca — sin sintaxis especial, sin bucles. Podés usar los nombres en español, por ejemplo {{ saludo }}.',
     },
     step4: {
-      en: 'Upload it. You will see the letter it produces before anything changes — you decide whether to activate it.',
-      es: 'Súbelo. Vas a ver la carta que produce antes de que cambie nada — tú decides si activarlo.',
+      en: 'Upload it and look at the letter it produces — with sample data or a real nomination — before anything changes. You decide whether to activate it.',
+      es: 'Súbelo y mira la carta que produce — con datos de muestra o con una nominación real — antes de que cambie nada. Tú decides si la activas.',
     },
     fieldsFor: { en: 'Fields available in', es: 'Campos disponibles en' },
     colWhat: { en: 'What it prints', es: 'Qué imprime' },
@@ -1003,11 +1105,29 @@ const translations = {
     colExample: { en: 'Example', es: 'Ejemplo' },
     copied: { en: 'Copied', es: 'Copiado' },
     copyHint: { en: 'Click to copy', es: 'Clic para copiar' },
+    orTag: { en: 'or {tag}', es: 'o {tag}' },
     repeats: { en: 'Repeats one paragraph per item', es: 'Repite un párrafo por cada ítem' },
+    showAdvanced: { en: 'Show advanced fields (lists)', es: 'Mostrar campos avanzados (listas)' },
+    hideAdvanced: { en: 'Hide advanced fields', es: 'Ocultar campos avanzados' },
+    advancedNote: {
+      en: 'Loops are only needed if you want a separate paragraph per game — for most letters the fields above already cover it.',
+      es: 'Los bucles solo hacen falta si querés un párrafo distinto por cada partido — para casi todas las cartas alcanza con los campos de arriba.',
+    },
     deleteFieldNote: {
       en: 'Delete a field and it simply stops appearing. Invent one and it renders empty — the upload check warns you first.',
       es: 'Si borras un campo, simplemente deja de aparecer. Si inventas uno, sale vacío — la validación te avisa antes.',
     },
+    fontsCol: { en: 'Fonts', es: 'Fuentes' },
+    fontSubstituted: {
+      en: 'The server doesn’t have {family}; it prints with {substitute} instead.',
+      es: 'El servidor no tiene {family}; se imprime con {substitute}.',
+    },
+    fontMissing: {
+      en: 'The server doesn’t have {family} and no substitute is defined: the letter comes out in a different font.',
+      es: 'El servidor no tiene {family} y no hay sustituto definido: la carta sale con otra fuente.',
+    },
+    previewSource: { en: 'Preview with', es: 'Vista previa con' },
+    sampleData: { en: 'Sample data', es: 'Datos de muestra' },
     // Plain-language names for each field the letters expose.
     ph: {
       competition: { en: 'Competition name', es: 'Nombre de la competencia' },
@@ -1029,6 +1149,15 @@ const translations = {
       location: { en: 'Location', es: 'Localidad' },
       venue: { en: 'Venue', es: 'Estadio / sede' },
       banking_paragraph: { en: 'Banking details paragraph', es: 'Párrafo sobre datos bancarios' },
+      subject: { en: 'Bold subject line', es: 'Línea de asunto, en negrita' },
+      intro_paragraph: { en: 'Opening paragraph announcing the nomination', es: 'Párrafo de apertura que anuncia la nominación' },
+      competition_span: { en: 'Date range of the competition (or window)', es: 'Rango de fechas de la competencia (o ventana)' },
+      details_block: { en: 'Location, venue, arrival and departure, one per line', es: 'Lugar, sede, llegada y salida, una por línea' },
+      game_list: { en: 'All assigned game dates, one per line', es: 'Todas las fechas de partido, una por línea' },
+      travel_paragraph: { en: 'Paragraph about flight arrangements', es: 'Párrafo sobre la organización del vuelo' },
+      fees_block: { en: 'The fee lines, together', es: 'Las líneas de honorarios, juntas' },
+      closing_paragraph: { en: 'Closing paragraph wishing good luck', es: 'Párrafo de cierre deseando éxitos' },
+      signature_line: { en: 'Signatory name, title and organization', es: 'Firmante, cargo y organización' },
     },
   },
 
@@ -1537,6 +1666,8 @@ const translations = {
     generating: { en: 'Generating...', es: 'Generando...' },
     pdfsGenerated: { en: '{count} of {total} PDFs generated', es: '{count} de {total} PDFs generados' },
     pdfsErrors: { en: '{count} error(s)', es: '{count} error(es)' },
+    pdfsErrorDetail: { en: '{name}: {reason}', es: '{name}: {reason}' },
+    viewInNominations: { en: 'View in Nominations', es: 'Ver en Nominaciones' },
     editDefaults: { en: 'Common values', es: 'Datos comunes' },
     editDefaultsHint: { en: 'Set the common nomination values used when generating PDFs', es: 'Definir los valores comunes que se usan al generar las nominaciones' },
     defaultsTitle: { en: 'Common nomination values', es: 'Datos comunes de la nominación' },

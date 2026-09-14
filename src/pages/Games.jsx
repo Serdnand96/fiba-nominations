@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useMemo, useCallback, useLayoutEffect } from 'react'
 import { createPortal } from 'react-dom'
+import { Link } from 'react-router-dom'
 import {
   getGames, getGameDates, getGameTeams, createGame, updateGame, deleteGame,
   syncGameResults, importGamesExcel, getCalendarCompetitions,
@@ -145,6 +146,7 @@ export default function Games() {
   const [importMsg, setImportMsg] = useState('')
   const [syncingNoms, setSyncingNoms] = useState(false)
   const [nomMsg, setNomMsg] = useState('')
+  const [nomErrors, setNomErrors] = useState([])
   const [syncMenuOpen, setSyncMenuOpen] = useState(false)
   const syncMenuRef = useRef(null)
   const [generatingPdfs, setGeneratingPdfs] = useState(false)
@@ -662,19 +664,23 @@ export default function Games() {
   async function handleGeneratePdfs() {
     setGeneratingPdfs(true)
     setNomMsg('')
+    setNomErrors([])
     try {
       // Sync first so any new assignments / default changes are picked up
       await syncAssignmentsToNominations(selectedCompId)
       const r = await generateAssignmentPDFs(selectedCompId)
-      const errCount = (r.errors || []).length
+      const errors = r.errors || []
       let msg = t('games.pdfsGenerated', { count: r.generated, total: r.total })
-      if (errCount > 0) msg += ` · ${t('games.pdfsErrors', { count: errCount })}`
+      if (errors.length > 0) {
+        msg += ` · ${t('games.pdfsErrors', { count: errors.length })}`
+        setNomErrors(errors)
+      }
       setNomMsg(msg)
     } catch (err) {
       setNomMsg(err.response?.data?.detail || 'Error')
     }
     setGeneratingPdfs(false)
-    setTimeout(() => setNomMsg(''), 8000)
+    setTimeout(() => { setNomMsg(''); setNomErrors([]) }, 12000)
   }
 
   async function handleSaveDefaults() {
@@ -1104,7 +1110,32 @@ export default function Games() {
           onClose={() => setSyncReport(null)} />
       )}
       {nomMsg && (
-        <div className="mb-4 px-4 py-2 bg-emerald-100 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400 rounded-lg text-sm">{nomMsg}</div>
+        <div className="mb-4 px-4 py-2 bg-emerald-100 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400 rounded-lg text-sm space-y-1.5">
+          <div className="flex items-center justify-between gap-3">
+            <span>{nomMsg}</span>
+            {nomErrors.length > 0 && (
+              <Link to="/nominations" className="text-emerald-800 dark:text-emerald-300 underline whitespace-nowrap">
+                {t('games.viewInNominations')}
+              </Link>
+            )}
+          </div>
+          {nomErrors.length > 0 && (
+            <ul className="text-xs text-emerald-800/80 dark:text-emerald-300/80 list-disc list-inside">
+              {nomErrors.map((e, i) => (
+                <li key={e.id || i}>
+                  {t('games.pdfsErrorDetail', {
+                    name: e.name || e.id,
+                    // missing_fields comes back structured — translate the
+                    // field names instead of echoing the English "Missing: …".
+                    reason: e.code === 'missing_fields' && e.missing?.length
+                      ? `${t('nominations.missingFieldsShort')}: ${e.missing.map(f => t(`nominations.field.${f}`)).join(', ')}`
+                      : (e.error || '—'),
+                  })}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
       )}
 
       {/* Competition selector + filters */}
