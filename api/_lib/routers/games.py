@@ -1550,7 +1550,7 @@ def generate_assignment_pdfs(competition_id: str = Query(...)):
     Intended to be called after `/sync-nominations` from the Games page.
     """
     from api._lib.services.document_generator import generate_nomination
-    from api._lib.routers.nominations import _host_location_for_nomination
+    from api._lib.routers.nominations import letter_data_for, missing_fields
 
     if not _competition_supports_assignments(competition_id):
         raise HTTPException(400, "This competition does not support per-game assignments")
@@ -1563,48 +1563,45 @@ def generate_assignment_pdfs(competition_id: str = Query(...)):
         .data
     )
     if not nominations:
-        return {"generated": 0, "errors": [], "total": 0}
+        return {"generated": 0, "errors": [], "conversion_errors": 0, "total": 0}
 
     generated = 0
+    conversion_errors = 0
     errors = []
     for nom in nominations:
+        personnel = nom.get("personnel") or {}
+        competition = nom.get("competitions") or {}
+        missing = missing_fields(nom, competition)
+        if missing:
+            errors.append({
+                "id": nom["id"],
+                "name": personnel.get("name"),
+                "code": "missing_fields",
+                "missing": missing,
+                "error": f"Missing: {', '.join(missing)}",
+            })
+            continue
         try:
-            personnel = nom.get("personnel") or {}
-            competition = nom.get("competitions") or {}
-            host_city, host_country = _host_location_for_nomination(
-                nom["competition_id"],
-                nom.get("personnel_id"),
-                nom.get("game_dates"),
-                competition.get("template_key"),
-            )
-            nom_data = {
-                "template_key": competition.get("template_key"),
-                "nominee_name": personnel.get("name", ""),
-                "role": personnel.get("role", ""),
-                "letter_date": nom.get("letter_date", ""),
-                "competition_name": competition.get("name", ""),
-                "competition_year": competition.get("year", ""),
-                "location": nom.get("location", ""),
-                "venue": nom.get("venue", ""),
-                "arrival_date": nom.get("arrival_date", ""),
-                "departure_date": nom.get("departure_date", ""),
-                "game_dates": nom.get("game_dates", []),
-                "window_fee": nom.get("window_fee"),
-                "incidentals": nom.get("incidentals"),
-                "total": nom.get("total"),
-                "confirmation_deadline": nom.get("confirmation_deadline", ""),
-                "fee_type": competition.get("fee_type", "per_game"),
-                "host_city": host_city,
-                "host_country": host_country,
-            }
-            local_path, storage_url, _ = generate_nomination(nom_data)
+            nom_data = letter_data_for(nom)
+            local_path, storage_url, conversion_error = generate_nomination(nom_data)
             saved_path = storage_url if storage_url else local_path
             supabase.table("nominations").update({
                 "status": "generated",
                 "pdf_path": saved_path,
             }).eq("id", nom["id"]).execute()
             generated += 1
+            if conversion_error:
+                conversion_errors += 1
         except Exception as e:
-            errors.append({"id": nom["id"], "name": (nom.get("personnel") or {}).get("name"), "error": str(e)})
+            errors.append({"id": nom["id"], "name": personnel.get("name"), "error": str(e)})
 
-    return {"generated": generated, "errors": errors, "total": len(nominations)}
+    return {
+        "generated": generated,
+        "errors": errors,
+        # LibreOffice failures among the successfully-generated ones — the
+        # letter was saved as .docx instead of .pdf, not an error but worth
+        # surfacing so the Games page can flag it instead of the caller
+        # discovering it only when they try to open the file.
+        "conversion_errors": conversion_errors,
+        "total": len(nominations),
+    }
