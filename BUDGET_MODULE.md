@@ -5,7 +5,8 @@
 > `src/pages/Budget.jsx` (6 pestañas).
 >
 > Queda pendiente de terceros: el plan de cuentas de Finance, los gastos
-> históricos 2026 y la cadencia de los recurrentes de IT (ver §12).
+> históricos 2026 de Competitions y Comms (los de IT ya están, §10) y la
+> cadencia de los recurrentes de IT (ver §12).
 >
 > **Datos cargados:** los presupuestos 2027 de IT (2027-2030) y de Competitions
 > están importados — ver §10.
@@ -634,6 +635,33 @@ antes de reinsertar.
 | `CompsDraftBudget2027` | 168 | $970.416 |
 | `2027_Budget_Comms_Americas` | 62 (54 + 8 del reparto U16) | $412.500 |
 
+**IT 2026: presupuesto y ejecutado** (2026-09-14, `scripts/import_it_2026.py`,
+dos pasos e idempotente por marca en `notes` / `comments`):
+
+| Qué | Filas | Total |
+|-----|-------|-------|
+| Presupuesto 2026 (mail de Finance, 8 cuentas) | 8 | $280.111 |
+| Ledger enero–julio (`IT Budget July 2026.xlsx`, hoja `Data`) | 129 gastos `paid` | $41.667 |
+
+- El presupuesto no vino en planilla sino en un mail de Finance, así que va
+  hardcodeado en el script con el signo dado vuelta (el ledger lo muestra en
+  negativo). Se crearon tres cuentas reales que faltaban en el plan: 610300
+  (Office equipment / furniture), 611200 (Supplies, photocopies & printed
+  materials) y 648500 (Technology Applications).
+- **648500 ($82.711) es de `it` aunque la plata salga de Competitions.** Son los
+  equipos de VGO y estadístico; el mail lo dice explícitamente. Mismo criterio
+  que «IT on Events» en 2027: el departamento es quién ejecuta (§2).
+- Cada gasto entra `paid` con `expense_date = payment_date` (el ledger tiene una
+  sola fecha), `payee_type = 'other'` con el proveedor normalizado en
+  `payee_name` (AT&T aparece de seis formas en el ledger) y la descripción de
+  tarjeta cruda en `description`. No se crearon `vendors`. Cada gasto queda
+  vinculado por `budget_line_id` a la línea 2026 de su cuenta.
+- ⚠️ **612100 y 612200 vienen idénticas en el ledger** (ver §12). Se importaron
+  las dos tal cual: el ledger es la fuente y elegir una sería adivinar. Sin el
+  duplicado el ejecutado real es $38.796.
+- Ejecutado a julio contra presupuesto: 611000 41%, 612100 24%, 612200 10%,
+  612300 8%. Las otras cuatro cuentas no tienen movimientos en el ledger de IT.
+
 **Recurrentes de IT 2027** (2026-08-27): 23 plantillas sembradas con
 `scripts/seed_recurring_from_budget.py` desde las líneas ya importadas — 20
 mensuales + 3 anuales, equivalente anual $215.015,04, el total de IT 2027 al
@@ -735,8 +763,13 @@ que lo importado siga cuadrando con la planilla.
   renombren, acordarse de `_ACCOUNT_BY_ROLE` en `payments.py`: el `ON UPDATE
   CASCADE` arregla las filas ya escritas, pero el mapeo del write path es un
   dict en Python y no lo sigue.
-- **Gastos ejecutados 2026** para importar. Se importan al final, cuando estén
-  los archivos.
+- **Gastos ejecutados 2026 de Competitions y Comms.** Los de IT ya están
+  (§10, `scripts/import_it_2026.py`); los otros dos departamentos siguen sin
+  archivo.
+- **612100 / 612200 duplicadas en el ledger de IT 2026.** Finance imputó las
+  mismas 8 filas ($2.870,98) a las dos cuentas. Están cargadas las dos con marca
+  `DUP` en `comments`; cuando Finance diga cuál vale, se corrige el Excel y se
+  reimporta.
 - **Afinar la cadencia de los recurrentes de IT.** Las 23 plantillas ya están
   sembradas (§10). La cadencia sale de la CUENTA y no del proveedor —la
   planilla presupuesta un anual y no dice cada cuánto se factura, así que mirar
