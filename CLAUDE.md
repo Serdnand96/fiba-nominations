@@ -260,10 +260,12 @@ legacy `fibaamericascloud.com`).
     su cabecera. El resto del schema sigue la misma convención, pero acá es
     especialmente fácil olvidarlo porque son nueve migraciones seguidas.
 
-    **Estado hoy (agosto 2026):** el presupuesto está cargado ($1.627.431 para
-    2027, entre IT, Competitions y Comms) pero el **ejecutado está casi vacío**
-    — 1 pago, 0 gastos, 0 proveedores. Si el dashboard te da todo en cero, es el
-    dato y no un bug.
+    **Estado hoy (septiembre 2026):** el presupuesto está cargado ($1.627.431
+    para 2027, entre IT, Competitions y Comms; $280.111 para 2026, solo IT). El
+    **ejecutado** tiene los 129 gastos de IT de enero a julio 2026
+    (`scripts/import_it_2026.py`, $41.667) y 1 pago; sigue sin gastos de
+    Competitions ni Comms y sin proveedores. Si el dashboard 2027 te da el
+    ejecutado en cero, es el dato y no un bug.
 
 18. **El Muro (`feed`) es el único permiso donde `can_view` ESCRIBE.** Es el
     feed interno a lo Facebook (`api/_lib/routers/feed.py`, página
