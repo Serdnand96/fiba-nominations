@@ -191,6 +191,36 @@ sudo tail -f /var/log/nginx/error.log
 
 ---
 
+## Fuentes de las cartas (LibreOffice)
+
+Las cartas de nominación se convierten a PDF con `soffice --headless` en el
+droplet. Las plantillas declaran Univers, IBM Plex Sans, Cochocib Script y
+Titillium, y el droplet **no tiene ninguna**: sin más, fontconfig las reemplaza
+por DejaVu Sans y la carta sale con los títulos partidos y la firma rota.
+
+No hay nada que instalar en el sistema. `fonts/` viene en el repo con las
+fuentes libres (IBM Plex Sans, IBM Plex Sans Condensed, PT Sans Narrow, Alex
+Brush, Titillium Web) y un `fonts/fonts.conf` con los alias
+(`Univers → Nimbus Sans`, `Cochocib Script → Alex Brush`, …).
+`document_generator._convert_to_pdf_libreoffice()` lanza `soffice` con
+`FONTCONFIG_FILE=/opt/fiba-nominations/fonts/fonts.conf`, así que el `git
+reset --hard` del deploy alcanza para que la próxima conversión las use.
+
+Para verificar en el droplet qué resuelve cada familia:
+
+```bash
+FONTCONFIG_FILE=/opt/fiba-nominations/fonts/fonts.conf fc-match "Univers"
+FONTCONFIG_FILE=/opt/fiba-nominations/fonts/fonts.conf fc-match "Cochocib Script Latin Pro"
+```
+
+Si FIBA entrega las fuentes con licencia (Univers, Cochocib Script Latin Pro),
+van a `/opt/fiba-nominations/fonts/private/` (gitignoreado, sobrevive al
+deploy). Al estar presentes ganan sobre el sustituto sin tocar nada más. La
+pantalla de Templates muestra por plantilla qué familia sale como está, cuál
+sustituida y cuál falta.
+
+---
+
 ## Environment variables (`/opt/fiba-nominations/.env`)
 
 ```bash

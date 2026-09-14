@@ -34,21 +34,33 @@ JUSTIFY = WD_ALIGN_PARAGRAPH.JUSTIFY
 # writes by hand: a bold subject line, one intro sentence carrying venue +
 # competition span instead of the game list, fees centred after one blank,
 # and the signature right after the closing.
-def nomination_body(fee_style=None, blank_after_date=1):
+def nomination_body(fee_style=None, blank_after_date=1, subject=True):
     # Blank-line counts for the per-game branch mirror the positional builders
     # exactly; they are the part a text-only diff cannot see, so they are
     # spelled out here:
     #   date -> Dear      : GENERIC 1, WCQ 0 (its date sits at paras[1], Dear at [2])
     #   payment -> fees   : 2  (old: fee_idx = payment_idx + 3)
     #   last fee -> closing: 2 (old: closing_idx = fee_idx + len(fees) + 2)
-    return [
-        # (text, align, size_pt, style)
-        ("{{r letter_date }}", RIGHT, 10, None),
-        *[("", None, None, None)] * blank_after_date,
+    #
+    # `subject` — WCQ_TEMPLATE.docx's own paragraph [0] (kept as-is by
+    # body_start=1, see SPECS below) already carries a fixed title,
+    # "Nomination for the FIBA World Cup 2027 Qualifiers", printed above the
+    # logo. A tournament-mode letter also renders {{r subject }} ("Nomination
+    # for the <competition>", from _letter_context) right above the greeting
+    # — on WCQ that is a second, redundant title, so WCQ passes subject=False
+    # and drops the whole {%p if is_tournament %}{{r subject }}…{%p endif %}
+    # block. GENERIC has no fixed title of its own, so it keeps the block.
+    subject_block = [
         ("{%p if is_tournament %}", None, None, None),
         ("{{r subject }}", None, None, None),
         ("", None, None, None),
         ("{%p endif %}", None, None, None),
+    ] if subject else []
+    return [
+        # (text, align, size_pt, style)
+        ("{{r letter_date }}", RIGHT, 10, None),
+        *[("", None, None, None)] * blank_after_date,
+        *subject_block,
         ("{{r greeting }}", None, None, None),
         ("", None, None, None),
         ("{{r intro_paragraph }}", None, None, None),
@@ -225,15 +237,19 @@ SPECS = {
         # Body starts at the very first paragraph: the letterhead logo lives in
         # the section header, not in the body.
         "body_start": 0,
-        "body": nomination_body(),
+        "body": nomination_body(subject=True),
     },
     "WCQ": {
         "src": "WCQ_TEMPLATE.docx",
         "dst": "WCQ_TEMPLATE_TPL.docx",
         "font": "IBM Plex Sans",
-        # [0] is the title + competition logo — preserved as-is.
+        # [0] is the title + competition logo — preserved as-is. It already
+        # carries a fixed title ("Nomination for the FIBA World Cup 2027
+        # Qualifiers"), so the tournament-mode {{r subject }} line would be a
+        # second, redundant title — see nomination_body()'s docstring.
         "body_start": 1,
-        "body": nomination_body(fee_style="List Paragraph", blank_after_date=0),
+        "body": nomination_body(fee_style="List Paragraph", blank_after_date=0,
+                                subject=False),
     },
     "BCLA": {
         "src": "BCLA_TEMPLATE.docx",
