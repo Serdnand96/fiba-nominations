@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import functools
 import logging
 import os
 import re
@@ -16,6 +17,11 @@ from docx.oxml.ns import qn
 
 OUTPUT_DIR = Path(tempfile.gettempdir()) / "fiba_generated"
 TEMPLATES_DIR = Path(__file__).resolve().parent.parent.parent.parent / "templates"
+# Free TTFs + fontconfig aliases for the letters' brand fonts (Univers, IBM
+# Plex Sans, Cochocib Script, Titillium) — none of them is installed on the
+# droplet. See fonts/fonts.conf for what each alias substitutes and why.
+FONTS_DIR = TEMPLATES_DIR.parent / "fonts"
+FONTCONFIG_FILE = FONTS_DIR / "fonts.conf"
 
 
 def _sandboxed_jinja_env():
@@ -178,8 +184,6 @@ def validate_template(template_key: str, data: bytes) -> dict:
     empty, so they are reported but not fatal. The real test is whether the
     template renders at all, which is what the caller then shows as a preview.
     """
-    from docxtpl import DocxTemplate
-
     spec = spec_for(template_key)
     if not spec:
         return {"ok": False, "error": f"Unknown template: {template_key}",
@@ -188,12 +192,21 @@ def validate_template(template_key: str, data: bytes) -> dict:
     sample = copy.deepcopy(PREVIEW_SAMPLE)
     sample["template_key"] = template_key
     context = spec["context"](sample)
+    ctx = with_legacy_aliases(context)
+    richtext_names = {name for name, value in ctx.items()
+                       if type(value).__name__ == "RichText"}
+    name_map = _template_name_map(context)
 
     tmp = Path(tempfile.mkdtemp(prefix="fiba_tplcheck_")) / "candidate.docx"
     try:
         tmp.write_bytes(data)
         try:
-            tpl = DocxTemplate(str(tmp))
+            tpl = LetterTemplate(str(tmp), richtext_names, name_map)
+            # get_undeclared_template_variables() runs patch_xml() too (it is
+            # an override on this instance), so `used` already reports
+            # canonical names for a bare {{ saludo }} or {{ greeting }} alike
+            # — LetterTemplate resolved both to {{r greeting }} before Jinja
+            # ever parsed the file.
             used = tpl.get_undeclared_template_variables()
         except Exception as exc:
             return {"ok": False, "unknown": [], "unused": [],
@@ -211,19 +224,20 @@ def validate_template(template_key: str, data: bytes) -> dict:
                     "error": ("This file uses none of the letter's fields, so "
                               "every letter would come out with no content. It "
                               "looks like the blank letterhead rather than the "
-                              "template — download the current one to see the "
-                              "placeholders it needs.")}
+                              "template — see this template type's field table "
+                              "(GET /templates returns it as `placeholders`, and "
+                              "the Templates page renders it) for what it needs.")}
 
         try:
-            tpl.render(context, jinja_env=_sandboxed_jinja_env())
+            tpl.render(ctx, jinja_env=_sandboxed_jinja_env())
         except Exception as exc:
             # Jinja syntax errors and bad expressions land here.
             return {"ok": False, "unknown": [], "unused": [],
                     "error": f"Template failed to render: {exc}"}
 
-        # Legacy names still resolve, so don't flag them as unknown; but only
-        # the current names are advertised as "unused".
-        known = set(with_legacy_aliases(context))
+        # Legacy and friendly names still resolve, so don't flag them as
+        # unknown; but only the current names are advertised as "unused".
+        known = set(ctx)
         return {
             "ok": True,
             "error": None,
@@ -272,7 +286,21 @@ def generate_preview(template_key: str) -> tuple[str, str, str | None]:
     """
     data = copy.deepcopy(PREVIEW_SAMPLE)
     data["template_key"] = template_key
+    return generate_preview_for_data(data)
 
+
+def generate_preview_for_data(data: dict) -> tuple[str, str, str | None]:
+    """Like generate_preview(), but from real data instead of PREVIEW_SAMPLE.
+
+    Backs `GET /templates/{key}/preview?nomination_id=...`: `data` is a real
+    nomination's letter_data_for() dict (see routers/nominations.py) with
+    `template_key` overridden to whatever template the caller wants to try it
+    against — showing what THIS nominee's letter would look like on a
+    different template, not a fictional one. Same guarantees as
+    generate_preview(): nothing is uploaded to Storage and the nomination row
+    is never touched.
+    """
+    template_key = data["template_key"]
     doc = _build_doc(data)
 
     temp_dir = tempfile.mkdtemp(prefix="fiba_preview_")
@@ -393,6 +421,31 @@ RED_HEX = "ED0000"
 DARK_HEX = "2A2A2A"
 
 
+def _richtext_block(lines: list[tuple[str, str, bool, int | None]], font: str):
+    """One RichText spanning several `\n`-separated lines — docxtpl's
+    resolve_listing() (docxtpl/template.py) turns a literal "\n" inside a
+    rendered value into `<w:br/>` after render, so this prints as several
+    lines inside whatever single paragraph the user put the tag in, with
+    that paragraph's own alignment. That is the point of it: the equivalent
+    `{%p for %}` loop needs a paragraph of its own per line and the Jinja
+    syntax to go with it, which is exactly what game_list/fees_block/
+    details_block exist to avoid for someone hand-editing a .docx.
+
+    Each item is (text, color_hex, bold, size_pt_or_None). An empty `lines`
+    still returns a (blank) RichText rather than "" so the field's kind is
+    always "styled" — see placeholders_for().
+    """
+    from docxtpl import RichText
+
+    rt = RichText()
+    for i, (text, color, bold, size) in enumerate(lines):
+        if i:
+            rt.add("\n")
+        rt.add(text, color=color, bold=bold, font=font,
+                size=(size * 2) if size else None)
+    return rt
+
+
 def _dear_line(data: dict, font: str, size: int | None = None):
     """"Dear <name>," as one RichText — the name in red, the rest in ink.
 
@@ -448,12 +501,16 @@ def _letter_context(data: dict, font: str, date_color: str = DARK_HEX) -> dict:
             rt.add(text, color=color, font=font, bold=bold)
         return rt
 
-    games = []
+    game_line_texts = []
     for gd in data.get("game_dates") or []:
         label = gd.get("label", "")
         date_val = _fmt_date(gd.get("date", ""))
-        games.append(rich(f"{label}: {date_val}" if label else date_val,
-                          color=RED_HEX, bold=True, size=10))
+        game_line_texts.append(f"{label}: {date_val}" if label else date_val)
+
+    games = [rich(text, color=RED_HEX, bold=True, size=10)
+             for text in game_line_texts]
+    game_list = _richtext_block(
+        [(text, RED_HEX, True, 10) for text in game_line_texts], font)
 
     host_city = (data.get("host_city") or "").strip()
     host_country = (data.get("host_country") or "").strip()
@@ -547,12 +604,18 @@ def _letter_context(data: dict, font: str, date_color: str = DARK_HEX) -> dict:
         "competition": comp_name,
         "competition_span": span,
         "game_dates": games,
+        # Same lines as game_dates, but as one styled paragraph — for a
+        # simple uploaded template that writes {{ partidos }} once instead of
+        # the {%p for %} loop. See _richtext_block().
+        "game_list": game_list,
         "host": rich(host_line, bold=True, size=10) if host_line else "",
         "role": role_label,
         "deadline": rich(_fmt_deadline(data.get("confirmation_deadline", "")), color=RED_HEX),
         "confirmation_email": CONFIRMATION_EMAIL.get(role, CONFIRMATION_EMAIL["VGO"]),
         "payment_lines": [rich(text, color=RED_HEX, bold=bold, size=10)
                       for text, bold in _fee_lines(data)],
+        "fees_block": _richtext_block(
+            [(text, RED_HEX, bold, 10) for text, bold in _fee_lines(data)], font),
     }
 
 
@@ -600,6 +663,20 @@ def _bcla_context(data: dict, variant: str, font: str) -> dict:
                         "to send this information to payments.americas@fiba.basketball "
                         "before the start of the window.")
 
+    location = (data.get("location") or "").strip()
+    venue = (data.get("venue") or "").strip()
+    arrival_date = _fmt_deadline(data.get("arrival_date", "")) if data.get("arrival_date") else ""
+    departure_date = _fmt_deadline(data.get("departure_date", "")) if data.get("departure_date") else ""
+    details_lines = [
+        f"{label}: {value}" for label, value in (
+            ("Location", location), ("Venue", venue),
+            ("Arrival Date", arrival_date), ("Departure Date", departure_date),
+        ) if value
+    ]
+
+    fee_lines = _fee_lines(data, incidentals_label="Incidentals Fee",
+                            total_label="Total Fees to be received")
+
     return {
         "letter_date": rich(f"Miami, {_fmt_deadline(letter_date)}" if letter_date else ""),
         "heading": rich(f"BCL Americas {comp_year} – {role_label.upper()} NOMINATION",
@@ -608,16 +685,23 @@ def _bcla_context(data: dict, variant: str, font: str) -> dict:
         "role": role_label,
         "competition": comp_name,
         "year": comp_year,
-        "location": (data.get("location") or "").strip(),
-        "venue": (data.get("venue") or "").strip(),
-        "arrival_date": _fmt_deadline(data.get("arrival_date", "")) if data.get("arrival_date") else "",
-        "departure_date": _fmt_deadline(data.get("departure_date", "")) if data.get("departure_date") else "",
+        "location": location,
+        "venue": venue,
+        "arrival_date": arrival_date,
+        "departure_date": departure_date,
+        # Plain lines, not RichText: matches the game_dates items above (the
+        # F4 branch is plain text too, see BCLA_BODY's `{{ game }}` — not
+        # `{{r game }}`) so a simple template gets the same visual result.
+        "details_block": _richtext_block(
+            [(line, DARK_HEX, False, 10) for line in details_lines], font),
         "game_dates": games,
+        "game_list": _richtext_block(
+            [(text, DARK_HEX, False, 10) for text in games], font),
         "payment_intro": payment_intro,
         "banking_paragraph": banking_line,
-        "payment_lines": [rich(text, bold=bold) for text, bold in _fee_lines(
-            data, incidentals_label="Incidentals Fee",
-            total_label="Total Fees to be received")],
+        "payment_lines": [rich(text, bold=bold) for text, bold in fee_lines],
+        "fees_block": _richtext_block(
+            [(text, DARK_HEX, bold, 10) for text, bold in fee_lines], font),
     }
 
 
@@ -647,12 +731,13 @@ def _lsb_context(data: dict, font: str, *, signature: bool = True) -> dict:
         rt.add(text, color=color, bold=bold, font=font, size=20)  # 10pt
         return rt
 
-    games = []
+    game_line_texts = []
     for gd in data.get("game_dates") or []:
         label = gd.get("label", "")
         date_val = _fmt_date(gd.get("date", ""))
-        games.append(rich(f"{label}: {date_val}" if label else date_val,
-                          bold=True, color=RED_HEX))
+        game_line_texts.append(f"{label}: {date_val}" if label else date_val)
+
+    games = [rich(text, bold=True, color=RED_HEX) for text in game_line_texts]
 
     sig_name, sig_title, sig_org = SIGNATORIES.get("LSB", SIGNATORIES["BCLA"])
 
@@ -665,18 +750,37 @@ def _lsb_context(data: dict, font: str, *, signature: bool = True) -> dict:
     # "Thank you".
     gap = max(2, 7 - round(1.4 * len(games)))
 
+    location = data.get("location") or ""
+    venue = data.get("venue") or ""
+    arrival_date = _fmt_date(data["arrival_date"]) if data.get("arrival_date") else ""
+    departure_date = _fmt_date(data["departure_date"]) if data.get("departure_date") else ""
+    details_lines = [
+        f"{label}: {value}" for label, value in (
+            ("Location", location), ("Venue", venue),
+            ("Arrival Date", arrival_date), ("Departure Date", departure_date),
+        ) if value
+    ]
+
+    fee_lines = _fee_lines(data)
+
     context = {
         "heading": f"Confirmation – {comp_name} {data.get('competition_year', '')}",
         "greeting": _dear_line(data, font, size=10),
         "role": role_label,
         "competition": comp_name,
-        "location": data.get("location") or "",
-        "venue": data.get("venue") or "",
-        "arrival_date": _fmt_date(data["arrival_date"]) if data.get("arrival_date") else "",
-        "departure_date": _fmt_date(data["departure_date"]) if data.get("departure_date") else "",
+        "location": location,
+        "venue": venue,
+        "arrival_date": arrival_date,
+        "departure_date": departure_date,
+        "details_block": _richtext_block(
+            [(line, DARK_HEX, False, 10) for line in details_lines], font),
         "game_dates": games,
+        "game_list": _richtext_block(
+            [(text, RED_HEX, True, 10) for text in game_line_texts], font),
         "payment_lines": [rich(text, bold=bold, color=RED_HEX)
-                      for text, bold in _fee_lines(data)],
+                      for text, bold in fee_lines],
+        "fees_block": _richtext_block(
+            [(text, RED_HEX, bold, 10) for text, bold in fee_lines], font),
         # Solo importa el largo; el contenido de cada elemento no se imprime.
         "signature_gap": [""] * gap,
     }
@@ -728,12 +832,203 @@ def custom_type(template_key: str) -> dict | None:
     return rows[0] if rows else None
 
 
+# Field names used before they were renamed to something readable. Kept as
+# aliases so a .docx downloaded under the old names keeps working; the UI only
+# ever lists the new ones.
+LEGACY_FIELD_ALIASES = {
+    "dear_line": "greeting",
+    "confirm_line": "confirmation_paragraph",
+    "confirm_email": "confirmation_email",
+    "host_line": "host",
+    "role_label": "role",
+    "competition_name": "competition",
+    "fee_lines": "payment_lines",
+    "signature_line": "signature",
+    "bcla_date": "letter_date",
+    "bcla_title": "heading",
+    "lsb_title": "heading",
+    "banking_line": "banking_paragraph",
+    "competition_year": "year",
+}
+
+# Spanish names for the same fields, offered so a template author never has
+# to know the English field name or the {{ }}/{{r }} distinction — the {{r }}
+# part is handled by LetterTemplate.patch_xml below, not by this dict, which
+# only carries the name. Unlike LEGACY_FIELD_ALIASES these are advertised in
+# the UI (placeholders_for()'s "aliases"), not just tolerated on upload.
+FRIENDLY_ALIASES = {
+    "saludo": "greeting",
+    "fecha_carta": "letter_date",
+    "asunto": "subject",
+    "titulo": "heading",
+    "competencia": "competition",
+    "cargo": "role",
+    "sede": "venue",
+    "lugar": "location",
+    "llegada": "arrival_date",
+    "salida": "departure_date",
+    "partidos": "game_list",
+    "honorarios": "fees_block",
+    "detalles": "details_block",
+    "cierre": "closing_paragraph",
+    "viaje": "travel_paragraph",
+    "confirmacion": "confirmation_paragraph",
+    "intro": "intro_paragraph",
+    "firma": "signature",
+    "fecha_limite": "deadline",
+    "email_confirmacion": "confirmation_email",
+    "anfitrion": "host",
+    "periodo": "competition_span",
+    "anio": "year",
+    "intro_pago": "payment_intro",
+    "banco": "banking_paragraph",
+}
+
+
+def with_legacy_aliases(context: dict) -> dict:
+    out = dict(context)
+    for old, new in LEGACY_FIELD_ALIASES.items():
+        if new in context and old not in out:
+            out[old] = context[new]
+    for friendly, real in FRIENDLY_ALIASES.items():
+        if real in context and friendly not in out:
+            out[friendly] = context[real]
+    return out
+
+
+def _template_name_map(context: dict) -> dict[str, str]:
+    """Every name a .docx can use for a field of `context`, mapped to its
+    canonical name: the canonical name itself, plus any legacy or friendly
+    alias that resolves to a field this context actually has.
+
+    Feeds LetterTemplate, which rewrites a bare `{{ name }}` — canonical or
+    aliased — to the form docxtpl needs (`{{r real }}` for a styled value,
+    `{{ real }}` for a plain one) before Jinja ever parses the file.
+    """
+    name_map = {name: name for name in context}
+    for old, new in LEGACY_FIELD_ALIASES.items():
+        if new in context:
+            name_map[old] = new
+    for friendly, real in FRIENDLY_ALIASES.items():
+        if real in context:
+            name_map[friendly] = real
+    return name_map
+
+
+_BARE_TAG_RE = re.compile(r"\{\{\s*(\w+)\s*\}\}")
+
+try:
+    # Imported at module level (unlike the rest of this file's docxtpl uses)
+    # because LetterTemplate has to subclass it. Falls back to `object` so a
+    # machine without docxtpl can still import this module — only
+    # instantiating LetterTemplate would fail there, same as every other
+    # docxtpl-dependent function in this file already does.
+    from docxtpl import DocxTemplate as _DocxTemplate
+except Exception:  # pragma: no cover - docxtpl always present in prod/CI
+    _DocxTemplate = object
+
+
+class LetterTemplate(_DocxTemplate):
+    """A DocxTemplate that accepts a bare `{{ campo }}` for styled values too.
+
+    docxtpl normally needs `{{r campo }}` for anything that renders as
+    RichText: a plain `{{ campo }}` drops the value's raw run XML inside a
+    `<w:t>` text node instead of splicing it in as sibling XML, which
+    corrupts the document rather than erroring. Requiring the template author
+    to know in advance which fields are "styled" is exactly the "writing
+    Jinja in Word" complaint — this makes the distinction the app's problem
+    instead of the template author's: write `{{ campo }}` always, in English
+    or through a FRIENDLY_ALIASES name, and this fixes it up before Jinja
+    ever parses the file. `{{r campo }}` and `{%p for %}` loops keep working
+    unchanged — this only ever adds an `r`, never removes one.
+
+    `richtext_names` and `name_map` come from the context that will be
+    rendered (see _template_name_map()), computed once per render/validation
+    by the caller.
+    """
+
+    def __init__(self, path, richtext_names: set[str], name_map: dict[str, str]):
+        self._richtext_names = richtext_names
+        self._name_map = name_map
+        super().__init__(path)
+
+    def _rewrite_bare_tag(self, m: re.Match) -> str:
+        real = self._name_map.get(m.group(1))
+        if real is None:
+            # Not one of ours — leave untouched. Could be a typo (comes back
+            # as "unknown" from validate_template) or a deliberately raw
+            # Jinja expression this app doesn't model.
+            return m.group(0)
+        if real in self._richtext_names:
+            return "{{r " + real + " }}"
+        return "{{ " + real + " }}"
+
+    def patch_xml(self, src_xml):
+        # The first two regexes of DocxTemplate.patch_xml (docxtpl 0.20.2,
+        # docxtpl/template.py): they strip the XML tags Word scatters inside
+        # a {{ }}/{% %}/{# #} tag when a user edits around it, so a tag typed
+        # as one "word" in Word is a clean contiguous string here. Copied
+        # rather than reached via super() because everything AFTER our
+        # rewrite below (the {%y ... %} collapsing that turns {{r x }} into
+        # the <w:r> splice) has to run on the rewritten text, not before it.
+        src_xml = re.sub(
+            r"(?<={)(<[^>]*>)+(?=[\{%\#])|(?<=[%\}\#])(<[^>]*>)+(?=\})",
+            "",
+            src_xml,
+            flags=re.DOTALL,
+        )
+
+        def striptags(m):
+            return re.sub(
+                "</w:t>.*?(<w:t>|<w:t [^>]*>)", "", m.group(0), flags=re.DOTALL
+            )
+
+        src_xml = re.sub(
+            r"{%(?:(?!%}).)*|{#(?:(?!#}).)*|{{(?:(?!}}).)*",
+            striptags,
+            src_xml,
+            flags=re.DOTALL,
+        )
+
+        src_xml = _BARE_TAG_RE.sub(self._rewrite_bare_tag, src_xml)
+
+        return super().patch_xml(src_xml)
+
+
+def _render_template(path, context: dict):
+    """Render a placeholder template file. Returns a DocxTemplate (a
+    LetterTemplate, which is one), which exposes the same .save(path) as a
+    Document, so the rest of the pipeline is unchanged."""
+    ctx = with_legacy_aliases(context)
+    richtext_names = {name for name, value in ctx.items()
+                       if type(value).__name__ == "RichText"}
+    tpl = LetterTemplate(str(path), richtext_names, _template_name_map(context))
+    tpl.render(ctx, jinja_env=_sandboxed_jinja_env())
+    return tpl
+
+
 def spec_for(template_key: str) -> dict | None:
     """Resolve a key to {file, context} — built-in first, then a custom type.
 
-    A custom type has no bespoke Python: it picks one of the two letter shapes
-    and supplies its own signatory, so the generator can render a key it has
-    never seen before.
+    A custom type has no bespoke Python: it renders through the same context
+    every other custom type does and supplies its own signatory, so the
+    generator can render a key it has never seen before.
+
+    `kind` ("nomination" or "confirmation") no longer limits which fields the
+    context carries — it only picks the Word starter handed to a brand-new
+    type (STARTER_FOR_KIND in routers/templates.py) and, through `font`,
+    which brand font the starter and the field examples use. The context
+    itself is always the union of _lsb_context's fields (location, venue,
+    arrival/departure dates, details_block, heading, the LSB-shaped
+    signature_gap sizing…) and _letter_context's (subject, intro_paragraph,
+    travel_paragraph, confirmation_paragraph, is_tournament…), with
+    _letter_context's values winning on the handful of names both share
+    (greeting, competition, role, game_dates, game_list, payment_lines,
+    fees_block, signature). That way an uploaded .docx can use any field
+    regardless of which shape its type was created as — the old split meant
+    a `nomination` type had no `location`/`venue` and a `confirmation` type
+    had no `subject`/`travel_paragraph`, for no reason a template author
+    could see from the UI.
     """
     built_in = TEMPLATE_SPECS.get(template_key)
     if built_in:
@@ -749,20 +1044,23 @@ def spec_for(template_key: str) -> dict | None:
         row.get("signatory_org") or "",
     ) if p)
 
-    if row["kind"] == "confirmation":
-        # Still IBM Plex Sans, and still carrying a `signature`: a custom type
-        # is not LSB. It prints on its own uploaded letterhead and signs with
-        # its own signatory, so neither the font swap nor the baked-in
-        # signature block that LSB gained applies here.
-        def context(d, _sig=signature):
-            ctx = _lsb_context(d, FONT_WCQ)
-            ctx["signature_line"] = _sig
-            return ctx
-    else:
-        def context(d, _sig=signature):
-            ctx = _letter_context(d, FONT_GENERIC)
-            ctx["signature_line"] = _sig
-            return ctx
+    # Still IBM Plex Sans for "confirmation": a custom type is not LSB. It
+    # prints on its own uploaded letterhead and signs with its own
+    # signatory, so the Univers swap LSB itself got doesn't apply here.
+    font = FONT_WCQ if row["kind"] == "confirmation" else FONT_GENERIC
+
+    def context(d, _sig=signature, _font=font):
+        lsb_ctx = _lsb_context(d, _font)
+        ctx = {**lsb_ctx, **_letter_context(d, _font)}
+        ctx["heading"] = lsb_ctx["heading"]  # _letter_context has no heading
+        # Not {{ signature }}: that key still exists (from _letter_context,
+        # a generic FIBA Americas signatory) as a fallback for a template
+        # that doesn't know about custom signatories, but a type created
+        # from the UI supplies its own via signature_line — see
+        # STARTER_FOR_KIND / build_confirmation_starter in
+        # scripts/build_letter_templates.py for why it isn't just {{ signature }}.
+        ctx["signature_line"] = _sig
+        return ctx
 
     # Custom types have no file in the repo — theirs is always uploaded.
     return {"file": None, "context": context, "custom_type": row}
@@ -777,15 +1075,41 @@ def _richtext_text(value) -> str:
     return "".join(re.findall(r"<w:t[^>]*>([^<]*)</w:t>", getattr(value, "xml", "")))
 
 
+# Field order the Templates UI shows a non-advanced field in, when it's
+# present — a fixed order beats alphabetical because it reads like the
+# letter itself (date, heading, greeting, body, fees, signature) rather than
+# an arbitrary word list. Everything else this template key offers follows,
+# alphabetically.
+_PLACEHOLDER_ORDER = [
+    "letter_date", "heading", "subject", "greeting", "intro_paragraph",
+    "competition", "role", "host", "competition_span", "details_block",
+    "location", "venue", "arrival_date", "departure_date", "game_list",
+    "confirmation_paragraph", "deadline", "confirmation_email",
+    "travel_paragraph", "payment_intro", "fees_block", "banking_paragraph",
+    "closing_paragraph", "signature", "year",
+]
+
+# Reverse of FRIENDLY_ALIASES: canonical field name -> the Spanish names that
+# resolve to it, for placeholders_for()'s "aliases".
+_FRIENDLY_ALIASES_BY_FIELD: dict[str, list[str]] = {}
+for _friendly_name, _real_name in FRIENDLY_ALIASES.items():
+    _FRIENDLY_ALIASES_BY_FIELD.setdefault(_real_name, []).append(_friendly_name)
+
+
 def placeholders_for(template_key: str) -> list[dict]:
     """What a template of this key can use, ready to show in the UI.
 
-    Each entry carries the exact snippet to paste into Word — the bare name is
-    not enough, since styled values need `{{r x }}` and lists need a loop — plus
-    an example of what it prints, rendered from the sample letter.
+    Each styled or plain entry's `tag` is always the bare `{{ name }}` —
+    LetterTemplate (see _render_template) upgrades it to `{{r name }}` at
+    render time when the value is RichText, so the author never has to know
+    which case they're in. Lists still need the `{%p for %}` loop docxtpl
+    requires (`tag_extra`) and are marked `advanced`, along with
+    `signature_gap`, which isn't listed at all — its length matters, not
+    anything a template would print from it.
 
-    Anything not listed here renders empty; that's what upload validation warns
-    about.
+    `example` is rendered from the same sample letter used by
+    generate_preview(). Anything not listed here renders empty; that's what
+    upload validation warns about.
     """
     spec = spec_for(template_key)
     if not spec:
@@ -799,41 +1123,57 @@ def placeholders_for(template_key: str) -> list[dict]:
             "Could not compute placeholders for %s", template_key)
         return []
 
-    out = []
-    for name, value in sorted(context.items()):
+    scalars = []
+    lists_out = []
+    for name, value in context.items():
         # Booleans (is_tournament) exist for {%p if %} branches, not to be
         # printed — advertising {{ is_tournament }} would invite a literal
         # "True"/"False" in a letter.
         if isinstance(value, bool):
             continue
+        if name == "signature_gap":
+            continue
+        aliases = _FRIENDLY_ALIASES_BY_FIELD.get(name, [])
         if isinstance(value, list):
             first = value[0] if value else ""
             example = _richtext_text(first) if type(first).__name__ == "RichText" else str(first)
-            out.append({
+            lists_out.append({
                 "name": name,
                 "kind": "list",
                 # One paragraph per item: the for/endfor lines disappear on render.
                 "tag": "{%p for item in " + name + " %}",
                 "tag_extra": ["{{r item }}", "{%p endfor %}"],
+                "aliases": aliases,
                 "example": example,
+                "advanced": True,
             })
         elif type(value).__name__ == "RichText":
-            out.append({
+            scalars.append({
                 "name": name,
                 "kind": "styled",
-                "tag": "{{r " + name + " }}",
-                "tag_extra": [],
+                "tag": "{{ " + name + " }}",
+                "aliases": aliases,
                 "example": _richtext_text(value),
+                "advanced": False,
             })
         else:
-            out.append({
+            scalars.append({
                 "name": name,
                 "kind": "plain",
                 "tag": "{{ " + name + " }}",
-                "tag_extra": [],
+                "aliases": aliases,
                 "example": str(value),
+                "advanced": False,
             })
-    return out
+
+    def _order(name: str) -> tuple[int, str]:
+        if name in _PLACEHOLDER_ORDER:
+            return (0, f"{_PLACEHOLDER_ORDER.index(name):03d}")
+        return (1, name)
+
+    scalars.sort(key=lambda item: _order(item["name"]))
+    lists_out.sort(key=lambda item: item["name"])
+    return scalars + lists_out
 
 
 def template_path(template_key: str) -> Path | None:
@@ -891,46 +1231,6 @@ def _build_bcla(data: dict, variant: str):
         return _render_template(path, _bcla_context(data, variant, "Univers"))
     return _build_bcla_letter(data, variant=variant)
 
-
-# Field names used before they were renamed to something readable. Kept as
-# aliases so a .docx downloaded under the old names keeps working; the UI only
-# ever lists the new ones.
-LEGACY_FIELD_ALIASES = {
-    "dear_line": "greeting",
-    "confirm_line": "confirmation_paragraph",
-    "confirm_email": "confirmation_email",
-    "host_line": "host",
-    "role_label": "role",
-    "competition_name": "competition",
-    "fee_lines": "payment_lines",
-    "signature_line": "signature",
-    "bcla_date": "letter_date",
-    "bcla_title": "heading",
-    "lsb_title": "heading",
-    "banking_line": "banking_paragraph",
-    "competition_year": "year",
-}
-
-
-def with_legacy_aliases(context: dict) -> dict:
-    out = dict(context)
-    for old, new in LEGACY_FIELD_ALIASES.items():
-        if new in context and old not in out:
-            out[old] = context[new]
-    return out
-
-
-def _render_template(path, context: dict):
-    """Render a placeholder template file. Returns a DocxTemplate, which
-    exposes the same .save(path) as a Document, so the rest of the pipeline is
-    unchanged."""
-    # Imported lazily: if docxtpl is ever missing, only this path breaks and
-    # the positional fallbacks still serve letters.
-    from docxtpl import DocxTemplate
-
-    tpl = DocxTemplate(str(path))
-    tpl.render(with_legacy_aliases(context), jinja_env=_sandboxed_jinja_env())
-    return tpl
 
 
 # ─── WCQ / GENERIC LETTER ────────────────────────────────────────────────────
@@ -1531,6 +1831,161 @@ def _build_wcq_from_scratch(data: dict) -> Document:
     return doc
 
 
+# ─── FONTS ────────────────────────────────────────────────────────────────────
+#
+# fonts_report() tells the Templates UI whether a .docx will actually print in
+# the font it declares once LibreOffice converts it on the droplet — the
+# .docx itself always shows the right font in Word, which is not the same
+# question.
+
+_RFONTS_ASCII_RE = re.compile(r'<w:rFonts\b[^>]*\bw:ascii="([^"]*)"')
+_IGNORED_FONT_FAMILIES = {
+    "symbol", "wingdings", "courier new", "courier", "times new roman", "",
+}
+# First word of the families fontconfig's 30-metric-aliases.conf resolves the
+# common Microsoft/Adobe faces to. See _font_status().
+_METRIC_COMPATIBLE_PREFIXES = {"Nimbus", "Liberation", "Carlito", "Caladea", "TeX"}
+
+
+def _docx_declared_fonts(docx_bytes_or_path) -> list[str]:
+    """Family names from `w:rFonts w:ascii` in document.xml, headers and
+    footers, in first-seen order, deduplicated.
+
+    styles.xml is deliberately NOT scanned: a letterhead carries dozens of
+    latent styles (Minion Pro, Segoe UI, "FIBA"…) that no paragraph uses,
+    and listing them as "missing" buries the two fonts that matter."""
+    import io
+    import zipfile
+
+    if isinstance(docx_bytes_or_path, (bytes, bytearray)):
+        source = io.BytesIO(docx_bytes_or_path)
+    else:
+        source = str(docx_bytes_or_path)
+
+    families: list[str] = []
+    try:
+        with zipfile.ZipFile(source) as zf:
+            names = [
+                n for n in zf.namelist()
+                if n == "word/document.xml"
+                or re.fullmatch(r"word/(header|footer)\d*\.xml", n)
+            ]
+            for name in names:
+                try:
+                    xml = zf.read(name).decode("utf-8", errors="ignore")
+                except Exception:
+                    continue
+                families.extend(_RFONTS_ASCII_RE.findall(xml))
+    except Exception:
+        logging.getLogger(__name__).exception(
+            "fonts_report: could not read the .docx as a zip")
+        return []
+
+    seen: list[str] = []
+    for fam in families:
+        fam = (fam or "").strip()
+        if not fam or fam.lower() in _IGNORED_FONT_FAMILIES:
+            continue
+        if fam not in seen:
+            seen.append(fam)
+    return seen
+
+
+@functools.lru_cache(maxsize=None)
+def _alias_source_families() -> frozenset[str]:
+    """Family names fonts/fonts.conf declares an <alias> for (lower-cased) —
+    i.e. fonts we deliberately chose a substitute for, as opposed to fonts
+    fontconfig happened to fall back on."""
+    import xml.etree.ElementTree as ET
+
+    if not FONTCONFIG_FILE.exists():
+        return frozenset()
+    try:
+        tree = ET.parse(str(FONTCONFIG_FILE))
+    except Exception:
+        logging.getLogger(__name__).exception(
+            "_alias_source_families: could not parse fonts.conf")
+        return frozenset()
+
+    out = set()
+    for alias in tree.getroot().findall("alias"):
+        family = alias.find("family")
+        if family is not None and (family.text or "").strip():
+            out.add(family.text.strip().lower())
+    return frozenset(out)
+
+
+@functools.lru_cache(maxsize=None)
+def _fc_match(family: str) -> str | None:
+    """Raw `fc-match -f '%{family}' <family>` output, or None if fc-match
+    isn't installed (a developer's Mac) — the caller turns that into
+    status "unknown" rather than failing. Cached per family: cheap, not
+    free, and fonts_report() is called once per template on every catalog
+    load."""
+    import shutil as _shutil
+    import subprocess
+
+    fc_match = _shutil.which("fc-match")
+    if not fc_match:
+        return None
+
+    env = ({**os.environ, "FONTCONFIG_FILE": str(FONTCONFIG_FILE)}
+           if FONTCONFIG_FILE.exists() else None)
+    try:
+        result = subprocess.run(
+            [fc_match, "-f", "%{family}", family],
+            capture_output=True, text=True, timeout=10, env=env,
+        )
+    except Exception:
+        logging.getLogger(__name__).exception("_fc_match(%r) failed", family)
+        return None
+    if result.returncode != 0:
+        return None
+    return result.stdout.strip()
+
+
+def _font_status(family: str) -> dict:
+    matched = _fc_match(family)
+    if matched is None:
+        return {"family": family, "status": "unknown", "substitute": None}
+
+    matched_families = [f.strip() for f in matched.split(",") if f.strip()]
+    if family.lower() in {f.lower() for f in matched_families}:
+        return {"family": family, "status": "ok", "substitute": None}
+
+    substitute = matched_families[0] if matched_families else None
+    if family.lower() in _alias_source_families():
+        return {"family": family, "status": "substituted", "substitute": substitute}
+    # fontconfig ships its own metric-compatible aliases (Arial → Liberation
+    # Sans / Nimbus Sans, Helvetica → Nimbus Sans, Times New Roman → Nimbus
+    # Roman…). Those print at the same widths as the original, so they are a
+    # chosen substitute too, not a fallback nobody picked.
+    if substitute and substitute.split(" ")[0] in _METRIC_COMPATIBLE_PREFIXES:
+        return {"family": family, "status": "substituted", "substitute": substitute}
+    return {"family": family, "status": "missing", "substitute": substitute}
+
+
+def fonts_report(docx_bytes_or_path) -> list[dict]:
+    """What a .docx will actually print as, once LibreOffice converts it on
+    the droplet with fonts/fonts.conf applied.
+
+    `docx_bytes_or_path` is either the raw bytes of a .docx (an in-flight
+    upload) or a path to one on disk. Returns one entry per distinct
+    declared font family:
+
+        {"family": "Univers", "status": "substituted", "substitute": "Nimbus Sans"}
+
+    `status` is "ok" (fc-match resolves to the same family — installed, or a
+    system alias already points there), "substituted" (fonts.conf has a
+    deliberate <alias> for it — the letter prints, just not in the brand
+    font), "missing" (falls back to whatever fontconfig's default is, e.g.
+    DejaVu Sans — nobody chose that), or "unknown" (fc-match isn't
+    available, e.g. developing on a Mac; nothing was checked).
+    """
+    families = _docx_declared_fonts(docx_bytes_or_path)
+    return [_font_status(family) for family in families]
+
+
 # ─── PDF CONVERSION (CloudConvert) ───────────────────────────────────────────
 
 def _convert_to_pdf_libreoffice(docx_path: str) -> tuple[str | None, str | None]:
@@ -1542,6 +1997,17 @@ def _convert_to_pdf_libreoffice(docx_path: str) -> tuple[str | None, str | None]
 
     pdf_path = docx_path.replace(".docx", ".pdf")
     out_dir = str(Path(docx_path).parent)
+    # The droplet has none of the letters' brand fonts (Univers, IBM Plex
+    # Sans, Cochocib Script, Titillium) installed system-wide, so fontconfig
+    # was falling back to DejaVu Sans — wider, so titles wrapped, the
+    # four-line signature block broke and the footer clipped mid-word.
+    # fonts/fonts.conf aliases each brand font to a free equivalent shipped in
+    # fonts/ (or to something licensed in fonts/private/, gitignored, if FIBA
+    # ever hands those over); pointing LibreOffice at it via FONTCONFIG_FILE
+    # scopes the substitution to this conversion only — it does not touch
+    # fontconfig for the rest of the system or depend on the service user's
+    # HOME. See the comment at the top of fonts/fonts.conf for the full story.
+    env = {**os.environ, "FONTCONFIG_FILE": str(FONTCONFIG_FILE)} if FONTCONFIG_FILE.exists() else None
     # Use a per-call user profile to avoid concurrency lock contention
     with tempfile.TemporaryDirectory(prefix="lo-profile-") as profile_dir:
         try:
@@ -1554,6 +2020,7 @@ def _convert_to_pdf_libreoffice(docx_path: str) -> tuple[str | None, str | None]
                     docx_path,
                 ],
                 capture_output=True, text=True, timeout=90,
+                env=env,
             )
         except subprocess.TimeoutExpired:
             return None, "LibreOffice conversion timed out"

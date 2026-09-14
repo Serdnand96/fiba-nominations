@@ -35,7 +35,8 @@ legacy `fibaamericascloud.com`).
    deshabilitado. **Ojo:** el export de training schedule
    (`api/_lib/routers/training.py`) es un camino aparte — arma la tabla con
    python-docx y todavía convierte vía CloudConvert únicamente (si no hay
-   API key, sirve el `.docx`).
+   API key, sirve el `.docx`). Las fuentes de la conversión salen de `fonts/`
+   (punto 20).
 
 3. **Hay dos tablas distintas para personas:**
    - `personnel` → TDs / VGOs (oficiales que se nominan)
@@ -318,6 +319,64 @@ legacy `fibaamericascloud.com`).
       no sabe si fue foto o avatar, y el bucket sigue sin SVG. Los estilos son
       MIT o "free for commercial use"; no agregar uno que exija atribución.
 
+20. **Las cartas se convierten a PDF con las fuentes de `fonts/`, no con las
+    del sistema.** El droplet no tiene Univers, IBM Plex Sans, Cochocib Script ni
+    Titillium, y hasta septiembre 2026 LibreOffice las reemplazaba por DejaVu
+    Sans: títulos partidos, firma de WCQ en cuatro líneas, "Gino Rullo" en texto
+    plano gigante, footer de GENERIC cortado a mitad de palabra. Ahora
+    `_convert_to_pdf_libreoffice()` lanza `soffice` con
+    `FONTCONFIG_FILE=<repo>/fonts/fonts.conf`: las fuentes libres viven en el
+    repo y los alias (`Univers → Nimbus Sans`, `Cochocib Script → Alex Brush`,
+    `Calibri → Carlito`, …) viven en ese archivo. No hay nada que instalar en
+    el sistema ni depende del HOME del servicio.
+
+    - Las fuentes con licencia van a `fonts/private/` (gitignoreado) si FIBA
+      las entrega; al estar presentes ganan sobre el sustituto porque los alias
+      usan `<accept>`, no `<prefer>`.
+    - `fonts_report()` compara las familias de un `.docx` contra `fc-match` y
+      Templates lo muestra por plantilla (ok / sustituida / falta). Es el único
+      aviso: la conversión "termina bien" aunque falte la fuente.
+    - Las cajas de texto del footer de GENERIC ("@FIBA", "FIBA.basketball")
+      llevan `Calibri` explícito en el `.docx` fuente porque LibreOffice no les
+      aplica la fuente del tema de Word y con cualquier otra se parten. Si se
+      reemplaza el membrete, hay que repetir ese parche.
+    - Firma de BCLA y LSB: sigue siendo texto en una script (Alex Brush como
+      sustituto). Una imagen escaneada sería mejor; pedirla al cliente.
+
+21. **Generar una nominación: el sistema rellena, el usuario corrige.** Desde
+    septiembre 2026 el formulario de Nominaciones prellena desde
+    `GET /nominations/prefill`: defaults de la competencia, tarifa por cargo,
+    fechas de partido de la competencia o de la persona (misma derivación que
+    `sync-nominations`, importada de `games.py`, no duplicada). Si `window_fee`
+    llega `null` al crear, el backend aplica la tarifa del cargo de cada persona.
+
+    - **La carta no se genera con huecos.** `required_fields_for(competition)`
+      exige `letter_date` y `window_fee` siempre, `confirmation_deadline` en
+      cartas de nominación (WCQ/GENERIC/custom `nomination`) y al menos un
+      `game_dates` en `per_game`. `POST /{id}/generate` responde **422** con
+      `detail = {code: "missing_fields", missing: [...]}` (un dict, a
+      propósito); bulk y `generate-pdfs` lo reportan por ítem. La vista previa
+      sí renderiza igual, con header `X-Missing-Fields`, para ver qué falta.
+    - Existe `PATCH /nominations/{id}` (editar) y dos previews sin persistir:
+      `POST /nominations/{id}/preview` y `POST /nominations/preview` (payload
+      del formulario). Ninguno toca Storage ni `status`.
+    - `letter_data_for(nom)` es la única forma de armar el dict que consume
+      `generate_nomination()`; lo usan nominations.py, games.py y el preview de
+      Templates con nominación real. No lo vuelvas a copiar a mano.
+    - Descarga en lote: `POST /nominations/download-zip`.
+
+22. **Las plantillas subidas usan tags simples.** El usuario escribe siempre
+    `{{ campo }}`: `LetterTemplate.patch_xml()` en `document_generator.py` le
+    pone la `r` a los valores `RichText` antes de que docxtpl los procese, y
+    resuelve alias en español (`{{ saludo }}`, `{{ partidos }}`,
+    `{{ honorarios }}`, en `FRIENDLY_ALIASES`). Las listas llegan armadas en un
+    solo valor multilínea (`game_list`, `fees_block`, `details_block`); los
+    bucles `{%p for %}` siguen funcionando pero la UI los marca como avanzados.
+    Un tipo creado desde la UI recibe el contexto **unificado** (nomination ∪
+    confirmation): `kind` solo elige el starter, ya no limita los campos.
+    Se puede duplicar una plantilla (`POST /templates/{key}/duplicate`) y
+    previsualizar con una nominación real (`?nomination_id=`).
+
 ---
 
 ## 🗺️ Mapa del repo
@@ -361,6 +420,7 @@ fiba-nominations/
 │   └── i18n/                  ← ES + EN
 │
 ├── public/favicon.png         ← monograma F + basketball seam
+├── fonts/                     ← fuentes libres + fonts.conf para LibreOffice (punto 20)
 ├── scripts/
 │   ├── build_letter_templates.py  ← regenera los *_TPL.docx (correr si cambia el membrete)
 │   ├── fiba-security-scan.sh      ← scanner horario de nginx logs (corre en droplet)

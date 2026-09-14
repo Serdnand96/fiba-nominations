@@ -142,6 +142,20 @@ class BulkNominationCreate(BaseModel):
     _blank_dates = field_validator(*_DATE_FIELDS, mode="before")(_blank_date_is_none)
 
 
+class NominationUpdate(BaseModel):
+    letter_date: Optional[str] = None
+    location: Optional[str] = None
+    venue: Optional[str] = None
+    arrival_date: Optional[str] = None
+    departure_date: Optional[str] = None
+    game_dates: Optional[list[GameDate]] = None
+    window_fee: Optional[float] = None
+    incidentals: Optional[float] = None
+    confirmation_deadline: Optional[str] = None
+
+    _blank_dates = field_validator(*_DATE_FIELDS, mode="before")(_blank_date_is_none)
+
+
 # ─── INVENTORY ─────────────────────────────────────────────────────────────
 
 class AssetCreate(BaseModel):

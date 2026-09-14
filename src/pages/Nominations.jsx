@@ -1,14 +1,12 @@
 import { useState, useEffect, useMemo } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import {
-  getNominations, getPersonnel, getCompetitions, getGames,
-  createNomination, createBulkNominations, generateNomination,
-  bulkGenerateNominations, deleteNomination, bulkDeleteNominations,
-  downloadNominationBlob, updateNominationConfirmation, updateNominationApproval,
+  getNominations, getPersonnel, getCompetitions,
+  generateNomination, deleteNomination, bulkDeleteNominations,
+  downloadNominationBlob, downloadNominationsZip, previewNomination,
+  updateNominationConfirmation, updateNominationApproval,
 } from '../api/client'
 import { roleLabel, roleBadgeClass } from '../lib/roles'
-import { countryName } from '../lib/countries'
-import { refereeCompetitionConflicts } from '../lib/refereeNeutrality'
 
 const CONFIRMATION_BADGES = {
   pending: 'bg-gray-500/20 text-ink-700 dark:text-gray-300 border border-gray-500/40',
@@ -22,15 +20,24 @@ import { useToast } from '../components/ui/Toast'
 import { InfoHint } from '../components/ui/Tooltip'
 import NominationsMatrix from '../components/NominationsMatrix'
 import PersonProfilePanel from '../components/PersonProfilePanel'
-import { competitionLabel } from '../lib/competitions'
-
-const BCLA_F4_ROUNDS = ['Semifinals', '3rd Place', 'Final']
+import NominationFormModal, { NominationPreviewModal, describeNominationError } from '../components/NominationFormModal'
 
 function compareValues(a, b, dir) {
   const av = (a ?? '').toString().toLowerCase()
   const bv = (b ?? '').toString().toLowerCase()
   const cmp = av.localeCompare(bv, undefined, { numeric: true })
   return dir === 'asc' ? cmp : -cmp
+}
+
+function triggerBlobDownload(blob, filename) {
+  const objectUrl = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = objectUrl
+  link.download = filename
+  document.body.appendChild(link)
+  link.click()
+  document.body.removeChild(link)
+  setTimeout(() => URL.revokeObjectURL(objectUrl), 1000)
 }
 
 export default function Nominations() {
@@ -47,15 +54,13 @@ export default function Nominations() {
   const [sort, setSort] = useState({ key: null, dir: 'asc' })
   const [profilePerson, setProfilePerson] = useState(null)
   const [view, setView] = useState('table') // 'table' | 'matrix'
-  const [showForm, setShowForm] = useState(false)
   const [loading, setLoading] = useState(false)
   const [bulkProgress, setBulkProgress] = useState(null)
 
-  const [form, setForm] = useState({
-    personnel_ids: [], competition_id: '', letter_date: '', location: '',
-    venue: '', arrival_date: '', departure_date: '', game_dates: [],
-    window_fee: '', incidentals: '', confirmation_deadline: '',
-  })
+  // { mode: 'create', competitionId } | { mode: 'edit', nomination } | null
+  const [formState, setFormState] = useState(null)
+  // { kind: 'existing', id, title } | null — row-level "Ver carta"
+  const [previewFor, setPreviewFor] = useState(null)
 
   const [selectedIds, setSelectedIds] = useState(new Set())
   const [preselectedHandled, setPreselectedHandled] = useState(false)
@@ -66,17 +71,8 @@ export default function Nominations() {
   useEffect(() => {
     const compId = searchParams.get('competition')
     if (compId && competitions.length > 0 && !preselectedHandled) {
-      // Pre-select the competition and open form
       const comp = competitions.find(c => c.id === compId)
-      if (comp) {
-        const tk = comp.template_key || ''
-        let gameDates = []
-        if (tk === 'BCLA' || tk === 'BCLA_F4') {
-          gameDates = BCLA_F4_ROUNDS.map(label => ({ label, date: '' }))
-        }
-        setForm(f => ({ ...f, competition_id: compId, game_dates: gameDates }))
-        setShowForm(true)
-      }
+      if (comp) setFormState({ mode: 'create', competitionId: compId })
       setPreselectedHandled(true)
       setSearchParams({}, { replace: true })
     }
@@ -89,53 +85,15 @@ export default function Nominations() {
       setNominations(n)
       setPersonnel(p)
       setCompetitions(c)
+      return n
     } catch (err) {
       console.error('Load error:', err)
       push({ type: 'error', title: t('nominations.errorLoading') })
+      return nominations
     } finally {
       setLoading(false)
     }
   }
-
-  const selectedComp = competitions.find(c => c.id === form.competition_id)
-  const templateKey = selectedComp?.template_key || ''
-  const showLocationFields = ['BCLA', 'BCLA_F4', 'BCLA_RS', 'LSB'].includes(templateKey)
-  const showDeadline = ['WCQ', 'GENERIC'].includes(templateKey)
-
-  // Games of the selected competition, for the informative referee-neutrality
-  // notice (competition-level nominations never block). National teams →
-  // groups off-limits; clubs → clubs from the referee's country.
-  const [compGames, setCompGames] = useState([])
-  useEffect(() => {
-    if (!form.competition_id) {
-      setCompGames([])
-      return
-    }
-    let cancelled = false
-    getGames(form.competition_id)
-      .then(g => { if (!cancelled) setCompGames(g || []) })
-      .catch(() => { if (!cancelled) setCompGames([]) })
-    return () => { cancelled = true }
-  }, [form.competition_id])
-
-  const refereeNotices = useMemo(() => {
-    if (compGames.length === 0) return []
-    const isNationalTeam = !!selectedComp?.is_national_team
-    const notices = []
-    for (const pid of form.personnel_ids) {
-      const person = personnel.find(p => p.id === pid)
-      if (!person || (person.role !== 'REF' && person.role !== 'REF_INSTRUCTOR')) continue
-      const conflict = refereeCompetitionConflicts(person, compGames, isNationalTeam)
-      if (conflict) notices.push({ person, ...conflict })
-    }
-    return notices
-  }, [form.personnel_ids, personnel, compGames, selectedComp?.is_national_team])
-
-  const total = useMemo(() => {
-    const w = parseFloat(form.window_fee) || 0
-    const i = parseFloat(form.incidentals) || 0
-    return (w + i).toFixed(2)
-  }, [form.window_fee, form.incidentals])
 
   const stats = useMemo(() => {
     const generated = nominations.filter(n => n.status === 'generated').length
@@ -179,7 +137,7 @@ export default function Nominations() {
       const updated = await updateNominationConfirmation(nom.id, newStatus)
       setNominations(prev => prev.map(n => n.id === nom.id ? { ...n, ...updated } : n))
     } catch (err) {
-      push({ type: 'error', title: t('nominations.errorUpdatingConfirmation') + ': ' + (err.response?.data?.detail || err.message) })
+      push({ type: 'error', title: t('nominations.errorUpdatingConfirmation'), body: err.response?.data?.detail || err.message })
     }
   }
 
@@ -197,147 +155,65 @@ export default function Nominations() {
     }
   }
 
-  function handleCompChange(competition_id) {
-    const comp = competitions.find(c => c.id === competition_id)
-    const tk = comp?.template_key || ''
-    let gameDates = []
-    if (tk === 'BCLA' || tk === 'BCLA_F4') {
-      gameDates = BCLA_F4_ROUNDS.map(label => ({ label, date: '' }))
+  // Generates every id in sequence (progress bar), then delivers the result:
+  // exactly one PDF downloads directly, more than one comes back as a single
+  // ZIP — replaces the old "download one, sleep 500ms, repeat" loop.
+  async function generateAndDeliver(ids, freshList) {
+    const nameOf = (id) => freshList.find(n => n.id === id)?.personnel?.name || id
+    let successCount = 0
+    const generatedIds = []
+    const failed = []
+    setBulkProgress({ total: ids.length, done: 0 })
+
+    for (let i = 0; i < ids.length; i++) {
+      setBulkProgress({ total: ids.length, done: i, current: `${i + 1} / ${ids.length}` })
+      try {
+        const result = await generateNomination(ids[i])
+        if (result.status === 'generated') {
+          successCount++
+          generatedIds.push(ids[i])
+        } else {
+          failed.push({ name: nameOf(ids[i]), message: describeNominationError({ response: { data: { detail: result } } }, t) })
+        }
+      } catch (err) {
+        failed.push({ name: nameOf(ids[i]), message: describeNominationError(err, t) })
+      }
     }
-    setForm(f => ({ ...f, competition_id, game_dates: gameDates }))
+    setBulkProgress(null)
+
+    const finalList = await load()
+
+    if (generatedIds.length === 1) {
+      const nom = finalList.find(n => n.id === generatedIds[0])
+      await downloadFile(generatedIds[0], `${nom?.personnel?.name || 'Nomination'} ${nom?.competitions?.name || ''}.pdf`.trim())
+    } else if (generatedIds.length > 1) {
+      try {
+        const { blob, skipped } = await downloadNominationsZip(generatedIds)
+        triggerBlobDownload(blob, `nominations-${Date.now()}.zip`)
+        if (skipped > 0) push({ type: 'info', title: t('nominations.zipSkipped', { count: skipped }) })
+      } catch (err) {
+        push({ type: 'error', title: describeNominationError(err, t) })
+      }
+    }
+
+    if (failed.length === 0) {
+      push({ type: 'success', title: t('nominations.generatedCount', { success: successCount, total: ids.length }) })
+    } else {
+      push({
+        type: 'error',
+        title: t('nominations.generatedCount', { success: successCount, total: ids.length }),
+        body: failed.map(f => `${f.name}: ${f.message}`).join(' · '),
+      })
+    }
   }
 
-  function addGameDate() {
-    setForm(f => {
-      const idx = f.game_dates.length + 1
-      const label = templateKey === 'LSB' ? `Gameday ${idx}` : ''
-      return { ...f, game_dates: [...f.game_dates, { label, date: '' }] }
-    })
-  }
-
-  function removeGameDate(idx) {
-    setForm(f => ({ ...f, game_dates: f.game_dates.filter((_, i) => i !== idx) }))
-  }
-
-  function updateGameDate(idx, field, value) {
-    setForm(f => {
-      const gd = [...f.game_dates]
-      gd[idx] = { ...gd[idx], [field]: value }
-      return { ...f, game_dates: gd }
-    })
-  }
-
-  function togglePerson(id) {
-    setForm(f => {
-      const ids = new Set(f.personnel_ids)
-      if (ids.has(id)) ids.delete(id)
-      else ids.add(id)
-      return { ...f, personnel_ids: [...ids] }
-    })
-  }
-
-  function selectAllFiltered() {
-    setForm(f => ({ ...f, personnel_ids: filteredPersonnel.map(p => p.id) }))
-  }
-
-  function clearSelection() {
-    setForm(f => ({ ...f, personnel_ids: [] }))
-  }
-
-  async function handleSubmit(e) {
-    e.preventDefault()
+  async function handleCreated(createdIds) {
+    setFormState(null)
+    const fresh = await load()
+    if (createdIds.length === 0) return
     setLoading(true)
     try {
-      const payload = {
-        ...form,
-        window_fee: parseFloat(form.window_fee) || 0,
-        incidentals: parseFloat(form.incidentals) || 0,
-      }
-      if (!showLocationFields) {
-        delete payload.location
-        delete payload.venue
-        delete payload.arrival_date
-        delete payload.departure_date
-      }
-      if (!showDeadline) {
-        delete payload.confirmation_deadline
-      }
-
-      // Un <input type="date"> vacío vale "", y Postgres rechaza el string
-      // vacío en una columna date (22007: invalid input syntax for type date).
-      // Las cuatro son nullable, así que "sin fecha" es null, no "".
-      for (const field of ['letter_date', 'arrival_date', 'departure_date',
-                           'confirmation_deadline']) {
-        if (payload[field] === '') payload[field] = null
-      }
-
-      let createdIds = []
-
-      if (form.personnel_ids.length > 1) {
-        const result = await createBulkNominations(payload)
-        createdIds = result.nominations.map(n => n.id)
-        if (result.errors?.length) {
-          push({ type: 'error', title: `${t('nominations.generated')}: ${result.created}. ${t('personnel.errors')}: ${result.errors.length}` })
-        }
-      } else if (form.personnel_ids.length === 1) {
-        const result = await createNomination({
-          ...payload,
-          personnel_id: form.personnel_ids[0],
-        })
-        createdIds = [result.id]
-      }
-
-      setShowForm(false)
-      setForm({
-        personnel_ids: [], competition_id: '', letter_date: '', location: '',
-        venue: '', arrival_date: '', departure_date: '', game_dates: [],
-        window_fee: '', incidentals: '', confirmation_deadline: '',
-      })
-
-      // Refresh list immediately so the new row(s) appear before PDF generation finishes
-      await load()
-
-      if (createdIds.length > 0) {
-        let successCount = 0
-        let errorCount = 0
-        setBulkProgress({ total: createdIds.length, done: 0 })
-
-        const conversionErrors = []
-        for (let i = 0; i < createdIds.length; i++) {
-          setBulkProgress({ total: createdIds.length, done: i, current: `${i + 1} / ${createdIds.length}` })
-          try {
-            const result = await generateNomination(createdIds[i])
-            if (result.status === 'generated') {
-              successCount++
-              if (result.conversion_error) {
-                conversionErrors.push(result.conversion_error)
-              }
-              await downloadFile(result.pdf_path, result.format, createdIds[i], result.filename)
-              await new Promise(resolve => setTimeout(resolve, 500))
-            } else {
-              errorCount++
-            }
-          } catch (e) {
-            errorCount++
-            console.error(`Generate [${i+1}] error:`, e)
-          }
-        }
-
-        setBulkProgress(null)
-        let msg = t('nominations.generatedCount', { success: successCount, total: createdIds.length })
-        if (conversionErrors.length > 0) {
-          msg += `\n\nPDF conversion failed: ${conversionErrors[0]}`
-        }
-        if (errorCount > 0) {
-          msg += `\n${t('nominations.errorsCount', { count: errorCount })}`
-        }
-        push({ type: 'error', title: msg })
-      }
-
-      await load()
-    } catch (err) {
-      push({ type: 'error', title: err.response?.data?.detail || err.message })
-      console.error('Create nomination error:', err)
+      await generateAndDeliver(createdIds, fresh)
     } finally {
       setLoading(false)
     }
@@ -347,24 +223,21 @@ export default function Nominations() {
     setLoading(true)
     try {
       const result = await generateNomination(id)
-
       if (result.error || result.status === 'error') {
-        push({ type: 'error', title: `${t('nominations.errorGenerating')}:\n${result.error}` })
+        push({ type: 'error', title: describeNominationError({ response: { data: { detail: result } } }, t) })
         return
       }
-
       await load()
-
       if (result.conversion_error) {
-        push({ type: 'error', title: `${t('nominations.conversionNote')}\nError: ${result.conversion_error}` })
+        push({ type: 'info', title: t('nominations.conversionNote'), body: result.conversion_error })
+      } else {
+        push({ type: 'success', title: t('nominations.generatedCount', { success: 1, total: 1 }) })
       }
-
       if (result.pdf_path) {
-        downloadFile(result.pdf_path, result.format, id, result.filename)
+        downloadFile(id, result.filename)
       }
     } catch (err) {
-      push({ type: 'error', title: `Error: ${err.message}` })
-      console.error('Generate error:', err)
+      push({ type: 'error', title: describeNominationError(err, t) })
     } finally {
       setLoading(false)
     }
@@ -373,32 +246,25 @@ export default function Nominations() {
   async function handleBulkGenerate() {
     const ids = [...selectedIds]
     if (ids.length === 0) return
-
     setLoading(true)
-    let successCount = 0
-    let errorCount = 0
-
-    for (let i = 0; i < ids.length; i++) {
-      setBulkProgress({ total: ids.length, done: i, current: `${i + 1} / ${ids.length}` })
-      try {
-        const result = await generateNomination(ids[i])
-        if (result.status === 'generated') {
-          successCount++
-          await downloadFile(result.pdf_path, result.format, ids[i], result.filename)
-          await new Promise(resolve => setTimeout(resolve, 500))
-        } else {
-          errorCount++
-        }
-      } catch {
-        errorCount++
-      }
+    try {
+      await generateAndDeliver(ids, nominations)
+      setSelectedIds(new Set())
+    } finally {
+      setLoading(false)
     }
+  }
 
-    setBulkProgress(null)
-    await load()
-    setSelectedIds(new Set())
-    push({ type: 'error', title: t('nominations.generatedCount', { success: successCount, total: ids.length }) + (errorCount > 0 ? `\n${t('nominations.errorsCount', { count: errorCount })}` : '') })
-    setLoading(false)
+  async function handleDownloadSelectedZip() {
+    const ids = [...selectedIds]
+    if (ids.length === 0) return
+    try {
+      const { blob, skipped } = await downloadNominationsZip(ids)
+      triggerBlobDownload(blob, `nominations-${Date.now()}.zip`)
+      if (skipped > 0) push({ type: 'info', title: t('nominations.zipSkipped', { count: skipped }) })
+    } catch (err) {
+      push({ type: 'error', title: describeNominationError(err, t) })
+    }
   }
 
   // record_no of the payment attached to a nomination (PostgREST may embed
@@ -420,7 +286,7 @@ export default function Nominations() {
       await deleteNomination(nom.id)
       await load()
     } catch (err) {
-      push({ type: 'error', title: t('nominations.errorDeleting') + ': ' + (err.response?.data?.detail || err.message) })
+      push({ type: 'error', title: t('nominations.errorDeleting'), body: err.response?.data?.detail || err.message })
     }
   }
 
@@ -452,26 +318,21 @@ export default function Nominations() {
           count: res.blocked.length,
           records: res.blocked.map(b => b.record_no).join(', '),
         }) })
+      } else {
+        push({ type: 'success', title: t('nominations.deleteCount', { count: deletable.length }) })
       }
     } catch (err) {
-      push({ type: 'error', title: t('nominations.errorDeletingBulk') + ': ' + (err.response?.data?.detail || err.message) })
+      push({ type: 'error', title: t('nominations.errorDeletingBulk'), body: err.response?.data?.detail || err.message })
     }
   }
 
-  async function downloadFile(url, format, id, filename) {
-    const defaultName = filename || `nomination.${format === 'pdf' ? 'pdf' : 'docx'}`
+  async function downloadFile(id, filename) {
+    const defaultName = filename || 'nomination.pdf'
     try {
       const blob = await downloadNominationBlob(id, defaultName)
-      const objectUrl = URL.createObjectURL(blob)
-      const link = document.createElement('a')
-      link.href = objectUrl
-      link.download = defaultName
-      document.body.appendChild(link)
-      link.click()
-      document.body.removeChild(link)
-      setTimeout(() => URL.revokeObjectURL(objectUrl), 1000)
+      triggerBlobDownload(blob, defaultName)
     } catch (err) {
-      push({ type: 'error', title: `${t('nominations.errorGenerating')}: ${err.response?.status || err.message}` })
+      push({ type: 'error', title: t('nominations.errorGenerating'), body: err.response?.status || err.message })
     }
   }
 
@@ -491,11 +352,6 @@ export default function Nominations() {
       setSelectedIds(new Set(filtered.map(n => n.id)))
     }
   }
-
-  const [personSearch, setPersonSearch] = useState('')
-  const filteredPersonnel = personnel.filter(p =>
-    p.name.toLowerCase().includes(personSearch.toLowerCase())
-  )
 
   function SortHeader({ label, sortKey }) {
     const active = sort.key === sortKey
@@ -542,15 +398,19 @@ export default function Nominations() {
                   className="btn-fiba-danger disabled:opacity-50">
                   {t('nominations.deleteCount', { count: selectedIds.size })}
                 </button>
+                <button onClick={handleDownloadSelectedZip} disabled={loading}
+                  className="btn-fiba-ghost disabled:opacity-50">
+                  {t('nominations.downloadZipCount', { count: selectedIds.size })}
+                </button>
                 <button onClick={handleBulkGenerate} disabled={loading}
-                  className="bg-emerald-600 text-ink-900 dark:text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-emerald-700 disabled:opacity-50">
+                  className="bg-emerald-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-emerald-700 disabled:opacity-50">
                   {loading && bulkProgress
                     ? t('nominations.generatingProgress', { current: bulkProgress.current })
                     : t('nominations.generateCount', { count: selectedIds.size })}
                 </button>
               </>
             )}
-            <button onClick={() => setShowForm(true)}
+            <button onClick={() => setFormState({ mode: 'create', competitionId: '' })}
               className="btn-fiba">
               {t('nominations.newNomination')}
             </button>
@@ -692,16 +552,25 @@ export default function Nominations() {
                   />
                 </td>
                 <td className="px-4 py-3">
-                  <div className="flex gap-2">
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      onClick={() => setPreviewFor({ id: n.id, title: t('nominations.previewTitle', { name: n.personnel?.name || '' }) })}
+                      className="text-fiba-accent hover:underline text-sm">
+                      {t('nominations.viewLetter')}
+                    </button>
                     {n.status === 'generated' && (
                       <button
-                        onClick={() => downloadFile(null, 'pdf', n.id, `${n.personnel?.name || 'Nomination'} ${n.competitions?.name || ''}.pdf`.trim())}
+                        onClick={() => downloadFile(n.id, `${n.personnel?.name || 'Nomination'} ${n.competitions?.name || ''}.pdf`.trim())}
                         className="text-fiba-accent hover:underline text-sm">
                         {t('nominations.download')}
                       </button>
                     )}
                     {canEdit && (
                       <>
+                        <button onClick={() => setFormState({ mode: 'edit', nomination: n })}
+                          className="text-fiba-muted hover:text-fiba-accent hover:underline text-sm">
+                          {t('nominations.edit')}
+                        </button>
                         {n.status === 'generated' ? (
                           <button onClick={() => handleGenerate(n.id)} disabled={loading}
                             className="text-fiba-muted hover:text-fiba-accent hover:underline text-sm">
@@ -731,212 +600,27 @@ export default function Nominations() {
       </div>
       </>)}
 
-      {/* Creation Form Modal */}
-      {showForm && (
-        <div className="fixed inset-0 bg-black/60 flex items-start justify-center p-4 pt-4 sm:pt-16 z-50">
-          <div className="fiba-modal max-w-2xl max-h-[80vh] overflow-y-auto p-6">
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="text-lg font-bold text-ink-900 dark:text-white">{t('nominations.newNominationTitle')}</h3>
-              <button onClick={() => setShowForm(false)} className="text-fiba-muted hover:text-ink-900 dark:text-white text-xl">&times;</button>
-            </div>
-            <form onSubmit={handleSubmit} className="space-y-4">
-              {/* Multi-person select */}
-              <div>
-                <label className="block text-sm font-medium text-ink-700 dark:text-gray-300 mb-1">
-                  {t('nominations.persons')} ({form.personnel_ids.length} {t('nominations.selected')})
-                </label>
-                <input type="text" placeholder={t('nominations.searchPerson')} value={personSearch}
-                  onChange={e => setPersonSearch(e.target.value)} className="fiba-input mb-1" />
-                <div className="flex gap-2 mb-2">
-                  <button type="button" onClick={selectAllFiltered} className="text-fiba-accent hover:underline text-xs">
-                    {t('nominations.selectAll')}
-                  </button>
-                  <button type="button" onClick={clearSelection} className="text-fiba-muted hover:underline text-xs">
-                    {t('nominations.clear')}
-                  </button>
-                </div>
-                <div className="border border-fiba-border rounded-lg max-h-48 overflow-y-auto">
-                  {filteredPersonnel.map(p => (
-                    <label key={p.id}
-                      className={`flex items-center gap-2 px-3 py-2 hover:bg-fiba-surface cursor-pointer text-sm ${form.personnel_ids.includes(p.id) ? 'bg-fiba-accent/10' : ''}`}>
-                      <input type="checkbox" checked={form.personnel_ids.includes(p.id)} onChange={() => togglePerson(p.id)} className="rounded" />
-                      <span>{p.name}</span>
-                      <span className={`ml-auto text-xs px-1.5 py-0.5 rounded ${roleBadgeClass(p.role)}`}>{roleLabel(p.role)}</span>
-                    </label>
-                  ))}
-                  {filteredPersonnel.length === 0 && (
-                    <p className="px-3 py-4 text-center text-fiba-muted/60 text-sm">{t('nominations.noPersonsFound')}</p>
-                  )}
-                </div>
-              </div>
+      {/* Create / edit modal */}
+      {formState && (
+        <NominationFormModal
+          mode={formState.mode}
+          nomination={formState.nomination}
+          initialCompetitionId={formState.competitionId}
+          competitions={competitions}
+          personnel={personnel}
+          onClose={() => setFormState(null)}
+          onCreated={handleCreated}
+          onUpdated={load}
+        />
+      )}
 
-              {/* Competition select */}
-              <div>
-                <label className="block text-sm font-medium text-ink-700 dark:text-gray-300 mb-1">{t('nominations.competition')}</label>
-                <select required value={form.competition_id} onChange={e => handleCompChange(e.target.value)}
-                  className="fiba-select">
-                  <option value="">{t('nominations.selectCompetition')}</option>
-                  {competitions.map(c => (
-                    <option key={c.id} value={c.id}>{competitionLabel(c, t('months.short'))} ({c.template_key})</option>
-                  ))}
-                </select>
-              </div>
-
-              {/* Referee neutrality — informative only at competition level */}
-              {refereeNotices.length > 0 && (
-                <div className="px-3 py-2.5 bg-amber-500/10 border border-amber-500/30 rounded-lg space-y-1">
-                  <p className="text-xs font-bold text-amber-500">{t('nominations.refWarningTitle')}</p>
-                  {refereeNotices.map(n => (
-                    <div key={n.person.id} className="space-y-0.5">
-                      {n.clubs && (
-                        <p className="text-xs text-amber-500/90">
-                          {t('nominations.refWarningClubs', {
-                            name: n.person.name,
-                            country: countryName(n.countryCode),
-                            clubs: n.clubs.join(', '),
-                          })}
-                        </p>
-                      )}
-                      {!n.clubs && n.playsInTournament && (
-                        <p className="text-xs text-amber-500/90">
-                          {n.groups.length > 0
-                            ? t('nominations.refWarningGroups', {
-                                name: n.person.name,
-                                country: countryName(n.countryCode),
-                                groups: n.groups.join(', '),
-                              })
-                            : t('nominations.refWarningPlays', {
-                                name: n.person.name,
-                                country: countryName(n.countryCode),
-                              })}
-                        </p>
-                      )}
-                      {!n.clubs && n.specialBlocked?.length > 0 && (
-                        <p className="text-xs text-amber-500/90">
-                          {t('nominations.refWarningSpecial', {
-                            name: n.person.name,
-                            blocked: n.specialBlocked.map(c => countryName(c)).join(', '),
-                          })}
-                        </p>
-                      )}
-                    </div>
-                  ))}
-                  <p className="text-[11px] text-amber-500/70">{t('nominations.refWarningHint')}</p>
-                </div>
-              )}
-
-              {/* Letter date */}
-              <div>
-                <label className="block text-sm font-medium text-ink-700 dark:text-gray-300 mb-1">{t('nominations.letterDate')}</label>
-                <input type="date" value={form.letter_date} onChange={e => setForm(f => ({ ...f, letter_date: e.target.value }))}
-                  className="fiba-input" />
-              </div>
-
-              {/* Location & Venue */}
-              {showLocationFields && (
-                <>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-sm font-medium text-ink-700 dark:text-gray-300 mb-1">Location</label>
-                      <input type="text" value={form.location} onChange={e => setForm(f => ({ ...f, location: e.target.value }))}
-                        className="fiba-input" />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-ink-700 dark:text-gray-300 mb-1">{t('nominations.venue')}</label>
-                      <input type="text" value={form.venue} onChange={e => setForm(f => ({ ...f, venue: e.target.value }))}
-                        className="fiba-input" />
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-sm font-medium text-ink-700 dark:text-gray-300 mb-1">{t('nominations.arrivalDate')}</label>
-                      <input type="date" value={form.arrival_date} onChange={e => setForm(f => ({ ...f, arrival_date: e.target.value }))}
-                        className="fiba-input" />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-ink-700 dark:text-gray-300 mb-1">{t('nominations.departureDate')}</label>
-                      <input type="date" value={form.departure_date} onChange={e => setForm(f => ({ ...f, departure_date: e.target.value }))}
-                        className="fiba-input" />
-                    </div>
-                  </div>
-                </>
-              )}
-
-              {/* Game Dates */}
-              {templateKey && templateKey !== 'BCLA_RS' && (
-                <div>
-                  <label className="block text-sm font-medium text-ink-700 dark:text-gray-300 mb-1">{t('nominations.gameDates')}</label>
-                  {form.game_dates.map((gd, idx) => (
-                    <div key={idx} className="flex gap-2 mb-2 items-center">
-                      {(templateKey === 'BCLA' || templateKey === 'BCLA_F4') ? (
-                        <span className="text-sm text-fiba-muted w-28">{gd.label}</span>
-                      ) : (
-                        <input type="text" value={gd.label} onChange={e => updateGameDate(idx, 'label', e.target.value)}
-                          placeholder="Label" className="fiba-input w-32" readOnly={templateKey === 'LSB'} />
-                      )}
-                      <input type="date" value={gd.date} onChange={e => updateGameDate(idx, 'date', e.target.value)}
-                        className="fiba-input flex-1" />
-                      {templateKey !== 'BCLA' && templateKey !== 'BCLA_F4' && (
-                        <button type="button" onClick={() => removeGameDate(idx)} className="text-red-400 hover:text-red-300 text-lg">&times;</button>
-                      )}
-                    </div>
-                  ))}
-                  {templateKey !== 'BCLA' && templateKey !== 'BCLA_F4' && (
-                    <button type="button" onClick={addGameDate} className="text-fiba-accent hover:underline text-sm">
-                      {t('nominations.addDate')}
-                    </button>
-                  )}
-                </div>
-              )}
-
-              {/* Confirmation Deadline */}
-              {showDeadline && (
-                <div>
-                  <label className="block text-sm font-medium text-ink-700 dark:text-gray-300 mb-1">{t('nominations.confirmationDeadline')}</label>
-                  <input type="date" value={form.confirmation_deadline}
-                    onChange={e => setForm(f => ({ ...f, confirmation_deadline: e.target.value }))}
-                    className="fiba-input" />
-                </div>
-              )}
-
-              {/* Fees */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-ink-700 dark:text-gray-300 mb-1">
-                    {selectedComp?.fee_type === 'tournament'
-                      ? 'Tournament Fee'
-                      : (showDeadline ? t('nominations.perGameFee') : t('nominations.windowFee'))}
-                  </label>
-                  <input type="number" step="0.01" value={form.window_fee}
-                    onChange={e => setForm(f => ({ ...f, window_fee: e.target.value }))}
-                    className="fiba-input" />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-ink-700 dark:text-gray-300 mb-1">{t('nominations.incidentals')}</label>
-                  <input type="number" step="0.01" value={form.incidentals}
-                    onChange={e => setForm(f => ({ ...f, incidentals: e.target.value }))}
-                    className="fiba-input" />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-ink-700 dark:text-gray-300 mb-1">Total</label>
-                  <input type="text" value={total} readOnly className="fiba-input bg-fiba-surface" />
-                </div>
-              </div>
-
-              <div className="flex justify-end gap-3 pt-4">
-                <button type="button" onClick={() => setShowForm(false)} className="px-4 py-2 text-sm text-fiba-muted hover:text-ink-900 dark:text-white">
-                  {t('nominations.cancel')}
-                </button>
-                <button type="submit" disabled={loading || form.personnel_ids.length === 0}
-                  className="btn-fiba disabled:opacity-50">
-                  {loading ? t('nominations.saving') : form.personnel_ids.length > 1
-                    ? t('nominations.createCount', { count: form.personnel_ids.length })
-                    : t('nominations.createOne')}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
+      {/* Row-level "Ver carta" preview */}
+      {previewFor && (
+        <NominationPreviewModal
+          title={previewFor.title}
+          fetcher={() => previewNomination(previewFor.id)}
+          onClose={() => setPreviewFor(null)}
+        />
       )}
 
       {/* Person profile panel */}
