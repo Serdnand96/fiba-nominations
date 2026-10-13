@@ -172,20 +172,17 @@ def _in_process_payments() -> list:
     ) or []
 
 
-def _tax_form_valid(banking: Optional[dict], today: str) -> bool:
-    if not banking:
-        return False
-    kind = banking.get("tax_form_kind")
-    if kind == "exempt":
-        return True
-    if not kind:
-        return False
-    expires = banking.get("tax_form_expires_at")
-    return not expires or str(expires)[:10] >= today
+def _tax_form_valid(banking: Optional[dict], today: date) -> bool:
+    """Misma regla que el pipeline de pagos (payments.tax_form_status): un W-8
+    sin PDF subido cuenta como faltante y el vencimiento se deriva de la firma
+    si no está cargado. Si la campana usara una regla más laxa, el contador y
+    la cola de pagos no coincidirían."""
+    from api._lib.routers.payments import has_bank_info, tax_form_status
+    return tax_form_status(banking, today) in ("ok", "exempt") and has_bank_info(banking)
 
 
 def _payments_missing_docs(payments: list) -> Optional[int]:
-    """Pagos en curso cuya persona no tiene W-8 válido.
+    """Pagos en curso cuya persona no tiene W-8 válido o datos bancarios.
 
     None si `personnel_banking` (migración 047 / WP3) todavía no existe: el ítem
     se omite en vez de reportar todos los pagos como "sin documentos".
@@ -201,7 +198,7 @@ def _payments_missing_docs(payments: list) -> Optional[int]:
             chunk = pids[i:i + _IN_CHUNK]
             rows = (
                 supabase.table("personnel_banking")
-                .select("personnel_id, tax_form_kind, tax_form_expires_at")
+                .select("*")
                 .in_("personnel_id", chunk)
                 .execute()
                 .data
@@ -210,7 +207,7 @@ def _payments_missing_docs(payments: list) -> Optional[int]:
     except Exception as exc:
         logger.warning("[notifications] personnel_banking unavailable: %s", exc)
         return None
-    today = date.today().isoformat()
+    today = date.today()
     return sum(
         1 for p in payments
         if not _tax_form_valid(banking.get((p.get("nominations") or {}).get("personnel_id")), today)

@@ -160,6 +160,58 @@ export const downloadPaymentAttachment = async (attId, filename) => {
   const resp = await api.get(`/payments/attachments/${attId}/download${params}`, { responseType: 'blob' })
   return resp.data
 }
+// Pipeline de pagos (WP3). El estado de un pago NO se cambia con PUT: solo por
+// /transition (uno) o /bulk-status (lote), que aplican la máquina de estados.
+// Cola cross-evento: { items, total, totals: { amount, airfare, paid_amount } }.
+export const getPaymentsQueue = (params) => api.get('/payments/queue', { params }).then(r => r.data)
+// Un pago ya aplanado, como una fila de la cola (drawer abierto por `?open=`).
+export const getPayment = (id) => api.get(`/payments/${id}`).then(r => r.data)
+// { status, reason?, payment_date?, bank_confirmation?, paid_amount? } →
+// { payment: <fila de la cola>, warnings: [] } (p. ej. 'tax_form_missing').
+export const transitionPayment = (id, data) => api.post(`/payments/${id}/transition`, data).then(r => r.data)
+// { ids, status, reason?, payment_date?, bank_confirmation? } →
+// { ok: [{id, record_no, status, warnings}], failed: [{id, record_no, error, status_code}] }.
+// Nunca aborta el lote: cada pago se valida por separado.
+export const bulkPaymentStatus = (data) => api.post('/payments/bulk-status', data).then(r => r.data)
+// { competition_id, budget_code, nomination_ids? } → { created: [...], skipped: [{nomination_id, name, reason}] }
+export const bulkCreatePayments = (data) => api.post('/payments/bulk', data).then(r => r.data)
+// amount = nominations.total, solo en pagos new / in_process →
+// { updated: [{id, record_no, old_amount, new_amount}], skipped: [{id, record_no, reason}] }.
+export const syncPaymentAmounts = (ids) => api.post('/payments/sync-amount', { ids }).then(r => r.data)
+export const getPaymentHistory = (id) => api.get(`/payments/${id}/history`).then(r => r.data)
+// Export de la cola con los mismos filtros (+ `lang`). Blob + JWT, como el resto de las descargas.
+export const downloadPaymentsXlsx = async (params) => {
+  const resp = await api.get('/payments/export.xlsx', { params, responseType: 'blob' })
+  saveBlob(resp.data, `payments${params?.year ? `-${params.year}` : ''}.xlsx`)
+}
+// Ficha bancaria por persona (personnel_banking). Solo vive bajo /payments: el
+// router de personnel no la expone. GET devuelve la ficha enmascarada (con
+// `exists: false` si no hay); `reveal` es POST a propósito, para que quede en
+// activity_log.
+export const getPersonnelBanking = (personnelId) =>
+  api.get(`/payments/personnel/${personnelId}/banking`).then(r => r.data)
+export const revealPersonnelBanking = (personnelId) =>
+  api.post(`/payments/personnel/${personnelId}/banking/reveal`).then(r => r.data)
+export const updatePersonnelBanking = (personnelId, data) =>
+  api.put(`/payments/personnel/${personnelId}/banking`, data).then(r => r.data)
+// Sube o reemplaza el PDF firmado. `meta` = { kind, signed_at, expires_at }:
+// un documento nuevo trae sus fechas (sin mandarlas, quedan vacías). `exempt`
+// no se sube: se guarda con updatePersonnelBanking.
+export const uploadPersonnelTaxForm = (personnelId, file, meta = {}) => {
+  const fd = new FormData()
+  fd.append('file', file)
+  Object.entries(meta).forEach(([k, v]) => { if (v) fd.append(k, v) })
+  return api.post(`/payments/personnel/${personnelId}/banking/tax-form`, fd, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  }).then(r => r.data)
+}
+// Bucket privado: blob + JWT. El caller lo guarda con saveBlob.
+export const downloadPersonnelTaxForm = async (personnelId) => {
+  const resp = await api.get(`/payments/personnel/${personnelId}/banking/tax-form/download`, { responseType: 'blob' })
+  return resp.data
+}
+export const deletePersonnelTaxForm = (personnelId) =>
+  api.delete(`/payments/personnel/${personnelId}/banking/tax-form`).then(r => r.data)
 
 // Budget — gastos por departamento, con o sin evento (ver BUDGET_MODULE.md)
 export const getDepartments = () => api.get('/budget/departments').then(r => r.data)
@@ -200,6 +252,13 @@ export const downloadExpenseAttachment = async (attId, filename) => {
   const resp = await api.get(`/budget/attachments/${attId}/download${params}`, { responseType: 'blob' })
   return resp.data
 }
+// Aprobación de gastos (WP4). El cambio de estado va SIEMPRE por /transition:
+// el PATCH rechaza `status` y `payment_date`. payload = {status, reason?,
+// payment_date?, payment_method?, bank_confirmation?} → el gasto actualizado.
+// Errores: 400 falta dato, 403 no puede, 409 transición inválida (detail texto).
+export const transitionExpense = (id, payload) =>
+  api.post(`/budget/expenses/${id}/transition`, payload).then(r => r.data)
+export const getExpenseHistory = (id) => api.get(`/budget/expenses/${id}/history`).then(r => r.data)
 
 export const getRecurring = (params) => api.get('/budget/recurring', { params }).then(r => r.data)
 export const createRecurring = (data) => api.post('/budget/recurring', data).then(r => r.data)
@@ -259,6 +318,15 @@ export const getHeadcount = (year) => api.get('/budget/headcount', { params: { y
 export const putHeadcount = (data) => api.put('/budget/headcount', data).then(r => r.data)
 export const getAssumptions = (year) => api.get(`/budget/assumptions/${year}`).then(r => r.data)
 export const putAssumptions = (year, data) => api.put(`/budget/assumptions/${year}`, data).then(r => r.data)
+// Headcount × costo de vuelo → líneas de travel. El endpoint lee `year`,
+// `department` y `replace_manual` como query params, no del body.
+export const generateTravelLines = ({ year, department = 'competitions', replace_manual = false }) =>
+  api.post('/budget/headcount/generate', null, { params: { year, department, replace_manual } }).then(r => r.data)
+// Renombrar una cuenta provisoria (COMP-*) a su código oficial. Las FK son
+// ON UPDATE CASCADE; si la cuenta está mapeada en budget_accounts.py el
+// backend responde 409 salvo `force`.
+export const remapAccount = (code, { new_code, force = false }) =>
+  api.post(`/budget/accounts/${encodeURIComponent(code)}/remap`, { new_code, force }).then(r => r.data)
 
 export const getRevenues = (params) => api.get('/budget/revenues', { params }).then(r => r.data)
 export const createRevenue = (data) => api.post('/budget/revenues', data).then(r => r.data)

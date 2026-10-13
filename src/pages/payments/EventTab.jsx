@@ -3,23 +3,127 @@
  *
  * `?open=<id>` abre el editor del nominado cuyo pago (o nominación) tiene ese
  * id, si está en el evento cargado.
+ *
+ * "Crear pagos para los nominados" da de alta en lote un pago por cada
+ * nominación generada que todavía no tiene (`POST /payments/bulk`): las
+ * declinadas y las que ya tienen pago vuelven en `skipped[]` con el motivo.
  */
 import { useEffect, useMemo, useState } from 'react'
 import {
   getCalendarCompetitions, getPaymentBudgets, getPaymentNominees, getPaymentsSummary,
+  bulkCreatePayments,
 } from '../../api/client'
 import { useLanguage } from '../../i18n/LanguageContext'
 import { useAuth } from '../../contexts/AuthContext'
 import { useOpenParam } from '../../components/ui/Drawer'
+import { Modal } from '../../components/ui/Modal'
+import { Badge } from '../../components/ui/Badge'
+import { Button } from '../../components/ui/Button'
+import { Icon } from '../../lib/icons'
 import { roleLabel, roleBadgeClass } from '../../lib/roles'
 import CompetitionSearch from '../../components/CompetitionSearch'
 import PaymentDrawer from './PaymentDrawer'
-import { STATUS_BADGES, fmt } from './shared'
+import { STATUS_TONE, fmt, errorDetail, translateCode } from './shared'
 
 // Un nominado se abre por el id de su pago o, si todavía no tiene, por el de
 // su nominación.
 const openKey = (n) => String(n.payment?.id ?? n.nomination_id)
 const matchesOpen = (n, id) => String(n.payment?.id) === id || String(n.nomination_id) === id
+
+/**
+ * Alta masiva de pagos de un evento. Elegibles: nominación `generated`, no
+ * declinada y sin pago; el monto sale de `nominations.total`. El backend decide
+ * la elegibilidad final: el conteo de acá es solo orientativo.
+ */
+function BulkCreateModal({ competitionId, competitionName, budgets, defaultBudget, eligibleCount, onClose, onDone }) {
+  const { t } = useLanguage()
+  const [budget, setBudget] = useState(defaultBudget || budgets[0]?.code || '')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+  const [result, setResult] = useState(null)   // { created: [...], skipped: [{nomination_id, name, reason}] }
+
+  async function submit(e) {
+    e.preventDefault()
+    if (!budget) { setError(t('payments.budgetRequired')); return }
+    setBusy(true)
+    setError('')
+    try {
+      const res = await bulkCreatePayments({ competition_id: competitionId, budget_code: budget })
+      setResult({ created: res?.created || [], skipped: res?.skipped || [] })
+      await onDone?.()
+    } catch (err) {
+      setError(errorDetail(err, t('payments.errorSaving')))
+    }
+    setBusy(false)
+  }
+
+  return (
+    <Modal open onClose={onClose} closeDisabled={busy} size="md"
+      title={t('payments.bulkCreate')}
+      subtitle={competitionName}
+      closeLabel={t('common.close')}
+      footer={result ? (
+        <Button variant="navy" onClick={onClose}>{t('common.close')}</Button>
+      ) : (
+        <>
+          <Button variant="ghost" onClick={onClose} disabled={busy}>{t('common.cancel')}</Button>
+          <Button type="submit" form="payments-bulk-create" variant="navy" disabled={busy || !budget}>
+            {busy ? t('common.saving') : t('payments.bulkCreateConfirm')}
+          </Button>
+        </>
+      )}>
+      {result ? (
+        <div className="space-y-4">
+          <div className="flex flex-wrap gap-2">
+            <Badge tone="success" icon={<Icon.Check />}>{t('payments.bulkCreated', { count: result.created.length })}</Badge>
+            {result.skipped.length > 0 && (
+              <Badge tone="warning">{t('payments.bulkSkipped', { count: result.skipped.length })}</Badge>
+            )}
+          </div>
+          {result.skipped.length > 0 && (
+            <div className="rounded-lg border border-fiba-border overflow-hidden">
+              <div className="overflow-x-auto max-h-72">
+                <table className="fiba-table">
+                  <thead>
+                    <tr>
+                      <th>{t('payments.nominee')}</th>
+                      <th>{t('payments.skipReasonCol')}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {result.skipped.map(s => (
+                      <tr key={s.nomination_id}>
+                        <td className="font-medium">{s.name || s.nomination_id}</td>
+                        <td className="text-sm">{translateCode(t, 'payments.skipReason', s.reason)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </div>
+      ) : (
+        <form id="payments-bulk-create" onSubmit={submit} className="space-y-4">
+          <p className="text-sm text-fiba-muted">{t('payments.bulkCreateHint')}</p>
+          <p className="text-sm font-medium text-ink-900 dark:text-white">{t('payments.bulkEligible', { count: eligibleCount })}</p>
+          <div>
+            <label className="block text-xs text-fiba-muted mb-1">{t('payments.budget')} *</label>
+            <select value={budget} required onChange={e => setBudget(e.target.value)} className="fiba-select w-full">
+              <option value="">{t('payments.selectBudget')}</option>
+              {budgets.map(b => <option key={b.code} value={b.code}>{b.label}</option>)}
+            </select>
+          </div>
+          {error && (
+            <p role="alert" className="text-sm text-danger-600 dark:text-danger-500 flex gap-1.5">
+              <Icon.Alert className="w-4 h-4 shrink-0 mt-0.5" />{error}
+            </p>
+          )}
+        </form>
+      )}
+    </Modal>
+  )
+}
 
 export default function EventTab() {
   const { t } = useLanguage()
@@ -37,6 +141,7 @@ export default function EventTab() {
 
   // Payment editor
   const [editorNominee, setEditorNominee] = useState(null)   // the nominee row being edited
+  const [bulkOpen, setBulkOpen] = useState(false)
   const [openId, setOpenId] = useOpenParam()
 
   useEffect(() => {
@@ -89,6 +194,10 @@ export default function EventTab() {
     [nominees, budgetFilter]
   )
   const paidCount = useMemo(() => nominees.filter(n => n.payment).length, [nominees])
+  // Orientativo: el backend decide. Sin pago, generada y no declinada.
+  const eligibleCount = useMemo(() => nominees.filter(n =>
+    !n.payment && n.nomination_status === 'generated' && n.confirmation_status !== 'declined'
+  ).length, [nominees])
 
   return (
     <div>
@@ -105,6 +214,12 @@ export default function EventTab() {
             <option value="">{t('payments.allBudgets')}</option>
             {budgets.map(b => <option key={b.code} value={b.code}>{b.label}</option>)}
           </select>
+        )}
+        {selectedCompId && canEdit && (
+          <Button variant="navy" icon={<Icon.Plus />} className="sm:ml-auto" onClick={() => setBulkOpen(true)}
+            disabled={loading || loadedCompId !== selectedCompId}>
+            {t('payments.bulkCreate')}
+          </Button>
         )}
       </div>
 
@@ -167,7 +282,7 @@ export default function EventTab() {
                         <td className="px-4 py-3 text-right tabular-nums">{p ? fmt(p.airfare) : '—'}</td>
                         <td className="px-4 py-3">
                           {p
-                            ? <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${STATUS_BADGES[p.status] || ''}`}>{t(`payments.statusLabel.${p.status}`)}</span>
+                            ? <Badge tone={STATUS_TONE[p.status] || 'ink'} size="sm">{t(`payments.statusLabel.${p.status}`)}</Badge>
                             : <span className="text-xs text-fiba-muted/60">{t('payments.noPayment')}</span>}
                         </td>
                         <td className="px-4 py-3 text-xs text-fiba-muted">{p?.record_no || '—'}</td>
@@ -202,6 +317,18 @@ export default function EventTab() {
             </div>
           </div>
         </>
+      )}
+
+      {bulkOpen && (
+        <BulkCreateModal
+          competitionId={selectedCompId}
+          competitionName={selectedComp?.name}
+          budgets={budgets}
+          defaultBudget={budgetFilter}
+          eligibleCount={eligibleCount}
+          onClose={() => setBulkOpen(false)}
+          onDone={() => loadEvent(selectedCompId)}
+        />
       )}
 
       {/* Payment editor panel */}

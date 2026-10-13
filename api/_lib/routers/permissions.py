@@ -15,7 +15,9 @@ router = APIRouter(prefix="/permissions", tags=["permissions"])
 # dentro de Employees. Solo se usa su can_view (migración 030).
 # `feed` (el Muro) tiene semántica propia: can_view = participar (publicar,
 # reaccionar, comentar), can_edit = moderar (migración 043).
-MODULES = ["feed", "calendar", "nominations", "payments", "budget", "personnel", "competitions", "templates", "users", "logistics", "availability", "training", "games", "assets", "loans", "employees", "reports", "evaluations", "comp_days"]
+# `payments_approve` tampoco es página: habilita marcar un pago `completed`
+# (soltar la plata). Solo se usa su can_view (migración 047).
+MODULES = ["feed", "calendar", "nominations", "payments", "budget", "personnel", "competitions", "templates", "users", "logistics", "availability", "training", "games", "assets", "loans", "employees", "reports", "evaluations", "comp_days", "payments_approve"]
 
 
 def is_superadmin(user_id: str) -> bool:
