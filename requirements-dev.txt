@@ -1,0 +1,3 @@
+# Dependencias solo de desarrollo (no van al droplet: deploy.yml instala requirements.txt).
+-r requirements.txt
+pytest>=8
