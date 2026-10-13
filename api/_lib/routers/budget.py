@@ -240,6 +240,24 @@ def _assert_can_edit(request: Request, code: Optional[str]) -> None:
         raise HTTPException(status_code=403, detail=f"No edit access to department '{code}'")
 
 
+def _is_general_admin(request: Request) -> bool:
+    """Superadmin o fila `*` con can_edit en budget_access."""
+    return _departments_for(request, "edit") is None
+
+
+def _assert_general_admin(request: Request) -> None:
+    """Solo el admin general del módulo (superadmin o `*` con can_edit).
+
+    Para lo que no pertenece a ningún departamento y por lo tanto no se puede
+    recortar por fila: el plan de cuentas y los datos bancarios / fiscales de
+    los proveedores. Con `require_edit("budget")` solo, el designado de IT podía
+    renombrar una cuenta de Competitions o cambiar el CBU de un proveedor ajeno
+    — y eso último es el fraude de manual (redirigir el pago a otra cuenta).
+    """
+    if not _is_general_admin(request):
+        raise HTTPException(status_code=403, detail="Only a general budget admin can do this")
+
+
 def _row_or_403(table: str, row_id: str, request: Request, action: str = "view") -> dict:
     """Trae una fila y verifica el acceso a su departamento.
 
@@ -390,7 +408,10 @@ def list_accounts(request: Request, kind: Optional[str] = Query(None),
 
 
 @router.post("/accounts", status_code=201, dependencies=[Depends(require_edit("budget"))])
-def create_account(data: AccountCreate):
+def create_account(data: AccountCreate, request: Request):
+    # El plan de cuentas es transversal a los departamentos: no hay fila que
+    # recortar, así que lo administra solo el admin general.
+    _assert_general_admin(request)
     if data.kind not in ("expense", "revenue"):
         raise HTTPException(status_code=400, detail="kind must be 'expense' or 'revenue'")
     code = (data.code or "").strip()
@@ -404,7 +425,8 @@ def create_account(data: AccountCreate):
 
 
 @router.patch("/accounts/{code}", dependencies=[Depends(require_edit("budget"))])
-def update_account(code: str, data: AccountUpdate):
+def update_account(code: str, data: AccountUpdate, request: Request):
+    _assert_general_admin(request)
     updates = _patch_updates(data, "accounts")
     if "kind" in updates and updates["kind"] not in ("expense", "revenue"):
         raise HTTPException(status_code=400, detail="kind must be 'expense' or 'revenue'")
@@ -414,43 +436,71 @@ def update_account(code: str, data: AccountUpdate):
     return result.data[0]
 
 
+# Datos bancarios y fiscales del proveedor: los ve y los escribe solo el admin
+# general. Un proveedor no es de un departamento (Adobe le factura a IT y a
+# Comms), así que no se puede recortar por fila como un gasto; y cambiar el
+# `bank_info` es exactamente cómo se desvía un pago. El resto ve
+# `has_bank_info` para saber si falta cargarlo, sin el dato.
+_VENDOR_SENSITIVE = ("bank_info", "tax_id")
+
+
+def _shape_vendor(row: dict, admin: bool) -> dict:
+    row["has_bank_info"] = bool((row.get("bank_info") or "").strip())
+    if not admin:
+        for field in _VENDOR_SENSITIVE:
+            row.pop(field, None)
+    return row
+
+
 @router.get("/vendors")
-def list_vendors(search: Optional[str] = Query(None), include_inactive: bool = Query(False)):
+def list_vendors(request: Request, search: Optional[str] = Query(None),
+                 include_inactive: bool = Query(False)):
+    admin = _is_general_admin(request)
     q = supabase.table("vendors").select("*").order("name")
     if not include_inactive:
         q = q.eq("active", True)
     rows = q.execute().data or []
     if search:
         s = search.lower()
+        # Buscar por tax_id solo si lo puede ver: si no, la búsqueda sirve de
+        # oráculo para adivinarlo de a un carácter.
         rows = [
             r for r in rows
             if s in (r.get("name") or "").lower()
-            or s in (r.get("tax_id") or "").lower()
+            or (admin and s in (r.get("tax_id") or "").lower())
             or s in (r.get("country") or "").lower()
         ]
-    return rows
+    return [_shape_vendor(r, admin) for r in rows]
 
 
 @router.post("/vendors", status_code=201, dependencies=[Depends(require_edit("budget"))])
 def create_vendor(data: VendorCreate, request: Request):
+    admin = _is_general_admin(request)
     name = (data.name or "").strip()
     if not name:
         raise HTTPException(status_code=400, detail="name is required")
     record = {k: v for k, v in data.model_dump().items() if v is not None}
+    if not admin and any(f in record for f in _VENDOR_SENSITIVE):
+        raise HTTPException(status_code=403, detail="Only a general budget admin can set bank or tax data")
     record["name"] = name
     record["created_by"] = _user_id(request)
     try:
-        return supabase.table("vendors").insert(record).execute().data[0]
+        row = supabase.table("vendors").insert(record).execute().data[0]
     except Exception as e:
         # idx_vendors_name_unique es case-insensitive: "Adobe" y "adobe" chocan.
         if "idx_vendors_name_unique" in str(e):
             raise HTTPException(status_code=409, detail="A vendor with that name already exists")
         raise
+    return _shape_vendor(row, admin)
 
 
 @router.patch("/vendors/{vendor_id}", dependencies=[Depends(require_edit("budget"))])
-def update_vendor(vendor_id: str, data: VendorUpdate):
+def update_vendor(vendor_id: str, data: VendorUpdate, request: Request):
+    admin = _is_general_admin(request)
     updates = _patch_updates(data, "vendors")
+    # exclude_unset: mandar el campo en null también es escribirlo (borrarlo).
+    if not admin and any(f in updates for f in _VENDOR_SENSITIVE):
+        raise HTTPException(status_code=403, detail="Only a general budget admin can change bank or tax data")
     updates["updated_at"] = _now_iso()
     try:
         result = supabase.table("vendors").update(updates).eq("id", vendor_id).execute()
@@ -460,16 +510,22 @@ def update_vendor(vendor_id: str, data: VendorUpdate):
         raise
     if not result.data:
         raise HTTPException(status_code=404, detail="Vendor not found")
-    return result.data[0]
+    # La respuesta trae la fila entera: sin recortarla, un PATCH del nombre le
+    # devolvía al designado el bank_info que el GET le esconde.
+    return _shape_vendor(result.data[0], admin)
 
 
 @router.delete("/vendors/{vendor_id}", dependencies=[Depends(require_edit("budget"))])
-def delete_vendor(vendor_id: str):
+def delete_vendor(vendor_id: str, request: Request):
     """Baja lógica si el proveedor tiene gastos; borrado real si nunca se usó.
 
     Los FK son ON DELETE SET NULL, así que un DELETE real no rompería nada —
     pero dejaría gastos históricos sin proveedor y sin forma de recuperarlo.
+
+    Solo admin general: el catálogo es compartido entre departamentos y dar de
+    baja un proveedor lo saca del alta de gastos de todos.
     """
+    _assert_general_admin(request)
     used = supabase.table("expenses").select("id").eq("vendor_id", vendor_id).limit(1).execute().data
     if used:
         result = supabase.table("vendors").update(
@@ -840,6 +896,55 @@ def export_budget_lines(
     )
 
 
+_OPEN_PAYMENT_STATUSES = ("new", "in_process", "split")
+
+
+def _year_of(value) -> Optional[int]:
+    """Año de una fecha ISO ('2026-03-01' / timestamptz), o None."""
+    text = str(value or "")
+    return int(text[:4]) if len(text) >= 4 and text[:4].isdigit() else None
+
+
+def _payment_fiscal_year(p: dict) -> Optional[int]:
+    """A qué año del presupuesto se imputa un pago. None = a ninguno.
+
+    - `completed` → el año de `payment_date`, que es cuando salió la plata. Si
+      no tiene fecha (la UI de Payments nunca la pidió), cae al año de la
+      competencia: antes un completado sin fecha desaparecía de TODOS los años.
+    - abierto (`new` / `in_process` / `split`) → el año de la competencia, que
+      es contra qué presupuesto compromete. Antes se contaba como comprometido
+      en cualquier año que se consultara.
+    - cualquier otro estado → no cuenta.
+
+    El año de la competencia es `competitions.year`, y si falta, el de
+    `start_date`. Espera la fila con el embed `nominations(competitions(...))`.
+    """
+    comp = ((p.get("nominations") or {}).get("competitions")) or {}
+    comp_year = comp.get("year") or _year_of(comp.get("start_date"))
+    status = p.get("status")
+    if status == "completed":
+        return _year_of(p.get("payment_date")) or comp_year
+    if status in _OPEN_PAYMENT_STATUSES:
+        return comp_year
+    return None
+
+
+def _revenue_year(r: dict) -> Optional[int]:
+    """A qué año se imputa un ingreso. None = a ninguno.
+
+    Recibido → `received_date` (el CHECK revenue_received_has_date garantiza
+    que exista); esperado → `expected_date`; cancelado o sin fecha → afuera.
+    Un esperado sin fecha no tiene año al que pertenecer: la UI lo marca para
+    que se complete en vez de sumarlo a cualquier año que se consulte.
+    """
+    status = r.get("status")
+    if status == "received":
+        return _year_of(r.get("received_date"))
+    if status == "expected":
+        return _year_of(r.get("expected_date"))
+    return None
+
+
 @router.get("/summary")
 def budget_summary(request: Request, year: int = Query(...), department: Optional[str] = Query(None)):
     """Presupuestado vs. comprometido vs. ejecutado vs. restante.
@@ -865,30 +970,34 @@ def budget_summary(request: Request, year: int = Query(...), department: Optiona
         .gte("expense_date", f"{year}-01-01").lte("expense_date", f"{year}-12-31"),
         request, department,
     )
+    # Ingresos: el año sale de dos columnas distintas según el estado, y
+    # PostgREST no hace OR entre columnas con este builder; se filtra en
+    # Python (ver _revenue_year). Antes no se filtraba nada y el dashboard de
+    # cada año sumaba los ingresos de todos los años.
     rq = _scoped(
-        supabase.table("revenues").select("amount, status, department_code, competition_id"),
+        supabase.table("revenues").select(
+            "amount, status, department_code, competition_id, expected_date, received_date"
+        ),
         request, department,
     )
     pq = _scoped(
         supabase.table("payments").select(
             "total, airfare, status, department_code, account_code, payment_date, "
-            "nominations(competition_id, personnel(role))"
+            "nominations(competition_id, personnel(role), competitions(year, start_date))"
         ),
         request, department,
     )
 
     lines = lq.execute().data or []
     expenses = eq_.execute().data or []
-    revenues = rq.execute().data or []
+    revenues = [r for r in (rq.execute().data or []) if _revenue_year(r) == year]
 
-    # Los pagos no tienen fecha de gasto: se imputan al año por `payment_date`,
-    # y los que todavía no se pagaron no cuentan como ejecutado igual que un
-    # gasto sin pagar. Se filtra en Python porque hace falta mirar el embed de
-    # la nominación para sacar la competencia.
+    # Los pagos no tienen fecha de gasto: el año sale de _payment_fiscal_year
+    # (fecha de pago si está completado, año de la competencia si está
+    # abierto). Se filtra en Python porque hace falta mirar el embed.
     payments = []
     for p in (pq.execute().data or []):
-        pd = p.get("payment_date") or ""
-        if p.get("status") == "completed" and not pd.startswith(str(year)):
+        if _payment_fiscal_year(p) != year:
             continue
         nom = p.pop("nominations", None) or {}
         base = {
@@ -919,7 +1028,7 @@ def budget_summary(request: Request, year: int = Query(...), department: Optiona
     # Un pago `completed` es ejecutado; cualquier otro estado vivo es
     # comprometido (está aprobado a nivel de nominación, falta que salga).
     paid_payments = [p for p in payments if p.get("status") == "completed"]
-    open_payments = [p for p in payments if p.get("status") in ("new", "in_process", "split")]
+    open_payments = [p for p in payments if p.get("status") in _OPEN_PAYMENT_STATUSES]
 
     budgeted = round(sum(_num(l) for l in exp_lines), 2)
     executed = round(
@@ -1129,8 +1238,15 @@ def list_headcount(year: int = Query(...)):
 
 
 @router.put("/headcount", dependencies=[Depends(require_edit("budget"))])
-def put_headcount(data: HeadcountPut):
-    """Reemplaza el headcount del año. Un headcount en 0 borra la fila."""
+def put_headcount(data: HeadcountPut, request: Request):
+    """Reemplaza el headcount del año. Un headcount en 0 borra la fila.
+
+    El headcount (personas × evento) es el insumo de las líneas de travel de
+    Competitions: exige poder editar ese departamento, igual que
+    `/headcount/generate`. Con solo `require_edit("budget")` el designado de IT
+    podía mover el presupuesto de viaje de otra área.
+    """
+    _assert_can_edit(request, "competitions")
     for item in data.items:
         existing = supabase.table("budget_headcount").select("id").eq("year", data.year) \
             .eq("role_label", item.role_label)
@@ -1346,7 +1462,10 @@ def get_assumptions(year: int):
 
 
 @router.put("/assumptions/{year}", dependencies=[Depends(require_edit("budget"))])
-def put_assumptions(year: int, data: AssumptionsPut):
+def put_assumptions(year: int, data: AssumptionsPut, request: Request):
+    # El costo promedio de vuelo multiplica el headcount de Competitions: mismo
+    # permiso que put_headcount.
+    _assert_can_edit(request, "competitions")
     payload = {"year": year, "avg_flight_cost": data.avg_flight_cost,
                "notes": data.notes, "updated_at": _now_iso()}
     existing = supabase.table("budget_assumptions").select("year").eq("year", year).execute().data
@@ -1837,6 +1956,17 @@ def pending_recurring(request: Request, period: str = Query(..., description="'Y
     """
     if not _PERIOD_RE.match(period):
         raise HTTPException(status_code=400, detail="period must be 'YYYY-MM'")
+    return _pending_recurring(request, period)
+
+
+def _pending_recurring(request: Request, period: str) -> list:
+    """Lógica de GET /recurring/pending, sin el endpoint alrededor.
+
+    `period` ya validado ('YYYY-MM'). La reusa la bandeja de pendientes de la
+    campana (api/_lib/routers/notifications.py) para contar lo que falta cargar
+    en el mes; pasa por el mismo _scoped(), así que cuenta solo lo que el caller
+    vería en la pestaña.
+    """
     year, month = int(period[0:4]), int(period[5:7])
 
     templates = _scoped(

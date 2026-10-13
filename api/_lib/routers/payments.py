@@ -41,6 +41,11 @@ _ALLOWED_CONTENT = ("application/pdf", "image/")
 _SAFE_FILENAME_RE = re.compile(r"[^\w\s\-\.\(\)]")
 _VALID_STATUSES = {"new", "in_process", "split", "completed"}
 
+# Columnas NOT NULL que un PUT puede cambiar pero nunca vaciar. Mismo criterio
+# que _REQUIRED_ON_UPDATE en budget.py: con exclude_unset un null mandado a
+# propósito llega hasta acá, y sobre estas columnas sería un 500 de Postgres.
+_PAYMENT_NOT_NULL = {"budget_code", "amount", "extra", "airfare", "status"}
+
 
 def _user_id(request: Request) -> Optional[str]:
     user = getattr(request.state, "user", None)
@@ -53,16 +58,22 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-def _budget_row(code: str) -> Optional[dict]:
-    """Fila activa del catálogo `payment_budgets`, o None si el código no existe."""
-    rows = (
+def _budget_row(code: str, include_inactive: bool = False) -> Optional[dict]:
+    """Fila del catálogo `payment_budgets`, o None si el código no existe.
+
+    Por defecto solo las activas: es lo que se valida al ELEGIR un budget (alta
+    o cambio). `include_inactive=True` es para derivar la imputación de un pago
+    que ya estaba en ese budget: desactivar un budget lo saca del desplegable,
+    no puede dejar sus pagos viejos sin poder editarse ni sin departamento.
+    """
+    q = (
         supabase.table("payment_budgets")
         .select("code, department_code")
         .eq("code", code)
-        .eq("active", True)
-        .execute()
-        .data
     )
+    if not include_inactive:
+        q = q.eq("active", True)
+    rows = q.execute().data
     return rows[0] if rows else None
 
 
@@ -247,8 +258,11 @@ def list_payments(
 def payments_summary(
     competition_id: Optional[str] = Query(None),
     budget: Optional[str] = Query(None),
+    status: Optional[str] = Query(None),
 ):
-    rows = _fetch_payments(competition_id=competition_id, budget=budget)
+    # Mismos filtros que la lista: si no, el pie de la tabla filtrada por
+    # estado sumaba todos los estados y no coincidía con las filas de arriba.
+    rows = _fetch_payments(competition_id=competition_id, budget=budget, status=status)
     return {
         "count": len(rows),
         "amount": round(sum(float(r.get("amount") or 0) for r in rows), 2),
@@ -304,23 +318,45 @@ def create_payment(data: PaymentCreate, request: Request):
 # ─── Update ──────────────────────────────────────────────────────────────────
 @router.put("/{payment_id}", dependencies=[Depends(require_edit("payments"))])
 def update_payment(payment_id: str, data: PaymentUpdate):
-    updates = {k: v for k, v in data.model_dump().items() if v is not None}
-    budget = None
-    if "budget_code" in updates:
-        budget = _budget_row(updates["budget_code"])
-        if budget is None:
-            raise HTTPException(status_code=400, detail="Unknown budget")
-    if "status" in updates and updates["status"] not in _VALID_STATUSES:
-        raise HTTPException(status_code=400, detail="Invalid status")
+    # exclude_unset y no `if v is not None`: hay que distinguir "no lo mandé" de
+    # "ponelo en null". Con el filtro viejo no había forma de borrar un
+    # comentario, una fecha de pago o una confirmación bancaria mal cargados.
+    updates = data.model_dump(exclude_unset=True)
     if not updates:
         raise HTTPException(status_code=400, detail="Nothing to update")
+    for field in _PAYMENT_NOT_NULL & updates.keys():
+        if updates[field] is None:
+            raise HTTPException(status_code=400, detail=f"{field} cannot be null")
+    if "status" in updates and updates["status"] not in _VALID_STATUSES:
+        raise HTTPException(status_code=400, detail="Invalid status")
+
     if "budget_code" in updates:
-        # Cambiar el presupuesto cambia de qué área sale la plata: se reimputa
-        # acá y no en el frontend. Puede escribir NULL (ver _budget_dimensions).
-        row = supabase.table("payments").select("nomination_id").eq("id", payment_id).execute().data
+        row = (
+            supabase.table("payments")
+            .select("budget_code, nomination_id")
+            .eq("id", payment_id)
+            .execute()
+            .data
+        )
         if not row:
             raise HTTPException(status_code=404, detail="Payment not found")
-        updates.update(_budget_dimensions(budget, _nomination_role(row[0]["nomination_id"])))
+        current = row[0]
+        if updates["budget_code"] != current.get("budget_code"):
+            # Elegir un budget nuevo: solo los activos.
+            budget = _budget_row(updates["budget_code"])
+            if budget is None:
+                raise HTTPException(status_code=400, detail="Unknown budget")
+        else:
+            # El formulario reenvía el budget que ya tenía. No se revalida: si
+            # el budget se desactivó después, el pago tiene que poder seguir
+            # editándose (antes devolvía "Unknown budget" y quedaba trabado).
+            budget = _budget_row(updates["budget_code"], include_inactive=True)
+        # Se reimputa acá y no en el frontend. Puede escribir NULL (ver
+        # _budget_dimensions). Re-derivar también cuando el budget no cambió es
+        # a propósito: corrige pagos imputados antes de que existiera el mapeo
+        # de su rol (p.ej. VIDEO_OPERATOR, migración 045).
+        updates.update(_budget_dimensions(budget, _nomination_role(current["nomination_id"])))
+
     updates["updated_at"] = _now_iso()
     result = supabase.table("payments").update(updates).eq("id", payment_id).execute()
     if not result.data:

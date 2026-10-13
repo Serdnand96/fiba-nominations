@@ -1,4 +1,4 @@
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, Field, field_validator
 from typing import Literal, Optional
 
 # fee_type gobierna todo el dispatch per-game vs. tournament. Un str libre dejaba
@@ -214,25 +214,36 @@ class EmployeeUpdate(BaseModel):
 
 # ─── PAYMENTS ─────────────────────────────────────────────────────────────
 
+# Un str libre dejaba pasar cualquier cosa hasta el CHECK de Postgres (500
+# genérico); el Literal lo rechaza con 422 antes de llegar a la base.
+PaymentStatus = Literal["new", "in_process", "split", "completed"]
+
+
 class PaymentCreate(BaseModel):
     nomination_id: str
     budget_code: str
-    amount: Optional[float] = None  # None → prefilled from nomination.total
-    extra: Optional[float] = 0
-    airfare: Optional[float] = 0    # flight cost — tracked apart, not in total
+    # ge=0: un monto negativo no es un pago, es un error de tipeo que restaría
+    # del ejecutado del presupuesto sin que nada lo marque.
+    amount: Optional[float] = Field(None, ge=0)   # None → prefilled from nomination.total
+    extra: Optional[float] = Field(0, ge=0)
+    airfare: Optional[float] = Field(0, ge=0)     # flight cost — tracked apart, not in total
     comments: Optional[str] = None
-    status: Optional[str] = "new"
+    status: Optional[PaymentStatus] = "new"
     payment_date: Optional[str] = None
     bank_confirmation: Optional[str] = None
 
 
 class PaymentUpdate(BaseModel):
+    """Update parcial. El router usa model_dump(exclude_unset=True): un campo
+    ausente no se toca y uno mandado en null se limpia (comments, payment_date,
+    bank_confirmation). Los montos y el budget no admiten null — ver
+    _PAYMENT_NOT_NULL en payments.py."""
     budget_code: Optional[str] = None
-    amount: Optional[float] = None
-    extra: Optional[float] = None
-    airfare: Optional[float] = None
+    amount: Optional[float] = Field(None, ge=0)
+    extra: Optional[float] = Field(None, ge=0)
+    airfare: Optional[float] = Field(None, ge=0)
     comments: Optional[str] = None
-    status: Optional[str] = None
+    status: Optional[PaymentStatus] = None
     payment_date: Optional[str] = None
     bank_confirmation: Optional[str] = None
 
