@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { getExpenses, getExpensesSummary, deleteExpense } from '../../api/client'
 import { useOpenParam } from '../../components/ui/Drawer'
 import { useAuth } from '../../contexts/AuthContext'
@@ -27,7 +28,22 @@ export default function ExpensesTab({ t, push, canEdit, departments, expenseAcco
   const [loading, setLoading] = useState(true)
   const [pendingCount, setPendingCount] = useState(null)
 
-  const [view, setView] = useState('all')
+  // La vista arranca de `?status=` para que los links de la campana
+  // (`/budget?tab=expenses&status=pending_approval`) abran la bandeja correcta.
+  const [searchParams, setSearchParams] = useSearchParams()
+  const initialView = searchParams.get('status') === 'pending_approval' ? 'pending'
+    : searchParams.get('status') === 'mine' ? 'mine' : 'all'
+  const [view, setViewState] = useState(initialView)
+  const setView = (v) => {
+    setViewState(v)
+    setSearchParams(prev => {
+      const next = new URLSearchParams(prev)
+      if (v === 'pending') next.set('status', 'pending_approval')
+      else if (v === 'mine') next.set('status', 'mine')
+      else next.delete('status')
+      return next
+    }, { replace: true })
+  }
   const [year, setYear] = useState(thisYear)
   const [department, setDepartment] = useState('')
   const [account, setAccount] = useState('')

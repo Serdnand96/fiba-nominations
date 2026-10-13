@@ -204,6 +204,7 @@ Qué cubren:
 | `test_expense_transitions.py` | cada fila de la máquina de estados de gastos, self-approval y override del superadmin |
 | `test_summary_year.py` | a qué año cae un pago o ingreso (`_payment_fiscal_year`, `_revenue_year`) y ejecutado/comprometido (`_payment_buckets`) |
 | `test_notifications.py` | `notify()`, `budget_approvers_for`, `/pending` y el aislamiento por usuario de `/me/notifications` |
+| `test_finance_review.py` | lo que salió de la revisión: `check_partial_payment`, invariante de `completed`, separación por `last_financial_edit_by`, `by_month == totals`, vendors, `cm_pending`, headcount 403 |
 
 Las funciones de transición (`check_payment_transition`,
 `check_expense_transition`) y las de año/balde son **puras a propósito**:

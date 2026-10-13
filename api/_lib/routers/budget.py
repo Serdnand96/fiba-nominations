@@ -1989,9 +1989,13 @@ def _fetch_expenses(
     if lower and upper:
         rows = [r for r in rows if str(r.get("expense_date") or "")[:10] <= upper[:10]]
     # `neq` en PostgREST también descarta los NULL (los 129 importados no
-    # tienen created_by), por eso la exclusión del propio va en Python.
+    # tienen created_by), por eso la exclusión del propio va en Python. Se
+    # excluye también lo que el caller editó por última vez: tampoco lo puede
+    # aprobar (separación de funciones, migración 050), así que mostrarlo en la
+    # bandeja sería un botón que siempre da 403.
     if exclude_created_by:
-        rows = [r for r in rows if r.get("created_by") != exclude_created_by]
+        rows = [r for r in rows
+                if exclude_created_by not in (r.get("created_by"), r.get("last_financial_edit_by"))]
 
     if search:
         s = search.lower()

@@ -150,12 +150,13 @@ def _expenses_to_approve(request: Request, uid: str) -> int:
     depts = _approve_departments(request)
     if depts is not None and not depts:
         return 0
-    q = supabase.table("expenses").select("id, created_by").eq("status", "draft")
+    q = supabase.table("expenses").select("id, created_by, last_financial_edit_by").eq("status", "draft")
     if depts is not None:
         q = q.in_("department_code", depts)
     rows = q.execute().data or []
-    # Los propios no cuentan: nadie aprueba su propio gasto.
-    return sum(1 for r in rows if r.get("created_by") != uid)
+    # Los propios no cuentan: nadie aprueba lo que cargó ni lo que editó por
+    # última vez (misma regla que la bandeja `pending_approval` de budget.py).
+    return sum(1 for r in rows if uid not in (r.get("created_by"), r.get("last_financial_edit_by")))
 
 
 def _in_process_payments() -> list:

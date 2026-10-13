@@ -125,14 +125,20 @@ legacy `fibaamericascloud.com`).
     feriados y varía por país de la persona).
 
     Los días compensatorios llevan **permiso propio `comp_days`** (migración
-    030). Es el único permiso que **no** corresponde a una página: no tiene
-    ruta ni entrada de sidebar, gobierna una columna dentro de Employees y solo
-    usa `can_view`. El backend recorta `weekend_days` de la respuesta con
-    `has_view()` (la variante de `auth.py` que devuelve bool en vez de tirar
-    403, para permisos que recortan datos en lugar de cerrar un endpoint).
+    030). No corresponde a una página: no tiene ruta ni entrada de sidebar,
+    gobierna una columna dentro de Employees y solo usa `can_view`. El backend
+    recorta `weekend_days` de la respuesta con `has_view()` (la variante de
+    `auth.py` que devuelve bool en vez de tirar 403, para permisos que recortan
+    datos en lugar de cerrar un endpoint).
+
+    Hay un **segundo** permiso no-página: **`payments_approve`** (migración
+    047). Tampoco tiene ruta; solo usa `can_view` y habilita pasar un pago a
+    `completed` (punto 14). Los dos están en `VIEW_ONLY_MODULES` de `Users.jsx`,
+    que les deshabilita la casilla de edición.
+
     Al agregar un permiso hay que tocar **tres** lugares: el CHECK de
     `user_permissions.module`, `MODULES` en `permissions.py` y `MODULES` en
-    `src/pages/Users.jsx`.
+    `src/pages/Users.jsx` (y `VIEW_ONLY_MODULES` si no es una página).
 
 11. **Los checklists de sede son datos, no código** (migración 038,
     `checklists.py` + `public_checklists.py`). "El VGO llega a la sede y prueba
@@ -206,9 +212,19 @@ legacy `fibaamericascloud.com`).
       evento (licencias, internet, leasing) y gasto de evento sin persona
       (shipping, branding, seguros).
 
-    `/budget/summary` suma las dos fuentes. Un pago cuenta como ejecutado con
-    `status = 'completed'`; un gasto, con `paid`. Lo aprobado-sin-pagar se
-    reporta como *comprometido* y no descuenta del restante.
+    `/budget/summary` suma las dos fuentes. Un gasto cuenta como ejecutado con
+    `paid` y como comprometido con `approved`. Un pago (`new` / `in_process` /
+    `completed` / `cancelled` desde la migración 047 — **`split` ya no
+    existe**) es ejecutado en `completed` y comprometido en `new`; el pago
+    parcial es un `in_process` con `paid_amount`, que cuenta lo pagado como
+    ejecutado y el resto (`total − paid_amount`) como comprometido
+    (`_payment_buckets`). `cancelled` no cuenta. Lo comprometido no descuenta
+    del restante.
+
+    El **año** de un pago no es el de cualquier fecha: `completed` → año de
+    `payment_date` (o de la competencia si no tiene); abierto → año de la
+    competencia (`_payment_fiscal_year`). Un ingreso, por `received_date` o
+    `expected_date` según su estado (`_revenue_year`). Ver BUDGET_MODULE.md §8.
 
     **No metas un `nomination_id` nullable en `payments`** para unificarlas: eso
     volvería condicional el prefill desde `nominations.total`, la lógica de
@@ -230,7 +246,9 @@ legacy `fibaamericascloud.com`).
 
     - **Nunca imputes el pasaje a la cuenta del fee.** Infla una línea y deja la
       otra en cero, y encima parece correcto. El plan de cuentas viene apareado:
-      TD 11/12, VGO 13/14, REF 10/07, REF_INSTRUCTOR 08/09.
+      TD 11/12, VGO 13/14, REF 10/07, REF_INSTRUCTOR 08/09, VIDEO_OPERATOR
+      29/30 (las dos últimas las crea la migración 045; antes sus pagos nacían
+      sin imputar).
     - El departamento es **dato, no código**: agregar un `payment_budgets` sin
       mapear manda esos pagos a `unallocated_payments` (el ámbar del dashboard).
       El backend loguea un warning cuando pasa, pero es lo único que avisa.
@@ -253,26 +271,56 @@ legacy `fibaamericascloud.com`).
       encadenar dos pisa el scope en silencio. Eso sería el bypass.
     - `/budget/access/{user_id}` es **solo superadmin**: quién ve qué plata no lo
       decide alguien que ya tiene el módulo.
+    - Son **tres** acciones, no dos: `_departments_for(request, action)` acepta
+      `'view'` / `'edit'` / `'approve'` (columnas `can_view` / `can_edit` /
+      `can_approve` de `budget_access`, la última de la migración 048).
+      `can_approve` **no** se deduce de `can_edit` (el que carga y el que aprueba
+      son roles distintos) y sí implica `can_view`. Nadie aprueba un gasto que
+      cargó (`created_by`) ni uno cuyo último cambio de plata hizo él
+      (`last_financial_edit_by`, migración 050); el superadmin puede, con
+      motivo, y queda como override en el historial. Por eso `POST /budget/expenses/{id}/transition`
+      y `/approve` no llevan `require_edit` en el decorador: el permiso lo decide
+      la transición (punto 23).
+    - Lo que no es de ningún departamento no se puede recortar por fila y queda
+      para el **admin general** (superadmin o fila `'*'` con `can_edit`,
+      `_assert_general_admin()`): el plan de cuentas (`POST`/`PATCH` y `remap`
+      de `/budget/accounts`), borrar proveedores o cambiarles `name` / `active`,
+      y leer o escribir `bank_info` / `tax_id` de un proveedor (el resto ve
+      `has_bank_info`). El headcount y los supuestos exigen en cambio el
+      departamento **Competitions**, que es lo que alimentan: verlo para los
+      GET, editarlo para los PUT.
 
-17. **Las migraciones de Budget (033-041) NO van en el deploy automático.** Se
-    aplican a mano contra Supabase **antes** de pushear el código que las usa —
-    si no, el deploy encuentra una columna que no existe. Cada archivo lo dice en
-    su cabecera. El resto del schema sigue la misma convención, pero acá es
-    especialmente fácil olvidarlo porque son nueve migraciones seguidas.
+17. **Las migraciones de Budget NO van en el deploy automático.** Son la
+    **033-037**, la **041** y la **045-050** (las 038-040 son de otros módulos:
+    checklists, hora UTC de los partidos, ventanas FIBA). Se aplican a mano
+    contra Supabase **antes** de pushear el código que las usa — si no, el
+    deploy encuentra una columna que no existe. Cada archivo lo dice en su
+    cabecera. El resto del schema sigue la misma convención, pero acá es
+    especialmente fácil olvidarlo porque son muchas y van en orden: la 045-050
+    (flujo de finanzas, octubre 2026) son cuentas del Video Operator, historial
+    de estados, pipeline de pagos + `personnel_banking` + `payments_approve`,
+    aprobación de gastos, notificaciones y `last_financial_edit_by/at` (quién
+    tocó la plata por última vez).
 
-    **Estado hoy (septiembre 2026):** el presupuesto está cargado ($1.627.431
+    **Estado hoy (octubre 2026):** el presupuesto está cargado ($1.627.431
     para 2027, entre IT, Competitions y Comms; $280.111 para 2026, solo IT). El
     **ejecutado** tiene los 129 gastos de IT de enero a julio 2026
     (`scripts/import_it_2026.py`, $41.667) y 1 pago; sigue sin gastos de
     Competitions ni Comms y sin proveedores. Si el dashboard 2027 te da el
-    ejecutado en cero, es el dato y no un bug.
+    ejecutado en cero, es el dato y no un bug. `personnel_banking` arranca
+    vacía, nadie tiene `payments_approve` por defecto y `can_approve` solo lo
+    recibe la fila `'*'` con `can_edit` (backfill de la 048): hasta que un
+    superadmin los asigne en Usuarios, completar pagos y aprobar gastos queda en
+    manos del superadmin.
 
 18. **El Muro (`feed`) es el único permiso donde `can_view` ESCRIBE.** Es el
     feed interno a lo Facebook (`api/_lib/routers/feed.py`, página
     `src/pages/Feed.jsx`, ruta `/muro`, migración 043): novedades de los
     compañeros, eventos, avisos de RRHH, encuestas, reacciones y comentarios.
     Es deliberadamente el módulo menos formal del sistema, y por eso el permiso
-    no sigue la regla "toda escritura lleva `require_edit`":
+    no sigue la regla "toda escritura lleva `require_edit`" (la otra excepción
+    a esa regla es aprobar un gasto, que pide `budget:view` más `can_approve`
+    del departamento en vez de `budget:edit` — punto 16):
 
     | Permiso | Qué habilita |
     |---|---|
@@ -379,6 +427,74 @@ legacy `fibaamericascloud.com`).
     Se puede duplicar una plantilla (`POST /templates/{key}/duplicate`) y
     previsualizar con una nominación real (`?nomination_id=`).
 
+23. **En gastos y pagos el `status` no se edita por PATCH/PUT.** Solo cambia por
+    `POST /budget/expenses/{id}/transition` y `POST /payments/{id}/transition`
+    (más `/payments/bulk-status`, que aplica la misma regla ítem por ítem). Un
+    PATCH/PUT con `status` es 400, y un alta nace `draft` / `new`.
+
+    - Cada máquina es una **función pura** (`check_expense_transition` en
+      `budget.py`, `check_payment_transition` en `payments.py`): recibe la fila,
+      el destino, el body y los derechos del caller ya resueltos, y devuelve qué
+      escribir o levanta 400 (falta un dato) / 403 (no te toca) / 409 (no existe
+      esa transición). Las tablas están en BUDGET_MODULE.md §14 y en un test
+      (`test_transition_table_is_the_documented_one`) que falla si cambian sin
+      actualizarlo.
+    - El endpoint escribe con `.eq("status", <el validado>)` (lock optimista:
+      si alguien lo movió en el medio, 409), deja traza con
+      `record_transition()` (`services/finance_history.py`, tabla
+      `finance_status_history`, migración 046) y avisa con `notify()`.
+    - Separación de funciones: nadie aprueba un gasto ni completa un pago que
+      **creó o cuyo último cambio de plata hizo** (`created_by` y
+      `last_financial_edit_by`, migración 050); el superadmin sí, **con
+      motivo**, y queda `meta.override`. Completar un pago exige
+      `payments:edit` **más** `payments_approve`, fecha, nominación no
+      declinada, el CM aprobado, W-8 vigente y datos bancarios, y paga **el
+      total** (`paid_amount` distinto del total → 400).
+    - El pago parcial no es un estado ni un campo del PUT: es
+      `POST /payments/{id}/record-partial {paid_amount, reason?}`, con el mismo
+      gating que completar. El PUT ya no acepta `paid_amount`.
+    - Las **ediciones de plata** (PUT de un pago con `amount` / `extra` /
+      `airfare` / `budget_code`, PATCH de un gasto con campos financieros,
+      `sync-amount`) y los **DELETE** también quedan en el historial: con el
+      mismo status y `meta.edit`, o con `to_status = 'deleted'`.
+    - No hay `approved → cancelled` en gastos ni `completed → cancelled` en
+      pagos: primero se reabre. Un pago con `paid_amount > 0` no vuelve a `new`
+      ni se cancela (desaparecería del ejecutado).
+
+24. **Las notificaciones son in-app y no tienen cron ni email.** La campana
+    (`src/components/NotificationsBell.jsx`) lee de `/api/me/notifications`
+    (router `notifications.py`), que como `/me` va bajo **`require_user`** y sin
+    permiso de módulo: **toda** query filtra por `user_id = caller`, incluido el
+    UPDATE de marcar leída (una ajena da 404). Dos cosas distintas:
+    - **Novedades** → tabla `notifications` (migración 049). Las escribe
+      `notify()` (`services/notify.py`) en el mismo handler que produce el
+      evento; es best-effort y nunca rompe el request.
+    - **Pendientes** → `GET /me/notifications/pending`, **calculados en vivo**
+      según los permisos del caller (gastos por aprobar, pagos sin W-8 o sin
+      banco, pagos esperando al CM, recurrentes del mes). No se guardan; no
+      agregues una tabla para eso.
+    El front hace poll cada 60 s y al volver a la pestaña. Quién recibe qué:
+    BUDGET_MODULE.md §15.
+
+25. **`personnel_banking` vive SOLO en el router `payments`.** Es la ficha
+    bancaria y el W-8/W-9 de cada persona (migración 047), bajo
+    `/api/payments/personnel/{id}/banking`: hereda `require_view("payments")`,
+    así que quien tiene `personnel` sin `payments` no la ve. **Nunca** la
+    expongas por `personnel.py`.
+    - El GET devuelve los números **enmascarados** (`****1234`) y, si la persona
+      no tiene ficha, `exists: false` (no 404).
+    - `POST …/banking/reveal` muestra los números completos y es **POST a
+      propósito**: el middleware del `activity_log` audita POST/PUT/PATCH/DELETE,
+      no los GET. No lo pases a GET.
+    - Bajar el PDF del W-8 también es **POST** (`…/tax-form/download`, con
+      `payments:edit`), por la misma razón.
+    - El W-8 **bloquea** `completed` y `record-partial` (tiene que estar `ok` o
+      `exempt`), igual que no tener datos bancarios; en `new → in_process` solo
+      **advierte**. Un W-8 sin fecha de vencimiento vence el 31/12 del tercer
+      año posterior a la firma; uno sin PDF cuenta como faltante. El PDF va al
+      bucket privado `nominations` bajo `banking/`.
+    - El export de pagos no lleva números de cuenta.
+
 ---
 
 ## 🗺️ Mapa del repo
@@ -403,19 +519,25 @@ fiba-nominations/
 ├── api/                       ← FastAPI backend
 │   ├── index.py               ← entry, middleware, mounting routers
 │   └── _lib/
-│       ├── auth.py            ← require_view, require_edit dependencies
+│       ├── auth.py            ← require_view, require_edit, require_user, has_view/has_edit
 │       ├── database.py        ← lightweight supabase client (httpx)
 │       ├── budget_accounts.py ← rol → cuenta de fees / de travel (payments ↔ budget)
-│       ├── routers/           ← uno por módulo (nominations, training, …)
+│       ├── finance_years.py   ← a qué año cae un pago (budget y la cola de payments)
+│       ├── routers/           ← uno por módulo (nominations, training, …) + notifications (/me)
 │       └── services/
-│           └── document_generator.py  ← docx (docxtpl) → pdf (LibreOffice)
+│           ├── document_generator.py  ← docx (docxtpl) → pdf (LibreOffice)
+│           ├── finance_history.py     ← record_transition / history_for (punto 23)
+│           ├── notify.py              ← notify(), budget_approvers_for, module_editors (punto 24)
+│           └── xlsx_utils.py          ← helpers de los exports .xlsx nuevos
 │
 ├── src/                       ← React frontend
 │   ├── App.jsx                ← shell (sidebar + topbar + router)
 │   ├── pages/                 ← una por ruta
+│   │   ├── budget/            ← pestañas de Budget, editores, scope.jsx (BudgetScopeContext)
+│   │   └── payments/          ← Cola, Por evento, PaymentDrawer, BulkStatusModal
 │   ├── components/
-│   │   ├── ui/                ← Button, Input, Table, … (DS primitivos)
-│   │   ├── layout/            ← Sidebar, Topbar, AppShell
+│   │   ├── ui/                ← Button, Input, Table, Tabs, Drawer, … (DS primitivos)
+│   │   ├── charts/            ← BudgetCharts (recharts, chunk `charts`, solo con React.lazy)
 │   │   └── brand/             ← Logo.jsx (Monogram, Wordmark, …)
 │   ├── lib/icons.jsx          ← Tabler icons
 │   ├── contexts/              ← Auth, Language
@@ -428,6 +550,7 @@ fiba-nominations/
 │   ├── fiba-security-scan.sh      ← scanner horario de nginx logs (corre en droplet)
 │   └── fiba-supabase-keepalive.sh ← ping diario a Supabase (evita el auto-pause del Free)
 ├── supabase/migrations/       ← schema SQL
+├── tests/                     ← pytest sin red ni base (ver DEVELOPMENT.md → Tests)
 ├── verify_security.sh         ← smoke test post-deploy
 ├── .github/workflows/deploy.yml  ← CI/CD
 └── tailwind.config.js         ← tokens del DS
@@ -600,7 +723,19 @@ explicación del truco de CSS variables para los aliases legacy
   primero: es el contrato del módulo y se actualiza en el mismo PR. Checklist
   corto: `_scoped()` en toda query nueva de budget, la migración aplicada a mano
   ANTES del push, y si tocás la imputación de un pago acordate de que son dos
-  (fee y pasaje, puntos 15 a 17).
+  (fee y pasaje, puntos 15 a 17). Además:
+  - Un cambio de estado nuevo es una **fila en la tabla de transiciones** de la
+    función pura (`check_expense_transition` / `check_payment_transition`), con
+    su test y su fila en BUDGET_MODULE.md §14 — nunca un `status` en un
+    PATCH/PUT (punto 23).
+  - Si el evento le importa a alguien, `notify()` en el mismo handler
+    (best-effort, con el autor en `exclude`); si es "algo que espera una
+    acción", va como pendiente calculado en `notifications.py`, no como fila
+    (punto 24).
+  - Todo export de budget sale de la misma función que la pantalla y pasa por
+    `_scoped()`: el Excel no puede traer nada que la tabla no muestre. Los
+    `.xlsx` nuevos usan `services/xlsx_utils.py` (`safe_text` contra fórmulas,
+    `no-store`).
 
 - **"Cambiá el deploy"** → modificá `.github/workflows/deploy.yml`. Hay
   un user en el droplet llamado `fiba` con clave SSH agregada via
@@ -633,3 +768,12 @@ explicación del truco de CSS variables para los aliases legacy
 - ❌ Imputar el pasaje de un pago a la cuenta de fees (punto 15).
 - ❌ Pushear código que usa una migración de Budget sin haberla aplicado antes
   a mano en Supabase (punto 17).
+- ❌ Cambiar el `status` de un gasto o de un pago por PATCH/PUT, o aceptar un
+  alta que no nazca `draft` / `new`: solo por `/transition` (punto 23).
+- ❌ "Corregir" `/budget/expenses/{id}/transition` o `/approve` agregándoles
+  `require_edit`: el aprobador puede no tener `can_edit`, y el permiso lo
+  decide la transición (punto 16).
+- ❌ Exponer `personnel_banking` por `personnel.py`, o pasar `/reveal` o la
+  descarga del W-8 a GET (dejarían de quedar en el activity log) (punto 25).
+- ❌ Mandarle `bank_info` / `tax_id` de un proveedor a alguien que no es admin
+  general de budget, ni en un GET ni en la respuesta de un PATCH (punto 16).
