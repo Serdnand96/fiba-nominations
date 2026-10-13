@@ -565,6 +565,10 @@ const translations = {
 
     // Errores
     required: { en: 'Fill in the required fields', es: 'Completa los campos obligatorios' },
+
+    // Pestañas de Pagos (shell de Payments.jsx)
+    paymentsTabQueue: { en: 'Payment queue', es: 'Cola de pagos' },
+    paymentsTabEvent: { en: 'By event', es: 'Por evento' },
   },
 
   // ===== Payments =====
@@ -1794,6 +1798,27 @@ const translations = {
     superadmin: { en: 'Superadmin', es: 'Superadmin' },
     user: { en: 'User', es: 'Usuario' },
     noEditPermission: { en: 'You don\'t have edit permission', es: 'No tienes permiso de edición' },
+    // Historial de estados de gastos y pagos (StatusHistory.jsx, migración 046)
+    historyTitle: { en: 'Status history', es: 'Historial de estados' },
+    historyEmpty: { en: 'No status changes yet', es: 'Sin cambios de estado todavía' },
+    historyEmptyBody: {
+      en: 'Every approval, rejection, payment or cancellation will be recorded here.',
+      es: 'Cada aprobación, rechazo, pago o cancelación queda registrado acá.',
+    },
+    historyCreated: { en: 'Created', es: 'Alta' },
+    historyBy: { en: 'by {user}', es: 'por {user}' },
+    historyUnknownUser: { en: 'unknown user', es: 'usuario desconocido' },
+    historyReason: { en: 'Reason', es: 'Motivo' },
+    historyOverride: { en: 'Self-approved (superadmin)', es: 'Autoaprobado (superadmin)' },
+    historyBulk: { en: 'Bulk', es: 'En lote' },
+    historyStatus_new: { en: 'New', es: 'Nuevo' },
+    historyStatus_in_process: { en: 'In process', es: 'En proceso' },
+    historyStatus_completed: { en: 'Completed', es: 'Completado' },
+    historyStatus_cancelled: { en: 'Cancelled', es: 'Cancelado' },
+    historyStatus_draft: { en: 'Draft', es: 'Borrador' },
+    historyStatus_approved: { en: 'Approved', es: 'Aprobado' },
+    historyStatus_paid: { en: 'Paid', es: 'Pagado' },
+    historyStatus_rejected: { en: 'Rejected', es: 'Rechazado' },
   },
 
   // ===== Competition selector (CompetitionSearch) =====
@@ -1952,6 +1977,35 @@ const translations = {
     instructions: { en: 'Point your camera at a FIBA asset QR code to view its details.', es: 'Apunta tu cámara al código QR de un activo FIBA para ver sus detalles.' },
     noCamera: { en: 'No camera available', es: 'No hay cámara disponible' },
     invalidQr: { en: 'Invalid QR', es: 'QR inválido' },
+  },
+
+  // ===== Notifications (campana del topbar) =====
+  notifications: {
+    title: { en: 'Notifications', es: 'Notificaciones' },
+    pendingTitle: { en: 'Pending', es: 'Pendientes' },
+    newsTitle: { en: 'Updates', es: 'Novedades' },
+    markAllRead: { en: 'Mark all as read', es: 'Marcar todo como leído' },
+    empty: { en: 'No updates', es: 'Sin novedades' },
+    emptyBody: { en: 'You will see approvals, payments and other changes here.', es: 'Acá vas a ver aprobaciones, pagos y otros cambios.' },
+    justNow: { en: 'just now', es: 'recién' },
+    minutesAgo: { en: '{n} min ago', es: 'hace {n} min' },
+    hoursAgo: { en: '{n} h ago', es: 'hace {n} h' },
+    daysAgo: { en: '{n} d ago', es: 'hace {n} d' },
+    kinds: {
+      expense_submitted: { en: 'Expense submitted for approval', es: 'Gasto enviado a aprobación' },
+      expense_approved: { en: 'Expense approved', es: 'Gasto aprobado' },
+      expense_rejected: { en: 'Expense rejected', es: 'Gasto rechazado' },
+      expense_paid: { en: 'Expense paid', es: 'Gasto pagado' },
+      payment_tax_form_missing: { en: 'Payment missing tax form', es: 'Pago sin formulario fiscal' },
+      payment_completed: { en: 'Payment completed', es: 'Pago completado' },
+      payment_cancelled: { en: 'Payment cancelled', es: 'Pago cancelado' },
+    },
+    pending: {
+      expenses_to_approve: { en: 'Expenses to approve', es: 'Gastos por aprobar' },
+      payments_missing_docs: { en: 'Payments missing documents', es: 'Pagos sin documentación' },
+      payments_awaiting_cm: { en: 'Payments awaiting CM', es: 'Pagos esperando CM' },
+      recurring_pending: { en: 'Recurring expenses to generate', es: 'Recurrentes por generar' },
+    },
   },
 }
 

@@ -107,6 +107,21 @@ export const downloadNominationsZip = async (ids) => {
   return { blob: resp.data, skipped: skippedHeader ? (parseInt(skippedHeader, 10) || 0) : 0 }
 }
 
+// Guarda un Blob como archivo: object URL + <a download> efímero. Es la
+// segunda mitad del patrón de descarga de buckets privados (la primera es el
+// GET con `responseType: 'blob'` y el JWT del interceptor). Nunca un <a href>
+// a una URL pública.
+export const saveBlob = (blob, filename) => {
+  const objectUrl = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = objectUrl
+  link.download = filename || 'download'
+  document.body.appendChild(link)
+  link.click()
+  document.body.removeChild(link)
+  setTimeout(() => URL.revokeObjectURL(objectUrl), 1000)
+}
+
 // Authenticated file download — fetches with JWT, returns a Blob the caller
 // turns into an object URL to trigger the browser save dialog. Replaces the
 // previous <a href={url}> pattern, which exposed the file without auth.
@@ -231,14 +246,7 @@ export const commitBudgetImport = (file, options) => postBudgetImport('/budget/i
 // round-trip). Blob + JWT, como el resto de las descargas.
 export const downloadBudgetLinesXlsx = async (params) => {
   const resp = await api.get('/budget/lines/export.xlsx', { params, responseType: 'blob' })
-  const objectUrl = URL.createObjectURL(resp.data)
-  const link = document.createElement('a')
-  link.href = objectUrl
-  link.download = `budget-${params.year}.xlsx`
-  document.body.appendChild(link)
-  link.click()
-  document.body.removeChild(link)
-  setTimeout(() => URL.revokeObjectURL(objectUrl), 1000)
+  saveBlob(resp.data, `budget-${params.year}.xlsx`)
 }
 // Costo total del evento. NO está recortado por departamento a propósito: el
 // scoping rige cargar y editar, no leer la cifra de una competencia.
@@ -746,3 +754,14 @@ export const addFeedComment = (id, body) => api.post(`/feed/posts/${id}/comments
 export const deleteFeedComment = (commentId) => api.delete(`/feed/comments/${commentId}`).then(r => r.data)
 export const voteFeedPoll = (id, option_index) => api.post(`/feed/posts/${id}/vote`, { option_index }).then(r => r.data)
 export const getFeedSidebar = () => api.get('/feed/sidebar').then(r => r.data)
+
+// ─── Notifications ───
+// Campana del topbar (api/_lib/routers/notifications.py, bajo /me: solo las
+// del usuario logueado). "pending" son contadores en vivo, no filas.
+export const getNotifications = ({ unread, limit = 20, offset = 0 } = {}) =>
+  api.get('/me/notifications', {
+    params: { ...(unread != null ? { unread: unread ? 1 : 0 } : {}), limit, offset },
+  }).then(r => r.data)
+export const getPendingInbox = () => api.get('/me/notifications/pending').then(r => r.data)
+export const markNotificationRead = (id) => api.post(`/me/notifications/${id}/read`).then(r => r.data)
+export const markAllNotificationsRead = () => api.post('/me/notifications/read-all').then(r => r.data)
