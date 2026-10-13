@@ -1,8 +1,19 @@
-import { useEffect, useMemo, useState } from 'react'
-import { getBudgetSummary, getCompetitionCost, getFeeSchedule, applyFeeSchedule } from '../../api/client'
+import { lazy, Suspense, useEffect, useMemo, useState } from 'react'
+import { Link } from 'react-router-dom'
+import {
+  getBudgetSummary, getCompetitionCost, getFeeSchedule, applyFeeSchedule,
+  downloadBudgetSummaryXlsx, downloadBudgetExpensesXlsx,
+} from '../../api/client'
+import { useLanguage } from '../../i18n/LanguageContext'
 import { Icon } from '../../lib/icons'
 import { competitionLabel } from '../../lib/competitions'
+import { Stat } from '../../components/ui/Stat'
+import { Button } from '../../components/ui/Button'
 import { money, RollupTable } from './shared'
+
+// recharts vive en el chunk `charts` (vite.config.js): se baja recién al abrir
+// el resumen, y ni Budget ni otra página lo cargan por adelantado.
+const BudgetCharts = lazy(() => import('../../components/charts'))
 
 // Tipos de evento del sheet `Fees Breakdown`. NO es template_key: son ejes
 // distintos — dos competencias con el mismo template pueden pagar distinto.
@@ -41,6 +52,78 @@ function storedYear() {
   return Number.isInteger(y) && y >= thisYear - 2 && y <= thisYear + 4 ? y : thisYear
 }
 
+// Las tarjetas van en dólares enteros: con centavos, $1,627,431.00 no entra en
+// un cuarto de pantalla. Las tablas de abajo siguen con money() y centavos.
+function usd(n) {
+  const v = Math.round(Number(n) || 0)
+  return `${v < 0 ? '-' : ''}$${Math.abs(v).toLocaleString()}`
+}
+
+function pctOf(part, whole) {
+  return whole > 0 ? Math.round((Number(part || 0) / whole) * 100) : null
+}
+
+// Estados que se cuentan en los chips. Rechazados y anulados no consumen
+// presupuesto: el backend los manda igual, pero acá serían ruido.
+const STATUS_CHIPS = [
+  {
+    group: 'expenses', label: 'budget.chartStatusExpenses',
+    items: [
+      { status: 'draft', label: 'budget.chartStatusDraft', dot: 'bg-ink-400' },
+      { status: 'approved', label: 'budget.chartStatusApproved', dot: 'bg-info-500' },
+      { status: 'paid', label: 'budget.chartStatusPaid', dot: 'bg-success-500' },
+    ],
+  },
+  {
+    group: 'payments', label: 'budget.chartStatusPayments',
+    items: [
+      { status: 'new', label: 'budget.chartStatusNew', dot: 'bg-ink-400' },
+      { status: 'in_process', label: 'budget.chartStatusInProcess', dot: 'bg-info-500' },
+      { status: 'completed', label: 'budget.chartStatusCompleted', dot: 'bg-success-500' },
+    ],
+  },
+]
+
+function StatusChips({ byStatus, t }) {
+  if (!byStatus) return null
+  return (
+    <div className="flex flex-col sm:flex-row sm:flex-wrap gap-x-6 gap-y-3 mb-6">
+      {STATUS_CHIPS.map(group => (
+        <div key={group.group} className="flex flex-wrap items-center gap-2">
+          <span className="text-2xs font-semibold uppercase tracking-wider text-ink-500 dark:text-ink-400 w-full sm:w-auto">
+            {t(group.label)}
+          </span>
+          {group.items.map(item => {
+            const s = byStatus[group.group]?.[item.status] || {}
+            return (
+              <span key={item.status}
+                className="inline-flex items-center gap-1.5 rounded-md border border-ink-200 dark:border-navy-700 bg-white dark:bg-navy-900 px-2.5 py-1 text-xs">
+                <span className={`w-1.5 h-1.5 rounded-full ${item.dot}`} />
+                <span className="text-ink-700 dark:text-ink-200">{t(item.label)}</span>
+                <span className="num font-semibold text-ink-900 dark:text-white">{s.count || 0}</span>
+                <span className="num text-ink-500 dark:text-ink-400">{usd(s.amount)}</span>
+              </span>
+            )
+          })}
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function ChartsFallback({ t }) {
+  return (
+    <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 mb-6" aria-busy="true">
+      {[0, 1, 2].map(i => (
+        <div key={i}
+          className={`h-[300px] rounded-xl border border-ink-200 dark:border-navy-800 bg-ink-50 dark:bg-navy-900/60 animate-pulse flex items-center justify-center text-sm text-ink-500 dark:text-ink-400 ${i === 2 ? 'xl:col-span-2' : ''}`}>
+          {i === 0 ? t('budget.chartLoading') : null}
+        </div>
+      ))}
+    </div>
+  )
+}
+
 export default function DashboardTab({ t, push, canEdit, departments, competitions }) {
   const thisYear = new Date().getFullYear()
   const [year, setYearState] = useState(storedYear)
@@ -49,6 +132,8 @@ export default function DashboardTab({ t, push, canEdit, departments, competitio
   const [loading, setLoading] = useState(true)
   const [costEvent, setCostEvent] = useState('')
   const [cost, setCost] = useState(null)
+  const [exporting, setExporting] = useState(null)
+  const { lang } = useLanguage()
 
   const yearOptions = useMemo(() => Array.from({ length: 7 }, (_, i) => thisYear + 4 - i), [thisYear])
 
@@ -77,9 +162,24 @@ export default function DashboardTab({ t, push, canEdit, departments, competitio
     [summary],
   )
 
+  // El backend recorta por departamento (_scoped): un designado de IT exporta
+  // solo IT aunque elija "todos".
+  async function handleExport(kind) {
+    setExporting(kind)
+    try {
+      const download = kind === 'summary' ? downloadBudgetSummaryXlsx : downloadBudgetExpensesXlsx
+      await download({ year, department, lang })
+    } catch (e) {
+      console.error(e)
+      push({ type: 'error', title: t('budget.exportError') })
+    } finally {
+      setExporting(null)
+    }
+  }
+
   return (
     <div>
-      <div className="flex flex-wrap gap-3 mb-6">
+      <div className="flex flex-wrap items-center gap-3 mb-6">
         <select value={year} onChange={e => setYear(Number(e.target.value))}
           className="fiba-select !w-auto min-w-[100px]">
           {yearOptions.map(y => <option key={y} value={y}>{y}</option>)}
@@ -89,6 +189,16 @@ export default function DashboardTab({ t, push, canEdit, departments, competitio
           <option value="">{t('budget.allDepartments')}</option>
           {departments.map(d => <option key={d.code} value={d.code}>{d.label}</option>)}
         </select>
+        <div className="flex flex-wrap gap-2 sm:ml-auto">
+          <Button variant="secondary" icon={<Icon.Download />} disabled={!!exporting}
+            title={t('budget.exportSummaryHint')} onClick={() => handleExport('summary')}>
+            {exporting === 'summary' ? t('budget.exportExporting') : t('budget.exportSummary')}
+          </Button>
+          <Button variant="secondary" icon={<Icon.Download />} disabled={!!exporting}
+            title={t('budget.exportExpensesHint')} onClick={() => handleExport('expenses')}>
+            {exporting === 'expenses' ? t('budget.exportExporting') : t('budget.exportExpenses')}
+          </Button>
+        </div>
       </div>
 
       {loading ? (
@@ -99,29 +209,16 @@ export default function DashboardTab({ t, push, canEdit, departments, competitio
         </div>
       ) : (
         <>
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-2">
-            <div className="fiba-stat">
-              <p className="text-xs text-fiba-muted">{t('budget.budgeted')}</p>
-              <p className="text-2xl font-bold text-ink-900 dark:text-white">${money(summary.totals.budgeted)}</p>
-            </div>
-            <div className="fiba-stat">
-              <p className="text-xs text-fiba-muted">{t('budget.committed')}</p>
-              <p className="text-2xl font-bold text-blue-400">${money(summary.totals.committed)}</p>
-            </div>
-            <div className="fiba-stat">
-              <p className="text-xs text-fiba-muted">{t('budget.executed')}</p>
-              <p className="text-2xl font-bold text-emerald-400">${money(summary.totals.executed)}</p>
-            </div>
-            <div className="fiba-stat">
-              <p className="text-xs text-fiba-muted">{t('budget.remaining')}</p>
-              <p className={`text-2xl font-bold ${summary.totals.remaining < 0 ? 'text-red-500' : 'text-ink-900 dark:text-white'}`}>
-                ${money(summary.totals.remaining)}
-              </p>
-            </div>
-          </div>
-          <p className="text-xs text-fiba-muted mb-6 flex items-center gap-1.5">
+          <SummaryStats summary={summary} t={t} />
+          <p className="text-xs text-fiba-muted mt-3 mb-4 flex items-center gap-1.5">
             <Icon.Info className="w-3.5 h-3.5 flex-shrink-0" /> {t('budget.includesPayments')}
           </p>
+
+          <StatusChips byStatus={summary.by_status} t={t} />
+
+          <Suspense fallback={<ChartsFallback t={t} />}>
+            <BudgetCharts summary={summary} t={t} />
+          </Suspense>
 
           <RollupTable title={t('budget.byDepartment')} rows={summary.by_department} t={t} />
           <RollupTable title={t('budget.byCompetition')} rows={summary.by_competition} t={t}
@@ -200,6 +297,45 @@ export default function DashboardTab({ t, push, canEdit, departments, competitio
       </div>
 
       <FeesPanel t={t} push={push} canEdit={canEdit} competitions={competitions} />
+    </div>
+  )
+}
+
+/**
+ * Tarjetas de totales. El "Sin imputar" (pagos sin departamento) aparece solo
+ * si hay algo, en ámbar, y lleva a la cola de pagos: es plata que no se cuenta
+ * en ningún departamento hasta que alguien la clasifique.
+ */
+function SummaryStats({ summary, t }) {
+  const { budgeted, executed, committed, remaining } = summary.totals
+  const executedPct = pctOf(executed, budgeted)
+  const committedPct = pctOf(committed, budgeted)
+  const remainingPct = pctOf(remaining, budgeted)
+  const unallocated = Number(summary.unallocated_payments || 0)
+
+  return (
+    <div className={`grid grid-cols-1 sm:grid-cols-2 gap-4 ${unallocated > 0 ? 'xl:grid-cols-5' : 'xl:grid-cols-4'}`}>
+      <Stat label={t('budget.budgeted')} value={usd(budgeted)} icon={<Icon.Report />} />
+      {/* El % ejecutado va en `sub`, neutro: ejecutar más no es "subir" en
+          sentido bueno. El sobregiro lo marca en rojo la tarjeta de restante. */}
+      <Stat label={t('budget.executed')} value={usd(executed)} icon={<Icon.Check />}
+        sub={executedPct != null ? t('budget.chartPctOfBudget', { pct: executedPct }) : null} />
+      <Stat label={t('budget.committed')} value={usd(committed)} icon={<Icon.Clock />}
+        sub={committedPct != null ? t('budget.chartPctOfBudget', { pct: committedPct }) : null} />
+      <Stat label={t('budget.remaining')} value={usd(remaining)} icon={<Icon.Wallet />}
+        delta={remaining < 0 ? t('budget.overBudget') : null} trend={remaining < 0 ? 'down' : undefined}
+        sub={remaining >= 0 && remainingPct != null ? t('budget.chartPctAvailable', { pct: remainingPct }) : null} />
+      {unallocated > 0 && (
+        <Link to="/payments?tab=queue" title={t('budget.unallocatedHint')}
+          className="block rounded-xl [&>div]:border-warning-500/60 [&>div]:bg-warning-50 dark:[&>div]:border-warning-500/40 dark:[&>div]:bg-warning-500/10 hover:[&>div]:border-warning-500 transition-colors">
+          <Stat label={t('budget.unallocated')} value={usd(unallocated)} icon={<Icon.Alert />}
+            sub={(
+              <span className="inline-flex items-center gap-1 font-medium text-warning-700 dark:text-warning-500">
+                {t('budget.chartUnallocatedLink')} <Icon.Chevron className="w-3 h-3" />
+              </span>
+            )} />
+        </Link>
+      )}
     </div>
   )
 }

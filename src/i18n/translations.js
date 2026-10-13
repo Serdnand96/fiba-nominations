@@ -794,6 +794,47 @@ const translations = {
       en: 'The date range replaces the year filter.',
       es: 'El rango de fechas reemplaza al filtro de año.',
     },
+
+    // Dashboard con gráficos (WP7)
+    chartByDepartment: { en: 'Budget vs. spend by department', es: 'Presupuestado vs. gasto por departamento' },
+    chartMonthly: { en: 'Cumulative spend by month', es: 'Gasto acumulado por mes' },
+    chartMonthlyHint: {
+      en: 'The budget line is the annual total spread evenly over twelve months.',
+      es: 'La línea de presupuesto es el total anual repartido en partes iguales en doce meses.',
+    },
+    chartTopAccounts: { en: 'Top 10 accounts', es: 'Top 10 cuentas' },
+    chartEmpty: { en: 'No data for this year', es: 'Sin datos para este año' },
+    chartLoading: { en: 'Loading charts...', es: 'Cargando gráficos...' },
+    chartPctExecuted: { en: '{pct}% executed', es: '{pct}% ejecutado' },
+    chartNoBudget: { en: 'no budget', es: 'sin presupuesto' },
+    chartPace: { en: 'Prorated budget', es: 'Presupuesto prorrateado' },
+    chartExecutedCum: { en: 'Cumulative executed', es: 'Ejecutado acumulado' },
+    chartCommittedCum: { en: 'Cumulative committed', es: 'Comprometido acumulado' },
+    chartPctOfBudget: { en: '{pct}% of budget', es: '{pct}% del presupuestado' },
+    chartPctAvailable: { en: '{pct}% available', es: '{pct}% disponible' },
+    chartUnallocatedLink: { en: 'Review in the payment queue', es: 'Revisar en la cola de pagos' },
+    chartStatusExpenses: { en: 'Expenses', es: 'Gastos' },
+    chartStatusPayments: { en: 'Payments', es: 'Pagos' },
+    chartStatusDraft: { en: 'Drafts', es: 'Borradores' },
+    chartStatusApproved: { en: 'Approved', es: 'Aprobados' },
+    chartStatusPaid: { en: 'Paid', es: 'Pagados' },
+    chartStatusNew: { en: 'New', es: 'Nuevos' },
+    chartStatusInProcess: { en: 'In process', es: 'En curso' },
+    chartStatusCompleted: { en: 'Completed', es: 'Completados' },
+
+    // Exports del dashboard (WP7)
+    exportSummary: { en: 'Export summary', es: 'Exportar resumen' },
+    exportSummaryHint: {
+      en: 'Excel with totals, by department, by account, by event and by month',
+      es: 'Excel con totales, por departamento, por cuenta, por evento y por mes',
+    },
+    exportExpenses: { en: 'Export expenses', es: 'Exportar gastos' },
+    exportExpensesHint: {
+      en: 'Excel with the expenses of the selected year and department',
+      es: 'Excel con los gastos del año y el departamento elegidos',
+    },
+    exportExporting: { en: 'Exporting...', es: 'Exportando...' },
+    exportError: { en: 'Could not export', es: 'No se pudo exportar' },
   },
 
   // ===== Payments =====

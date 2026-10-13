@@ -333,6 +333,27 @@ export const createRevenue = (data) => api.post('/budget/revenues', data).then(r
 export const updateRevenue = (id, data) => api.patch(`/budget/revenues/${id}`, data).then(r => r.data)
 export const deleteRevenue = (id) => api.delete(`/budget/revenues/${id}`).then(r => r.data)
 
+// Exports del dashboard (WP7). Blob + JWT como downloadBudgetLinesXlsx; el
+// backend recorta por departamento con _scoped(), así que un designado de IT
+// exporta solo IT aunque pida otra cosa. `lang` elige el idioma de los
+// encabezados. Los filtros vacíos no se mandan: `department=''` no es "todos".
+const exportParams = (params) =>
+  Object.fromEntries(Object.entries(params || {}).filter(([, v]) => v !== '' && v != null))
+const exportSuffix = (params) =>
+  [params?.year, params?.department].filter(Boolean).map(v => `-${v}`).join('')
+
+// Acepta los mismos filtros que getExpenses (year, department, account, status…).
+export const downloadBudgetExpensesXlsx = async (params) => {
+  const resp = await api.get('/budget/expenses/export.xlsx', { params: exportParams(params), responseType: 'blob' })
+  saveBlob(resp.data, `expenses${exportSuffix(params)}.xlsx`)
+}
+
+// { year, department?, lang } → Totales / Por departamento / Por cuenta / Por competencia / Por mes.
+export const downloadBudgetSummaryXlsx = async (params) => {
+  const resp = await api.get('/budget/summary/export.xlsx', { params: exportParams(params), responseType: 'blob' })
+  saveBlob(resp.data, `budget-summary${exportSuffix(params)}.xlsx`)
+}
+
 // Competition reports
 export const getReportTypes = () => api.get('/reports/types').then(r => r.data)
 export const getReportFacets = () => api.get('/reports/facets').then(r => r.data)

@@ -1100,9 +1100,62 @@ def _revenue_year(r: dict) -> Optional[int]:
     return None
 
 
+# Orden fijo de los desgloses por estado: el front y el Excel los muestran en
+# este orden aunque un estado no tenga filas.
+_EXPENSE_STATUS_ORDER = ("draft", "approved", "paid", "rejected", "cancelled")
+_PAYMENT_STATUS_ORDER = ("new", "in_process", "completed", "cancelled")
+
+
+def _month_of(value) -> Optional[str]:
+    """'YYYY-MM' de una fecha ISO ('2026-03-14' / timestamptz), o None."""
+    text = str(value or "")[:7]
+    return text if _PERIOD_RE.match(text) else None
+
+
+def _payment_status_year(p: dict) -> Optional[int]:
+    """Año en el que un pago aparece en `by_status` del summary.
+
+    Para los estados que imputan es el mismo de _payment_fiscal_year. Un
+    `cancelled` no imputa a ningún año, pero en el desglose por estado sí
+    tiene que contarse: va al año de su `payment_date` y, si no tiene, al de la
+    competencia. Si tampoco hay competencia con año, no aparece en ninguno.
+    """
+    fiscal = _payment_fiscal_year(p)
+    if fiscal is not None:
+        return fiscal
+    comp = ((p.get("nominations") or {}).get("competitions")) or {}
+    return _year_of(p.get("payment_date")) or comp.get("year") or _year_of(comp.get("start_date"))
+
+
+def _expense_month(e: dict, year: int) -> Optional[str]:
+    """Mes del año pedido al que va un gasto en `by_month`.
+
+    - `paid` → el mes de `payment_date`, que es cuando salió la plata. Si la
+      fecha de pago cae en otro año (factura de diciembre pagada en enero), se
+      usa la del gasto: el gasto imputa al año de `expense_date` y, si se lo
+      mandara a un mes de otro año, la suma de los 12 meses dejaría de cerrar
+      con el ejecutado del año.
+    - `approved` → el mes de `expense_date`.
+    """
+    if e.get("status") == "paid":
+        paid = _month_of(e.get("payment_date"))
+        if paid and paid.startswith(f"{year}-"):
+            return paid
+    return _month_of(e.get("expense_date"))
+
+
 @router.get("/summary")
 def budget_summary(request: Request, year: int = Query(...), department: Optional[str] = Query(None)):
+    """Presupuestado vs. comprometido vs. ejecutado vs. restante (ver _summary_data)."""
+    return _summary_data(request, year, department)
+
+
+def _summary_data(request: Request, year: int, department: Optional[str] = None) -> dict:
     """Presupuestado vs. comprometido vs. ejecutado vs. restante.
+
+    Es el cuerpo de GET /summary, separado para que GET /summary/export.xlsx
+    exporte exactamente lo mismo que se ve en pantalla. Se llama con valores
+    de verdad, nunca con los defaults `Query()` (ver _fetch_expenses).
 
     Desde la migración 036 el ejecutado suma **las dos** fuentes de gasto:
     `expenses` y los pagos a personas nominadas (`payments`, que ya llevan
@@ -1126,7 +1179,7 @@ def budget_summary(request: Request, year: int = Query(...), department: Optiona
     # se aplica en Python, abajo — mismo arreglo que _fetch_expenses.
     eq_ = _scoped(
         supabase.table("expenses")
-        .select("amount, status, department_code, account_code, competition_id, expense_date")
+        .select("amount, status, department_code, account_code, competition_id, expense_date, payment_date")
         .gte("expense_date", f"{year}-01-01"),
         request, department,
     )
@@ -1157,11 +1210,29 @@ def budget_summary(request: Request, year: int = Query(...), department: Optiona
     # Los pagos no tienen fecha de gasto: el año sale de _payment_fiscal_year
     # (fecha de pago si está completado, año de la competencia si está
     # abierto). Se filtra en Python porque hace falta mirar el embed.
+    #
+    # `by_status` cuenta además los que no imputan (cancelados): es el desglose
+    # de "qué hay cargado", no de "qué consume presupuesto".
+    payment_status = {s: {"count": 0, "amount": 0.0} for s in _PAYMENT_STATUS_ORDER}
     payments = []
     for p in (pq.execute().data or []):
+        if _payment_status_year(p) == year:
+            entry = payment_status.setdefault(p.get("status") or "—", {"count": 0, "amount": 0.0})
+            entry["count"] += 1
+            # Fee + pasaje: lo mismo que el pago aporta a los totales.
+            entry["amount"] += float(p.get("total") or 0) + float(p.get("airfare") or 0)
         if _payment_fiscal_year(p) != year:
             continue
         nom = p.pop("nominations", None) or {}
+        # Mes de cada fila para `by_month`. Lo comprometido va al mes en que
+        # arranca la competencia (es cuándo se va a pagar); lo ejecutado, al de
+        # `payment_date`, y si no la tiene o cae en otro año, también al de la
+        # competencia. Sin `start_date` el mes queda en None: la fila suma a los
+        # totales pero no a ningún mes.
+        start_month = _month_of((nom.get("competitions") or {}).get("start_date"))
+        paid_month = _month_of(p.get("payment_date"))
+        if not (paid_month and paid_month.startswith(f"{year}-")):
+            paid_month = start_month
         base = {
             "status": p.get("status"),
             "department_code": p.get("department_code"),
@@ -1174,7 +1245,8 @@ def budget_summary(request: Request, year: int = Query(...), department: Optiona
         for bucket, amount in (("executed", fee_exec), ("committed", fee_open)):
             if amount:
                 payments.append({**base, "bucket": bucket, "amount": amount,
-                                 "account_code": p.get("account_code")})
+                                 "account_code": p.get("account_code"),
+                                 "month": paid_month if bucket == "executed" else start_month})
         # El pasaje se imputa a la cuenta de travel del rol, no a la del fee.
         # Se agrega como una fila más para que todo lo de abajo —ejecutado,
         # comprometido, los tres rollups, el sin-imputar— lo cuente sin
@@ -1185,7 +1257,8 @@ def budget_summary(request: Request, year: int = Query(...), department: Optiona
             air_exec, air_open = _payment_buckets(p.get("status"), p.get("airfare"), None)
             payments.append({**base, "bucket": "executed" if air_exec else "committed",
                              "amount": air_exec or air_open,
-                             "account_code": travel_account_for_role(role)})
+                             "account_code": travel_account_for_role(role),
+                             "month": paid_month if air_exec else start_month})
 
     depts = {d["code"]: d["label"] for d in (supabase.table("departments").select("code, label").execute().data or [])}
     accts = {a["code"]: a["label"] for a in (supabase.table("accounts").select("code, label").execute().data or [])}
@@ -1248,6 +1321,35 @@ def budget_summary(request: Request, year: int = Query(...), department: Optiona
             out.append(entry)
         return sorted(out, key=lambda e: -e["budgeted"])
 
+    # Serie mensual del año: siempre 12 meses, en cero los que no tienen
+    # movimiento, para que el gráfico acumulado no tenga huecos. Sale de las
+    # mismas filas que los totales; lo único que puede quedar afuera es un pago
+    # sin fecha útil (ver el loop de pagos).
+    months = {f"{year}-{m:02d}": {"executed": 0.0, "committed": 0.0} for m in range(1, 13)}
+    for e in expenses:
+        bucket = {"paid": "executed", "approved": "committed"}.get(e.get("status"))
+        month = _expense_month(e, year) if bucket else None
+        if month in months:
+            months[month][bucket] += _num(e)
+    for p in payments:
+        if p.get("month") in months:
+            months[p["month"]][p["bucket"]] += _num(p)
+    by_month = [
+        {"month": m, "executed": round(v["executed"], 2), "committed": round(v["committed"], 2)}
+        for m, v in months.items()
+    ]
+
+    # Desglose por estado sobre las filas del año, incluidos borradores,
+    # rechazados y cancelados, que no entran a ningún total.
+    expense_status = {s: {"count": 0, "amount": 0.0} for s in _EXPENSE_STATUS_ORDER}
+    for e in expenses:
+        entry = expense_status.setdefault(e.get("status") or "—", {"count": 0, "amount": 0.0})
+        entry["count"] += 1
+        entry["amount"] += _num(e)
+    for group in (expense_status, payment_status):
+        for entry in group.values():
+            entry["amount"] = round(entry["amount"], 2)
+
     return {
         "year": year,
         # Desde la 036 los pagos a personas SÍ se cuentan. El flag se mantiene
@@ -1267,7 +1369,144 @@ def budget_summary(request: Request, year: int = Query(...), department: Optiona
         "by_department": _rollup("department_code", depts),
         "by_account": _rollup("account_code", accts),
         "by_competition": _rollup("competition_id", comps, is_competition=True),
+        "by_month": by_month,
+        "by_status": {"expenses": expense_status, "payments": payment_status},
     }
+
+
+_SUMMARY_EXPORT_TEXT = {
+    "es": {
+        "sheets": ("Totales", "Por departamento", "Por cuenta", "Por competencia", "Por mes"),
+        "concept": "Concepto", "amount": "Monto",
+        "totals": (
+            ("budgeted", "Presupuestado"), ("executed", "Ejecutado"),
+            ("committed", "Comprometido"), ("remaining", "Restante"),
+            ("revenue_budgeted", "Ingresos presupuestados"),
+            ("revenue_received", "Ingresos recibidos"),
+            ("revenue_expected", "Ingresos esperados"),
+        ),
+        "unallocated": "Pagos sin imputar",
+        "code": "Código", "department": "Departamento", "account": "Cuenta",
+        "competition": "Competencia", "month": "Mes",
+        "budgeted": "Presupuestado", "executed": "Ejecutado", "committed": "Comprometido",
+        "remaining": "Restante", "pct": "% ejecutado", "cumulative": "Ejecutado acumulado",
+        "no_key": "Sin imputar", "general": "General", "total": "Total",
+    },
+    "en": {
+        "sheets": ("Totals", "By department", "By account", "By competition", "By month"),
+        "concept": "Item", "amount": "Amount",
+        "totals": (
+            ("budgeted", "Budgeted"), ("executed", "Executed"),
+            ("committed", "Committed"), ("remaining", "Remaining"),
+            ("revenue_budgeted", "Budgeted revenue"),
+            ("revenue_received", "Revenue received"),
+            ("revenue_expected", "Revenue expected"),
+        ),
+        "unallocated": "Unallocated payments",
+        "code": "Code", "department": "Department", "account": "Account",
+        "competition": "Competition", "month": "Month",
+        "budgeted": "Budgeted", "executed": "Executed", "committed": "Committed",
+        "remaining": "Remaining", "pct": "% executed", "cumulative": "Cumulative executed",
+        "no_key": "Unallocated", "general": "General", "total": "Total",
+    },
+}
+_ROLLUP_FIELDS = ("budgeted", "executed", "committed", "remaining")
+
+
+def _pct(executed: float, budgeted: float) -> Optional[float]:
+    return round(executed / budgeted, 4) if budgeted else None
+
+
+def _write_rollup_sheet(ws, rows: list, t: dict, label_header: str, with_code: bool,
+                        empty_label: str) -> None:
+    """Una hoja de rollup (departamento / cuenta / competencia) con fila de total.
+
+    Las filas vienen de `_rollup()` en _summary_data, ya ordenadas por
+    presupuestado. Sin código para competencias: la key es un UUID.
+    """
+    from api._lib.services.xlsx_utils import money_format, safe_text, style_header
+
+    lead = [t["code"], label_header] if with_code else [label_header]
+    ws.append(lead + [t[f] for f in _ROLLUP_FIELDS] + [t["pct"]])
+    style_header(ws)
+    sums = dict.fromkeys(_ROLLUP_FIELDS, 0.0)
+    for r in rows:
+        label = r.get("label") or (empty_label if r.get("key") is None else r.get("key"))
+        if r.get("general") and not with_code:
+            label = t["general"]
+        values = [float(r.get(f) or 0) for f in _ROLLUP_FIELDS]
+        for f, v in zip(_ROLLUP_FIELDS, values):
+            sums[f] += v
+        lead_vals = [safe_text(r.get("key")), safe_text(label)] if with_code else [safe_text(label)]
+        ws.append(lead_vals + values + [_pct(values[1], values[0])])
+    total_lead = [t["total"], None] if with_code else [t["total"]]
+    ws.append(total_lead + [round(sums[f], 2) for f in _ROLLUP_FIELDS]
+              + [_pct(sums["executed"], sums["budgeted"])])
+    _bold_last_row(ws)
+
+    first_money = len(lead) + 1
+    money_format(ws, range(first_money, first_money + len(_ROLLUP_FIELDS)))
+    money_format(ws, [first_money + len(_ROLLUP_FIELDS)], fmt="0.0%")
+
+
+@router.get("/summary/export.xlsx")
+def export_summary(
+    request: Request,
+    year: int = Query(...),
+    department: Optional[str] = Query(None),
+    lang: str = Query("es"),
+):
+    """El dashboard de un año en Excel: Totales, Por departamento, Por cuenta,
+    Por competencia y Por mes. Sale de _summary_data, así que el recorte por
+    departamento (_scoped) es el mismo que en pantalla."""
+    from openpyxl import Workbook
+    from api._lib.services.xlsx_utils import (
+        autosize, money_format, style_header, workbook_bytes, xlsx_response,
+    )
+
+    data = _summary_data(request, year, department)
+    t = _SUMMARY_EXPORT_TEXT["en" if lang == "en" else "es"]
+    s_totals, s_dept, s_acct, s_comp, s_month = t["sheets"]
+
+    wb = Workbook()
+
+    ws = wb.active
+    ws.title = s_totals
+    ws.append([t["concept"], t["amount"]])
+    style_header(ws)
+    totals = data.get("totals") or {}
+    for key, label in t["totals"]:
+        ws.append([label, float(totals.get(key) or 0)])
+    ws.append([t["unallocated"], float(data.get("unallocated_payments") or 0)])
+    money_format(ws, [2])
+    autosize(ws)
+
+    for title, key, header, with_code, empty in (
+        (s_dept, "by_department", t["department"], True, t["no_key"]),
+        (s_acct, "by_account", t["account"], True, t["no_key"]),
+        (s_comp, "by_competition", t["competition"], False, t["general"]),
+    ):
+        ws = wb.create_sheet(title)
+        _write_rollup_sheet(ws, data.get(key) or [], t, header, with_code, empty)
+        autosize(ws)
+
+    ws = wb.create_sheet(s_month)
+    ws.append([t["month"], t["executed"], t["committed"], t["cumulative"]])
+    style_header(ws)
+    cumulative = sum_exec = sum_comm = 0.0
+    for m in data.get("by_month") or []:
+        executed, committed = float(m.get("executed") or 0), float(m.get("committed") or 0)
+        cumulative += executed
+        sum_exec += executed
+        sum_comm += committed
+        ws.append([m.get("month"), executed, committed, round(cumulative, 2)])
+    ws.append([t["total"], round(sum_exec, 2), round(sum_comm, 2), None])
+    _bold_last_row(ws)
+    money_format(ws, [2, 3, 4])
+    autosize(ws)
+
+    suffix = f"-{department}" if department else ""
+    return xlsx_response(workbook_bytes(wb), f"budget-summary-{year}{suffix}.xlsx")
 
 
 @router.get("/competitions/{competition_id}/cost")
@@ -1770,6 +2009,30 @@ def list_expenses(
     search: Optional[str] = Query(None),
     mine: bool = Query(False, description="Solo los que cargó el caller"),
 ):
+    return _expense_rows(
+        request, year, department, account, competition_id, general_only,
+        status, vendor_id, date_from, date_to, search, mine,
+    )
+
+
+def _expense_rows(
+    request: Request,
+    year: Optional[int],
+    department: Optional[str],
+    account: Optional[str],
+    competition_id: Optional[str],
+    general_only: bool,
+    status: Optional[str],
+    vendor_id: Optional[str],
+    date_from: Optional[str],
+    date_to: Optional[str],
+    search: Optional[str],
+    mine: bool,
+) -> list:
+    """Cuerpo de GET /expenses, compartido con /expenses/export.xlsx para que
+    el Excel traiga exactamente las filas de la tabla con los mismos filtros
+    (incluidos `pending_approval` y `mine`). Todo pasa por _fetch_expenses →
+    _scoped(): el export no ve nada que la pantalla no muestre."""
     scope_action, exclude = "view", None
     if status == _PENDING_APPROVAL:
         # Drafts de los departamentos donde aprueba, sin los propios: nadie
@@ -1826,6 +2089,133 @@ def expenses_summary(
         "by_department": _group_totals(live, "department_code"),
         "by_account": _group_totals(live, "account_code"),
     }
+
+
+_EXPENSE_EXPORT_HEADERS = {
+    "es": ["Registro", "Fecha", "Departamento", "Cuenta", "Competencia", "Descripción",
+           "Destinatario", "Monto", "Estado", "Fecha de pago", "Método",
+           "Confirmación bancaria", "Factura", "Línea de presupuesto", "Creado"],
+    "en": ["Record", "Date", "Department", "Account", "Competition", "Description",
+           "Payee", "Amount", "Status", "Payment date", "Method",
+           "Bank confirmation", "Invoice", "Budget line", "Created"],
+}
+_EXPENSE_EXPORT_AMOUNT_COL = 8   # 1-based, "Monto"
+_EXPENSE_STATUS_LABELS = {
+    "es": {"draft": "Borrador", "approved": "Aprobado", "paid": "Pagado",
+           "rejected": "Rechazado", "cancelled": "Cancelado"},
+    "en": {"draft": "Draft", "approved": "Approved", "paid": "Paid",
+           "rejected": "Rejected", "cancelled": "Cancelled"},
+}
+# Ids por request en el `in.(...)` de PostgREST: 100 UUIDs entran holgados en
+# la URL; más que eso se parte en varias queries (sigue sin ser N+1).
+_IN_CHUNK = 100
+
+
+def _line_descriptions(request: Request, line_ids: list) -> dict:
+    """{budget_line_id: description} para las líneas que referencian los gastos.
+
+    Pasa por _scoped() igual que cualquier query de budget: una línea de un
+    departamento que el caller no ve sale en blanco en vez de filtrar su
+    descripción (no debería pasar, _check_budget_line exige el mismo depto).
+    """
+    out: dict = {}
+    for i in range(0, len(line_ids), _IN_CHUNK):
+        chunk = line_ids[i:i + _IN_CHUNK]
+        q = _scoped(
+            supabase.table("budget_lines").select("id, description").in_("id", chunk),
+            request,
+        )
+        out.update({r["id"]: r.get("description") for r in (q.execute().data or [])})
+    return out
+
+
+def _bold_last_row(ws) -> None:
+    from openpyxl.styles import Font
+
+    for cell in ws[ws.max_row]:
+        cell.font = Font(bold=True)
+
+
+# Declarado ANTES de cualquier /expenses/{expense_id}: si no, "export.xlsx"
+# entraría como id.
+@router.get("/expenses/export.xlsx")
+def export_expenses(
+    request: Request,
+    year: Optional[int] = Query(None),
+    department: Optional[str] = Query(None),
+    account: Optional[str] = Query(None),
+    competition_id: Optional[str] = Query(None),
+    general_only: bool = Query(False),
+    status: Optional[str] = Query(None),
+    vendor_id: Optional[str] = Query(None),
+    date_from: Optional[str] = Query(None),
+    date_to: Optional[str] = Query(None),
+    search: Optional[str] = Query(None),
+    mine: bool = Query(False),
+    lang: str = Query("es"),
+):
+    """Los gastos de la tabla, con sus mismos filtros, en Excel.
+
+    Los nombres (departamento, cuenta, competencia, destinatario) ya vienen en
+    los embeds de _EXPENSE_SELECT; las líneas de presupuesto se resuelven con
+    un solo diccionario. Nada de una query por fila.
+    """
+    from openpyxl import Workbook
+    from api._lib.services.xlsx_utils import (
+        autosize, money_format, safe_text, style_header, workbook_bytes, xlsx_response,
+    )
+
+    lang_key = "en" if lang == "en" else "es"
+    rows = _expense_rows(
+        request, year, department, account, competition_id, general_only,
+        status, vendor_id, date_from, date_to, search, mine,
+    )
+    lines = _line_descriptions(
+        request, sorted({r["budget_line_id"] for r in rows if r.get("budget_line_id")}),
+    )
+    status_labels = _EXPENSE_STATUS_LABELS[lang_key]
+    general = "General"
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Expenses" if lang_key == "en" else "Gastos"
+    ws.append(_EXPENSE_EXPORT_HEADERS[lang_key])
+    style_header(ws)
+
+    total = 0.0
+    for r in rows:
+        amount = float(r.get("amount") or 0)
+        total += amount
+        acc_code, acc_label = r.get("account_code"), r.get("account_label")
+        ws.append([
+            safe_text(r.get("record_no")),
+            str(r.get("expense_date") or "")[:10] or None,
+            safe_text(r.get("department_label") or r.get("department_code")),
+            safe_text(f"{acc_code} — {acc_label}" if acc_label else acc_code),
+            safe_text(r.get("competition_name") or (general if not r.get("competition_id") else None)),
+            safe_text(r.get("description")),
+            safe_text(r.get("payee_display")),
+            amount,
+            status_labels.get(r.get("status"), r.get("status")),
+            str(r.get("payment_date") or "")[:10] or None,
+            safe_text(r.get("payment_method")),
+            safe_text(r.get("bank_confirmation")),
+            safe_text(r.get("invoice_no")),
+            safe_text(lines.get(r.get("budget_line_id"))) if r.get("budget_line_id") else None,
+            str(r.get("created_at") or "")[:16].replace("T", " ") or None,
+        ])
+
+    # Total de la columna Monto tal como se exportó: si el filtro trae
+    # rechazados o cancelados, suman acá (es la suma de lo que se ve).
+    footer = [None] * len(_EXPENSE_EXPORT_HEADERS[lang_key])
+    footer[0] = "Total"
+    footer[_EXPENSE_EXPORT_AMOUNT_COL - 1] = round(total, 2)
+    ws.append(footer)
+    _bold_last_row(ws)
+
+    money_format(ws, [_EXPENSE_EXPORT_AMOUNT_COL])
+    autosize(ws)
+    return xlsx_response(workbook_bytes(wb), f"budget-expenses-{year or 'all'}.xlsx")
 
 
 def _group_totals(rows: list, key: str) -> list:
