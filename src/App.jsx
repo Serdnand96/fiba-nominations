@@ -5,6 +5,7 @@ import { useLanguage } from './i18n/LanguageContext'
 import { Icon } from './lib/icons'
 import { Avatar } from './components/ui'
 import ProfileModal from './components/ProfileModal'
+import NotificationsBell from './components/NotificationsBell'
 
 // Eager-load Login (always shown when logged out) and PublicAsset (no-auth route)
 import Login from './pages/Login'
@@ -336,6 +337,7 @@ export default function App() {
           </div>
 
           <div className="flex items-center gap-1">
+            <NotificationsBell />
             <button
               onClick={() => setDark(d => !d)}
               aria-label={t('common.toggleTheme')}
