@@ -1,13 +1,19 @@
 import { Fragment, useEffect, useMemo, useState } from 'react'
 import {
   getBudgetLines, createBudgetLine, updateBudgetLine, deleteBudgetLine,
-  projectBudget, getBudgetSummary,
+  projectBudget, getBudgetSummary, getLineSeries,
 } from '../../api/client'
 import { Drawer } from '../../components/ui/Drawer'
+import { Modal } from '../../components/ui/Modal'
 import { Icon } from '../../lib/icons'
 import BudgetImport from './BudgetImport'
 import BudgetLineEditor from './editors/BudgetLineEditor'
+import HeadcountPanel from './HeadcountPanel'
+import { useBudgetScope } from './scope'
 import { money, AccountOptions } from './shared'
+
+// Años que muestra la serie de una línea: el horizonte del Excel de IT.
+const SERIES_YEARS = [2026, 2027, 2028, 2029, 2030]
 
 const GENERAL = '__general__'   // clave de la columna "sin evento" en la matriz
 
@@ -20,6 +26,7 @@ const GENERAL = '__general__'   // clave de la columna "sin evento" en la matriz
  *            Excel de IT, más la proyección por escalación.
  */
 export default function PlanTab({ t, push, canEdit, departments, expenseAccounts, competitions }) {
+  const scope = useBudgetScope()
   const thisYear = new Date().getFullYear()
   const [year, setYear] = useState(thisYear)
   const [department, setDepartment] = useState('')
@@ -31,11 +38,28 @@ export default function PlanTab({ t, push, canEdit, departments, expenseAccounts
   const [editingLine, setEditingLine] = useState(null)
   const [cellDetail, setCellDetail] = useState(null)
   const [importing, setImporting] = useState(false)
+  const [series, setSeries] = useState(null)   // línea cuya serie se está mirando
 
-  const yearOptions = useMemo(
-    () => Array.from({ length: 7 }, (_, i) => thisYear + 2 - i),
-    [thisYear],
+  // Derechos por departamento (solo UX: el backend valida cada escritura con
+  // _assert_can_edit). `canEdit` es el permiso del módulo; además hay que
+  // poder editar el departamento de la fila.
+  const editableDepartments = useMemo(
+    () => (canEdit ? departments.filter(d => scope.canEditDept(d.code)) : []),
+    [canEdit, departments, scope],
   )
+  const canCreate = editableDepartments.length > 0
+  const canEditRow = (code) => canEdit && scope.canEditDept(code)
+  // Con "todos" seleccionado, importar y proyectar crean filas sin un
+  // departamento explícito: solo quien edita todos.
+  const canWriteSelection = department ? canEditRow(department) : (canEdit && scope.isGeneralAdmin)
+  const showHeadcount = canEdit && (scope.isGeneralAdmin || scope.canEditDept('competitions'))
+
+  // La serie puede llevar a un año fuera del rango por defecto (2029, 2030):
+  // el año elegido siempre figura en el selector.
+  const yearOptions = useMemo(() => {
+    const base = Array.from({ length: 7 }, (_, i) => thisYear + 2 - i)
+    return base.includes(year) ? base : [...base, year].sort((a, b) => b - a)
+  }, [thisYear, year])
 
   async function load() {
     setLoading(true)
@@ -146,26 +170,35 @@ export default function PlanTab({ t, push, canEdit, departments, expenseAccounts
           ))}
         </div>
 
-        {canEdit && (
-          <button onClick={() => setImporting(v => !v)} className="btn-fiba-ghost ml-auto">
+        {canCreate && (department ? canWriteSelection : true) && (
+          <button onClick={() => setImporting(v => !v)} className="btn-fiba-ghost md:ml-auto">
             <Icon.Upload className="w-4 h-4 inline mr-1.5" />
             {t('budget.import')}
           </button>
         )}
-        {canEdit && lines.length > 0 && (
+        {canWriteSelection && lines.length > 0 && (
           <button onClick={() => handleProject(false)} disabled={projecting}
             title={t('budget.projectHint')} className="btn-fiba-ghost">
             {projecting ? t('common.loading') : t('budget.project')}
           </button>
         )}
-        {canEdit && (
+        {canCreate && (
           <button onClick={() => setEditingLine({})} className="btn-fiba">
             {t('budget.newLine')}
           </button>
         )}
       </div>
 
-      {importing && (
+      {showHeadcount && (
+        <HeadcountPanel
+          t={t} push={push} year={year} competitions={competitions}
+          expenseAccounts={expenseAccounts} onGenerated={load}
+        />
+      )}
+
+      {/* Sin departamento elegido, BudgetImport pide uno; si el elegido no es
+          editable, el panel se cierra solo. */}
+      {importing && canCreate && (!department || canWriteSelection) && (
         <BudgetImport
           year={year} department={department} competitions={competitions}
           t={t} push={push}
@@ -183,19 +216,33 @@ export default function PlanTab({ t, push, canEdit, departments, expenseAccounts
       ) : view === 'matrix' ? (
         <MatrixView
           lines={lines} competitions={competitions} expenseAccounts={expenseAccounts}
-          department={department} canEdit={canEdit} t={t} push={push}
+          department={department} canEdit={!!department && canEditRow(department)} t={t} push={push}
           onReload={load} onOpenCell={setCellDetail}
         />
       ) : (
-        <ListView lines={lines} year={year} t={t} canEdit={canEdit} onEdit={setEditingLine} />
+        <ListView lines={lines} year={year} t={t} canEditRow={canEditRow}
+          onEdit={setEditingLine} onSeries={setSeries} />
       )}
 
+      {/* El select de departamento del editor ofrece solo los editables: una
+          línea nueva en un área ajena el backend la rechaza con 403. */}
       {editingLine && (
         <BudgetLineEditor
-          line={editingLine} year={year} defaultDepartment={department}
+          line={editingLine} year={year}
+          defaultDepartment={editableDepartments.some(d => d.code === department) ? department : ''}
           onClose={() => setEditingLine(null)} onSaved={() => { setEditingLine(null); load() }}
           onDeleted={() => { setEditingLine(null); load() }}
-          {...{ t, push, departments, expenseAccounts, competitions, canEdit }}
+          departments={editableDepartments}
+          canEdit={editingLine.id ? canEditRow(editingLine.department_code) : canCreate}
+          {...{ t, push, expenseAccounts, competitions }}
+        />
+      )}
+
+      {series && (
+        <SeriesModal
+          line={series} t={t} push={push} currentYear={year}
+          onClose={() => setSeries(null)}
+          onGoToYear={(y) => { setSeries(null); setYear(y) }}
         />
       )}
 
@@ -212,7 +259,7 @@ export default function PlanTab({ t, push, canEdit, departments, expenseAccounts
                 <p className="text-xs text-fiba-muted">{l.department_label}</p>
               </div>
               <span className="font-medium text-ink-900 dark:text-white ml-3">${money(l.amount)}</span>
-              {canEdit && (
+              {canEditRow(l.department_code) && (
                 <button onClick={() => { setCellDetail(null); setEditingLine(l) }}
                   className="ml-2 p-1.5 rounded hover:bg-fiba-surface text-fiba-muted hover:text-ink-900 dark:hover:text-white">
                   <Icon.Doc className="w-4 h-4" />
@@ -318,7 +365,11 @@ function MatrixView({ lines, competitions, expenseAccounts, department, canEdit,
     <div>
       <p className="text-xs text-fiba-muted mb-3 flex items-center gap-1.5">
         <Icon.Info className="w-3.5 h-3.5 flex-shrink-0" />
-        {editable ? t('budget.matrixHint') : t('budget.matrixReadOnly')}
+        {editable
+          ? t('budget.matrixHint')
+          // Departamento elegido pero sin derecho de edición: no es que falte
+          // elegir uno, es que este es de solo lectura.
+          : department ? t('budget.readOnlyDept') : t('budget.matrixReadOnly')}
       </p>
 
       <div className="rounded-xl border border-fiba-border overflow-hidden">
@@ -474,7 +525,7 @@ function MatrixView({ lines, competitions, expenseAccounts, department, canEdit,
 }
 
 /** Lista agrupada por cuenta con subtotales — la forma del presupuesto de IT. */
-function ListView({ lines, year, t, canEdit, onEdit }) {
+function ListView({ lines, year, t, canEditRow, onEdit, onSeries }) {
   const groups = useMemo(() => {
     const map = new Map()
     for (const l of lines) {
@@ -527,13 +578,23 @@ function ListView({ lines, year, t, canEdit, onEdit }) {
                     <td className="px-4 py-2.5 text-right text-fiba-muted">
                       {(Number(l.escalation_pct || 0) * 100).toFixed(1)}%
                     </td>
-                    <td className="px-4 py-2.5 text-right">
-                      {canEdit && (
-                        <button onClick={() => onEdit(l)}
-                          className="p-1.5 rounded hover:bg-fiba-surface text-fiba-muted hover:text-ink-900 dark:hover:text-white">
-                          <Icon.Doc className="w-4 h-4" />
-                        </button>
-                      )}
+                    <td className="px-4 py-2.5 text-right whitespace-nowrap">
+                      <div className="inline-flex gap-1">
+                        {l.series_id && (
+                          <button onClick={() => onSeries(l)}
+                            aria-label={t('budget.seriesView')} title={t('budget.seriesView')}
+                            className="p-1.5 rounded hover:bg-fiba-surface text-fiba-muted hover:text-ink-900 dark:hover:text-white">
+                            <Icon.History className="w-4 h-4" />
+                          </button>
+                        )}
+                        {canEditRow(l.department_code) && (
+                          <button onClick={() => onEdit(l)}
+                            aria-label={t('budget.editLine')} title={t('budget.editLine')}
+                            className="p-1.5 rounded hover:bg-fiba-surface text-fiba-muted hover:text-ink-900 dark:hover:text-white">
+                            <Icon.Doc className="w-4 h-4" />
+                          </button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -561,5 +622,100 @@ function ListView({ lines, year, t, canEdit, onEdit }) {
         </table>
       </div>
     </div>
+  )
+}
+
+/**
+ * La misma línea a lo largo de los años (GET /budget/lines/series/{id}): la
+ * vista multi-año del Excel de IT. Cada año lleva a ese año en el selector.
+ */
+function SeriesModal({ line, t, push, currentYear, onClose, onGoToYear }) {
+  const [rows, setRows] = useState(null)
+
+  useEffect(() => {
+    let alive = true
+    getLineSeries(line.series_id)
+      .then(data => { if (alive) setRows(data || []) })
+      .catch(e => {
+        console.error(e)
+        push({ type: 'error', title: t('common.error') })
+        if (alive) setRows([])
+      })
+    return () => { alive = false }
+  }, [line.series_id])
+
+  // 2026-2030 siempre, más cualquier otro año en el que exista la serie.
+  // Un año puede tener más de una línea de la serie (no hay unique): se suman.
+  const table = useMemo(() => {
+    if (!rows) return []
+    const byYear = new Map()
+    for (const r of rows) {
+      const cur = byYear.get(r.year) || { year: r.year, amount: 0, escalation_pct: r.escalation_pct, count: 0 }
+      cur.amount += Number(r.amount || 0)
+      cur.count += 1
+      byYear.set(r.year, cur)
+    }
+    const years = [...new Set([...SERIES_YEARS, ...byYear.keys()])].sort((a, b) => a - b)
+    let prev = null
+    return years.map(y => {
+      const row = byYear.get(y) || null
+      const delta = row && prev && prev.amount > 0 ? (row.amount - prev.amount) / prev.amount : null
+      if (row) prev = row
+      return { year: y, row, delta }
+    })
+  }, [rows])
+
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      closeLabel={t('budget.cancel')}
+      title={t('budget.seriesTitle')}
+      subtitle={`${line.account_code} · ${line.description}`}
+    >
+      {rows === null ? (
+        <div className="text-fiba-muted text-sm py-6 text-center">{t('common.loading')}</div>
+      ) : (
+        <div className="overflow-x-auto -mx-1">
+          <table className="min-w-full text-sm">
+            <thead>
+              <tr className="text-left text-2xs font-semibold uppercase tracking-wider text-fiba-muted border-b border-fiba-border">
+                <th className="px-2 py-2">{t('budget.year')}</th>
+                <th className="px-2 py-2 text-right">{t('budget.amount')}</th>
+                <th className="px-2 py-2 text-right">{t('budget.seriesDelta')}</th>
+                <th className="px-2 py-2 text-right">{t('budget.escalation')}</th>
+                <th className="px-2 py-2" />
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-fiba-border">
+              {table.map(({ year, row, delta }) => (
+                <tr key={year} className={year === currentYear ? 'bg-fiba-surface/50' : ''}>
+                  <td className="px-2 py-2 font-medium text-ink-900 dark:text-white tabular-nums">{year}</td>
+                  <td className="px-2 py-2 text-right tabular-nums">
+                    {row
+                      ? <span className="text-ink-900 dark:text-white">${money(row.amount)}</span>
+                      : <span className="text-xs text-fiba-muted italic">{t('budget.seriesEmpty')}</span>}
+                  </td>
+                  <td className="px-2 py-2 text-right tabular-nums text-xs text-fiba-muted">
+                    {delta == null ? '—' : `${delta > 0 ? '+' : ''}${(delta * 100).toFixed(1)}%`}
+                  </td>
+                  <td className="px-2 py-2 text-right text-fiba-muted tabular-nums">
+                    {row ? `${(Number(row.escalation_pct || 0) * 100).toFixed(1)}%` : '—'}
+                  </td>
+                  <td className="px-2 py-2 text-right whitespace-nowrap">
+                    {year !== currentYear && (
+                      <button onClick={() => onGoToYear(year)}
+                        className="text-xs font-medium text-navy-600 dark:text-navy-200 hover:underline">
+                        {t('budget.seriesGoToYear', { year })}
+                      </button>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </Modal>
   )
 }

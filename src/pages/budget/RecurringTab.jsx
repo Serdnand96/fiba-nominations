@@ -1,11 +1,13 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { getRecurring, deleteRecurring, getPendingRecurring, generateRecurring } from '../../api/client'
 import { Icon } from '../../lib/icons'
 import RecurringEditor from './editors/RecurringEditor'
+import { useBudgetScope } from './scope'
 import { money, currentPeriod } from './shared'
 
 /* ──────────────────────────── Recurrentes ──────────────────────────── */
 export default function RecurringTab({ t, push, canEdit, departments, expenseAccounts, vendors }) {
+  const scope = useBudgetScope()
   const [rows, setRows] = useState([])
   const [pending, setPending] = useState([])
   const [period, setPeriod] = useState(currentPeriod())
@@ -13,13 +15,23 @@ export default function RecurringTab({ t, push, canEdit, departments, expenseAcc
   const [loading, setLoading] = useState(true)
   const [editing, setEditing] = useState(null)
 
+  // Derechos por departamento (UX; el backend valida cada plantilla, también
+  // al generar, con _assert_can_edit).
+  const editableDepartments = useMemo(
+    () => (canEdit ? departments.filter(d => scope.canEditDept(d.code)) : []),
+    [canEdit, departments, scope],
+  )
+  const canEditRow = (code) => canEdit && scope.canEditDept(code)
+
   async function load() {
     setLoading(true)
     try {
       const [list, pend] = await Promise.all([getRecurring(), getPendingRecurring(period)])
       setRows(list)
       setPending(pend)
-      setSelected(pend.map(p => p.recurring_id))   // por defecto, todos marcados
+      // Por defecto, todos los que el usuario puede confirmar: los de un área
+      // ajena se ven pero no se marcan (generarlos daría 403).
+      setSelected(pend.filter(p => canEditRow(p.department_code)).map(p => p.recurring_id))
     } catch (e) {
       console.error(e)
       push({ type: 'error', title: t('common.error') })
@@ -30,7 +42,7 @@ export default function RecurringTab({ t, push, canEdit, departments, expenseAcc
   useEffect(() => { load() }, [period])
 
   async function handleGenerate() {
-    const items = pending.filter(p => selected.includes(p.recurring_id))
+    const items = pending.filter(p => selected.includes(p.recurring_id) && canEditRow(p.department_code))
       .map(p => ({ recurring_id: p.recurring_id, period: p.period }))
     if (!items.length) return
     try {
@@ -60,7 +72,7 @@ export default function RecurringTab({ t, push, canEdit, departments, expenseAcc
           <h3 className="font-semibold text-ink-900 dark:text-white">{t('budget.pendingThisMonth')}</h3>
           <input type="month" value={period} onChange={e => setPeriod(e.target.value)}
             className="fiba-input !w-auto" />
-          {canEdit && pending.length > 0 && (
+          {pending.some(p => canEditRow(p.department_code)) && (
             <button onClick={handleGenerate} className="btn-fiba ml-auto">
               {t('budget.confirmSelected')} ({selected.length})
             </button>
@@ -71,8 +83,11 @@ export default function RecurringTab({ t, push, canEdit, departments, expenseAcc
         {pending.length === 0 ? (
           <p className="text-sm text-fiba-muted">{t('budget.nothingPending')}</p>
         ) : pending.map(p => (
-          <label key={p.recurring_id} className="flex items-center gap-3 py-1.5 text-sm cursor-pointer">
+          <label key={p.recurring_id}
+            className={`flex flex-wrap sm:flex-nowrap items-center gap-x-3 gap-y-0.5 py-1.5 text-sm ${canEditRow(p.department_code) ? 'cursor-pointer' : 'opacity-60'}`}
+            title={canEditRow(p.department_code) ? undefined : t('budget.readOnlyDept')}>
             <input type="checkbox" checked={selected.includes(p.recurring_id)}
+              disabled={!canEditRow(p.department_code)}
               onChange={() => setSelected(s => s.includes(p.recurring_id)
                 ? s.filter(x => x !== p.recurring_id)
                 : [...s, p.recurring_id])}
@@ -85,7 +100,9 @@ export default function RecurringTab({ t, push, canEdit, departments, expenseAcc
       </div>
 
       <div className="flex justify-end mb-4">
-        {canEdit && <button onClick={() => setEditing({})} className="btn-fiba">{t('budget.newRecurring')}</button>}
+        {editableDepartments.length > 0 && (
+          <button onClick={() => setEditing({})} className="btn-fiba">{t('budget.newRecurring')}</button>
+        )}
       </div>
 
       <div className="rounded-xl border border-fiba-border overflow-hidden">
@@ -119,7 +136,7 @@ export default function RecurringTab({ t, push, canEdit, departments, expenseAcc
                   <td className="px-4 py-3 text-fiba-muted">{t(`budget.fq_${r.frequency}`)}</td>
                   <td className="px-4 py-3 text-right font-medium text-ink-900 dark:text-white">${money(r.amount)}</td>
                   <td className="px-4 py-3 text-right whitespace-nowrap">
-                    {canEdit && (
+                    {canEditRow(r.department_code) && (
                       <div className="inline-flex gap-1">
                         <button onClick={() => setEditing(r)}
                           className="p-1.5 rounded hover:bg-fiba-surface text-fiba-muted hover:text-ink-900 dark:hover:text-white">
@@ -142,7 +159,8 @@ export default function RecurringTab({ t, push, canEdit, departments, expenseAcc
       {editing && (
         <RecurringEditor recurring={editing} onClose={() => setEditing(null)}
           onSaved={() => { setEditing(null); load() }}
-          {...{ t, push, departments, expenseAccounts, vendors }} />
+          departments={editableDepartments}
+          {...{ t, push, expenseAccounts, vendors }} />
       )}
     </div>
   )

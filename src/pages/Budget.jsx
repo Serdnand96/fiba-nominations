@@ -31,8 +31,12 @@ import ExpensesTab from './budget/ExpensesTab'
 import RecurringTab from './budget/RecurringTab'
 import RevenuesTab from './budget/RevenuesTab'
 import VendorsTab from './budget/VendorsTab'
+import AccountsTab from './budget/AccountsTab'
 
 const TABS = ['dashboard', 'plan', 'expenses', 'recurring', 'revenues', 'vendors']
+// El plan de cuentas es transversal a los departamentos: lo administra solo el
+// admin general (el backend lo exige en POST/PATCH/remap de /budget/accounts).
+const ADMIN_TABS = [...TABS, 'accounts']
 
 export default function Budget() {
   return (
@@ -49,7 +53,10 @@ function BudgetShell() {
   const canEdit = hasEdit('budget')
   const scope = useBudgetScope()
 
-  const [tab, setTab] = useTabParam(TABS, 'dashboard')
+  // Sin el scope cargado la pestaña de cuentas no figura: un `?tab=accounts`
+  // cae en el resumen hasta saber si el usuario es admin general.
+  const tabs = scope.isGeneralAdmin ? ADMIN_TABS : TABS
+  const [tab, setTab] = useTabParam(tabs, 'dashboard')
 
   // Catálogos, compartidos por todas las pestañas.
   const [departments, setDepartments] = useState([])
@@ -85,13 +92,23 @@ function BudgetShell() {
     try { setVendors(await getVendors()) } catch (e) { console.error(e) }
   }
 
+  // Tras crear, editar o renombrar una cuenta, los selects de las demás
+  // pestañas tienen que ver el código nuevo.
+  async function reloadAccounts() {
+    try {
+      const [accE, accR] = await Promise.all([getAccounts({ kind: 'expense' }), getAccounts({ kind: 'revenue' })])
+      setExpenseAccounts(accE)
+      setRevenueAccounts(accR)
+    } catch (e) { console.error(e) }
+  }
+
   // El scope se espera junto con los catálogos: una pestaña que decide qué
   // botones mostrar por departamento no tiene que dibujarse sin él.
   if (!catalogsReady || !scope.ready) return <div className="text-fiba-muted text-sm">{t('common.loading')}</div>
 
   const shared = {
     t, push, canEdit, departments, expenseAccounts, revenueAccounts,
-    competitions, vendors, employees, reloadVendors,
+    competitions, vendors, employees, reloadVendors, reloadAccounts,
   }
 
   return (
@@ -103,7 +120,12 @@ function BudgetShell() {
       <Tabs
         value={tab}
         onChange={setTab}
-        items={TABS.map(key => ({ key, label: t(`budget.tab${key.charAt(0).toUpperCase()}${key.slice(1)}`) }))}
+        items={tabs.map(key => ({
+          key,
+          label: key === 'accounts'
+            ? t('budget.accountsTab')
+            : t(`budget.tab${key.charAt(0).toUpperCase()}${key.slice(1)}`),
+        }))}
       />
 
       {tab === 'dashboard' && <DashboardTab {...shared} />}
@@ -112,6 +134,7 @@ function BudgetShell() {
       {tab === 'recurring' && <RecurringTab {...shared} />}
       {tab === 'revenues' && <RevenuesTab {...shared} />}
       {tab === 'vendors' && <VendorsTab {...shared} />}
+      {tab === 'accounts' && scope.isGeneralAdmin && <AccountsTab {...shared} />}
     </div>
   )
 }
