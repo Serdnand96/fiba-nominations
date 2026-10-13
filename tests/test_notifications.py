@@ -67,8 +67,14 @@ class TestBudgetApprovers:
         {"user_id": "comms-approver", "department_code": "comms", "can_view": True, "can_approve": True},
     ]
 
+    PERMS = [
+        {"user_id": u, "module": "budget", "can_view": True, "can_edit": False}
+        for u in ("it-approver", "it-editor", "general", "comms-approver")
+    ]
+
     def test_department_plus_star(self, fake_db):
         fake_db.seed("budget_access", self.ROWS)
+        fake_db.seed("user_permissions", self.PERMS)
         assert budget_approvers_for("it") == {"it-approver", "general"}
         params = fake_db.calls_to("budget_access")[-1].params
         assert params["department_code"] == 'in.("it","*")'
@@ -87,6 +93,28 @@ class TestBudgetApprovers:
     def test_pre_048_failure_returns_empty(self, fake_db):
         fake_db.fail_tables.add("budget_access")
         assert budget_approvers_for("it") == set()
+
+    def test_requires_budget_module_view(self, fake_db):
+        # La fila de budget_access quedó, pero le sacaron el módulo: avisarle
+        # sería mandarlo a un 403.
+        fake_db.seed("budget_access", self.ROWS)
+        fake_db.seed("user_permissions", [
+            {"user_id": "general", "module": "budget", "can_view": True},
+            {"user_id": "it-approver", "module": "budget", "can_view": False},
+            {"user_id": "it-approver", "module": "payments", "can_view": True},
+        ])
+        assert budget_approvers_for("it") == {"general"}
+
+    def test_superadmin_with_row_but_no_module_row_counts(self, fake_db):
+        fake_db.seed("budget_access", self.ROWS)
+        fake_db.seed("user_permissions", [])
+        fake_db.seed("user_profiles", [{"user_id": "it-approver", "is_superadmin": True}])
+        assert budget_approvers_for("it") == {"it-approver"}
+
+    def test_no_approvers_skips_permission_lookup(self, fake_db):
+        fake_db.seed("budget_access", [])
+        assert budget_approvers_for("it") == set()
+        assert fake_db.calls_to("user_permissions") == []
 
 
 def test_module_editors_includes_superadmins(fake_db):
@@ -203,8 +231,14 @@ class TestPending:
             {"personnel_id": "c", **TAX_CASES["ok"]},        # válido
             # d sin fila → faltante
         ])
-        out = {i["key"]: i["count"] for i in notifications.pending(make_request("me"))}
+        items = notifications.pending(make_request("me"))
+        out = {i["key"]: i["count"] for i in items}
         assert out == {"payments_missing_docs": 2, "payments_awaiting_cm": 1}
+        links = {i["key"]: i["link"] for i in items}
+        assert links == {
+            "payments_missing_docs": "/payments?tab=queue&status=in_process&missing_docs=1",
+            "payments_awaiting_cm": "/payments?tab=queue&status=in_process&cm_pending=1",
+        }
 
     def test_missing_banking_table_omits_item(self, perms, fake_db, make_request):
         perms.add(("payments", "view"))

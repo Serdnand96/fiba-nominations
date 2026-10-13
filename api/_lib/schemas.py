@@ -249,12 +249,14 @@ class PaymentCreate(BaseModel):
 class PaymentUpdate(BaseModel):
     """Update parcial. El router usa model_dump(exclude_unset=True): un campo
     ausente no se toca y uno mandado en null se limpia (comments, payment_date,
-    bank_confirmation, paid_amount). Los montos y el budget no admiten null — ver
+    bank_confirmation). Los montos y el budget no admiten null — ver
     _PAYMENT_NOT_NULL en payments.py.
 
-    `status` sigue declarado SOLO para poder rechazarlo con un 400 legible
-    ("use /transition"): si se sacara del schema, Pydantic lo ignoraría en
-    silencio y el cliente creería que lo cambió."""
+    `status` y `paid_amount` siguen declarados SOLO para poder rechazarlos con
+    un 400 legible ("use /transition", "use /record-partial"): si se sacaran
+    del schema, Pydantic los ignoraría en silencio y el cliente creería que los
+    cambió. Registrar plata pagada es soltar plata: pide los mismos sellos que
+    completar, y eso solo lo valida POST /payments/{id}/record-partial."""
     budget_code: Optional[str] = None
     amount: Optional[float] = Field(None, ge=0)
     extra: Optional[float] = Field(None, ge=0)
@@ -272,8 +274,18 @@ class PaymentTransition(BaseModel):
     status: PaymentStatus
     reason: Optional[str] = Field(None, max_length=2000)
     payment_date: Optional[str] = None
-    bank_confirmation: Optional[str] = Field(None, max_length=200)
+    bank_confirmation: Optional[str] = Field(None, max_length=120)
+    # Solo para `completed`, y tiene que ser el total (o no venir): un pago
+    # completado está pagado entero. El parcial va por /record-partial.
     paid_amount: Optional[float] = Field(None, ge=0)
+
+
+class PaymentRecordPartial(BaseModel):
+    """Cuerpo de POST /payments/{id}/record-partial: cuánto se lleva pagado de
+    un pago `in_process`. 0 < paid_amount < total (el total se completa por
+    /transition). `reason` solo hace falta para el override del superadmin."""
+    paid_amount: float = Field(..., ge=0)
+    reason: Optional[str] = Field(None, max_length=2000)
 
 
 class PaymentBulkStatus(BaseModel):
@@ -283,7 +295,7 @@ class PaymentBulkStatus(BaseModel):
     status: PaymentStatus
     reason: Optional[str] = Field(None, max_length=2000)
     payment_date: Optional[str] = None
-    bank_confirmation: Optional[str] = Field(None, max_length=200)
+    bank_confirmation: Optional[str] = Field(None, max_length=120)
 
 
 class PaymentBulkCreate(BaseModel):
@@ -458,8 +470,8 @@ class ExpenseTransition(BaseModel):
     status: str
     reason: Optional[str] = Field(None, max_length=2000)
     payment_date: Optional[str] = None
-    payment_method: Optional[str] = None
-    bank_confirmation: Optional[str] = None
+    payment_method: Optional[str] = Field(None, max_length=40)
+    bank_confirmation: Optional[str] = Field(None, max_length=120)
 
 
 class ExpenseApprove(BaseModel):

@@ -86,7 +86,7 @@ class TestApprove:
     def test_self_approval_superadmin_with_reason_is_override(self):
         r = run(exp("draft", created_by=BOSS), "approved", {"reason": " Finance soy yo "},
                 user=BOSS, approve=True, sa=True)
-        assert r["meta"] == {"override": True} and r["reason"] == "Finance soy yo"
+        assert r["meta"] == {"override": "self_approval"} and r["reason"] == "Finance soy yo"
 
     def test_superadmin_on_someone_elses_no_override(self):
         r = run(exp("draft"), "approved", user=BOSS, approve=True, sa=True)
@@ -98,7 +98,40 @@ class TestApprove:
     def test_pydantic_payload(self):
         r = run(exp("draft", created_by=BOSS), "approved",
                 ExpenseTransition(status="approved", reason="r"), user=BOSS, approve=True, sa=True)
-        assert r["meta"] == {"override": True}
+        assert r["meta"] == {"override": "self_approval"}
+
+
+# ─── separación de funciones: quien editó la plata no aprueba (050) ──────────
+
+class TestEditedThenApproved:
+    def test_editor_cannot_approve_403(self):
+        # B cargó, A le cambió el monto: A no lo aprueba aunque no lo haya creado.
+        e = exp("draft", created_by=CREATOR, last_financial_edit_by=OTHER)
+        assert status_of(e, "approved", approve=True) == 403
+
+    def test_superadmin_editor_without_reason_400(self):
+        e = exp("draft", created_by=CREATOR, last_financial_edit_by=BOSS)
+        assert status_of(e, "approved", user=BOSS, approve=True, sa=True) == 400
+
+    def test_superadmin_editor_with_reason_is_override(self):
+        e = exp("draft", created_by=CREATOR, last_financial_edit_by=BOSS)
+        r = run(e, "approved", {"reason": "corregí el tipo de cambio"}, user=BOSS, approve=True, sa=True)
+        assert r["meta"] == {"override": "edited_then_approved"}
+
+    def test_creator_wins_over_editor_label(self):
+        e = exp("draft", created_by=BOSS, last_financial_edit_by=BOSS)
+        r = run(e, "approved", {"reason": "r"}, user=BOSS, approve=True, sa=True)
+        assert r["meta"] == {"override": "self_approval"}
+
+    def test_third_approver_ok(self):
+        e = exp("draft", created_by=CREATOR, last_financial_edit_by=BOSS)
+        r = run(e, "approved", approve=True)
+        assert r["meta"] is None
+
+    def test_reject_is_not_blocked_by_edit(self):
+        # Rechazar no suelta plata: quien editó puede rechazar.
+        e = exp("draft", created_by=CREATOR, last_financial_edit_by=OTHER)
+        assert status_of(e, "rejected", {"reason": "x"}, approve=True) == 200
 
 
 # ─── draft → rejected ────────────────────────────────────────────────────────

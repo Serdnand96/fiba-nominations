@@ -3,8 +3,9 @@
  * selección múltiple y acciones en lote. Es la pestaña por defecto de Pagos.
  *
  * Los filtros viven en la URL (`?status=&year=&budget=&missing_docs=1&stale=1
- * &q=&page=`), igual que el pago abierto (`?open=<id>`): es lo que permite que
- * un link de la campana ("Pagos sin documentación") caiga en la vista filtrada.
+ * &cm_pending=1&q=&page=`), igual que el pago abierto (`?open=<id>`): es lo que
+ * permite que un link de la campana caiga en la vista filtrada
+ * (`/payments?tab=queue&status=in_process&missing_docs=1`, `…&cm_pending=1`).
  *
  * El backend arma cada fila ya aplanada, con los avisos calculados
  * (`tax_form_status`, `has_bank_info`, `stale_amount`, `cm_approved`,
@@ -43,6 +44,7 @@ function useQueueFilters() {
     budget: sp.get('budget') || '',
     missing_docs: sp.get('missing_docs') === '1',
     stale: sp.get('stale') === '1',
+    cm_pending: sp.get('cm_pending') === '1',
     q: sp.get('q') || '',
     page: Math.max(1, parseInt(sp.get('page') || '1', 10) || 1),
   }
@@ -68,6 +70,7 @@ function queueParams(f) {
   if (f.budget) p.budget = f.budget
   if (f.missing_docs) p.missing_docs = 1
   if (f.stale) p.stale = 1
+  if (f.cm_pending) p.cm_pending = 1
   if (f.q) p.search = f.q
   return p
 }
@@ -143,7 +146,7 @@ export default function QueueTab() {
   }, [])
 
   const params = useMemo(() => queueParams(filters),
-    [filters.status, filters.year, filters.budget, filters.missing_docs, filters.stale, filters.q])
+    [filters.status, filters.year, filters.budget, filters.missing_docs, filters.stale, filters.cm_pending, filters.q])
   const queryKey = JSON.stringify(params)
   const offset = (filters.page - 1) * PAGE_SIZE
 
@@ -235,7 +238,7 @@ export default function QueueTab() {
   }
 
   const budgetLabel = (code) => budgets.find(b => b.code === code)?.label || code || '—'
-  const hasFilters = !!(params.status || params.year || params.budget || params.missing_docs || params.stale || params.search)
+  const hasFilters = !!(params.status || params.year || params.budget || params.missing_docs || params.stale || params.cm_pending || params.search)
   const from = data.total === 0 ? 0 : offset + 1
   const to = Math.min(offset + items.length, data.total)
   const lastPage = Math.max(1, Math.ceil(data.total / PAGE_SIZE))
@@ -276,6 +279,11 @@ export default function QueueTab() {
             className="rounded border-ink-300 dark:border-navy-600" />
           {t('payments.filterStale')}
         </label>
+        <label className="inline-flex items-center gap-2 text-sm text-ink-700 dark:text-ink-200 px-1 cursor-pointer">
+          <input type="checkbox" checked={filters.cm_pending} onChange={e => setFilters({ cm_pending: e.target.checked })}
+            className="rounded border-ink-300 dark:border-navy-600" />
+          {t('payments.filterCmPending')}
+        </label>
         <div className="sm:ml-auto">
           <Button size="sm" variant="secondary" icon={<Icon.Download />} onClick={handleExport} disabled={working}>
             {t('payments.exportXlsx')}
@@ -307,7 +315,7 @@ export default function QueueTab() {
             title={t('payments.queueEmptyTitle')}
             body={hasFilters ? t('payments.queueEmptyFiltered') : t('payments.queueEmptyBody')}
             action={hasFilters ? (
-              <Button size="sm" variant="secondary" onClick={() => { lastQ.current = ''; setSearch(''); setFilters({ status: '', year: '', budget: '', missing_docs: false, stale: false, q: '' }) }}>
+              <Button size="sm" variant="secondary" onClick={() => { lastQ.current = ''; setSearch(''); setFilters({ status: '', year: '', budget: '', missing_docs: false, stale: false, cm_pending: false, q: '' }) }}>
                 {t('payments.clearFilters')}
               </Button>
             ) : null}

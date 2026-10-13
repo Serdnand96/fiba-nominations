@@ -30,21 +30,37 @@ export const ATTACHMENT_KINDS = ['EXPENSES', 'W8', 'BANK_INFO', 'INVOICE', 'RECE
 export const PAGE_SIZE = 50
 
 /**
- * Transiciones que se ofrecen como botón desde un estado.
+ * ¿El pago es "propio" para la separación de funciones? Lo es si el usuario lo
+ * cargó (`created_by`) o si fue el último en tocar sus montos
+ * (`last_financial_edit_by`): quien fija la plata no es quien la suelta. Es la
+ * misma regla que aplica el backend al completar y al registrar un parcial.
+ */
+export function isOwnPayment(payment, userId) {
+  if (!payment || !userId) return false
+  return payment.created_by === userId || payment.last_financial_edit_by === userId
+}
+
+/**
+ * Acciones que se ofrecen como botón desde un estado.
  *
  * Es la tabla de la máquina de estados del backend
  * (`check_payment_transition`), solo para decidir qué botones mostrar: el
  * backend vuelve a validar todo y su respuesta es la que manda.
  *
- * `needs` dice qué pide el modal de confirmación:
- *   reason → motivo obligatorio · date → fecha de pago · paid → monto pagado
- *   y confirmación bancaria.
- * `override` marca a un superadmin completando un pago que cargó él mismo:
- * se permite, pero con motivo obligatorio (queda en el historial).
+ * Casi todas son transiciones (`POST /payments/{id}/transition`). La excepción
+ * es `partial` (`kind: 'partial'`): registra un pago parcial con
+ * `POST /payments/{id}/record-partial` y el pago sigue `in_process`.
  *
- * Todo endpoint de transición exige `payments:edit`; completar exige además
- * `payments_approve` (o superadmin). Con plata ya pagada (`paidSoFar > 0`) un
- * pago en proceso no vuelve a `new` ni se cancela: se completa con lo pagado.
+ * `needs` dice qué pide el modal de confirmación:
+ *   reason → motivo obligatorio · date → fecha de pago · bank → confirmación
+ *   bancaria (completar ya no pide monto: el backend registra el total).
+ * `override` marca a un superadmin completando (o registrando un parcial de) un
+ * pago propio — ver `isOwnPayment` —: se permite, pero con motivo obligatorio
+ * (queda en el historial).
+ *
+ * Toda acción exige `payments:edit`; completar y registrar un parcial exigen
+ * además `payments_approve` (o superadmin). Con plata ya pagada (`paidSoFar > 0`)
+ * un pago en proceso no vuelve a `new` ni se cancela: se completa.
  */
 export function validTransitions(status, { canEdit, canApprove, isSuperadmin, isOwn, paidSoFar = 0 }) {
   const out = []
@@ -56,8 +72,9 @@ export function validTransitions(status, { canEdit, canApprove, isSuperadmin, is
       break
     case 'in_process':
       if (canApprove && (!isOwn || isSuperadmin)) {
-        const override = isOwn && isSuperadmin
-        out.push({ to: 'completed', key: 'complete', variant: 'primary', needs: { date: true, paid: true, reason: override }, override })
+        const override = !!(isOwn && isSuperadmin)
+        out.push({ to: 'completed', key: 'complete', variant: 'primary', needs: { date: true, bank: true, reason: override }, override })
+        out.push({ kind: 'partial', to: 'in_process', key: 'partial', variant: 'secondary', needs: { reason: override }, override })
       }
       if (!(paidSoFar > 0)) {
         out.push({ to: 'new', key: 'backToNew', variant: 'secondary', needs: {} })
@@ -115,6 +132,14 @@ export function errorDetail(err, fallback) {
   if (typeof d === 'string') return d
   if (Array.isArray(d)) return d.map(x => x?.msg || String(x)).join(' · ')
   return d.message || d.code || fallback
+}
+
+// Fecha y hora de un timestamptz, en el formato del historial (StatusHistory).
+export function formatDateTime(value, lang) {
+  if (!value) return ''
+  const d = new Date(value)
+  if (Number.isNaN(d.getTime())) return value
+  return d.toLocaleString(lang === 'en' ? 'en-US' : 'es-AR', { dateStyle: 'medium', timeStyle: 'short' })
 }
 
 export function fmt(n) {

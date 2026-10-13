@@ -167,7 +167,29 @@ class TestCompleted:
 
     def test_exempt_passes(self):
         assert status_of(pay("in_process"), "completed", PAID_ON,
-                         bank={"tax_form_kind": "exempt"}, approve=True) == 200
+                         bank={"tax_form_kind": "exempt", "iban": "ES91"}, approve=True) == 200
+
+    def test_without_bank_info_409(self):
+        # W-8 vigente pero sin cuenta: no hay a dónde transferir.
+        bank = {k: v for k, v in BANK_OK.items() if k != "account_number"}
+        assert status_of(pay("in_process"), "completed", PAID_ON, bank=bank, approve=True) == 409
+
+    def test_declined_409(self):
+        assert status_of(pay("in_process"), "completed", PAID_ON,
+                         nom={**NOM_OK, "confirmation_status": "declined"}, approve=True) == 409
+
+    def test_last_financial_editor_403(self):
+        p = pay("in_process", last_financial_edit_by=OTHER)
+        assert status_of(p, "completed", PAID_ON, approve=True) == 403
+
+    def test_last_financial_editor_superadmin_without_reason_400(self):
+        p = pay("in_process", last_financial_edit_by=OTHER)
+        assert status_of(p, "completed", PAID_ON, sa=True) == 400
+
+    def test_last_financial_editor_superadmin_with_reason_is_override(self):
+        p = pay("in_process", last_financial_edit_by=OTHER)
+        r = run(p, "completed", {**PAID_ON, "reason": "ajusté el extra"}, sa=True)
+        assert r["meta"]["override"] == "edited_then_approved"
 
     def test_paid_amount_above_total_400(self):
         assert status_of(pay("in_process"), "completed", {**PAID_ON, "paid_amount": 1500},
@@ -177,9 +199,18 @@ class TestCompleted:
         assert status_of(pay("in_process"), "completed", {**PAID_ON, "paid_amount": -1},
                          approve=True) == 400
 
-    def test_explicit_partial_paid_amount(self):
-        r = run(pay("in_process"), "completed", {**PAID_ON, "paid_amount": 900}, approve=True)
-        assert r["updates"]["paid_amount"] == 900
+    def test_paid_amount_below_total_400(self):
+        # completed ⇒ paid_amount == total: lo parcial va por /record-partial.
+        assert status_of(pay("in_process"), "completed", {**PAID_ON, "paid_amount": 900},
+                         approve=True) == 400
+
+    def test_paid_amount_equal_to_total_ok(self):
+        r = run(pay("in_process"), "completed", {**PAID_ON, "paid_amount": 1000.001}, approve=True)
+        assert r["updates"]["paid_amount"] == 1000
+
+    def test_partial_then_complete_forces_total(self):
+        r = run(pay("in_process", paid_amount=400), "completed", PAID_ON, approve=True)
+        assert r["updates"]["paid_amount"] == 1000
 
 
 # ─── in_process → new ────────────────────────────────────────────────────────

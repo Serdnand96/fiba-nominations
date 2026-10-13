@@ -26,7 +26,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
-from api._lib.auth import has_edit, has_view, is_superadmin_request, require_user
+from api._lib.auth import has_edit, has_view, require_user
 from api._lib.database import supabase
 
 logger = logging.getLogger(__name__)
@@ -132,18 +132,14 @@ def mark_read(notification_id: str, request: Request):
 def _approve_departments(request: Request) -> Optional[list]:
     """Departamentos donde el caller aprueba gastos. None = todos, [] = ninguno.
 
-    `_departments_for(request, 'approve')` lo agrega la migración 048 / WP4.
-    Antes de eso la acción no existe y la función cae en `can_view`: contar con
-    eso le diría "tenés gastos para aprobar" a cualquiera que mire budget. Por
-    eso, si las filas de budget_access no traen la columna `can_approve`, se
-    trata como que no aprueba nada (el superadmin sí: aprueba con override).
+    Es `_departments_for(request, "approve")` de budget.py, el mismo scope que
+    exige la transición draft → approved: `can_approve` (que implica
+    `can_view`) por departamento o `'*'`; el superadmin, todos. Una fila sin la
+    columna `can_approve` (migración 048 sin aplicar) no otorga nada: falla
+    cerrado. Cualquier error también da [] — la campana no rompe la pantalla.
     """
     try:
-        from api._lib.routers.budget import _access_rows, _departments_for
-        if not is_superadmin_request(request):
-            rows = _access_rows(request)
-            if not rows or not any("can_approve" in r for r in rows):
-                return []
+        from api._lib.routers.budget import _departments_for
         return _departments_for(request, "approve")
     except Exception as exc:
         logger.warning("[notifications] approve scope unavailable: %s", exc)
@@ -248,11 +244,13 @@ def pending(request: Request):
             logger.warning("[notifications] payments lookup failed: %s", exc)
             payments = []
         if payments:
+            # Los links abren la cola con el MISMO filtro que el contador: el
+            # número de la campana tiene que ser el de filas que se ven.
             add("payments_missing_docs", _payments_missing_docs(payments),
-                "/payments?tab=queue&missing_docs=1")
+                "/payments?tab=queue&status=in_process&missing_docs=1")
             add("payments_awaiting_cm",
                 sum(1 for p in payments if (p.get("nominations") or {}).get("cm_approved") is False),
-                "/payments?tab=queue&status=in_process")
+                "/payments?tab=queue&status=in_process&cm_pending=1")
 
     if has_edit(request, "budget"):
         try:

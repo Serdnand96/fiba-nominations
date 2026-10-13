@@ -10,8 +10,9 @@
  * Es solo UX: esconder un botón no protege nada. El recorte real vive en
  * `_scoped()` / `_assert_can_edit()` del backend.
  *
- * `approve` todavía no lo devuelve el backend (llega con la aprobación de
- * gastos); mientras falte se trata como `[]`: nadie aprueba por la UI.
+ * `approve` lo devuelve el backend con la misma convención (lista de códigos,
+ * o `null` = aprueba en todos), a partir de `budget_access.can_approve`. Si el
+ * campo llegara ausente se trata como `[]`: del lado cerrado, nadie aprueba.
  */
 import { createContext, useContext, useEffect, useMemo, useState } from 'react'
 import { getMyBudgetScope } from '../../api/client'

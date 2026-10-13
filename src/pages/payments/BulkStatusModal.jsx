@@ -3,7 +3,8 @@
  * (`POST /payments/bulk-status`).
  *
  * El backend valida cada pago por separado y nunca aborta el lote: los que no
- * cumplen (sin fecha, sin W-8, CM pendiente, pago propio…) quedan como estaban
+ * cumplen (sin fecha, sin W-8, sin banco, declinada, CM pendiente, pago propio
+ * —cargado o con montos editados por quien completa—…) quedan como estaban
  * y vuelven en `failed[]`. Por eso el modal no se cierra al terminar: muestra
  * qué pasó y qué no, fila por fila, y el caller refresca la cola.
  */
@@ -154,6 +155,7 @@ export default function BulkStatusModal({ ids, onClose, onDone }) {
                   onChange={e => setForm(f => ({ ...f, bank_confirmation: e.target.value }))} className="fiba-input w-full" />
               </div>
               <p className="sm:col-span-2 text-[11px] text-fiba-muted/70 -mt-1">{t('payments.bulkPaidHint')}</p>
+              <p className="sm:col-span-2 text-[11px] text-fiba-muted/70 -mt-2">{t('payments.bulkCompleteChecks')}</p>
             </div>
           )}
 

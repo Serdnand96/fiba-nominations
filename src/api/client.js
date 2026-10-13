@@ -163,12 +163,18 @@ export const downloadPaymentAttachment = async (attId, filename) => {
 // Pipeline de pagos (WP3). El estado de un pago NO se cambia con PUT: solo por
 // /transition (uno) o /bulk-status (lote), que aplican la máquina de estados.
 // Cola cross-evento: { items, total, totals: { amount, airfare, paid_amount } }.
+// Filtros: status, year, budget, missing_docs=1, stale=1, cm_pending=1, search, limit, offset.
 export const getPaymentsQueue = (params) => api.get('/payments/queue', { params }).then(r => r.data)
 // Un pago ya aplanado, como una fila de la cola (drawer abierto por `?open=`).
 export const getPayment = (id) => api.get(`/payments/${id}`).then(r => r.data)
-// { status, reason?, payment_date?, bank_confirmation?, paid_amount? } →
+// { status, reason?, payment_date?, bank_confirmation? } →
 // { payment: <fila de la cola>, warnings: [] } (p. ej. 'tax_form_missing').
+// Completar no lleva `paid_amount`: el backend lo fija en el total.
 export const transitionPayment = (id, data) => api.post(`/payments/${id}/transition`, data).then(r => r.data)
+// Pago parcial de un pago `in_process`: { paid_amount, reason? }, con
+// 0 < paid_amount < total (si se pagó todo, se completa). `paid_amount` no se
+// edita por PUT. Mismo gating que completar (payments_approve, no lo propio).
+export const recordPartialPayment = (id, data) => api.post(`/payments/${id}/record-partial`, data).then(r => r.data)
 // { ids, status, reason?, payment_date?, bank_confirmation? } →
 // { ok: [{id, record_no, status, warnings}], failed: [{id, record_no, error, status_code}] }.
 // Nunca aborta el lote: cada pago se valida por separado.
@@ -205,9 +211,10 @@ export const uploadPersonnelTaxForm = (personnelId, file, meta = {}) => {
     headers: { 'Content-Type': 'multipart/form-data' },
   }).then(r => r.data)
 }
-// Bucket privado: blob + JWT. El caller lo guarda con saveBlob.
+// Bucket privado: blob + JWT. El caller lo guarda con saveBlob. Es POST y exige
+// `payments:edit`: el W-8 es un dato fiscal, no alcanza con ver pagos.
 export const downloadPersonnelTaxForm = async (personnelId) => {
-  const resp = await api.get(`/payments/personnel/${personnelId}/banking/tax-form/download`, { responseType: 'blob' })
+  const resp = await api.post(`/payments/personnel/${personnelId}/banking/tax-form/download`, null, { responseType: 'blob' })
   return resp.data
 }
 export const deletePersonnelTaxForm = (personnelId) =>

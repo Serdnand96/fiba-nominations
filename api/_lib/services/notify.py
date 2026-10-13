@@ -86,12 +86,28 @@ def notify(
         return 0
 
 
+def _superadmins() -> set:
+    rows = (
+        supabase.table("user_profiles")
+        .select("user_id")
+        .eq("is_superadmin", True)
+        .execute()
+        .data
+    ) or []
+    return {r["user_id"] for r in rows if r.get("user_id")}
+
+
 def budget_approvers_for(department_code: Optional[str]) -> set:
     """user_ids que pueden aprobar gastos de `department_code`.
 
     Filas de `budget_access` con `can_approve = true` para ese departamento o
-    para '*' (administrador general). No suma superadmins: aprobar gastos es un
-    rol asignado, no un efecto colateral de ser admin del sistema.
+    para '*' (administrador general), INTERSECTADAS con quienes pueden entrar
+    al módulo: `user_permissions` de `budget` con `can_view`, o superadmin. Una
+    fila de budget_access sin el permiso del módulo (se lo sacaron y quedó la
+    fila) no abre la página: avisarle sería mandarlo a un 403.
+
+    No suma superadmins que no tengan fila: aprobar gastos es un rol asignado,
+    no un efecto colateral de ser admin del sistema.
 
     `can_approve` la crea la migración 048: si todavía no está aplicada la
     query falla y se devuelve un set vacío (con warning) en vez de romper.
@@ -107,10 +123,25 @@ def budget_approvers_for(department_code: Optional[str]) -> set:
             .execute()
             .data
         ) or []
+        approvers = {r["user_id"] for r in rows if r.get("user_id")}
+        if not approvers:
+            return set()
+        perms = (
+            supabase.table("user_permissions")
+            .select("user_id")
+            .eq("module", "budget")
+            .eq("can_view", True)
+            .in_("user_id", sorted(approvers))
+            .execute()
+            .data
+        ) or []
+        allowed = {r["user_id"] for r in perms if r.get("user_id")}
+        if approvers - allowed:
+            allowed |= _superadmins() & approvers
     except Exception as exc:
         logger.warning("[notify] budget_approvers_for(%s) failed: %s", department_code, exc)
         return set()
-    return {r["user_id"] for r in rows if r.get("user_id")}
+    return approvers & allowed
 
 
 def module_editors(module: str) -> set:
@@ -134,14 +165,7 @@ def module_editors(module: str) -> set:
     except Exception as exc:
         logger.warning("[notify] module_editors(%s) failed: %s", module, exc)
     try:
-        rows = (
-            supabase.table("user_profiles")
-            .select("user_id")
-            .eq("is_superadmin", True)
-            .execute()
-            .data
-        ) or []
-        out |= {r["user_id"] for r in rows if r.get("user_id")}
+        out |= _superadmins()
     except Exception as exc:
         logger.warning("[notify] superadmin lookup failed: %s", exc)
     return out

@@ -22,6 +22,7 @@ permiso `budget`, view separado de edit.
 
 Ver BUDGET_MODULE.md para el diseño completo.
 """
+import calendar
 import json
 import logging
 import os
@@ -37,6 +38,12 @@ from fastapi.responses import Response
 from api._lib.auth import has_edit, is_superadmin_request, require_edit, require_superadmin, require_view
 from api._lib.budget_accounts import ACCOUNT_BY_ROLE, TRAVEL_ACCOUNT_BY_ROLE, travel_account_for_role
 from api._lib.database import supabase
+from api._lib.finance_years import (
+    OPEN_PAYMENT_STATUSES,
+    payment_fiscal_year,
+    payment_status_year,
+    year_of,
+)
 from api._lib.services.finance_history import history_for, record_transition
 from api._lib.services.notify import budget_approvers_for, notify
 from api._lib.schemas import (
@@ -115,6 +122,13 @@ def _user_id(request: Request) -> Optional[str]:
     user = getattr(request.state, "user", None)
     if isinstance(user, dict):
         return user.get("id")
+    return None
+
+
+def _user_email(request: Request) -> Optional[str]:
+    user = getattr(request.state, "user", None)
+    if isinstance(user, dict):
+        return user.get("email")
     return None
 
 
@@ -631,6 +645,21 @@ def update_vendor(vendor_id: str, data: VendorUpdate, request: Request):
     # exclude_unset: mandar el campo en null también es escribirlo (borrarlo).
     if not admin and any(f in updates for f in _VENDOR_SENSITIVE):
         raise HTTPException(status_code=403, detail="Only a general budget admin can change bank or tax data")
+    current = supabase.table("vendors").select("id, name, active").eq("id", vendor_id).execute().data
+    if not current:
+        raise HTTPException(status_code=404, detail="Vendor not found")
+    if "name" in updates:
+        updates["name"] = (updates["name"] or "").strip()
+        if not updates["name"]:
+            raise HTTPException(status_code=400, detail="name is required")
+    # Renombrar o dar de baja un proveedor afecta el catálogo de TODOS los
+    # departamentos (mismo criterio que DELETE): solo admin general. Se mira si
+    # CAMBIA, no si viene: el formulario reenvía el nombre que ya tenía y eso
+    # no puede trabar la edición del país o del contacto.
+    renames = "name" in updates and updates["name"] != (current[0].get("name") or "")
+    toggles = "active" in updates and bool(updates["active"]) != bool(current[0].get("active"))
+    if renames or toggles:
+        _assert_general_admin(request)
     updates["updated_at"] = _now_iso()
     try:
         result = supabase.table("vendors").update(updates).eq("id", vendor_id).execute()
@@ -1026,39 +1055,14 @@ def export_budget_lines(
     )
 
 
-# `split` dejó de existir en la migración 047: el pago parcial es un
-# `in_process` con `paid_amount` (ver _payment_buckets).
-_OPEN_PAYMENT_STATUSES = ("new", "in_process")
-
-
-def _year_of(value) -> Optional[int]:
-    """Año de una fecha ISO ('2026-03-01' / timestamptz), o None."""
-    text = str(value or "")
-    return int(text[:4]) if len(text) >= 4 and text[:4].isdigit() else None
-
-
-def _payment_fiscal_year(p: dict) -> Optional[int]:
-    """A qué año del presupuesto se imputa un pago. None = a ninguno.
-
-    - `completed` → el año de `payment_date`, que es cuando salió la plata. Si
-      no tiene fecha (la UI de Payments nunca la pidió), cae al año de la
-      competencia: antes un completado sin fecha desaparecía de TODOS los años.
-    - abierto (`new` / `in_process`) → el año de la competencia, que
-      es contra qué presupuesto compromete. Antes se contaba como comprometido
-      en cualquier año que se consultara.
-    - cualquier otro estado → no cuenta.
-
-    El año de la competencia es `competitions.year`, y si falta, el de
-    `start_date`. Espera la fila con el embed `nominations(competitions(...))`.
-    """
-    comp = ((p.get("nominations") or {}).get("competitions")) or {}
-    comp_year = comp.get("year") or _year_of(comp.get("start_date"))
-    status = p.get("status")
-    if status == "completed":
-        return _year_of(p.get("payment_date")) or comp_year
-    if status in _OPEN_PAYMENT_STATUSES:
-        return comp_year
-    return None
+# El año de un pago (fiscal y de listado) vive en api/_lib/finance_years.py,
+# compartido con la cola de payments.py: antes había dos copias que no
+# coincidían en los cancelados. Los alias con guion bajo quedan porque el
+# resto de este archivo (y los tests) los usan con ese nombre.
+_OPEN_PAYMENT_STATUSES = OPEN_PAYMENT_STATUSES
+_year_of = year_of
+_payment_fiscal_year = payment_fiscal_year
+_payment_status_year = payment_status_year
 
 
 def _payment_buckets(status: Optional[str], amount, paid_amount) -> tuple:
@@ -1112,21 +1116,6 @@ def _month_of(value) -> Optional[str]:
     return text if _PERIOD_RE.match(text) else None
 
 
-def _payment_status_year(p: dict) -> Optional[int]:
-    """Año en el que un pago aparece en `by_status` del summary.
-
-    Para los estados que imputan es el mismo de _payment_fiscal_year. Un
-    `cancelled` no imputa a ningún año, pero en el desglose por estado sí
-    tiene que contarse: va al año de su `payment_date` y, si no tiene, al de la
-    competencia. Si tampoco hay competencia con año, no aparece en ninguno.
-    """
-    fiscal = _payment_fiscal_year(p)
-    if fiscal is not None:
-        return fiscal
-    comp = ((p.get("nominations") or {}).get("competitions")) or {}
-    return _year_of(p.get("payment_date")) or comp.get("year") or _year_of(comp.get("start_date"))
-
-
 def _expense_month(e: dict, year: int) -> Optional[str]:
     """Mes del año pedido al que va un gasto en `by_month`.
 
@@ -1142,6 +1131,23 @@ def _expense_month(e: dict, year: int) -> Optional[str]:
         if paid and paid.startswith(f"{year}-"):
             return paid
     return _month_of(e.get("expense_date"))
+
+
+def _clamp_month(month: Optional[str], year: int) -> str:
+    """Lleva el mes de una fila a uno de los 12 de `year`.
+
+    `by_month` tiene que sumar EXACTAMENTE lo mismo que `totals`: el gráfico
+    acumulado termina en el ejecutado del año y, si una fila quedara afuera, la
+    curva y la tarjeta mostrarían números distintos. Una fila que imputa al año
+    pero cuyo mes calculado no cae en él (competencia 2027 que arranca el
+    2026-12-15, pago sin `start_date`) va al borde más cercano: enero si es
+    anterior o no tiene mes, diciembre si es posterior.
+    """
+    if month and month.startswith(f"{year}-"):
+        return month
+    if month and month[:4].isdigit() and int(month[:4]) > year:
+        return f"{year}-12"
+    return f"{year}-01"
 
 
 @router.get("/summary")
@@ -1227,8 +1233,8 @@ def _summary_data(request: Request, year: int, department: Optional[str] = None)
         # Mes de cada fila para `by_month`. Lo comprometido va al mes en que
         # arranca la competencia (es cuándo se va a pagar); lo ejecutado, al de
         # `payment_date`, y si no la tiene o cae en otro año, también al de la
-        # competencia. Sin `start_date` el mes queda en None: la fila suma a los
-        # totales pero no a ningún mes.
+        # competencia. Si aun así el mes no es del año (o no hay `start_date`),
+        # _clamp_month lo lleva a enero o diciembre: by_month cierra con totals.
         start_month = _month_of((nom.get("competitions") or {}).get("start_date"))
         paid_month = _month_of(p.get("payment_date"))
         if not (paid_month and paid_month.startswith(f"{year}-")):
@@ -1323,17 +1329,15 @@ def _summary_data(request: Request, year: int, department: Optional[str] = None)
 
     # Serie mensual del año: siempre 12 meses, en cero los que no tienen
     # movimiento, para que el gráfico acumulado no tenga huecos. Sale de las
-    # mismas filas que los totales; lo único que puede quedar afuera es un pago
-    # sin fecha útil (ver el loop de pagos).
+    # mismas filas que los totales y NINGUNA queda afuera (_clamp_month): la
+    # suma de los 12 meses es `totals.executed` / `totals.committed`.
     months = {f"{year}-{m:02d}": {"executed": 0.0, "committed": 0.0} for m in range(1, 13)}
     for e in expenses:
         bucket = {"paid": "executed", "approved": "committed"}.get(e.get("status"))
-        month = _expense_month(e, year) if bucket else None
-        if month in months:
-            months[month][bucket] += _num(e)
+        if bucket:
+            months[_clamp_month(_expense_month(e, year), year)][bucket] += _num(e)
     for p in payments:
-        if p.get("month") in months:
-            months[p["month"]][p["bucket"]] += _num(p)
+        months[_clamp_month(p.get("month"), year)][p["bucket"]] += _num(p)
     by_month = [
         {"month": m, "executed": round(v["executed"], 2), "committed": round(v["committed"], 2)}
         for m, v in months.items()
@@ -1638,8 +1642,16 @@ def competition_cost(competition_id: str, request: Request):
 
 
 # ─── Headcount y supuestos (base de las líneas calculadas — UI en fase 5) ────
+def _assert_can_view_competitions(request: Request) -> None:
+    """Headcount y supuestos son el insumo del presupuesto de viaje de
+    Competitions: quien no ve ese departamento no ve sus números."""
+    if not _can_view_department(request, "competitions"):
+        raise HTTPException(status_code=403, detail="No access to department 'competitions'")
+
+
 @router.get("/headcount")
-def list_headcount(year: int = Query(...)):
+def list_headcount(request: Request, year: int = Query(...)):
+    _assert_can_view_competitions(request)
     return (
         supabase.table("budget_headcount")
         .select("*, competitions(name)")
@@ -1869,7 +1881,8 @@ def apply_fee_schedule(data: FeeScheduleApply):
 
 
 @router.get("/assumptions/{year}")
-def get_assumptions(year: int):
+def get_assumptions(year: int, request: Request):
+    _assert_can_view_competitions(request)
     rows = supabase.table("budget_assumptions").select("*").eq("year", year).execute().data
     return rows[0] if rows else {"year": year, "avg_flight_cost": 1050, "notes": None}
 
@@ -2287,6 +2300,10 @@ _EXPENSE_FINANCIAL_FIELDS = (
     "department_code", "account_code", "competition_id", "amount", "expense_date",
     "payee_type", "vendor_id", "employee_id", "payee_name",
 )
+# Lo que sella `last_financial_edit_by` (migración 050): los campos de arriba
+# más la línea de presupuesto que consume. Quien cambió cualquiera de estos no
+# aprueba el gasto — segunda pata de la separación de funciones.
+_EXPENSE_EDIT_TRACKED = frozenset(_EXPENSE_FINANCIAL_FIELDS) | {"budget_line_id"}
 # Un gasto pagado es un hecho contable: solo se le completan datos administrativos.
 _EXPENSE_PAID_EDITABLE = {"comments", "invoice_no"}
 _EXPENSE_DELETABLE = ("draft", "rejected", "cancelled")
@@ -2294,6 +2311,11 @@ _EXPENSE_DELETABLE = ("draft", "rejected", "cancelled")
 
 def _clean_text(value) -> Optional[str]:
     return (str(value).strip() or None) if value is not None else None
+
+
+def _same_user(a, b) -> bool:
+    """Mismo usuario, sin que dos None cuenten como "el mismo"."""
+    return bool(a and b and str(a) == str(b))
 
 
 def _iso_date_or_400(value, field: str) -> str:
@@ -2355,18 +2377,27 @@ def check_expense_transition(
 
     if (current, target) == ("draft", "approved"):
         need(can_approve, f"No approval rights on department '{dept}'")
-        creator = expense.get("created_by")
-        if creator and creator == user_id:
-            # Separación de funciones. El superadmin puede saltearla (Finance es
-            # una persona en la práctica), pero con motivo y marcado como
-            # override en el historial: el control es la traza, no el bloqueo.
+        # Separación de funciones, dos patas: no aprueba quien lo cargó
+        # (`created_by`) ni quien cambió sus montos/imputación después
+        # (`last_financial_edit_by`, migración 050) — si no, bastaba con editar
+        # el gasto de otro y aprobarlo. El superadmin puede saltearla (Finance
+        # es una persona en la práctica), pero con motivo y marcado como
+        # override en el historial: el control es la traza, no el bloqueo.
+        override = None
+        if _same_user(expense.get("created_by"), user_id):
+            override = "self_approval"
+        elif _same_user(expense.get("last_financial_edit_by"), user_id):
+            override = "edited_then_approved"
+        if override:
             if not is_superadmin:
                 raise HTTPException(
                     status_code=403,
-                    detail="You cannot approve an expense you created: another approver has to",
+                    detail=("You cannot approve an expense you created: another approver has to"
+                            if override == "self_approval" else
+                            "You changed the amounts of this expense: another approver has to approve it"),
                 )
-            need_reason("approve your own expense (it is recorded as an override)")
-            meta["override"] = True
+            need_reason("approve an expense you created or edited (it is recorded as an override)")
+            meta["override"] = override
         updates.update(approved_by=user_id, approved_at=now)
 
     elif (current, target) == ("draft", "rejected"):
@@ -2415,16 +2446,31 @@ def check_expense_transition(
     }
 
 
-def _expense_title(expense: dict) -> str:
-    """'GA-00042 · IT · $1,250.00' — título de la novedad en la campana."""
-    code = expense.get("department_code") or "—"
-    label = code
+def _department_labels() -> dict:
+    """{code: label} de todos los departamentos, en una query."""
     try:
-        rows = supabase.table("departments").select("label").eq("code", code).execute().data
-        if rows and rows[0].get("label"):
-            label = rows[0]["label"]
+        rows = supabase.table("departments").select("code, label").execute().data or []
     except Exception:
-        pass
+        return {}
+    return {r["code"]: r.get("label") for r in rows if r.get("code")}
+
+
+def _expense_title(expense: dict, labels: Optional[dict] = None) -> str:
+    """'GA-00042 · IT · $1,250.00' — título de la novedad en la campana.
+
+    `labels` ({code: label}) se pasa precargado cuando se titulan varios gastos
+    seguidos; sin él se consulta el departamento de este gasto.
+    """
+    code = expense.get("department_code") or "—"
+    if labels is None:
+        labels = {}
+        try:
+            rows = supabase.table("departments").select("label").eq("code", code).execute().data
+            if rows and rows[0].get("label"):
+                labels[code] = rows[0]["label"]
+        except Exception:
+            pass
+    label = labels.get(code) or code
     try:
         amount = f"${float(expense.get('amount') or 0):,.2f}"
     except (TypeError, ValueError):
@@ -2436,7 +2482,7 @@ def _expense_link(expense_id) -> str:
     return f"/budget?tab=expenses&open={expense_id}"
 
 
-def _notify_expense_submitted(expense: dict, request: Request) -> None:
+def _notify_expense_submitted(expense: dict, request: Request, labels: Optional[dict] = None) -> None:
     """Un draft nuevo (alta o vuelta a borrador) → aprobadores del depto.
 
     Sin el creador (no aprueba lo propio) ni quien hizo la acción.
@@ -2444,7 +2490,7 @@ def _notify_expense_submitted(expense: dict, request: Request) -> None:
     notify(
         budget_approvers_for(expense.get("department_code")),
         "expense_submitted",
-        _expense_title(expense),
+        _expense_title(expense, labels),
         body=expense.get("description"),
         entity_type="expense", entity_id=expense.get("id"),
         link=_expense_link(expense.get("id")),
@@ -2672,7 +2718,22 @@ def update_expense(expense_id: str, data: ExpenseUpdate, request: Request):
             updates.get("expense_date", current.get("expense_date")),
         )
 
-    updates["updated_at"] = _now_iso()
+    now = _now_iso()
+    updates["updated_at"] = now
+    # Cambio de plata (monto, imputación, destinatario, fecha, línea): queda
+    # sellado quién lo hizo — y ese usuario ya no aprueba el gasto (ver
+    # check_expense_transition) — y el detalle va al historial.
+    edit = {
+        f: {"from": current.get(f), "to": updates[f]}
+        for f in sorted(_EXPENSE_EDIT_TRACKED & updates.keys())
+        if not _same_value(f, updates[f], current.get(f))
+    }
+    if edit:
+        # El email es una foto (como finance_status_history.changed_by_email):
+        # la UI muestra "editado por" sin consultar auth.users.
+        updates["last_financial_edit_by"] = _user_id(request)
+        updates["last_financial_edit_by_email"] = _user_email(request)
+        updates["last_financial_edit_at"] = now
     # El UPDATE exige el estado que se validó: si en el medio alguien lo aprobó,
     # no se le cambian los campos financieros a un gasto ya aprobado.
     result = (
@@ -2682,6 +2743,9 @@ def update_expense(expense_id: str, data: ExpenseUpdate, request: Request):
     )
     if not result.data:
         raise HTTPException(status_code=409, detail="The expense changed or was removed meanwhile; reload it")
+    if edit:
+        record_transition("expense", expense_id, current_status, current_status, request,
+                          meta={"edit": edit})
     return result.data[0]
 
 
@@ -2794,6 +2858,13 @@ def delete_expense(expense_id: str, request: Request):
     )
     if not result.data:
         raise HTTPException(status_code=409, detail="The expense changed or was removed meanwhile; reload it")
+    # El historial no tiene FK (migración 046): sobrevive al borrado y deja la
+    # foto de qué se borró. Se escribe DESPUÉS del DELETE para no registrar un
+    # borrado que el lock de estado rechazó.
+    record_transition("expense", expense_id, current.get("status"), "deleted", request, meta={
+        "record_no": current.get("record_no"), "amount": current.get("amount"),
+        "department_code": current.get("department_code"), "description": current.get("description"),
+    })
     for a in atts:
         _delete_from_storage(a.get("storage_path"))
     return {"ok": True}
@@ -2895,16 +2966,19 @@ async def upload_attachment(
 ):
     _row_or_403("expenses", expense_id, request, "edit")
 
-    content_type = file.content_type or "application/octet-stream"
-    if not any(content_type.startswith(a) for a in _ALLOWED_CONTENT):
-        raise HTTPException(status_code=400, detail="Only PDF or image files are allowed")
+    content_type = (file.content_type or "application/octet-stream").lower()
+    # SVG es "image/" pero lleva scripts: servido desde el bucket sería XSS.
+    if content_type.startswith("image/svg") or not any(content_type.startswith(a) for a in _ALLOWED_CONTENT):
+        raise HTTPException(status_code=400, detail="Only PDF or image files are allowed (no SVG)")
 
     content = await file.read()
     if len(content) > _MAX_UPLOAD_BYTES:
-        raise HTTPException(status_code=400, detail="File too large (max 10 MB)")
+        raise HTTPException(status_code=413, detail="File too large (max 10 MB)")
 
     ext = (file.filename or "").rsplit(".", 1)[-1].lower() if "." in (file.filename or "") else "bin"
     ext = re.sub(r"[^a-z0-9]", "", ext)[:8] or "bin"
+    if ext in ("svg", "svgz"):
+        raise HTTPException(status_code=400, detail="Only PDF or image files are allowed (no SVG)")
     key = f"{_ATTACH_PREFIX}/{expense_id}/{uuid.uuid4().hex}.{ext}"
     try:
         supabase.storage.from_(_BUCKET).upload(
@@ -3045,53 +3119,101 @@ def _pending_recurring(request: Request, period: str) -> list:
     return sorted(out, key=lambda r: (r["description"] or "").lower())
 
 
+_INSERT_CHUNK = 100
+
+
+def _uuid_or_none(value) -> Optional[str]:
+    try:
+        return str(uuid.UUID(str(value)))
+    except (TypeError, ValueError):
+        return None
+
+
+def _recurring_expense_date(item, tpl: dict) -> str:
+    """Fecha del gasto generado: la que mandó el usuario o el día de la plantilla.
+
+    El día se recorta al último del mes: una plantilla del 31 no puede generar
+    un 2027-02-31 (antes eso llegaba a Postgres y era un 500).
+    """
+    if item.expense_date:
+        return _iso_date_or_400(item.expense_date, "expense_date")
+    year, month = int(item.period[0:4]), int(item.period[5:7])
+    day = int(tpl.get("day_of_month") or 1)
+    day = min(max(day, 1), calendar.monthrange(year, month)[1])
+    return date(year, month, day).isoformat()
+
+
 @router.post("/recurring/generate", status_code=201, dependencies=[Depends(require_edit("budget"))])
 def generate_recurring(data: RecurringGenerate, request: Request):
     """Confirma en bloque los recurrentes de un período.
 
     Los crea en `draft` — son gastos esperados, no ejecutados. El monto se puede
     pisar por ítem si la factura vino distinta a la plantilla.
+
+    Valida TODO antes de crear nada (período, plantilla existente y activa,
+    permiso de edición del departamento, fecha): un ítem malo es un 4xx sin
+    gastos a medio crear. Lecturas en lote (plantillas, duplicados, labels) y
+    un solo INSERT por tramo; un aviso por departamento, no uno por gasto.
     """
     if not data.items:
         raise HTTPException(status_code=400, detail="Nothing to generate")
 
-    created, skipped = [], []
     for item in data.items:
         if not _PERIOD_RE.match(item.period):
             raise HTTPException(status_code=400, detail=f"Invalid period: {item.period}")
+        if item.amount is not None and float(item.amount) < 0:
+            raise HTTPException(status_code=400, detail="amount must be zero or positive")
 
-        tpl = (
-            supabase.table("recurring_expenses")
-            .select("*")
-            .eq("id", item.recurring_id)
-            .execute()
-            .data
-        )
-        if not tpl:
+    ids = list(dict.fromkeys(item.recurring_id for item in data.items))
+    if any(_uuid_or_none(i) is None for i in ids):
+        raise HTTPException(status_code=404, detail="Recurring expense not found")
+    templates: dict = {}
+    for start in range(0, len(ids), _IN_CHUNK):
+        rows = (
+            supabase.table("recurring_expenses").select("*")
+            .in_("id", ids[start:start + _IN_CHUNK]).execute().data
+        ) or []
+        templates.update({r["id"]: r for r in rows})
+
+    for item in data.items:
+        tpl = templates.get(item.recurring_id)
+        # Sin acceso de lectura al departamento responde igual que inexistente.
+        if not tpl or not _can_view_department(request, tpl.get("department_code")):
             raise HTTPException(status_code=404, detail=f"Recurring expense {item.recurring_id} not found")
-        tpl = tpl[0]
+        if not tpl.get("active"):
+            raise HTTPException(status_code=400, detail=f"Recurring expense {item.recurring_id} is inactive")
         # Generar crea gastos: el permiso se valida por plantilla, no una vez
         # al entrar — la lista de ítems la manda el cliente.
         _assert_can_edit(request, tpl.get("department_code"))
 
-        # El índice único (recurring_id, recurring_period) ya lo garantiza; se
-        # chequea antes para poder reportar el salteo en vez de tirar un 409 y
-        # perder los ítems que sí se podían crear.
-        dup = (
-            supabase.table("expenses")
-            .select("id")
-            .eq("recurring_id", item.recurring_id)
-            .eq("recurring_period", item.period)
-            .execute()
-            .data
-        )
-        if dup:
+    # El índice único (recurring_id, recurring_period) ya lo garantiza; se
+    # chequea antes para poder reportar el salteo en vez de tirar un 409 y
+    # perder los ítems que sí se podían crear. Dos filtros sobre columnas
+    # distintas: no se pisan en el query builder.
+    periods = sorted({item.period for item in data.items})
+    done: set = set()
+    for start in range(0, len(ids), _IN_CHUNK):
+        rows = (
+            supabase.table("expenses").select("recurring_id, recurring_period")
+            .in_("recurring_id", ids[start:start + _IN_CHUNK])
+            .in_("recurring_period", periods)
+            .execute().data
+        ) or []
+        done |= {(r["recurring_id"], r["recurring_period"]) for r in rows}
+
+    uid = _user_id(request)
+    records: list = []
+    skipped: list = []
+    for item in data.items:
+        pair = (item.recurring_id, item.period)
+        if pair in done:
             skipped.append({"recurring_id": item.recurring_id, "period": item.period})
             continue
-
-        day = tpl.get("day_of_month") or 1
-        expense_date = item.expense_date or f"{item.period}-{day:02d}"
-        record = {
+        done.add(pair)   # el mismo par dos veces en el body: el segundo se saltea
+        tpl = templates[item.recurring_id]
+        # Mismas claves en todas las filas: PostgREST exige un array uniforme
+        # en el insert en lote (los None van como NULL).
+        records.append({
             "department_code": tpl["department_code"],
             "account_code": tpl["account_code"],
             "payee_type": "vendor" if tpl.get("vendor_id") else "other",
@@ -3099,24 +3221,72 @@ def generate_recurring(data: RecurringGenerate, request: Request):
             "payee_name": None if tpl.get("vendor_id") else tpl.get("description"),
             "description": f"{tpl['description']} — {item.period}",
             "amount": item.amount if item.amount is not None else tpl["amount"],
-            "expense_date": expense_date,
+            "expense_date": _recurring_expense_date(item, tpl),
             "status": "draft",
             "recurring_id": tpl["id"],
             "recurring_period": item.period,
-            "created_by": _user_id(request),
-        }
-        record = {k: v for k, v in record.items() if v is not None}
-        row = supabase.table("expenses").insert(record).execute().data[0]
-        created.append(row)
-        # Es un alta de gasto como cualquier otra: entra al historial y les
-        # avisa a los aprobadores del departamento.
+            "created_by": uid,
+        })
+
+    created: list = []
+    for start in range(0, len(records), _INSERT_CHUNK):
+        chunk = records[start:start + _INSERT_CHUNK]
+        try:
+            created.extend(supabase.table("expenses").insert(chunk).execute().data or [])
+        except Exception as exc:
+            # Un generate concurrente (índice único) tira el tramo entero: se
+            # reintenta de a uno para crear lo que sí se puede.
+            logger.warning("[budget] recurring bulk insert failed, retrying one by one: %s", exc)
+            for rec in chunk:
+                try:
+                    created.extend(supabase.table("expenses").insert(rec).execute().data or [])
+                except Exception as one_exc:
+                    logger.warning("[budget] recurring insert %s/%s failed: %s",
+                                   rec["recurring_id"], rec["recurring_period"], one_exc)
+                    skipped.append({"recurring_id": rec["recurring_id"], "period": rec["recurring_period"]})
+
+    # Es un alta de gasto como cualquier otra: entra al historial (una fila por
+    # gasto: record_transition no acepta lotes) y les avisa a los aprobadores.
+    for row in created:
         record_transition(
             "expense", row["id"], None, "draft", request,
-            meta={"recurring_id": tpl["id"], "period": item.period},
+            meta={"recurring_id": row.get("recurring_id"), "period": row.get("recurring_period")},
         )
-        _notify_expense_submitted(row, request)
+    _notify_recurring_generated(created, request)
 
     return {"created": created, "skipped": skipped}
+
+
+def _notify_recurring_generated(created: list, request: Request) -> None:
+    """Una novedad por departamento a sus aprobadores, no una por gasto.
+
+    Con un solo gasto en el departamento es el aviso de siempre (abre ese
+    gasto); con varios, uno que resume y abre la bandeja de pendientes.
+    Best-effort: notify() nunca levanta.
+    """
+    if not created:
+        return
+    try:
+        labels = _department_labels()
+        by_dept: dict = {}
+        for row in created:
+            by_dept.setdefault(row.get("department_code"), []).append(row)
+        for code, rows in by_dept.items():
+            if len(rows) == 1:
+                _notify_expense_submitted(rows[0], request, labels=labels)
+                continue
+            total = sum(float(r.get("amount") or 0) for r in rows)
+            notify(
+                budget_approvers_for(code),
+                "expense_submitted",
+                f"{len(rows)} × {labels.get(code) or code or '—'} · ${total:,.2f}",
+                body="\n".join(f"{r.get('record_no') or 'GA'} · {r.get('description') or ''}" for r in rows),
+                entity_type="expense",
+                link="/budget?tab=expenses&status=pending_approval",
+                exclude=[_user_id(request)],
+            )
+    except Exception as exc:
+        logger.warning("[budget] recurring notification failed: %s", exc)
 
 
 # Las rutas con {recurring_id} van DESPUÉS de /pending y /generate: FastAPI

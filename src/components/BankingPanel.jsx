@@ -9,7 +9,8 @@
  *   guarde los valores enmascarados encima de los reales.
  * - El W-8 vive acá, una vez por persona, y no adjunto en cada pago. `exempt`
  *   no lleva archivo. El vencimiento se prellena al 31/12 del tercer año
- *   siguiente a la firma.
+ *   siguiente a la firma. Bajar el PDF es `POST …/tax-form/download` y exige
+ *   `payments:edit`: con solo `payments:view` se ve el estado, no el archivo.
  *
  * Solo se monta para quien tiene `payments:view` (PersonProfilePanel y el
  * drawer de Pagos lo condicionan). Ocultarlo es UX: el backend es el que corta.
@@ -396,11 +397,19 @@ export default function BankingPanel({ personnelId, initial, onChange }) {
             </dl>
             {hasTaxFile && (
               <div className="flex items-center gap-2">
-                <button type="button" onClick={downloadTax}
-                  className="flex-1 min-w-0 inline-flex items-center gap-1.5 text-left text-ink-900 dark:text-white hover:underline">
-                  <Icon.Doc className="w-4 h-4 shrink-0 text-fiba-muted" />
-                  <span className="truncate">{banking.tax_form_file_name || t('payments.banking.taxFile')}</span>
-                </button>
+                {canEdit ? (
+                  <button type="button" onClick={downloadTax}
+                    className="flex-1 min-w-0 inline-flex items-center gap-1.5 text-left text-ink-900 dark:text-white hover:underline">
+                    <Icon.Doc className="w-4 h-4 shrink-0 text-fiba-muted" />
+                    <span className="truncate">{banking.tax_form_file_name || t('payments.banking.taxFile')}</span>
+                  </button>
+                ) : (
+                  // Sin `payments:edit` el backend no entrega el PDF: se muestra el nombre, sin link.
+                  <span className="flex-1 min-w-0 inline-flex items-center gap-1.5 text-ink-700 dark:text-ink-200">
+                    <Icon.Doc className="w-4 h-4 shrink-0 text-fiba-muted" />
+                    <span className="truncate">{banking.tax_form_file_name || t('payments.banking.taxFile')}</span>
+                  </span>
+                )}
                 {canEdit && (
                   <button type="button" onClick={deleteTax} disabled={busy}
                     title={t('payments.banking.taxDelete')} aria-label={t('payments.banking.taxDelete')}
