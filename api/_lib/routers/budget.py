@@ -27,25 +27,30 @@ import logging
 import os
 import re
 import uuid
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from typing import Optional
 
 import httpx
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile
 from fastapi.responses import Response
 
-from api._lib.auth import is_superadmin_request, require_edit, require_superadmin, require_view
-from api._lib.budget_accounts import travel_account_for_role
+from api._lib.auth import has_edit, is_superadmin_request, require_edit, require_superadmin, require_view
+from api._lib.budget_accounts import ACCOUNT_BY_ROLE, TRAVEL_ACCOUNT_BY_ROLE, travel_account_for_role
 from api._lib.database import supabase
+from api._lib.services.finance_history import history_for, record_transition
+from api._lib.services.notify import budget_approvers_for, notify
 from api._lib.schemas import (
     AccountCreate,
+    AccountRemap,
     AccountUpdate,
     AssumptionsPut,
     BudgetAccessPut,
     BudgetLineCreate,
     BudgetLineUpdate,
     BudgetProject,
+    ExpenseApprove,
     ExpenseCreate,
+    ExpenseTransition,
     ExpenseUpdate,
     FeeScheduleApply,
     FeeScheduleUpdate,
@@ -194,18 +199,57 @@ def _access_rows(request: Request) -> list:
     return rows
 
 
+_ACCESS_COLUMN = {"view": "can_view", "edit": "can_edit", "approve": "can_approve"}
+
+
 def _departments_for(request: Request, action: str) -> Optional[list]:
-    """Departamentos permitidos, o None si son todos. action: 'view' | 'edit'."""
+    """Departamentos permitidos, o None si son todos.
+
+    action: 'view' | 'edit' | 'approve'. 'approve' (migración 048) es una
+    columna aparte y NO se deduce de can_edit: el que carga un gasto y el que lo
+    aprueba son roles distintos. Si la 048 no está aplicada, las filas no traen
+    `can_approve` y el resultado es [] — falla cerrado, nadie aprueba salvo el
+    superadmin.
+
+    Una acción desconocida levanta: antes caía en can_view, y un typo en el
+    nombre de la acción se convertía en permiso de lectura en silencio.
+    """
     if is_superadmin_request(request):
         return None
-    col = "can_edit" if action == "edit" else "can_view"
+    col = _ACCESS_COLUMN.get(action)
+    if col is None:
+        raise ValueError(f"Unknown budget access action {action!r}")
     rows = _access_rows(request)
-    if any(r.get("department_code") == "*" and r.get(col) for r in rows):
+
+    def grants(r: dict) -> bool:
+        # Aprobar lo que no se ve no tiene sentido; el PUT ya lo impide, esto
+        # es por si alguien carga la fila a mano en SQL.
+        return bool(r.get(col)) and (action != "approve" or bool(r.get("can_view")))
+
+    if any(r.get("department_code") == "*" and grants(r) for r in rows):
         return None
-    return sorted({r["department_code"] for r in rows if r.get(col) and r["department_code"] != "*"})
+    return sorted({r["department_code"] for r in rows if grants(r) and r["department_code"] != "*"})
 
 
-def _scoped(q, request: Request, requested: Optional[str] = None):
+def _allowed_departments(request: Request, action: str = "view") -> Optional[list]:
+    """Departamentos que una LECTURA puede devolver para `action`.
+
+    'view' es el scope normal. Cualquier otra acción se intersecta con 'view':
+    la bandeja "pendientes de aprobación" muestra drafts de los departamentos
+    donde el caller aprueba Y ve. None = todos.
+    """
+    viewable = _departments_for(request, "view")
+    if action == "view":
+        return viewable
+    other = _departments_for(request, action)
+    if viewable is None:
+        return other
+    if other is None:
+        return viewable
+    return sorted(set(viewable) & set(other))
+
+
+def _scoped(q, request: Request, requested: Optional[str] = None, action: str = "view"):
     """Recorte por departamento, combinado con el filtro que pidió el usuario.
 
     ⚠️ Los dos se resuelven ACÁ y se aplica UN SOLO filtro, a propósito: el
@@ -216,8 +260,12 @@ def _scoped(q, request: Request, requested: Optional[str] = None):
 
     Va en TODA lectura del módulo. Falla cerrado: lista vacía → PostgREST
     `in.()` → no matchea nada.
+
+    `action='approve'` recorta además a los departamentos donde el caller
+    aprueba (bandeja de pendientes). La intersección con lo que pidió el
+    usuario se resuelve en Python, antes de armar el único filtro.
     """
-    allowed = _departments_for(request, "view")
+    allowed = _allowed_departments(request, action)
     if requested:
         if allowed is not None and requested not in allowed:
             return q.in_("department_code", [])   # fuera de scope → sin resultados
@@ -238,6 +286,15 @@ def _assert_can_edit(request: Request, code: Optional[str]) -> None:
         return
     if not code or code not in depts:
         raise HTTPException(status_code=403, detail=f"No edit access to department '{code}'")
+
+
+def _assert_can_approve(request: Request, code: Optional[str]) -> None:
+    """403 si el caller no aprueba gastos de `code` (superadmin siempre pasa)."""
+    depts = _departments_for(request, "approve")
+    if depts is None:
+        return
+    if not code or code not in depts:
+        raise HTTPException(status_code=403, detail=f"No approval rights on department '{code}'")
 
 
 def _is_general_admin(request: Request) -> bool:
@@ -325,15 +382,20 @@ def put_budget_access(user_id: str, data: BudgetAccessPut):
         # filtro de lectura ignora pero el de escritura acepta.
         if item.can_edit and not item.can_view:
             raise HTTPException(status_code=400, detail="can_edit requires can_view")
+        # Mismo criterio para aprobar: no se aprueba lo que no se ve. can_approve
+        # NO exige can_edit — el aprobador puede ser alguien que no carga.
+        if item.can_approve and not item.can_view:
+            raise HTTPException(status_code=400, detail="can_approve requires can_view")
 
     supabase.table("budget_access").delete().eq("user_id", user_id).execute()
-    kept = [i for i in data.items if i.can_view or i.can_edit]
+    kept = [i for i in data.items if i.can_view or i.can_edit or i.can_approve]
     if kept:
         supabase.table("budget_access").insert([{
             "user_id": user_id,
             "department_code": i.department_code,
             "can_view": i.can_view,
             "can_edit": i.can_edit,
+            "can_approve": i.can_approve,
         } for i in kept]).execute()
     return {"ok": True, "count": len(kept)}
 
@@ -345,6 +407,10 @@ def my_scope(request: Request):
         "is_superadmin": is_superadmin_request(request),
         "view": _departments_for(request, "view"),   # None = todos
         "edit": _departments_for(request, "edit"),
+        # Departamentos donde aprueba/rechaza gastos (migración 048). Ojo: aun
+        # con el departamento acá, nadie aprueba un gasto que cargó él mismo
+        # (el superadmin sí, con motivo) — el front lo resuelve por fila.
+        "approve": _departments_for(request, "approve"),
     }
 
 
@@ -431,6 +497,70 @@ def update_account(code: str, data: AccountUpdate, request: Request):
     if "kind" in updates and updates["kind"] not in ("expense", "revenue"):
         raise HTTPException(status_code=400, detail="kind must be 'expense' or 'revenue'")
     result = supabase.table("accounts").update(updates).eq("code", code).execute()
+    if not result.data:
+        raise HTTPException(status_code=404, detail="Account not found")
+    return result.data[0]
+
+
+def _roles_mapped_to(code: str) -> list:
+    """Roles cuyo pago imputa a `code` según api/_lib/budget_accounts.py."""
+    return (
+        [f"{role} (fees)" for role, acc in ACCOUNT_BY_ROLE.items() if acc == code]
+        + [f"{role} (travel)" for role, acc in TRAVEL_ACCOUNT_BY_ROLE.items() if acc == code]
+    )
+
+
+@router.post("/accounts/{code}/remap", dependencies=[Depends(require_edit("budget"))])
+def remap_account(code: str, data: AccountRemap, request: Request):
+    """Le asigna el código oficial de Finance a una cuenta (típicamente COMP-*).
+
+    Es un UPDATE de la PK: todas las FK hacia `accounts.code` (expenses,
+    revenues, recurring_expenses, budget_lines, payments, fee_schedule y el
+    propio parent_code) son ON UPDATE CASCADE, así que los gastos, líneas y
+    pagos ya cargados se mueven solos. Se baja `pending_mapping` porque el
+    código deja de ser provisorio.
+
+    Lo único que el CASCADE no alcanza es código: `budget_accounts.py` tiene los
+    COMP-* de fees/travel por rol hardcodeados. Remapear una de esas cuentas sin
+    tocar ese archivo deja al próximo pago de ese rol escribiendo un código que
+    ya no existe, y el FK lo rechaza. Por eso 409 salvo `force` — y `force` es
+    para cuando el cambio de budget_accounts.py ya está en el mismo deploy.
+
+    Solo admin general: el plan de cuentas es transversal a los departamentos.
+    """
+    _assert_general_admin(request)
+    new_code = (data.new_code or "").strip()
+    if not new_code:
+        raise HTTPException(status_code=400, detail="new_code is required")
+    if new_code == code:
+        raise HTTPException(status_code=400, detail="new_code is the same as the current code")
+    if not _account(code):
+        raise HTTPException(status_code=404, detail="Account not found")
+    if _account(new_code):
+        raise HTTPException(status_code=409, detail="An account with that code already exists")
+
+    roles = _roles_mapped_to(code)
+    if roles and not data.force:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"Account {code} is used to allocate payments for {', '.join(roles)}. "
+                f"actualizar api/_lib/budget_accounts.py ({code} → {new_code}) in the same "
+                "deploy and retry with force=true"
+            ),
+        )
+    if roles:
+        logger.warning(
+            "[budget] account %s remapped to %s with force; budget_accounts.py maps it for %s",
+            code, new_code, ", ".join(roles),
+        )
+
+    result = (
+        supabase.table("accounts")
+        .update({"code": new_code, "pending_mapping": False})
+        .eq("code", code)
+        .execute()
+    )
     if not result.data:
         raise HTTPException(status_code=404, detail="Account not found")
     return result.data[0]
@@ -896,7 +1026,9 @@ def export_budget_lines(
     )
 
 
-_OPEN_PAYMENT_STATUSES = ("new", "in_process", "split")
+# `split` dejó de existir en la migración 047: el pago parcial es un
+# `in_process` con `paid_amount` (ver _payment_buckets).
+_OPEN_PAYMENT_STATUSES = ("new", "in_process")
 
 
 def _year_of(value) -> Optional[int]:
@@ -911,7 +1043,7 @@ def _payment_fiscal_year(p: dict) -> Optional[int]:
     - `completed` → el año de `payment_date`, que es cuando salió la plata. Si
       no tiene fecha (la UI de Payments nunca la pidió), cae al año de la
       competencia: antes un completado sin fecha desaparecía de TODOS los años.
-    - abierto (`new` / `in_process` / `split`) → el año de la competencia, que
+    - abierto (`new` / `in_process`) → el año de la competencia, que
       es contra qué presupuesto compromete. Antes se contaba como comprometido
       en cualquier año que se consultara.
     - cualquier otro estado → no cuenta.
@@ -927,6 +1059,29 @@ def _payment_fiscal_year(p: dict) -> Optional[int]:
     if status in _OPEN_PAYMENT_STATUSES:
         return comp_year
     return None
+
+
+def _payment_buckets(status: Optional[str], amount, paid_amount) -> tuple:
+    """(ejecutado, comprometido) de un monto de pago según su estado.
+
+    - `completed`  → todo ejecutado.
+    - `in_process` con `paid_amount > 0` → lo pagado ejecutado (con tope en el
+      monto) y el resto comprometido: es el pago parcial que antes escondía
+      `split`.
+    - `new` / `in_process` sin pagar → todo comprometido.
+    - `cancelled` u otro → nada.
+
+    Para el pasaje se llama con `paid_amount=None`: lo pagado es del fee, y el
+    pasaje recién cuenta como ejecutado al completarse.
+    """
+    total = float(amount or 0)
+    if status == "completed":
+        return round(total, 2), 0.0
+    if status not in _OPEN_PAYMENT_STATUSES:
+        return 0.0, 0.0
+    paid = float(paid_amount or 0) if status == "in_process" else 0.0
+    paid = min(max(paid, 0.0), total)
+    return round(paid, 2), round(total - paid, 2)
 
 
 def _revenue_year(r: dict) -> Optional[int]:
@@ -964,10 +1119,15 @@ def budget_summary(request: Request, year: int = Query(...), department: Optiona
     del fee infla una y deja la otra en cero para siempre.
     """
     lq = _scoped(supabase.table("budget_lines").select("*").eq("year", year), request, department)
+    # Gastos del año: SOLO el .gte va a la base. El query builder guarda un
+    # filtro por columna (database.py), así que encadenar .gte().lte() sobre
+    # expense_date dejaba vivo únicamente el .lte: cada año sumaba también
+    # todos los anteriores (los $41.667 de IT 2026 aparecían en 2027). El tope
+    # se aplica en Python, abajo — mismo arreglo que _fetch_expenses.
     eq_ = _scoped(
         supabase.table("expenses")
-        .select("amount, status, department_code, account_code, competition_id")
-        .gte("expense_date", f"{year}-01-01").lte("expense_date", f"{year}-12-31"),
+        .select("amount, status, department_code, account_code, competition_id, expense_date")
+        .gte("expense_date", f"{year}-01-01"),
         request, department,
     )
     # Ingresos: el año sale de dos columnas distintas según el estado, y
@@ -982,14 +1142,16 @@ def budget_summary(request: Request, year: int = Query(...), department: Optiona
     )
     pq = _scoped(
         supabase.table("payments").select(
-            "total, airfare, status, department_code, account_code, payment_date, "
+            "total, airfare, paid_amount, status, department_code, account_code, payment_date, "
             "nominations(competition_id, personnel(role), competitions(year, start_date))"
         ),
         request, department,
     )
 
     lines = lq.execute().data or []
-    expenses = eq_.execute().data or []
+    year_end = f"{year}-12-31"
+    expenses = [e for e in (eq_.execute().data or [])
+                if str(e.get("expense_date") or "")[:10] <= year_end]
     revenues = [r for r in (rq.execute().data or []) if _revenue_year(r) == year]
 
     # Los pagos no tienen fecha de gasto: el año sale de _payment_fiscal_year
@@ -1005,14 +1167,24 @@ def budget_summary(request: Request, year: int = Query(...), department: Optiona
             "department_code": p.get("department_code"),
             "competition_id": nom.get("competition_id"),
         }
-        payments.append({**base, "amount": p.get("total"), "account_code": p.get("account_code")})
+        # Cada fila lleva su `bucket` (executed / committed). Un fee
+        # `in_process` con `paid_amount` (pago parcial, migración 047) se parte
+        # en dos filas: lo pagado es ejecutado y el resto comprometido.
+        fee_exec, fee_open = _payment_buckets(p.get("status"), p.get("total"), p.get("paid_amount"))
+        for bucket, amount in (("executed", fee_exec), ("committed", fee_open)):
+            if amount:
+                payments.append({**base, "bucket": bucket, "amount": amount,
+                                 "account_code": p.get("account_code")})
         # El pasaje se imputa a la cuenta de travel del rol, no a la del fee.
         # Se agrega como una fila más para que todo lo de abajo —ejecutado,
         # comprometido, los tres rollups, el sin-imputar— lo cuente sin
-        # enterarse de que existe un segundo concepto.
+        # enterarse de que existe un segundo concepto. `paid_amount` es del
+        # fee: el pasaje sigue entero como comprometido hasta `completed`.
         if float(p.get("airfare") or 0):
             role = (nom.get("personnel") or {}).get("role")
-            payments.append({**base, "amount": p.get("airfare"),
+            air_exec, air_open = _payment_buckets(p.get("status"), p.get("airfare"), None)
+            payments.append({**base, "bucket": "executed" if air_exec else "committed",
+                             "amount": air_exec or air_open,
                              "account_code": travel_account_for_role(role)})
 
     depts = {d["code"]: d["label"] for d in (supabase.table("departments").select("code, label").execute().data or [])}
@@ -1025,10 +1197,11 @@ def budget_summary(request: Request, year: int = Query(...), department: Optiona
     exp_lines = [l for l in lines if l.get("kind") == "expense"]
     rev_lines = [l for l in lines if l.get("kind") == "revenue"]
 
-    # Un pago `completed` es ejecutado; cualquier otro estado vivo es
-    # comprometido (está aprobado a nivel de nominación, falta que salga).
-    paid_payments = [p for p in payments if p.get("status") == "completed"]
-    open_payments = [p for p in payments if p.get("status") in _OPEN_PAYMENT_STATUSES]
+    # Un pago `completed` es ejecutado; uno abierto es comprometido, salvo lo
+    # ya pagado de un `in_process` parcial (ver _payment_buckets). `cancelled`
+    # no llega hasta acá (_payment_fiscal_year lo deja afuera).
+    paid_payments = [p for p in payments if p.get("bucket") == "executed"]
+    open_payments = [p for p in payments if p.get("bucket") == "committed"]
 
     budgeted = round(sum(_num(l) for l in exp_lines), 2)
     executed = round(
@@ -1138,7 +1311,7 @@ def competition_cost(competition_id: str, request: Request):
     pays = []
     if noms:
         pays = supabase.table("payments").select(
-            "total, airfare, status, department_code, account_code, "
+            "total, airfare, paid_amount, status, department_code, account_code, "
             "nominations(personnel(name, role))"
         ).in_("nomination_id", [n["id"] for n in noms]).execute().data or []
 
@@ -1148,13 +1321,15 @@ def competition_cost(competition_id: str, request: Request):
     budgeted = round(sum(_n(l) for l in lines if l.get("kind") == "expense"), 2)
     exp_paid = round(sum(_n(e) for e in expenses if e.get("status") == "paid"), 2)
     exp_open = round(sum(_n(e) for e in expenses if e.get("status") == "approved"), 2)
-    fees_paid = round(sum(_n(p, "total") for p in pays if p.get("status") == "completed"), 2)
-    fees_open = round(sum(_n(p, "total") for p in pays
-                          if p.get("status") in ("new", "in_process", "split")), 2)
-    airfare_paid = round(sum(_n(p, "airfare") for p in pays
-                             if p.get("status") == "completed"), 2)
-    airfare_open = round(sum(_n(p, "airfare") for p in pays
-                             if p.get("status") in ("new", "in_process", "split")), 2)
+    # Fee: un `in_process` parcial aporta lo pagado a ejecutado y el resto a
+    # comprometido; pasaje: entero comprometido hasta `completed`. Mismo
+    # criterio que /summary (_payment_buckets). `cancelled` no cuenta.
+    fee_split = [_payment_buckets(p.get("status"), p.get("total"), p.get("paid_amount")) for p in pays]
+    air_split = [_payment_buckets(p.get("status"), p.get("airfare"), None) for p in pays]
+    fees_paid = round(sum(e for e, _ in fee_split), 2)
+    fees_open = round(sum(c for _, c in fee_split), 2)
+    airfare_paid = round(sum(e for e, _ in air_split), 2)
+    airfare_open = round(sum(c for _, c in air_split), 2)
     airfare = round(airfare_paid + airfare_open, 2)
 
     executed = round(exp_paid + fees_paid + airfare_paid, 2)
@@ -1180,11 +1355,10 @@ def competition_cost(competition_id: str, request: Request):
         entry = _entry(p.get("department_code"))
         # Fee y pasaje van al mismo departamento (cambia la cuenta, y acá el
         # desglose es por departamento), así que se suman juntos.
-        both = _n(p, "total") + _n(p, "airfare")
-        if p.get("status") == "completed":
-            entry["executed"] += both
-        elif p.get("status") in ("new", "in_process", "split"):
-            entry["committed"] += both
+        fee_exec, fee_open = _payment_buckets(p.get("status"), p.get("total"), p.get("paid_amount"))
+        air_exec, air_open = _payment_buckets(p.get("status"), p.get("airfare"), None)
+        entry["executed"] += fee_exec + air_exec
+        entry["committed"] += fee_open + air_open
 
     labels = {d["code"]: d["label"] for d in
               (supabase.table("departments").select("code, label").execute().data or [])}
@@ -1498,6 +1672,11 @@ _EXPENSE_SELECT = (
 )
 
 
+# `?status=pending_approval` no es un estado de la tabla: es la bandeja del
+# aprobador (drafts de los departamentos donde aprueba, sin los que cargó él).
+_PENDING_APPROVAL = "pending_approval"
+
+
 def _fetch_expenses(
     request: Request,
     year: Optional[int] = None,
@@ -1510,16 +1689,22 @@ def _fetch_expenses(
     date_from: Optional[str] = None,
     date_to: Optional[str] = None,
     search: Optional[str] = None,
+    scope_action: str = "view",
+    created_by: Optional[str] = None,
+    exclude_created_by: Optional[str] = None,
 ) -> list:
     """Compartido por /expenses y /expenses/summary.
 
     Los endpoints no se llaman entre sí como funciones: los defaults `Query()`
     se filtran como objetos truthy y se vuelven filtros fantasma (mismo bug que
     dejó el summary de payments en $0.00).
+
+    `scope_action='approve'` recorta a los departamentos donde el caller ve Y
+    aprueba; lo resuelve _scoped() en un único filtro sobre department_code.
     """
     q = _scoped(
         supabase.table("expenses").select(_EXPENSE_SELECT).order("expense_date", desc=True),
-        request, department,
+        request, department, action=scope_action,
     )
 
     if account:
@@ -1528,22 +1713,33 @@ def _fetch_expenses(
         q = q.eq("status", status)
     if vendor_id:
         q = q.eq("vendor_id", vendor_id)
+    if created_by:
+        q = q.eq("created_by", created_by)
     if general_only:
         q = q.is_("competition_id")
     elif competition_id:
         q = q.eq("competition_id", competition_id)
 
     # `year` es azúcar sobre el rango; si vienen los dos, gana el rango explícito.
-    if date_from:
-        q = q.gte("expense_date", date_from)
-    elif year:
-        q = q.gte("expense_date", f"{year}-01-01")
-    if date_to:
-        q = q.lte("expense_date", date_to)
-    elif year:
-        q = q.lte("expense_date", f"{year}-12-31")
+    lower = date_from or (f"{year}-01-01" if year else None)
+    upper = date_to or (f"{year}-12-31" if year else None)
+    # ⚠️ El builder guarda UN filtro por columna: un .gte() y un .lte() sobre
+    # expense_date se pisan, y "año 2026" devolvía todo lo anterior a 2027.
+    # La cota inferior va a la query; si además hay superior, se aplica en
+    # Python sobre lo que ya vino recortado.
+    if lower:
+        q = q.gte("expense_date", lower)
+    elif upper:
+        q = q.lte("expense_date", upper)
 
     rows = [_shape_expense(r) for r in (q.execute().data or [])]
+
+    if lower and upper:
+        rows = [r for r in rows if str(r.get("expense_date") or "")[:10] <= upper[:10]]
+    # `neq` en PostgREST también descarta los NULL (los 129 importados no
+    # tienen created_by), por eso la exclusión del propio va en Python.
+    if exclude_created_by:
+        rows = [r for r in rows if r.get("created_by") != exclude_created_by]
 
     if search:
         s = search.lower()
@@ -1565,15 +1761,35 @@ def list_expenses(
     account: Optional[str] = Query(None),
     competition_id: Optional[str] = Query(None),
     general_only: bool = Query(False, description="Solo gastos sin competencia"),
-    status: Optional[str] = Query(None),
+    status: Optional[str] = Query(
+        None, description="Estado, o 'pending_approval' = drafts que el caller puede aprobar",
+    ),
     vendor_id: Optional[str] = Query(None),
     date_from: Optional[str] = Query(None),
     date_to: Optional[str] = Query(None),
     search: Optional[str] = Query(None),
+    mine: bool = Query(False, description="Solo los que cargó el caller"),
 ):
+    scope_action, exclude = "view", None
+    if status == _PENDING_APPROVAL:
+        # Drafts de los departamentos donde aprueba, sin los propios: nadie
+        # aprueba lo que cargó (el superadmin puede con override, pero desde el
+        # gasto, no desde la bandeja). Es el mismo criterio que el contador de
+        # la campana (notifications.py, /pending).
+        status, scope_action, exclude = "draft", "approve", _user_id(request)
+    elif status and status not in _EXPENSE_STATUSES:
+        raise HTTPException(status_code=400, detail="Invalid status")
+
+    created_by = None
+    if mine:
+        created_by = _user_id(request)
+        if not created_by:
+            return []
+
     return _fetch_expenses(
         request, year, department, account, competition_id, general_only,
         status, vendor_id, date_from, date_to, search,
+        scope_action=scope_action, created_by=created_by, exclude_created_by=exclude,
     )
 
 
@@ -1629,6 +1845,311 @@ def _group_totals(rows: list, key: str) -> list:
     return sorted(acc.values(), key=lambda e: -e["total"])
 
 
+# ─── Gastos: máquina de estados ──────────────────────────────────────────────
+#
+# El `status` de un gasto NO se toca por PATCH. Solo por
+# POST /expenses/{id}/transition, que pasa por check_expense_transition().
+#
+# Por qué: con el status editable en el PATCH, el mismo designado que cargaba un
+# gasto lo aprobaba y lo marcaba pagado en un solo formulario, sin motivo ni
+# traza — un único sello. La máquina de estados es lo que hace cumplir la
+# separación de funciones (quien carga no aprueba), exige el motivo donde hace
+# falta (rechazo, cancelación, reversión de un pago) y deja cada cambio en
+# finance_status_history. Si el status volviera al PATCH, todo eso se saltea
+# con un `{"status": "paid"}`.
+#
+#   draft     → approved   aprobador del depto, created_by ≠ caller
+#                          (superadmin sobre lo propio: reason + meta.override)
+#   draft     → rejected   aprobador del depto, reason
+#   draft     → cancelled  editor del depto, reason
+#   approved  → paid       editor del depto, payment_date (sella paid_by/at)
+#   approved  → draft      aprobador del depto o superadmin (limpia approved_*)
+#   rejected  → draft      editor del depto (limpia los sellos)
+#   cancelled → draft      editor del depto (limpia los sellos)
+#   paid      → approved   solo superadmin, reason (limpia paid_* y payment_date)
+#
+# Cualquier otra combinación es 409. No hay approved → cancelled: un gasto
+# aprobado se reabre (→ draft) y recién ahí se cancela, así la cancelación la
+# decide el editor sobre un borrador y no se pierde el rastro de la aprobación.
+_EXPENSE_TRANSITIONS = {
+    ("draft", "approved"),
+    ("draft", "rejected"),
+    ("draft", "cancelled"),
+    ("approved", "paid"),
+    ("approved", "draft"),
+    ("rejected", "draft"),
+    ("cancelled", "draft"),
+    ("paid", "approved"),
+}
+
+# Volver a borrador borra los sellos de la salida anterior: un draft no tiene
+# aprobador, ni rechazo, ni cancelación vigentes (el historial sí los guarda).
+_EXPENSE_STAMPS_CLEARED = {
+    "approved_by": None, "approved_at": None,
+    "rejected_by": None, "rejected_at": None, "rejection_reason": None,
+    "cancelled_by": None, "cancelled_at": None, "cancel_reason": None,
+}
+
+# Lo que define QUÉ plata se comprometió: a quién, cuánto, de qué departamento,
+# a qué cuenta, por qué evento y con qué fecha. Aprobado eso, cambiarlo sin
+# volver a draft dejaría una aprobación sobre algo que el aprobador no vio.
+_EXPENSE_FINANCIAL_FIELDS = (
+    "department_code", "account_code", "competition_id", "amount", "expense_date",
+    "payee_type", "vendor_id", "employee_id", "payee_name",
+)
+# Un gasto pagado es un hecho contable: solo se le completan datos administrativos.
+_EXPENSE_PAID_EDITABLE = {"comments", "invoice_no"}
+_EXPENSE_DELETABLE = ("draft", "rejected", "cancelled")
+
+
+def _clean_text(value) -> Optional[str]:
+    return (str(value).strip() or None) if value is not None else None
+
+
+def _iso_date_or_400(value, field: str) -> str:
+    try:
+        return date.fromisoformat(str(value)[:10]).isoformat()
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=400, detail=f"{field} must be a date (YYYY-MM-DD)")
+
+
+def check_expense_transition(
+    expense: dict,
+    target: str,
+    payload=None,
+    *,
+    user_id: Optional[str],
+    can_edit: bool,
+    can_approve: bool,
+    is_superadmin: bool,
+    now: Optional[str] = None,
+) -> dict:
+    """Valida una transición de estado de un gasto. Pura: no toca la base.
+
+    `expense` es la fila actual; `target`, el estado destino; `payload`, un dict
+    (o el ExpenseTransition) con reason / payment_date / payment_method /
+    bank_confirmation. `can_edit` / `can_approve` son los derechos del caller
+    SOBRE EL DEPARTAMENTO DEL GASTO, ya resueltos por quien llama.
+
+    Devuelve {from_status, to_status, updates, reason, meta}: `updates` son las
+    columnas a escribir (status incluido, sin updated_at). Levanta
+    HTTPException 400 (falta un dato), 403 (no le corresponde al caller) o 409
+    (la transición no existe desde el estado actual).
+    """
+    if payload is None:
+        payload = {}
+    elif hasattr(payload, "model_dump"):
+        payload = payload.model_dump()
+    now = now or _now_iso()
+    current = expense.get("status")
+    dept = expense.get("department_code")
+
+    if target not in _EXPENSE_STATUSES:
+        raise HTTPException(status_code=400, detail="Invalid status")
+    if target == current:
+        raise HTTPException(status_code=409, detail=f"The expense is already {target}")
+    if (current, target) not in _EXPENSE_TRANSITIONS:
+        raise HTTPException(status_code=409, detail=f"An expense cannot go from {current} to {target}")
+
+    reason = _clean_text(payload.get("reason"))
+    updates: dict = {"status": target}
+    meta: dict = {}
+
+    def need_reason(what: str) -> None:
+        if not reason:
+            raise HTTPException(status_code=400, detail=f"A reason is required to {what}")
+
+    def need(allowed: bool, detail: str) -> None:
+        if not allowed:
+            raise HTTPException(status_code=403, detail=detail)
+
+    if (current, target) == ("draft", "approved"):
+        need(can_approve, f"No approval rights on department '{dept}'")
+        creator = expense.get("created_by")
+        if creator and creator == user_id:
+            # Separación de funciones. El superadmin puede saltearla (Finance es
+            # una persona en la práctica), pero con motivo y marcado como
+            # override en el historial: el control es la traza, no el bloqueo.
+            if not is_superadmin:
+                raise HTTPException(
+                    status_code=403,
+                    detail="You cannot approve an expense you created: another approver has to",
+                )
+            need_reason("approve your own expense (it is recorded as an override)")
+            meta["override"] = True
+        updates.update(approved_by=user_id, approved_at=now)
+
+    elif (current, target) == ("draft", "rejected"):
+        need(can_approve, f"No approval rights on department '{dept}'")
+        need_reason("reject an expense")
+        updates.update(rejected_by=user_id, rejected_at=now, rejection_reason=reason)
+
+    elif (current, target) == ("draft", "cancelled"):
+        need(can_edit, f"No edit access to department '{dept}'")
+        need_reason("cancel an expense")
+        updates.update(cancelled_by=user_id, cancelled_at=now, cancel_reason=reason)
+
+    elif (current, target) == ("approved", "paid"):
+        need(can_edit, f"No edit access to department '{dept}'")
+        if not payload.get("payment_date"):
+            raise HTTPException(status_code=400, detail="A payment date is required to mark an expense as paid")
+        payment_date = _iso_date_or_400(payload.get("payment_date"), "payment_date")
+        updates.update(payment_date=payment_date, paid_by=user_id, paid_at=now)
+        for field in ("payment_method", "bank_confirmation"):
+            value = _clean_text(payload.get(field))
+            if value:
+                updates[field] = value
+        meta["payment_date"] = payment_date
+
+    elif (current, target) == ("approved", "draft"):
+        need(can_approve or is_superadmin, f"No approval rights on department '{dept}'")
+        updates.update(approved_by=None, approved_at=None)
+
+    elif target == "draft":   # rejected / cancelled → draft
+        need(can_edit, f"No edit access to department '{dept}'")
+        updates.update(_EXPENSE_STAMPS_CLEARED)
+
+    elif (current, target) == ("paid", "approved"):
+        # Revertir un pago saca plata del ejecutado: solo superadmin y con motivo.
+        need(is_superadmin, "Only a superadmin can revert a paid expense")
+        need_reason("revert a paid expense")
+        updates.update(payment_date=None, paid_by=None, paid_at=None)
+        meta["reverted_payment_date"] = expense.get("payment_date")
+
+    return {
+        "from_status": current,
+        "to_status": target,
+        "updates": updates,
+        "reason": reason,
+        "meta": meta or None,
+    }
+
+
+def _expense_title(expense: dict) -> str:
+    """'GA-00042 · IT · $1,250.00' — título de la novedad en la campana."""
+    code = expense.get("department_code") or "—"
+    label = code
+    try:
+        rows = supabase.table("departments").select("label").eq("code", code).execute().data
+        if rows and rows[0].get("label"):
+            label = rows[0]["label"]
+    except Exception:
+        pass
+    try:
+        amount = f"${float(expense.get('amount') or 0):,.2f}"
+    except (TypeError, ValueError):
+        amount = f"${expense.get('amount')}"
+    return f"{expense.get('record_no') or 'GA'} · {label} · {amount}"
+
+
+def _expense_link(expense_id) -> str:
+    return f"/budget?tab=expenses&open={expense_id}"
+
+
+def _notify_expense_submitted(expense: dict, request: Request) -> None:
+    """Un draft nuevo (alta o vuelta a borrador) → aprobadores del depto.
+
+    Sin el creador (no aprueba lo propio) ni quien hizo la acción.
+    """
+    notify(
+        budget_approvers_for(expense.get("department_code")),
+        "expense_submitted",
+        _expense_title(expense),
+        body=expense.get("description"),
+        entity_type="expense", entity_id=expense.get("id"),
+        link=_expense_link(expense.get("id")),
+        exclude=[expense.get("created_by"), _user_id(request)],
+    )
+
+
+_EXPENSE_NOTIFY_CREATOR = {
+    "approved": "expense_approved",
+    "rejected": "expense_rejected",
+    "paid": "expense_paid",
+}
+
+
+def _notify_expense_transition(expense: dict, plan: dict, request: Request) -> None:
+    """Novedad de la transición. Best-effort: notify() nunca levanta."""
+    try:
+        to_status, from_status = plan["to_status"], plan["from_status"]
+        if to_status == "draft":
+            _notify_expense_submitted(expense, request)
+            return
+        kind = _EXPENSE_NOTIFY_CREATOR.get(to_status)
+        # paid → approved es una reversión, no "tu gasto fue aprobado".
+        if not kind or (to_status == "approved" and from_status != "draft"):
+            return
+        body = expense.get("description")
+        if to_status == "rejected" and plan.get("reason"):
+            body = plan["reason"]
+        notify(
+            expense.get("created_by"),
+            kind,
+            _expense_title(expense),
+            body=body,
+            entity_type="expense", entity_id=expense.get("id"),
+            link=_expense_link(expense.get("id")),
+            exclude=_user_id(request),
+        )
+    except Exception as exc:
+        logger.warning("[budget] expense notification failed: %s", exc)
+
+
+def _check_budget_line(request: Request, line_id: str, department_code: str,
+                       account_code: str, expense_date) -> None:
+    """La línea de presupuesto a la que se imputa el gasto tiene que ser la suya.
+
+    Mismo departamento, misma cuenta y el año fiscal de expense_date. Sin esto
+    el gasto de IT podría "consumir" una línea de Comms o de otro año, y el
+    ejecutado por línea quedaría torcido sin que nada falle.
+    """
+    try:
+        uuid.UUID(str(line_id))
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Unknown budget line")
+    rows = (
+        supabase.table("budget_lines")
+        .select("id, year, department_code, account_code, kind")
+        .eq("id", line_id)
+        .execute()
+        .data
+    )
+    # Una línea de un departamento que el caller no ve responde igual que una
+    # inexistente: un mensaje distinto confirmaría que existe.
+    if not rows or not _can_view_department(request, rows[0].get("department_code")):
+        raise HTTPException(status_code=400, detail="Unknown budget line")
+    line = rows[0]
+    if line.get("kind") != "expense":
+        raise HTTPException(status_code=400, detail="The budget line is not an expense line")
+    if line.get("department_code") != department_code or line.get("account_code") != account_code:
+        raise HTTPException(
+            status_code=400,
+            detail="The budget line must have the same department and account as the expense",
+        )
+    if str(line.get("year")) != str(expense_date or "")[:4]:
+        raise HTTPException(
+            status_code=400,
+            detail=f"The budget line is for {line.get('year')}; the expense date is in another year",
+        )
+
+
+def _same_value(field: str, new, old) -> bool:
+    """¿El PATCH deja el campo como estaba? (el editor manda el form entero)."""
+    if new in (None, "") and old in (None, ""):
+        return True
+    if new is None or old is None:
+        return False
+    if field == "amount":
+        try:
+            return round(float(new), 2) == round(float(old), 2)
+        except (TypeError, ValueError):
+            return False
+    if field in ("expense_date", "payment_date"):
+        return str(new)[:10] == str(old)[:10]
+    return str(new) == str(old)
+
+
 # ─── Gastos: escritura ───────────────────────────────────────────────────────
 @router.post("/expenses", status_code=201, dependencies=[Depends(require_edit("budget"))])
 def create_expense(data: ExpenseCreate, request: Request):
@@ -1640,13 +2161,27 @@ def create_expense(data: ExpenseCreate, request: Request):
     payee_type = data.payee_type or "vendor"
     _check_payee(payee_type, data.vendor_id, data.employee_id, data.payee_name)
 
+    # Un gasto nace draft y lo aprueba OTRO por /transition. `approved` directo
+    # sería el auto-sello que la máquina de estados viene a cerrar. `paid`
+    # directo queda solo para la carga histórica (gastos que ya salieron, como
+    # los 129 de IT 2026) y solo para el admin general.
     status = data.status or "draft"
-    if status not in _EXPENSE_STATUSES:
-        raise HTTPException(status_code=400, detail="Invalid status")
+    if status == "approved":
+        raise HTTPException(
+            status_code=400,
+            detail="An expense is created as draft; it is approved by an approver via /transition",
+        )
+    if status not in ("draft", "paid"):
+        raise HTTPException(status_code=400, detail="A new expense must be 'draft' (or 'paid' for a historical load)")
+    if status == "paid" and not _is_general_admin(request):
+        raise HTTPException(status_code=403, detail="Only a general budget admin can load an already-paid expense")
     _check_paid_coherence(status, data.payment_date)
 
     if data.amount is None or float(data.amount) < 0:
         raise HTTPException(status_code=400, detail="amount must be zero or positive")
+    if data.budget_line_id:
+        _check_budget_line(request, data.budget_line_id, data.department_code,
+                           data.account_code, data.expense_date)
 
     record = {k: v for k, v in data.model_dump().items() if v is not None}
     record["payee_type"] = payee_type
@@ -1660,18 +2195,57 @@ def create_expense(data: ExpenseCreate, request: Request):
     if payee_type != "employee":
         record.pop("employee_id", None)
 
-    if status == "approved":
-        record["approved_by"] = _user_id(request)
-        record["approved_at"] = _now_iso()
+    if status == "paid":
+        record["payment_date"] = _iso_date_or_400(data.payment_date, "payment_date")
+        record["paid_by"] = _user_id(request)
+        record["paid_at"] = _now_iso()
 
-    return supabase.table("expenses").insert(record).execute().data[0]
+    row = supabase.table("expenses").insert(record).execute().data[0]
+    record_transition(
+        "expense", row["id"], None, status, request,
+        meta={"historical_load": True, "payment_date": record["payment_date"]} if status == "paid" else None,
+    )
+    if status == "draft":
+        _notify_expense_submitted(row, request)
+    return row
 
 
 @router.patch("/expenses/{expense_id}", dependencies=[Depends(require_edit("budget"))])
 def update_expense(expense_id: str, data: ExpenseUpdate, request: Request):
     current = _row_or_403("expenses", expense_id, request, "edit")
+    current_status = current.get("status")
 
     updates = _patch_updates(data, "expenses")
+
+    # status y payment_date SOLO por /transition (ver la cabecera de la máquina
+    # de estados). Si vienen con el valor que ya tenían se ignoran — el editor
+    # del front manda el formulario entero —; si cambian, 400.
+    for field in ("status", "payment_date"):
+        if field in updates:
+            if not _same_value(field, updates[field], current.get(field)):
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"{field} cannot be changed here: use POST /budget/expenses/{{id}}/transition",
+                )
+            updates.pop(field)
+
+    changed = {f for f, v in updates.items() if not _same_value(f, v, current.get(f))}
+    if current_status == "approved":
+        locked = sorted(changed & set(_EXPENSE_FINANCIAL_FIELDS))
+        if locked:
+            raise HTTPException(
+                status_code=409,
+                detail=f"The expense is approved: reopen it (back to draft) before changing {', '.join(locked)}",
+            )
+    elif current_status == "paid":
+        locked = sorted(changed - _EXPENSE_PAID_EDITABLE)
+        if locked:
+            raise HTTPException(
+                status_code=409,
+                detail=f"The expense is paid: only comments and invoice_no can change (not {', '.join(locked)})",
+            )
+    if not updates:
+        raise HTTPException(status_code=400, detail="Nothing to update")
 
     if "department_code" in updates:
         if not _valid_department(updates["department_code"]):
@@ -1682,71 +2256,138 @@ def update_expense(expense_id: str, data: ExpenseUpdate, request: Request):
     if "amount" in updates and float(updates["amount"]) < 0:
         raise HTTPException(status_code=400, detail="amount must be zero or positive")
 
-    status = updates.get("status", current.get("status"))
-    if status not in _EXPENSE_STATUSES:
-        raise HTTPException(status_code=400, detail="Invalid status")
+    # El destinatario se revalida solo si el PATCH lo toca: un gasto pagado
+    # importado con datos viejos no puede quedar trabado para editar un comentario.
+    if {"payee_type", "vendor_id", "employee_id", "payee_name"} & updates.keys():
+        payee_type = updates.get("payee_type", current.get("payee_type"))
+        _check_payee(
+            payee_type,
+            updates.get("vendor_id", current.get("vendor_id")),
+            updates.get("employee_id", current.get("employee_id")),
+            updates.get("payee_name", current.get("payee_name")),
+        )
+        if payee_type != "vendor":
+            updates["vendor_id"] = None
+        if payee_type != "employee":
+            updates["employee_id"] = None
 
-    # payment_date solo se puede limpiar saliendo de 'paid'; el modelo Optional
-    # no distingue "no lo mando" de "ponelo en null", así que el desmarcado va
-    # implícito con el cambio de status.
-    payment_date = updates.get("payment_date", current.get("payment_date"))
-    if status != "paid":
-        payment_date = None
-        updates["payment_date"] = None
-    _check_paid_coherence(status, payment_date)
-
-    payee_type = updates.get("payee_type", current.get("payee_type"))
-    _check_payee(
-        payee_type,
-        updates.get("vendor_id", current.get("vendor_id")),
-        updates.get("employee_id", current.get("employee_id")),
-        updates.get("payee_name", current.get("payee_name")),
-    )
-    if payee_type != "vendor":
-        updates["vendor_id"] = None
-    if payee_type != "employee":
-        updates["employee_id"] = None
-
-    # Sello de aprobación: se pone al entrar a 'approved' y se limpia al volver
-    # a 'draft', para que no quede un aprobador de una versión que ya cambió.
-    if status == "approved" and current.get("status") != "approved":
-        updates["approved_by"] = _user_id(request)
-        updates["approved_at"] = _now_iso()
-    elif status == "draft":
-        updates["approved_by"] = None
-        updates["approved_at"] = None
+    # La línea de presupuesto tiene que seguir siendo del mismo depto/cuenta/año,
+    # tanto si la cambian como si cambian lo que la ata (depto, cuenta, fecha).
+    line_id = updates.get("budget_line_id", current.get("budget_line_id"))
+    if line_id and ({"budget_line_id", "department_code", "account_code", "expense_date"} & changed):
+        _check_budget_line(
+            request, line_id,
+            updates.get("department_code", current.get("department_code")),
+            updates.get("account_code", current.get("account_code")),
+            updates.get("expense_date", current.get("expense_date")),
+        )
 
     updates["updated_at"] = _now_iso()
-    result = supabase.table("expenses").update(updates).eq("id", expense_id).execute()
+    # El UPDATE exige el estado que se validó: si en el medio alguien lo aprobó,
+    # no se le cambian los campos financieros a un gasto ya aprobado.
+    result = (
+        supabase.table("expenses").update(updates)
+        .eq("id", expense_id).eq("status", current_status)
+        .execute()
+    )
     if not result.data:
-        raise HTTPException(status_code=404, detail="Expense not found")
+        raise HTTPException(status_code=409, detail="The expense changed or was removed meanwhile; reload it")
     return result.data[0]
 
 
-@router.post("/expenses/{expense_id}/approve", dependencies=[Depends(require_edit("budget"))])
-def approve_expense(expense_id: str, request: Request):
-    """Atajo del flujo: draft → approved. Aprobar no consume presupuesto."""
-    rows = [_row_or_403("expenses", expense_id, request, "edit")]
-    if rows[0].get("status") != "draft":
-        raise HTTPException(status_code=409, detail="Only a draft expense can be approved")
+def _run_expense_transition(expense_id: str, data: ExpenseTransition, request: Request) -> dict:
+    """Aplica una transición: permisos → check puro → UPDATE → historial → aviso."""
+    # Se trae con "view" y no con "edit": quién puede depende de la transición
+    # (aprobar es de can_approve, que no implica can_edit). Si no ve el
+    # departamento, 404 igual que inexistente.
+    current = _row_or_403("expenses", expense_id, request, "view")
+    dept = current.get("department_code")
+    edit_depts = _departments_for(request, "edit")
+    approve_depts = _departments_for(request, "approve")
+    # "Editor" = el permiso del módulo (lo que exige require_edit en el resto de
+    # las escrituras) MÁS can_edit sobre el departamento en budget_access.
+    can_edit = has_edit(request, "budget") and (edit_depts is None or dept in edit_depts)
+    can_approve = approve_depts is None or dept in approve_depts
 
-    result = supabase.table("expenses").update({
-        "status": "approved",
-        "approved_by": _user_id(request),
-        "approved_at": _now_iso(),
-        "updated_at": _now_iso(),
-    }).eq("id", expense_id).execute()
-    return result.data[0]
+    plan = check_expense_transition(
+        current, (data.status or "").strip(), data,
+        user_id=_user_id(request),
+        can_edit=can_edit,
+        can_approve=can_approve,
+        is_superadmin=is_superadmin_request(request),
+    )
+    updates = {**plan["updates"], "updated_at": _now_iso()}
+    # Concurrencia: el UPDATE exige que el estado siga siendo el validado. Dos
+    # aprobadores que aprietan a la vez → uno gana, el otro recibe 409.
+    result = (
+        supabase.table("expenses").update(updates)
+        .eq("id", expense_id).eq("status", plan["from_status"])
+        .execute()
+    )
+    if not result.data:
+        raise HTTPException(status_code=409, detail="The expense changed meanwhile; reload it and try again")
+    row = result.data[0]
+    record_transition(
+        "expense", expense_id, plan["from_status"], plan["to_status"], request,
+        reason=plan["reason"], meta=plan["meta"],
+    )
+    _notify_expense_transition(row, plan, request)
+    return row
+
+
+# Sin require_edit en el decorador, A PROPÓSITO: aprobar/rechazar es de
+# `budget_access.can_approve`, que no implica el can_edit del módulo (el que
+# aprueba no tiene por qué poder cargar). El router ya exige require_view
+# ("budget"), y check_expense_transition() exige, por transición, can_approve
+# del departamento o "editor" (= has_edit("budget") + can_edit del depto), o
+# superadmin. No hay camino que escriba sin uno de esos tres.
+@router.post("/expenses/{expense_id}/transition")
+def transition_expense(expense_id: str, data: ExpenseTransition, request: Request):
+    return _run_expense_transition(expense_id, data, request)
+
+
+@router.post("/expenses/{expense_id}/approve")
+def approve_expense(expense_id: str, request: Request, data: Optional[ExpenseApprove] = None):
+    """Alias de /transition con status=approved (mismos permisos y reglas).
+
+    Queda por compatibilidad con el front anterior. El body es opcional; solo
+    hace falta `reason` cuando un superadmin aprueba un gasto propio.
+    """
+    return _run_expense_transition(
+        expense_id,
+        ExpenseTransition(status="approved", reason=data.reason if data else None),
+        request,
+    )
+
+
+@router.get("/expenses/{expense_id}/history")
+def expense_history(expense_id: str, request: Request):
+    """Timeline de estados del gasto (finance_status_history), más reciente primero.
+
+    El scope se valida contra el gasto: sin acceso a su departamento, 404.
+    """
+    _row_or_403("expenses", expense_id, request)
+    return history_for("expense", expense_id)
 
 
 @router.delete("/expenses/{expense_id}", dependencies=[Depends(require_edit("budget"))])
 def delete_expense(expense_id: str, request: Request):
     """Borra el gasto y limpia sus adjuntos de Storage.
 
+    Solo draft / rejected / cancelled: un gasto aprobado o pagado ya es parte
+    del comprometido o del ejecutado, y borrarlo lo haría desaparecer del
+    reporte sin traza. Se cancela con motivo (si está aprobado, reabriéndolo
+    primero); un pagado solo lo revierte un superadmin.
+
     El CASCADE de la FK borra las filas de expense_attachments, pero no los
     objetos del bucket: hay que sacarlos a mano (mismo patrón que payments).
     """
-    _row_or_403("expenses", expense_id, request, "edit")
+    current = _row_or_403("expenses", expense_id, request, "edit")
+    if current.get("status") not in _EXPENSE_DELETABLE:
+        raise HTTPException(
+            status_code=409,
+            detail="Only draft, rejected or cancelled expenses can be deleted; cancel it instead",
+        )
     atts = (
         supabase.table("expense_attachments")
         .select("storage_path")
@@ -1754,9 +2395,15 @@ def delete_expense(expense_id: str, request: Request):
         .execute()
         .data
     ) or []
-    result = supabase.table("expenses").delete().eq("id", expense_id).execute()
+    # El filtro de estado va también en el DELETE: si entre la lectura y acá lo
+    # aprobaron, no se borra.
+    result = (
+        supabase.table("expenses").delete()
+        .eq("id", expense_id).in_("status", list(_EXPENSE_DELETABLE))
+        .execute()
+    )
     if not result.data:
-        raise HTTPException(status_code=404, detail="Expense not found")
+        raise HTTPException(status_code=409, detail="The expense changed or was removed meanwhile; reload it")
     for a in atts:
         _delete_from_storage(a.get("storage_path"))
     return {"ok": True}
@@ -2069,7 +2716,15 @@ def generate_recurring(data: RecurringGenerate, request: Request):
             "created_by": _user_id(request),
         }
         record = {k: v for k, v in record.items() if v is not None}
-        created.append(supabase.table("expenses").insert(record).execute().data[0])
+        row = supabase.table("expenses").insert(record).execute().data[0]
+        created.append(row)
+        # Es un alta de gasto como cualquier otra: entra al historial y les
+        # avisa a los aprobadores del departamento.
+        record_transition(
+            "expense", row["id"], None, "draft", request,
+            meta={"recurring_id": tpl["id"], "period": item.period},
+        )
+        _notify_expense_submitted(row, request)
 
     return {"created": created, "skipped": skipped}
 

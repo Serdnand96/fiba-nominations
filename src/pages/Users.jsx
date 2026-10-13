@@ -9,10 +9,13 @@ import { useToast } from '../components/ui/Toast'
 import { Avatar } from '../components/ui'
 import { useAuth } from '../contexts/AuthContext'
 
-const MODULES = ['feed', 'calendar', 'nominations', 'payments', 'budget', 'personnel', 'competitions', 'templates', 'users', 'logistics', 'availability', 'training', 'games', 'assets', 'loans', 'employees', 'reports', 'evaluations', 'comp_days']
+const MODULES = ['feed', 'calendar', 'nominations', 'payments', 'payments_approve', 'budget', 'personnel', 'competitions', 'templates', 'users', 'logistics', 'availability', 'training', 'games', 'assets', 'loans', 'employees', 'reports', 'evaluations', 'comp_days']
 // Permisos que gobiernan un dato, no una página: solo tienen sentido en "ver".
 // Marcar "editar" no haría nada, así que el checkbox va deshabilitado.
-const VIEW_ONLY_MODULES = new Set(['comp_days'])
+// `payments_approve` habilita pasar un pago a `completed` (WP3): con can_view alcanza.
+const VIEW_ONLY_MODULES = new Set(['comp_days', 'payments_approve'])
+// Fila vacía de acceso por departamento de Presupuesto.
+const NO_DEPT_ACCESS = { can_view: false, can_edit: false, can_approve: false }
 
 export default function Users() {
   const { t } = useLanguage()
@@ -134,10 +137,11 @@ export default function Users() {
       setDeptList(deps)
       const byCode = Object.fromEntries(access.map(a => [a.department_code, a]))
       setDeptAccess([
-        { department_code: '*', ...(byCode['*'] || { can_view: false, can_edit: false }) },
+        { department_code: '*', ...NO_DEPT_ACCESS, ...(byCode['*'] || {}) },
         ...deps.map(d => ({
           department_code: d.code,
-          ...(byCode[d.code] || { can_view: false, can_edit: false }),
+          ...NO_DEPT_ACCESS,
+          ...(byCode[d.code] || {}),
         })),
       ])
     } catch {
@@ -150,12 +154,15 @@ export default function Users() {
   function toggleDept(code, field) {
     setDeptAccess(prev => prev.map(d => {
       if (d.department_code !== code) return d
+      // Editar o aprobar encienden "ver"; apagar "ver" apaga los otros dos.
+      // Editar y aprobar son independientes: el aprobador puede no cargar
+      // gastos, y quien carga no tiene por qué aprobar.
       if (field === 'can_view') {
         const v = !d.can_view
-        return { ...d, can_view: v, can_edit: v ? d.can_edit : false }
+        return v ? { ...d, can_view: true } : { ...d, can_view: false, can_edit: false, can_approve: false }
       }
-      const e = !d.can_edit
-      return { ...d, can_edit: e, can_view: e ? true : d.can_view }
+      const on = !d[field]
+      return { ...d, [field]: on, can_view: on ? true : d.can_view }
     }))
   }
 
@@ -183,7 +190,7 @@ export default function Users() {
       // la forma de dejarlo sin datos sin tener que sacarle el módulo.
       await updateBudgetAccess(
         permUser.id,
-        deptAccess.filter(d => d.can_view || d.can_edit),
+        deptAccess.filter(d => d.can_view || d.can_edit || d.can_approve),
       )
       setPermSuccess(true)
       setTimeout(() => setPermSuccess(false), 2000)
@@ -199,6 +206,8 @@ export default function Users() {
     // No es una página, así que no tiene entrada en el sidebar de dónde sacar
     // el nombre: gobierna la columna de días compensatorios de Empleados.
     if (module === 'comp_days') return t('employees.compDaysPermission')
+    // Tampoco es una página: decide quién marca un pago como completado.
+    if (module === 'payments_approve') return t('budget.approvalPaymentsPermission')
     return t(`nav.${module}`) || module
   }
 
@@ -408,17 +417,22 @@ export default function Users() {
                     {!permData.find(p => p.module === 'budget')?.can_view && (
                       <p className="text-xs text-amber-500 mb-2">{t('budget.accessNeedsModule')}</p>
                     )}
+                    <div className="overflow-x-auto">
                     <table className="w-full text-sm">
                       <thead className="bg-fiba-surface">
                         <tr>
                           <th className="text-left px-3 py-2 font-medium text-fiba-muted">
                             {t('budget.department')}
                           </th>
-                          <th className="text-center px-3 py-2 font-medium text-fiba-muted w-24">
+                          <th className="text-center px-2 py-2 font-medium text-fiba-muted w-20">
                             {t('permissions.canView')}
                           </th>
-                          <th className="text-center px-3 py-2 font-medium text-fiba-muted w-24">
+                          <th className="text-center px-2 py-2 font-medium text-fiba-muted w-20">
                             {t('permissions.canEdit')}
+                          </th>
+                          <th className="text-center px-2 py-2 font-medium text-fiba-muted w-20"
+                            title={t('budget.approvalCanApproveHint')}>
+                            {t('budget.approvalCanApprove')}
                           </th>
                         </tr>
                       </thead>
@@ -437,14 +451,23 @@ export default function Users() {
                                   ? <em>{t('budget.accessAll')}</em>
                                   : (deptList.find(x => x.code === d.department_code)?.label || d.department_code)}
                               </td>
-                              <td className="px-3 py-2 text-center">
+                              <td className="px-2 py-2 text-center">
                                 <input type="checkbox" checked={d.can_view} disabled={overridden}
+                                  aria-label={`${t('permissions.canView')} — ${d.department_code}`}
                                   onChange={() => toggleDept(d.department_code, 'can_view')}
                                   className="rounded border-fiba-border disabled:opacity-30" />
                               </td>
-                              <td className="px-3 py-2 text-center">
+                              <td className="px-2 py-2 text-center">
                                 <input type="checkbox" checked={d.can_edit} disabled={overridden}
+                                  aria-label={`${t('permissions.canEdit')} — ${d.department_code}`}
                                   onChange={() => toggleDept(d.department_code, 'can_edit')}
+                                  className="rounded border-fiba-border disabled:opacity-30" />
+                              </td>
+                              <td className="px-2 py-2 text-center">
+                                <input type="checkbox" checked={!!d.can_approve} disabled={overridden}
+                                  aria-label={`${t('budget.approvalCanApprove')} — ${d.department_code}`}
+                                  title={t('budget.approvalCanApproveHint')}
+                                  onChange={() => toggleDept(d.department_code, 'can_approve')}
                                   className="rounded border-fiba-border disabled:opacity-30" />
                               </td>
                             </tr>
@@ -452,6 +475,7 @@ export default function Users() {
                         })}
                       </tbody>
                     </table>
+                    </div>
                   </div>
                 )}
 
