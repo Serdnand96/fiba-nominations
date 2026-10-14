@@ -10,3 +10,5 @@ export { ToastProvider, useToast } from './Toast';
 export { Stat } from './Stat';
 export { Empty, Kbd } from './Empty';
 export { Tooltip, InfoHint } from './Tooltip';
+export { Tabs, useTabParam } from './Tabs';
+export { Drawer, useOpenParam } from './Drawer';

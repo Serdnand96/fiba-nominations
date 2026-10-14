@@ -107,6 +107,21 @@ export const downloadNominationsZip = async (ids) => {
   return { blob: resp.data, skipped: skippedHeader ? (parseInt(skippedHeader, 10) || 0) : 0 }
 }
 
+// Guarda un Blob como archivo: object URL + <a download> efímero. Es la
+// segunda mitad del patrón de descarga de buckets privados (la primera es el
+// GET con `responseType: 'blob'` y el JWT del interceptor). Nunca un <a href>
+// a una URL pública.
+export const saveBlob = (blob, filename) => {
+  const objectUrl = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = objectUrl
+  link.download = filename || 'download'
+  document.body.appendChild(link)
+  link.click()
+  document.body.removeChild(link)
+  setTimeout(() => URL.revokeObjectURL(objectUrl), 1000)
+}
+
 // Authenticated file download — fetches with JWT, returns a Blob the caller
 // turns into an object URL to trigger the browser save dialog. Replaces the
 // previous <a href={url}> pattern, which exposed the file without auth.
@@ -145,6 +160,65 @@ export const downloadPaymentAttachment = async (attId, filename) => {
   const resp = await api.get(`/payments/attachments/${attId}/download${params}`, { responseType: 'blob' })
   return resp.data
 }
+// Pipeline de pagos (WP3). El estado de un pago NO se cambia con PUT: solo por
+// /transition (uno) o /bulk-status (lote), que aplican la máquina de estados.
+// Cola cross-evento: { items, total, totals: { amount, airfare, paid_amount } }.
+// Filtros: status, year, budget, missing_docs=1, stale=1, cm_pending=1, search, limit, offset.
+export const getPaymentsQueue = (params) => api.get('/payments/queue', { params }).then(r => r.data)
+// Un pago ya aplanado, como una fila de la cola (drawer abierto por `?open=`).
+export const getPayment = (id) => api.get(`/payments/${id}`).then(r => r.data)
+// { status, reason?, payment_date?, bank_confirmation? } →
+// { payment: <fila de la cola>, warnings: [] } (p. ej. 'tax_form_missing').
+// Completar no lleva `paid_amount`: el backend lo fija en el total.
+export const transitionPayment = (id, data) => api.post(`/payments/${id}/transition`, data).then(r => r.data)
+// Pago parcial de un pago `in_process`: { paid_amount, reason? }, con
+// 0 < paid_amount < total (si se pagó todo, se completa). `paid_amount` no se
+// edita por PUT. Mismo gating que completar (payments_approve, no lo propio).
+export const recordPartialPayment = (id, data) => api.post(`/payments/${id}/record-partial`, data).then(r => r.data)
+// { ids, status, reason?, payment_date?, bank_confirmation? } →
+// { ok: [{id, record_no, status, warnings}], failed: [{id, record_no, error, status_code}] }.
+// Nunca aborta el lote: cada pago se valida por separado.
+export const bulkPaymentStatus = (data) => api.post('/payments/bulk-status', data).then(r => r.data)
+// { competition_id, budget_code, nomination_ids? } → { created: [...], skipped: [{nomination_id, name, reason}] }
+export const bulkCreatePayments = (data) => api.post('/payments/bulk', data).then(r => r.data)
+// amount = nominations.total, solo en pagos new / in_process →
+// { updated: [{id, record_no, old_amount, new_amount}], skipped: [{id, record_no, reason}] }.
+export const syncPaymentAmounts = (ids) => api.post('/payments/sync-amount', { ids }).then(r => r.data)
+export const getPaymentHistory = (id) => api.get(`/payments/${id}/history`).then(r => r.data)
+// Export de la cola con los mismos filtros (+ `lang`). Blob + JWT, como el resto de las descargas.
+export const downloadPaymentsXlsx = async (params) => {
+  const resp = await api.get('/payments/export.xlsx', { params, responseType: 'blob' })
+  saveBlob(resp.data, `payments${params?.year ? `-${params.year}` : ''}.xlsx`)
+}
+// Ficha bancaria por persona (personnel_banking). Solo vive bajo /payments: el
+// router de personnel no la expone. GET devuelve la ficha enmascarada (con
+// `exists: false` si no hay); `reveal` es POST a propósito, para que quede en
+// activity_log.
+export const getPersonnelBanking = (personnelId) =>
+  api.get(`/payments/personnel/${personnelId}/banking`).then(r => r.data)
+export const revealPersonnelBanking = (personnelId) =>
+  api.post(`/payments/personnel/${personnelId}/banking/reveal`).then(r => r.data)
+export const updatePersonnelBanking = (personnelId, data) =>
+  api.put(`/payments/personnel/${personnelId}/banking`, data).then(r => r.data)
+// Sube o reemplaza el PDF firmado. `meta` = { kind, signed_at, expires_at }:
+// un documento nuevo trae sus fechas (sin mandarlas, quedan vacías). `exempt`
+// no se sube: se guarda con updatePersonnelBanking.
+export const uploadPersonnelTaxForm = (personnelId, file, meta = {}) => {
+  const fd = new FormData()
+  fd.append('file', file)
+  Object.entries(meta).forEach(([k, v]) => { if (v) fd.append(k, v) })
+  return api.post(`/payments/personnel/${personnelId}/banking/tax-form`, fd, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  }).then(r => r.data)
+}
+// Bucket privado: blob + JWT. El caller lo guarda con saveBlob. Es POST y exige
+// `payments:edit`: el W-8 es un dato fiscal, no alcanza con ver pagos.
+export const downloadPersonnelTaxForm = async (personnelId) => {
+  const resp = await api.post(`/payments/personnel/${personnelId}/banking/tax-form/download`, null, { responseType: 'blob' })
+  return resp.data
+}
+export const deletePersonnelTaxForm = (personnelId) =>
+  api.delete(`/payments/personnel/${personnelId}/banking/tax-form`).then(r => r.data)
 
 // Budget — gastos por departamento, con o sin evento (ver BUDGET_MODULE.md)
 export const getDepartments = () => api.get('/budget/departments').then(r => r.data)
@@ -185,6 +259,13 @@ export const downloadExpenseAttachment = async (attId, filename) => {
   const resp = await api.get(`/budget/attachments/${attId}/download${params}`, { responseType: 'blob' })
   return resp.data
 }
+// Aprobación de gastos (WP4). El cambio de estado va SIEMPRE por /transition:
+// el PATCH rechaza `status` y `payment_date`. payload = {status, reason?,
+// payment_date?, payment_method?, bank_confirmation?} → el gasto actualizado.
+// Errores: 400 falta dato, 403 no puede, 409 transición inválida (detail texto).
+export const transitionExpense = (id, payload) =>
+  api.post(`/budget/expenses/${id}/transition`, payload).then(r => r.data)
+export const getExpenseHistory = (id) => api.get(`/budget/expenses/${id}/history`).then(r => r.data)
 
 export const getRecurring = (params) => api.get('/budget/recurring', { params }).then(r => r.data)
 export const createRecurring = (data) => api.post('/budget/recurring', data).then(r => r.data)
@@ -231,14 +312,7 @@ export const commitBudgetImport = (file, options) => postBudgetImport('/budget/i
 // round-trip). Blob + JWT, como el resto de las descargas.
 export const downloadBudgetLinesXlsx = async (params) => {
   const resp = await api.get('/budget/lines/export.xlsx', { params, responseType: 'blob' })
-  const objectUrl = URL.createObjectURL(resp.data)
-  const link = document.createElement('a')
-  link.href = objectUrl
-  link.download = `budget-${params.year}.xlsx`
-  document.body.appendChild(link)
-  link.click()
-  document.body.removeChild(link)
-  setTimeout(() => URL.revokeObjectURL(objectUrl), 1000)
+  saveBlob(resp.data, `budget-${params.year}.xlsx`)
 }
 // Costo total del evento. NO está recortado por departamento a propósito: el
 // scoping rige cargar y editar, no leer la cifra de una competencia.
@@ -251,11 +325,41 @@ export const getHeadcount = (year) => api.get('/budget/headcount', { params: { y
 export const putHeadcount = (data) => api.put('/budget/headcount', data).then(r => r.data)
 export const getAssumptions = (year) => api.get(`/budget/assumptions/${year}`).then(r => r.data)
 export const putAssumptions = (year, data) => api.put(`/budget/assumptions/${year}`, data).then(r => r.data)
+// Headcount × costo de vuelo → líneas de travel. El endpoint lee `year`,
+// `department` y `replace_manual` como query params, no del body.
+export const generateTravelLines = ({ year, department = 'competitions', replace_manual = false }) =>
+  api.post('/budget/headcount/generate', null, { params: { year, department, replace_manual } }).then(r => r.data)
+// Renombrar una cuenta provisoria (COMP-*) a su código oficial. Las FK son
+// ON UPDATE CASCADE; si la cuenta está mapeada en budget_accounts.py el
+// backend responde 409 salvo `force`.
+export const remapAccount = (code, { new_code, force = false }) =>
+  api.post(`/budget/accounts/${encodeURIComponent(code)}/remap`, { new_code, force }).then(r => r.data)
 
 export const getRevenues = (params) => api.get('/budget/revenues', { params }).then(r => r.data)
 export const createRevenue = (data) => api.post('/budget/revenues', data).then(r => r.data)
 export const updateRevenue = (id, data) => api.patch(`/budget/revenues/${id}`, data).then(r => r.data)
 export const deleteRevenue = (id) => api.delete(`/budget/revenues/${id}`).then(r => r.data)
+
+// Exports del dashboard (WP7). Blob + JWT como downloadBudgetLinesXlsx; el
+// backend recorta por departamento con _scoped(), así que un designado de IT
+// exporta solo IT aunque pida otra cosa. `lang` elige el idioma de los
+// encabezados. Los filtros vacíos no se mandan: `department=''` no es "todos".
+const exportParams = (params) =>
+  Object.fromEntries(Object.entries(params || {}).filter(([, v]) => v !== '' && v != null))
+const exportSuffix = (params) =>
+  [params?.year, params?.department].filter(Boolean).map(v => `-${v}`).join('')
+
+// Acepta los mismos filtros que getExpenses (year, department, account, status…).
+export const downloadBudgetExpensesXlsx = async (params) => {
+  const resp = await api.get('/budget/expenses/export.xlsx', { params: exportParams(params), responseType: 'blob' })
+  saveBlob(resp.data, `expenses${exportSuffix(params)}.xlsx`)
+}
+
+// { year, department?, lang } → Totales / Por departamento / Por cuenta / Por competencia / Por mes.
+export const downloadBudgetSummaryXlsx = async (params) => {
+  const resp = await api.get('/budget/summary/export.xlsx', { params: exportParams(params), responseType: 'blob' })
+  saveBlob(resp.data, `budget-summary${exportSuffix(params)}.xlsx`)
+}
 
 // Competition reports
 export const getReportTypes = () => api.get('/reports/types').then(r => r.data)
@@ -746,3 +850,14 @@ export const addFeedComment = (id, body) => api.post(`/feed/posts/${id}/comments
 export const deleteFeedComment = (commentId) => api.delete(`/feed/comments/${commentId}`).then(r => r.data)
 export const voteFeedPoll = (id, option_index) => api.post(`/feed/posts/${id}/vote`, { option_index }).then(r => r.data)
 export const getFeedSidebar = () => api.get('/feed/sidebar').then(r => r.data)
+
+// ─── Notifications ───
+// Campana del topbar (api/_lib/routers/notifications.py, bajo /me: solo las
+// del usuario logueado). "pending" son contadores en vivo, no filas.
+export const getNotifications = ({ unread, limit = 20, offset = 0 } = {}) =>
+  api.get('/me/notifications', {
+    params: { ...(unread != null ? { unread: unread ? 1 : 0 } : {}), limit, offset },
+  }).then(r => r.data)
+export const getPendingInbox = () => api.get('/me/notifications/pending').then(r => r.data)
+export const markNotificationRead = (id) => api.post(`/me/notifications/${id}/read`).then(r => r.data)
+export const markAllNotificationsRead = () => api.post('/me/notifications/read-all').then(r => r.data)

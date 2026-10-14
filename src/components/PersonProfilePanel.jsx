@@ -5,9 +5,11 @@ import {
   updateAvailability, deleteAvailability,
 } from '../api/client'
 import { useLanguage } from '../i18n/LanguageContext'
+import { useAuth } from '../contexts/AuthContext'
 import { ROLES, roleLabel, roleBadgeClass } from '../lib/roles'
 import { COUNTRIES, countryName, countryNameToCode } from '../lib/countries'
 import { InfoHint } from './ui/Tooltip'
+import BankingPanel from './BankingPanel'
 
 const STATUS_STYLES = {
   available: 'bg-emerald-500/20 text-emerald-400',
@@ -47,6 +49,10 @@ const VISA_STYLES = {
  */
 export default function PersonProfilePanel({ person: initialPerson, onClose, onUpdated, canEdit, canEditAvail }) {
   const { t, lang } = useLanguage()
+  // Datos bancarios: solo con permiso de Pagos. Tener `personnel` no alcanza
+  // (y el backend tampoco los sirve por el router de personnel).
+  const { hasView } = useAuth()
+  const canSeeBanking = hasView('payments')
   const [person, setPerson] = useState(initialPerson)
   const [workload, setWorkload] = useState(null)
   const [availRecords, setAvailRecords] = useState([])
@@ -404,6 +410,18 @@ export default function PersonProfilePanel({ person: initialPerson, onClose, onU
               </div>
             )}
           </div>
+
+          {/* Banking section — only with the Payments permission */}
+          {canSeeBanking && (
+            <>
+              <div className="px-6 py-3 border-y border-fiba-border bg-fiba-surface/50">
+                <h4 className="text-sm font-semibold text-ink-700 dark:text-gray-300">{t('payments.banking.title')}</h4>
+              </div>
+              <div className="p-6">
+                <BankingPanel key={person.id} personnelId={person.id} />
+              </div>
+            </>
+          )}
         </div>
       </div>
 

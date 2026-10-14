@@ -25,6 +25,9 @@ ACCOUNT_BY_ROLE = {
     "VGO":            "COMP-13",   # TV Graphics Operator Fees
     "REF":            "COMP-10",   # Referees Fees
     "REF_INSTRUCTOR": "COMP-08",   # Referee Instructor / Commissioners Fees
+    # Migración 045. Rol distinto del VGO (migración 016): sin esto sus pagos
+    # nacían con account_code NULL y caían en unallocated_payments.
+    "VIDEO_OPERATOR": "COMP-29",   # Video Operator Fees
 }
 
 # Rol de `personnel` → cuenta del pasaje. Mismo orden que arriba.
@@ -33,6 +36,7 @@ TRAVEL_ACCOUNT_BY_ROLE = {
     "VGO":            "COMP-14",   # TV Graphics Operator Travel Expenses
     "REF":            "COMP-07",   # Referees Travel Expense
     "REF_INSTRUCTOR": "COMP-09",   # Referee Instructor / Commissioners Travel Expense
+    "VIDEO_OPERATOR": "COMP-30",   # Video Operator Travel Expenses (migración 045)
 }
 
 

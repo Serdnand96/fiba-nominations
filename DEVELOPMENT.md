@@ -182,12 +182,40 @@ alias `fiba-*` cambie con dark mode, va con la sintaxis CSS-var (ver
 
 ## Tests
 
-⚠️ **No hay test suite aún.** El test "manual" oficial es el
-`verify_security.sh` que corre contra producción.
+```bash
+./venv/bin/pip install -r requirements-dev.txt   # o: uv pip install --python venv/bin/python pytest
+./venv/bin/python -m pytest tests -q
+```
 
-Si vas a agregar tests:
-- Backend: pytest + httpx (recomendado)
-- Frontend: vitest + Testing Library
+Son tests unitarios de backend, **sin red ni base**: `tests/conftest.py`
+reemplaza el cliente de `api/_lib/database.py` por un supabase falso en memoria
+(hereda del `_QueryBuilder` real, así que el encadenado y la semántica de "un
+filtro por columna" son los de producción) en **todos** los tests, y trae un
+`FakeRequest` con `state.user` y `state._is_superadmin` precargados. No hace
+falta `.env`.
+
+Qué cubren:
+
+| Archivo | Qué |
+|---|---|
+| `test_authorization.py` | `require_view` / `require_edit` / `require_superadmin` (401/403, fail-closed) y la autoría del Muro |
+| `test_budget_scope.py` | `_scoped()` mirando el filtro que viaja a PostgREST, `_departments_for` (`view`/`edit`/`approve`), `_assert_can_approve`, `_is_general_admin` |
+| `test_payment_transitions.py` | cada fila de la máquina de estados de pagos, W-8 (`tax_form_status`), `has_bank_info`, `mask_value` |
+| `test_expense_transitions.py` | cada fila de la máquina de estados de gastos, self-approval y override del superadmin |
+| `test_summary_year.py` | a qué año cae un pago o ingreso (`_payment_fiscal_year`, `_revenue_year`) y ejecutado/comprometido (`_payment_buckets`) |
+| `test_notifications.py` | `notify()`, `budget_approvers_for`, `/pending` y el aislamiento por usuario de `/me/notifications` |
+| `test_finance_review.py` | lo que salió de la revisión: `check_partial_payment`, invariante de `completed`, separación por `last_financial_edit_by`, `by_month == totals`, vendors, `cm_pending`, headcount 403 |
+
+Las funciones de transición (`check_payment_transition`,
+`check_expense_transition`) y las de año/balde son **puras a propósito**:
+reciben la fila y los derechos del caller ya resueltos y devuelven qué escribir
+o levantan `HTTPException`. Eso es lo que permite testear las reglas de plata
+sin base. Si agregás una transición, sumá la fila a la tabla del test
+(`test_transition_table_is_the_documented_one` falla hasta que lo hagas).
+
+⚠️ **No hay job de CI**: nadie los corre por vos. Correlos antes de pushear
+cambios en `auth.py`, `budget.py`, `payments.py` o `notifications.py`. El smoke
+test contra producción sigue siendo `verify_security.sh`. Frontend: sin tests.
 
 ---
 

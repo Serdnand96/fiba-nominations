@@ -139,15 +139,38 @@ Bajo `src/components/`:
 | `Toast`            | `ToastProvider`, `useToast`         | wrapper alrededor de `<App/>`                 |
 | `Stat`             | `Stat`                              | tarjeta de KPI                                |
 | `Empty`            | `Empty`, `Kbd`                      | estados vacíos + tecla helper                 |
+| `Tabs`             | `Tabs`, `useTabParam`               | barra subrayada (activa con `border-orange-500`); `useTabParam` la guarda en `?tab=` |
+| `Drawer`           | `Drawer`, `useOpenParam`            | panel lateral derecho, portal en `<body>` (`z-40` overlay / `z-50` panel); `useOpenParam` guarda el id en `?open=` |
 
 Barrel: `import { Button, Badge } from '@/components/ui'`.
 
-### `layout/`
+### Finanzas — compartidos fuera de `ui/`
 
-- `Sidebar` — navy-900 con accent basketball-500 en el item activo
-- `Topbar` — título + dark toggle + iconos auxiliares
-- `AppShell` — wrapper completo (no se usa en este proyecto;
-  `App.jsx` tiene su propia versión integrada al router)
+Nacieron en Budget y Pagos (octubre 2026) pero no son de un módulo:
+
+- **`Tabs` / `Drawer`** (arriba) — el patrón de página es "shell con pestañas
+  + detalle en drawer", con las dos cosas en la URL para que un link caiga en
+  el registro. Cambiar de pestaña borra `?open=`.
+- **`AttachmentList`** (`components/AttachmentList.jsx`) — adjuntos de un pago
+  o un gasto: lista, etiqueta (cerrada o libre), subir, bajar, borrar. Recibe
+  los handlers; la descarga es blob + JWT, nunca un `<a href>` público.
+- **`StatusHistory`** (`components/StatusHistory.jsx`) — timeline vertical del
+  historial de estados: punto de color + `Badge` por estado (gris
+  `new`/`draft`, warning `in_process`, info `approved`, success
+  `completed`/`paid`, danger `rejected`, outline `cancelled`), usuario, fecha y
+  motivo. No usa `StatusPill`.
+- **`NotificationsBell`** (`components/NotificationsBell.jsx`) — campana del
+  topbar con badge (`99+` de tope) y popover en dos bloques: "Pendientes"
+  (chips con contador que llevan a la vista filtrada) y "Novedades" (punto de
+  color por `kind`, marcar leída / todas).
+- **Gráficos** (`components/charts/BudgetCharts.jsx`, `recharts`) — se cargan
+  **siempre con `React.lazy`** (chunk `charts`), así ninguna otra página paga
+  la librería. Como recharts pinta atributos SVG y no clases, el tema se
+  resuelve en JS: grilla y texto leen `--c-fiba-border` / `--c-fiba-muted`, las
+  series usan los hex de los tokens (`success-500` ejecutado, `info-500`
+  comprometido, `danger-500` sobregiro, `ink-300` / `navy-500` presupuesto) y
+  un `MutationObserver` sobre la clase `.dark` de `<html>` repinta al cambiar
+  de tema. Mismo código de color que la `RollupTable` del dashboard.
 
 ### `brand/` (`src/components/brand/Logo.jsx`)
 
@@ -245,7 +268,6 @@ src/App.jsx                      ← shell (sidebar navy + topbar + dark toggle)
 src/pages/Login.jsx              ← entry rediseñado
 src/lib/icons.jsx                ← Tabler icons
 src/components/ui/               ← primitivos (Button, Input, Table, …)
-src/components/layout/           ← Sidebar, Topbar, AppShell
 src/components/brand/Logo.jsx    ← LogoMonogram, Roundel, Wordmark, Shield, …
 public/favicon.png               ← monograma F + basketball seam
 index.html                       ← favicon link + theme-color navy
