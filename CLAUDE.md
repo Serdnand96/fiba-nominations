@@ -667,6 +667,11 @@ npm run dev                 # vite
   `localStorage.fiba_dark`. Default actual: dark (ver
   `DESIGN_SYSTEM.md` para por qué).
 
+### Plan mode
+
+- **Entrar en plan mode antes de** cada feature nueva, cada tradeoff de
+  diseño y cada bug que sobrevivió al primer fix.
+
 ### Git / commits
 
 - Convención: **type prefix** (`feat:`, `fix:`, `docs:`, `design:`,
