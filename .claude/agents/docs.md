@@ -2,7 +2,7 @@
 name: docs
 description: Extrae la referencia de API (endpoints del backend o docs externas de una librería). Solo lectura.
 tools: Read, Glob, Grep, WebFetch
-model: haiku
+model: sonnet
 ---
 Extraés referencia de API, sin editar nada.
 
