@@ -280,3 +280,18 @@ def test_unresolvable_url_says_so(monkeypatch):
     with pytest.raises(fiba_sync.FibaSyncError, match="Could not extract"):
         fiba_sync.sync_competition(comp(fiba_competition_id=None, fiba_games_url="https://x.test/e"),
                                    FakeClient([]))
+
+
+def test_filling_an_empty_field_is_not_a_reschedule(fake_db):
+    fake_db.seed("competitions", [comp(fiba_window_code="W5")])
+    fake_db.seed("game_schedule", [{
+        "id": "g-1", "competition_id": "comp-1", "fiba_game_id": 7, "game_number": "G-7",
+        "date": "2026-11-27", "time": None, "team_a": "Team BRA", "team_a_code": "BRA",
+        "team_b": "Team USA", "team_b_code": "USA", "venue": None, "city": None, "country": "",
+        "group_label": None,
+    }])
+    feed = [game(7, window="W5", date="2026-11-27", a="BRA", b="USA")]
+    report = fiba_sync.sync_competition(comp(fiba_window_code="W5"), FakeClient(feed))
+    row = fake_db.tables["game_schedule"][0]
+    assert (row["time"], row["venue"], row["country"]) == ("17:10", "Maracanazinho", "Brazil")
+    assert report["rescheduled"] == []

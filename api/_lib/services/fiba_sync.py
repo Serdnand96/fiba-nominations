@@ -539,10 +539,17 @@ def sync_competition(comp: dict, client: GdapClient | None = None, *, dry_run: b
             # Un partido que se mueve de hora o de sede arrastra traslados,
             # crew y checklists. Que el sync lo devuelva callado y el desk se
             # entere por el grupo de WhatsApp no sirve.
+            #
+            # Completar un dato que no teníamos (horario o sede que FIBA recién
+            # publicó) se aplica igual, pero no es un partido movido: nada de lo
+            # que arrastra estaba armado sobre un valor que ahora cambió. Contarlo
+            # mandaba "FIBA movió 12 partidos" cuando no se había movido ninguno.
             moved = {
                 field: {"before": match.get(field), "after": update_data[field]}
                 for field in SCHEDULE_FIELDS
-                if field in update_data and (match.get(field) or None) != (update_data[field] or None)
+                if field in update_data
+                and (match.get(field) or None) is not None
+                and match.get(field) != update_data[field]
             }
             if moved:
                 rescheduled.append({
