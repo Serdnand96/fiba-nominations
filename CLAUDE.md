@@ -180,28 +180,56 @@ legacy `fibaamericascloud.com`).
     - La hora del war room (Miami) vive en `src/lib/warRoom.js`, con la zona en
       una sola constante `WAR_ROOM_TZ`.
 
-13. **La API de FIBA no devuelve una ventana: devuelve el clasificatorio
-    entero.** `getgdapgamesbycompetitionid` para el WC 2027 Americas Qualifiers
-    trae los **84 partidos de las seis ventanas**, de noviembre 2025 a marzo
-    2027, por la misma URL. Acá, en cambio, cada ventana es una **competencia
-    aparte** con su crew, sus nominaciones y sus fees.
+13. **FIBA no devuelve un tramo: devuelve la competencia entera.** El sync de
+    calendario, partidos y resultados sale de **GDAP**
+    (`gdap.fiba.basketball`, `GDAP_API_KEY`), en `services/fiba_sync.py`. Lo
+    usan el botón Sync de Games (`POST /games/sync-results`) y el cron
+    `scripts/fiba_sync.py` (`--live` cada 15 min, `--all` diario). Las
+    **nominaciones no se sincronizan**: las hace este sistema.
 
-    Por eso existe `competitions.fiba_window_code` (W1..W6, migración 040): si
-    está seteado, `sync-results` importa solo los partidos con ese `windowCode`.
-    `NULL` = sin filtro, que es lo correcto para una competencia no dividida en
-    ventanas (AmeriCup, CentroBasket) — la mayoría.
+    `GET /v1/competitions/{id}/games` del WC 2027 Americas Qualifiers trae los
+    **84 partidos de las seis ventanas**; el de la LSB 2026 trae los 40 de
+    grupos, QFs y Finals. Acá cada ventana o grupo es una **competencia
+    aparte** con su crew, sus nominaciones y sus fees. Por eso, en
+    `competitions` (migraciones 040 y 051):
+    - `fiba_competition_id` → el ID de GDAP. Varias competencias nuestras lo
+      comparten. `fiba_games_url` (URL o ID) sigue valiendo: el sync lo resuelve
+      y lo guarda.
+    - `fiba_window_code` (W1..W6) filtra por `windowCode`; `fiba_group_codes`
+      (`A`, o `37,38,39,40` para un Final Four) filtra por `groupPairingCode`.
+      `NULL` = sin filtro, que es lo correcto para una AmeriCup o un
+      CentroBasket — la mayoría.
+    - `fiba_start_date` / `fiba_end_date` → las fechas que FIBA le da al tramo.
+      **No pisan** `start_date`/`end_date`: el Calendario muestra la diferencia
+      y una persona la aplica (`POST /calendar/competitions/{id}/apply-fiba-dates`).
+    - `fiba_synced_at` / `fiba_sync_error` → la salud del cron, visible en
+      Competencias y Calendario.
 
+    Reglas que se ven raras y son correctas:
+    - **Usá la v1 de `/games`, no la v2.** La v2 no trae `windowCode` ni
+      `groupPairingCode`.
     - **No filtres por el rango de fechas de la competencia.** Window 3 de FIBA
       termina el 2026-07-08 y la competencia declara hasta el 07-07: ese filtro
       se come un partido, y en el caso real ese partido tenía TD y VGO
-      asignados. Los bordes de una ventana no coinciden con las fechas que
-      carga el equipo, que incluyen viaje.
-    - El filtro **falla del lado seguro**: si la competencia declara ventana
-      pero ningún partido del feed trae `windowCode`, no filtra nada. Un feed
-      sin ventanas tiene que devolver sus partidos, no cero.
-    - Sin esto (hasta agosto 2026) W3 y W4 tenían 84 filas cada una, de las
-      cuales 17 y 12 eran suyas; los partidos de agosto se veían dentro de la
-      ventana de julio. Se limpiaron 139 filas.
+      asignados. Los bordes de un tramo no coinciden con las fechas que carga
+      el equipo, que incluyen viaje.
+    - Los dos filtros **fallan del lado seguro**: si la competencia declara
+      ventana (o grupos) pero ningún partido del feed trae ese campo, no
+      filtran. Un feed sin ventanas tiene que devolver sus partidos, no cero.
+    - Los cruces que FIBA publica **sin fecha (`0001-01-01`) o sin equipos**
+      (un QF o una final todavía no definidos) no se importan: el reporte los
+      cuenta en `pending_in_fiba` y entran solos cuando FIBA los complete.
+    - Los equipos invertidos se reportan (`mismatches`), no se aplican: quién es
+      local define la sede y el texto de las cartas.
+    - "Nuevas en FIBA" (`GET /competitions/fiba/discover`) lista lo que GDAP
+      tiene en Americas (`zoneId=10`) y ninguna competencia nuestra vincula.
+      Solo lista; el alta la decide una persona.
+    - Sin `GDAP_API_KEY`, los partidos salen del feed de la web
+      (`digital-api…/hapi`, `FIBA_API_KEY`), que tiene la misma forma; ventanas,
+      fechas y discover necesitan GDAP.
+    - Sin el filtro de ventana (hasta agosto 2026) W3 y W4 tenían 84 filas cada
+      una, de las cuales 17 y 12 eran suyas; se limpiaron 139 filas. La LSB 2026
+      se cargó a mano en octubre 2026 por el mismo problema, por grupo.
 
 14. **Hay DOS tablas de gasto y el reporte suma las dos.** No son alternativas
     ni una reemplaza a la otra:
@@ -526,6 +554,7 @@ fiba-nominations/
 │       ├── routers/           ← uno por módulo (nominations, training, …) + notifications (/me)
 │       └── services/
 │           ├── document_generator.py  ← docx (docxtpl) → pdf (LibreOffice)
+│           ├── fiba_sync.py           ← sync con FIBA GDAP: partidos, resultados, fechas (punto 13)
 │           ├── finance_history.py     ← record_transition / history_for (punto 23)
 │           ├── notify.py              ← notify(), budget_approvers_for, module_editors (punto 24)
 │           └── xlsx_utils.py          ← helpers de los exports .xlsx nuevos
@@ -547,6 +576,7 @@ fiba-nominations/
 ├── fonts/                     ← fuentes libres + fonts.conf para LibreOffice (punto 20)
 ├── scripts/
 │   ├── build_letter_templates.py  ← regenera los *_TPL.docx (correr si cambia el membrete)
+│   ├── fiba_sync.py               ← cron del sync con FIBA (corre en droplet, punto 13)
 │   ├── fiba-security-scan.sh      ← scanner horario de nginx logs (corre en droplet)
 │   └── fiba-supabase-keepalive.sh ← ping diario a Supabase (evita el auto-pause del Free)
 ├── supabase/migrations/       ← schema SQL

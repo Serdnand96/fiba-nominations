@@ -151,6 +151,37 @@ def update_event(competition_id: str, data: CalendarEventUpdate):
 
 
 # ---------------------------------------------------------------------------
+# POST /calendar/competitions/{id}/apply-fiba-dates — adopt FIBA's dates
+# ---------------------------------------------------------------------------
+@router.post("/competitions/{competition_id}/apply-fiba-dates", dependencies=[Depends(require_edit("calendar"))])
+def apply_fiba_dates(competition_id: str):
+    """Copia las fechas que FIBA le da al tramo (fiba_start/end_date) a las nuestras.
+
+    Nunca lo hace el sync solo: start_date/end_date las carga el equipo e
+    incluyen viaje, así que una diferencia con FIBA no siempre es un error.
+    """
+    comp = (
+        supabase.table("competitions")
+        .select("id, fiba_start_date, fiba_end_date")
+        .eq("id", competition_id)
+        .execute()
+        .data
+    )
+    if not comp:
+        raise HTTPException(status_code=404, detail="Competition not found")
+    start, end = comp[0].get("fiba_start_date"), comp[0].get("fiba_end_date")
+    if not start or not end:
+        raise HTTPException(status_code=400, detail="FIBA has no dates for this competition yet")
+    result = (
+        supabase.table("competitions")
+        .update({"start_date": start, "end_date": end, "year": int(start[:4]), "month": int(start[5:7]), "is_tbd": False})
+        .eq("id", competition_id)
+        .execute()
+    )
+    return result.data[0]
+
+
+# ---------------------------------------------------------------------------
 # DELETE /calendar/competitions/{id} — delete event
 # ---------------------------------------------------------------------------
 @router.delete("/competitions/{competition_id}", dependencies=[Depends(require_edit("calendar"))])

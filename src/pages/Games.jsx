@@ -23,6 +23,7 @@ import { COUNTRIES, countryName } from '../lib/countries'
 import { findRefereeGameConflict } from '../lib/refereeNeutrality'
 import { readLastSearch, writeLastSearch } from '../lib/lastSearch'
 import { warRoomTime, formatWarRoom, WAR_ROOM_TZ } from '../lib/warRoom'
+import { isFibaLinked } from '../lib/competitions'
 
 const PHASE_OPTIONS = ['Group Phase', 'Quarterfinals', 'Semifinals', 'Classification', 'Finals']
 const ASSIGNMENT_TEMPLATES = new Set(['WCQ', 'BCLA', 'LSB'])
@@ -293,8 +294,8 @@ export default function Games() {
       let finalGames = g
       let finalDates = d
 
-      // Auto-sync from FIBA if competition has URL and no games yet
-      if (g.length === 0 && comp?.fiba_games_url && !autoSyncDone.current.has(selectedCompId)) {
+      // Auto-sync from FIBA if competition is linked (ID or URL) and has no games yet
+      if (g.length === 0 && isFibaLinked(comp) && !autoSyncDone.current.has(selectedCompId)) {
         autoSyncDone.current.add(selectedCompId)
         setSyncing(true)
         setSyncMsg(t('games.syncing'))
@@ -950,7 +951,7 @@ export default function Games() {
 
   async function handleSync() {
     const comp = competitions.find(c => c.id === selectedCompId)
-    if (!comp?.fiba_games_url) {
+    if (!isFibaLinked(comp)) {
       setSyncMsg(t('games.syncNoUrl'))
       setTimeout(() => setSyncMsg(''), 4000)
       return

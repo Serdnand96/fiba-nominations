@@ -31,6 +31,7 @@ const kindTone = {
   payment_tax_form_missing: 'bg-warning-500',
   payment_completed:        'bg-success-500',
   payment_cancelled:        'bg-danger-500',
+  games_rescheduled:        'bg-warning-500',
 }
 
 function useTimeAgo() {

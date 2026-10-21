@@ -55,6 +55,15 @@ class CompetitionCreate(BaseModel):
     # W1..W6 — acota el sync a una ventana del clasificatorio. FIBA devuelve el
     # clasificatorio entero por la misma URL (migración 040). None = sin filtro.
     fiba_window_code: Optional[str] = None
+    # ID de GDAP (migración 051). Si llega solo la URL, el primer sync lo resuelve.
+    fiba_competition_id: Optional[int] = None
+    # "A" o "37,38,39,40": acota el sync a esos groupPairingCode (LSB, Final Four).
+    fiba_group_codes: Optional[str] = None
+    # Alta desde "Nuevas en FIBA": las fechas y la sede que publica FIBA.
+    start_date: Optional[str] = None
+    end_date: Optional[str] = None
+    month: Optional[int] = Field(default=None, ge=1, le=12)
+    location: Optional[str] = None
     fee_type: Optional[FeeType] = "per_game"
     # National-team event → referee neutrality restriction applies.
     # None → derived from template_key (WCQ) at creation.
@@ -67,6 +76,8 @@ class CompetitionUpdate(BaseModel):
     year: Optional[int] = None
     fiba_games_url: Optional[str] = None
     fiba_window_code: Optional[str] = None
+    fiba_competition_id: Optional[int] = None
+    fiba_group_codes: Optional[str] = None
     fee_type: Optional[FeeType] = None
     is_national_team: Optional[bool] = None
     # Nomination defaults used by the per-game assignment workflow

@@ -240,6 +240,12 @@ CORS_ORIGINS=https://www.fibaapp.com,https://fibaapp.com
 # CloudConvert — solo lo usa el export del training schedule
 # (sin la key ese export sirve .docx; las cartas no la necesitan)
 # CLOUDCONVERT_API_KEY=
+
+# FIBA GDAP — sync de partidos/resultados/fechas y "Nuevas en FIBA".
+# Primary key de https://gdap-portal.fiba.basketball/profile
+GDAP_API_KEY=…
+# Feed de la web de FIBA: respaldo del sync de partidos si falta la de GDAP
+FIBA_API_KEY=…
 ```
 
 Después de tocar `.env`, **reiniciar el servicio** (`sudo systemctl
@@ -327,4 +333,9 @@ ssh fiba sudo systemctl is-active nginx
 - **Keepalive Supabase:** `/var/log/fiba-supabase-keepalive.log`
   (cron diario `/etc/cron.d/fiba-supabase-keepalive` — evita el
   auto-pause del plan Free)
+- **Sync con FIBA:** `/var/log/fiba-gdap-sync.log` (cron
+  `/etc/cron.d/fiba-gdap-sync`: `--live` cada 15 min para las competencias en
+  curso, `--all` a las 06:00 UTC). Instalación en la cabecera de
+  `scripts/fiba_sync.py`. El último error de cada competencia queda además en
+  `competitions.fiba_sync_error` y se ve en Competencias y en el Calendario.
 - **No hay alerting externo** (Sentry / Datadog) — pendiente

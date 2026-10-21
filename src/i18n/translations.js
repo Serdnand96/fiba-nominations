@@ -135,6 +135,14 @@ const translations = {
   // ===== Calendar =====
   calendar: {
     title: { en: 'Calendar', es: 'Calendario' },
+    fibaDates: { en: 'FIBA dates', es: 'Fechas de FIBA' },
+    fibaDatesApply: { en: 'Use FIBA dates', es: 'Usar las de FIBA' },
+    fibaDatesHint: {
+      en: 'FIBA dates differ from the loaded ones. Ours may include travel days; open the event to apply FIBA’s.',
+      es: 'Las fechas de FIBA difieren de las cargadas. Las nuestras pueden incluir viaje; abrí el evento para aplicar las de FIBA.',
+    },
+    fibaLastSync: { en: 'Last FIBA sync', es: 'Última sync con FIBA' },
+    fibaSyncError: { en: 'FIBA sync error', es: 'Error de sync con FIBA' },
     newEvent: { en: '+ New event', es: '+ Nuevo evento' },
     year: { en: 'Year', es: 'Año' },
     month: { en: 'Month', es: 'Mes' },
@@ -1469,6 +1477,23 @@ const translations = {
 
   // ===== Competitions =====
   competitions: {
+    fibaGroups: { en: 'FIBA groups', es: 'Grupos de FIBA' },
+    fibaGroupsHint: {
+      en: 'Leagues like the LSB are one competition on FIBA and several here. List this competition’s groups (A, or 37,38,39,40 for a Final Four) so the sync only imports its games. Empty = no filter.',
+      es: 'Ligas como la LSB son una competencia en FIBA y varias acá. Poné los grupos de esta competencia (A, o 37,38,39,40 para un Final Four) para que el sync importe solo sus partidos. Vacío = sin filtro.',
+    },
+    fibaDiscover: { en: 'New on FIBA', es: 'Nuevas en FIBA' },
+    fibaDiscoverTitle: { en: 'FIBA Americas competitions not yet in the system', es: 'Competencias de FIBA Americas que todavía no están en el sistema' },
+    fibaDiscoverHint: {
+      en: 'Straight from FIBA. Adding one opens the form pre-filled; you pick the template, the fee and whether it splits into windows or groups.',
+      es: 'Salen directo de FIBA. Dar de alta abre el formulario prellenado; vos elegís la plantilla, el fee y si se divide en ventanas o grupos.',
+    },
+    fibaDiscoverEmpty: { en: 'Every FIBA Americas competition for these seasons is already linked.', es: 'Todas las competencias de FIBA Americas de estas temporadas ya están vinculadas.' },
+    fibaDiscoverAdd: { en: 'Add', es: 'Dar de alta' },
+    fibaSeasons: { en: 'Seasons', es: 'Temporadas' },
+    fibaDatesPrefilled: { en: 'Dates and venue from FIBA', es: 'Fechas y sede de FIBA' },
+    fibaLastSync: { en: 'Last FIBA sync', es: 'Última sync con FIBA' },
+    fibaSyncError: { en: 'FIBA sync error', es: 'Error de sync con FIBA' },
     fibaWindow: { en: 'FIBA window', es: 'Ventana de FIBA' },
     fibaWindowNone: { en: 'No window (import everything)', es: 'Sin ventana (importar todo)' },
     fibaWindowHint: {
@@ -1956,7 +1981,7 @@ const translations = {
     syncResults: { en: 'Sync Results', es: 'Sincronizar Resultados' },
     syncing: { en: 'Syncing...', es: 'Sincronizando...' },
     syncSuccess: { en: '{synced} updated, {created} created from {total} FIBA games', es: '{synced} actualizados, {created} creados de {total} juegos FIBA' },
-    syncNoUrl: { en: 'No FIBA URL configured for this competition', es: 'No hay URL de FIBA configurada para esta competencia' },
+    syncNoUrl: { en: 'This competition is not linked to FIBA (ID or URL)', es: 'Esta competencia no está vinculada a FIBA (ID o URL)' },
     allDates: { en: 'All dates', es: 'Todas las fechas' },
     datesSelected: { en: '{count} dates', es: '{count} fechas' },
     clearDates: { en: 'Clear', es: 'Limpiar' },
@@ -2510,6 +2535,7 @@ const translations = {
     hoursAgo: { en: '{n} h ago', es: 'hace {n} h' },
     daysAgo: { en: '{n} d ago', es: 'hace {n} d' },
     kinds: {
+      games_rescheduled: { en: 'FIBA moved games', es: 'FIBA movió partidos' },
       expense_submitted: { en: 'Expense submitted for approval', es: 'Gasto enviado a aprobación' },
       expense_approved: { en: 'Expense approved', es: 'Gasto aprobado' },
       expense_rejected: { en: 'Expense rejected', es: 'Gasto rechazado' },

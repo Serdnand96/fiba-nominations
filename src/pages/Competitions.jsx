@@ -1,12 +1,13 @@
 import { useState, useEffect, useMemo, Fragment } from 'react'
-import { getCompetitions, createCompetition, updateCompetition, deleteCompetition, getNominations, getTemplates } from '../api/client'
+import { getCompetitions, createCompetition, updateCompetition, deleteCompetition, getNominations, getTemplates, discoverFibaCompetitions } from '../api/client'
 import { useLanguage } from '../i18n/LanguageContext'
 import { useAuth } from '../contexts/AuthContext'
 import { useToast } from '../components/ui/Toast'
 import { readLastSearch, writeLastSearch } from '../lib/lastSearch'
 import {
-  competitionYear, competitionYears, competitionDateRange, groupCompetitionsByYear,
+  competitionYear, competitionYears, competitionDateRange, groupCompetitionsByYear, isFibaLinked,
 } from '../lib/competitions'
+import FibaDiscoverModal from './competitions/FibaDiscoverModal'
 
 const TEMPLATE_BADGES = {
   WCQ: 'bg-red-500/20 text-red-400',
@@ -24,6 +25,11 @@ const LAST_SEARCH_KEY = 'fiba_competitions_last_search'
 // El filtro de año usa 'all' para "todos" y `null` para "todavía no se eligió",
 // que es lo que dispara el default al año en curso cuando cargan los datos.
 const ALL_YEARS = 'all'
+
+const EMPTY_FORM = {
+  name: '', template_key: 'WCQ', year: new Date().getFullYear(), fiba_games_url: '', fiba_window_code: '',
+  fiba_group_codes: '', fee_type: 'per_game', is_national_team: true,
+}
 
 function loadLastSearch() {
   const parsed = readLastSearch(LAST_SEARCH_KEY)
@@ -48,7 +54,8 @@ export default function Competitions() {
   const [showModal, setShowModal] = useState(false)
   const [saving, setSaving] = useState(false)
   const [editing, setEditing] = useState(null)
-  const [form, setForm] = useState({ name: '', template_key: 'WCQ', year: new Date().getFullYear(), fiba_games_url: '', fiba_window_code: '', fee_type: 'per_game', is_national_team: true })
+  const [showDiscover, setShowDiscover] = useState(false)
+  const [form, setForm] = useState(EMPTY_FORM)
 
   // Search & filter — restored from the persisted last search
   const [search, setSearch] = useState(() => loadLastSearch()?.search || '')
@@ -145,13 +152,34 @@ export default function Competitions() {
 
   function openCreate() {
     setEditing(null)
-    setForm({ name: '', template_key: 'WCQ', year: new Date().getFullYear(), fiba_games_url: '', fiba_window_code: '', fee_type: 'per_game', is_national_team: true })
+    setForm(EMPTY_FORM)
+    setShowModal(true)
+  }
+
+  // Alta desde "Nuevas en FIBA": nombre, año, ID, fechas y sede salen de FIBA;
+  // la plantilla, el fee y si se divide en ventanas o grupos los decide quien
+  // la da de alta.
+  function openCreateFromFiba(item) {
+    setEditing(null)
+    setForm({
+      ...EMPTY_FORM,
+      name: item.name || '',
+      year: item.season || (item.start ? Number(item.start.slice(0, 4)) : new Date().getFullYear()),
+      template_key: 'GENERIC',
+      is_national_team: false,
+      fiba_games_url: String(item.fiba_competition_id),
+      start_date: item.start || null,
+      end_date: item.end || null,
+      month: item.start ? Number(item.start.slice(5, 7)) : null,
+      location: [item.host_city, item.host_country].filter(Boolean).join(', ') || null,
+    })
+    setShowDiscover(false)
     setShowModal(true)
   }
 
   function openEdit(comp) {
     setEditing(comp)
-    setForm({ name: comp.name, template_key: comp.template_key, year: comp.year || new Date().getFullYear(), fiba_games_url: comp.fiba_games_url || '', fiba_window_code: comp.fiba_window_code || '', fee_type: comp.fee_type || 'per_game', is_national_team: !!comp.is_national_team })
+    setForm({ name: comp.name, template_key: comp.template_key, year: comp.year || new Date().getFullYear(), fiba_games_url: comp.fiba_games_url || (comp.fiba_competition_id ? String(comp.fiba_competition_id) : ''), fiba_window_code: comp.fiba_window_code || '', fiba_group_codes: comp.fiba_group_codes || '', fee_type: comp.fee_type || 'per_game', is_national_team: !!comp.is_national_team })
     setShowModal(true)
   }
 
@@ -161,7 +189,12 @@ export default function Competitions() {
     setSaving(true)
     try {
       if (editing) {
-        await updateCompetition(editing.id, { ...form, year: parseInt(form.year) })
+        const payload = { ...form, year: parseInt(form.year) }
+        // Vaciar el campo desvincula. Una competencia dada de alta desde FIBA
+        // tiene el ID y no la URL, así que el backend no ve el cambio de URL:
+        // 0 es el "desvincular" explícito.
+        if (!form.fiba_games_url.trim() && editing.fiba_competition_id) payload.fiba_competition_id = 0
+        await updateCompetition(editing.id, payload)
       } else {
         await createCompetition({ ...form, year: parseInt(form.year) })
       }
@@ -196,9 +229,14 @@ export default function Competitions() {
       <div className="flex items-center justify-between mb-6">
         <h2 className="text-2xl font-bold text-ink-900 dark:text-white">{t('competitions.title')}</h2>
         {canEdit && (
-          <button onClick={openCreate} className="btn-fiba">
-            {t('competitions.newCompetition')}
-          </button>
+          <div className="flex flex-wrap gap-2">
+            <button onClick={() => setShowDiscover(true)} className="btn-fiba-ghost">
+              {t('competitions.fibaDiscover')}
+            </button>
+            <button onClick={openCreate} className="btn-fiba">
+              {t('competitions.newCompetition')}
+            </button>
+          </div>
         )}
       </div>
 
@@ -295,12 +333,23 @@ export default function Competitions() {
               <tr key={c.id}>
                 <td className="px-4 py-3">
                   <div className="font-medium">{c.name}</div>
-                  {c.fiba_games_url && (
-                    <div className="text-[11px] text-emerald-400 mt-0.5 flex items-center gap-1">
+                  {isFibaLinked(c) && (
+                    <div className="text-[11px] text-emerald-400 mt-0.5 flex items-center gap-1"
+                      title={c.fiba_synced_at ? `${t('competitions.fibaLastSync')}: ${new Date(c.fiba_synced_at).toLocaleString()}` : undefined}>
                       <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                       </svg>
                       FIBA linked
+                      {c.fiba_competition_id && <span className="font-mono text-emerald-400/70">#{c.fiba_competition_id}</span>}
+                      {(c.fiba_window_code || c.fiba_group_codes) && (
+                        <span className="text-emerald-400/70">· {[c.fiba_window_code, c.fiba_group_codes].filter(Boolean).join(' · ')}</span>
+                      )}
+                    </div>
+                  )}
+                  {/* El cron no tiene a quién mostrarle un error: queda acá. */}
+                  {c.fiba_sync_error && (
+                    <div className="text-[11px] text-red-400 mt-0.5 truncate max-w-xs" title={c.fiba_sync_error}>
+                      {t('competitions.fibaSyncError')}: {c.fiba_sync_error}
                     </div>
                   )}
                 </td>
@@ -342,6 +391,10 @@ export default function Competitions() {
         </div>
       </div>
 
+      {showDiscover && (
+        <FibaDiscoverModal onClose={() => setShowDiscover(false)} onPick={openCreateFromFiba} />
+      )}
+
       {showModal && (
         <div className="fiba-modal-overlay">
           <div className="fiba-modal max-w-md p-6">
@@ -382,6 +435,21 @@ export default function Competitions() {
                 </select>
                 <p className="text-xs text-fiba-muted/60 mt-1">{t('competitions.fibaWindowHint')}</p>
               </div>
+              {/* Grupos: la LSB es UNA competencia en FIBA y acá son siete
+                  (grupos, QFs, Finals). Mismo problema que la ventana, otra
+                  columna (migración 051). */}
+              <div>
+                <label className="text-xs text-fiba-muted block mb-1">{t('competitions.fibaGroups')}</label>
+                <input placeholder="A  ·  37,38,39,40" value={form.fiba_group_codes}
+                  onChange={e => setForm(f => ({ ...f, fiba_group_codes: e.target.value }))}
+                  className="fiba-input" />
+                <p className="text-xs text-fiba-muted/60 mt-1">{t('competitions.fibaGroupsHint')}</p>
+              </div>
+              {!editing && form.start_date && (
+                <p className="text-xs text-fiba-muted">
+                  {t('competitions.fibaDatesPrefilled')}: {form.start_date} → {form.end_date}{form.location ? ` · ${form.location}` : ''}
+                </p>
+              )}
               <div>
                 <label className="text-xs text-fiba-muted block mb-1">Fee type</label>
                 <select value={form.fee_type} onChange={e => setForm(f => ({ ...f, fee_type: e.target.value }))} className="fiba-select">

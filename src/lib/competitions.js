@@ -224,3 +224,31 @@ export function groupCompetitionsByYear(list) {
     .sort((a, b) => (a[0] ?? 9999) - (b[0] ?? 9999))
     .map(([year, items]) => ({ year, items }))
 }
+
+/**
+ * ¿La competencia está vinculada a FIBA? Por ID de GDAP (migración 051) o por
+ * la URL/ID viejo en `fiba_games_url`, que el primer sync convierte en ID.
+ */
+export function isFibaLinked(comp) {
+  return !!(comp && (comp.fiba_competition_id || (comp.fiba_games_url || '').trim()))
+}
+
+/**
+ * ¿Las fechas que FIBA le da al tramo difieren de las cargadas?
+ *
+ * No siempre es un error: start/end las carga el equipo e incluyen viaje. Por
+ * eso el calendario lo muestra y ofrece aplicar, pero nunca lo pisa solo.
+ */
+export function fibaDatesDiffer(comp) {
+  if (!comp?.fiba_start_date || !comp?.fiba_end_date) return false
+  return comp.fiba_start_date !== comp.start_date || comp.fiba_end_date !== comp.end_date
+}
+
+/** "5–7 Dec" para las fechas de FIBA, con el mismo formato que las nuestras. */
+export function fibaDateRange(comp, monthsShort = MONTHS_SHORT_EN) {
+  if (!comp?.fiba_start_date) return null
+  return competitionDateRange(
+    { start_date: comp.fiba_start_date, end_date: comp.fiba_end_date },
+    monthsShort,
+  )
+}

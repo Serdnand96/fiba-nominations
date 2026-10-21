@@ -37,6 +37,19 @@ export default function SyncReport({ report, onClose, onApplied, canEdit }) {
 
   const mismatches = (report.mismatches || []).filter(m => !applied.includes(m.game_id))
   const rescheduled = report.rescheduled || []
+  const pending = report.pending_in_fiba || []
+
+  // "Ventana W5", "Grupo D", "Grupos 37, 38, 39, 40" o la combinación.
+  function segmentLabel(l) {
+    const parts = []
+    if (report.window_applied) parts.push(`${l === 'es' ? 'Ventana' : 'Window'} ${report.window_code}`)
+    if (report.group_applied) {
+      const codes = report.group_codes || []
+      const word = l === 'es' ? (codes.length > 1 ? 'Grupos' : 'Grupo') : (codes.length > 1 ? 'Groups' : 'Group')
+      parts.push(`${word} ${codes.join(', ')}`)
+    }
+    return parts.join(' · ')
+  }
 
   async function applyFiba(m) {
     setError(null)
@@ -71,16 +84,27 @@ export default function SyncReport({ report, onClose, onApplied, canEdit }) {
           {/* FIBA devuelve el clasificatorio entero por una sola URL. Sin esta
               línea, "84 en FIBA / 12 importados" se lee como que se perdieron
               72 partidos, cuando es exactamente lo correcto. */}
-          {report.window_applied ? (
+          {report.window_applied || report.group_applied ? (
             <div className="text-[11px] text-fiba-muted/80 mt-0.5">
               {t(
-                `Ventana ${report.window_code}: ${report.imported_from_window} de los ${report.total_from_fiba} partidos que devuelve FIBA. Los otros ${report.skipped_other_windows} son de otras ventanas.`,
-                `Window ${report.window_code}: ${report.imported_from_window} of the ${report.total_from_fiba} games FIBA returns. The other ${report.skipped_other_windows} belong to other windows.`,
+                `${segmentLabel('es')}: ${report.imported_from_window} de los ${report.total_from_fiba} partidos que devuelve FIBA. Los otros ${report.total_from_fiba - report.imported_from_window - pending.length} son de otro tramo.`,
+                `${segmentLabel('en')}: ${report.imported_from_window} of the ${report.total_from_fiba} games FIBA returns. The other ${report.total_from_fiba - report.imported_from_window - pending.length} belong to another segment.`,
               )}
             </div>
           ) : (
             <div className="text-[11px] text-fiba-muted/80 mt-0.5">
               {t(`${report.total_from_fiba} partidos en FIBA`, `${report.total_from_fiba} games on FIBA`)}
+            </div>
+          )}
+          {/* Cruces que FIBA ya publicó pero sin fecha o sin equipos (un QF o
+              una final todavía no definidos). No se importan: aparecen solos
+              en el próximo sync, cuando FIBA los complete. */}
+          {pending.length > 0 && (
+            <div className="text-[11px] text-amber-500 mt-0.5">
+              {t(
+                `${pending.length} partidos todavía sin fecha o sin equipos en FIBA: se importan cuando FIBA los defina.`,
+                `${pending.length} games still without date or teams on FIBA: they will be imported once FIBA sets them.`,
+              )}
             </div>
           )}
         </div>

@@ -1,7 +1,10 @@
-from fastapi import APIRouter, HTTPException, Depends
+from datetime import date
+
+from fastapi import APIRouter, HTTPException, Depends, Query
 from api._lib.database import supabase
 from api._lib.auth import require_view, require_edit
 from api._lib.schemas import CompetitionCreate, CompetitionUpdate
+from api._lib.services import fiba_sync
 
 router = APIRouter(prefix="/competitions", tags=["competitions"], dependencies=[Depends(require_view("competitions"))])
 
@@ -24,9 +27,56 @@ def list_competitions():
     return result.data
 
 
+def _link_fiba_id(raw: dict, out: dict, previous_url: str | None = None) -> None:
+    """El ID de FIBA sigue al campo "URL o ID" del formulario.
+
+    Un ID pelado se guarda directo; una URL deja el ID en NULL para que el
+    próximo sync lo resuelva desde la URL nueva. Sin esto, cambiar la URL de una
+    competencia la dejaba sincronizando contra la competencia de FIBA anterior.
+    Si el formulario manda un fiba_competition_id explícito, ese gana.
+    """
+    if "fiba_games_url" not in raw or raw.get("fiba_games_url") is None:
+        return
+    if raw.get("fiba_competition_id"):
+        return
+    url = (raw.get("fiba_games_url") or "").strip()
+    # Guardar el formulario sin tocar el campo no desvincula nada.
+    if url == (previous_url or "").strip():
+        return
+    out["fiba_competition_id"] = int(url) if fiba_sync.is_fiba_id(url) else None
+
+
+@router.get("/fiba/discover", dependencies=[Depends(require_edit("competitions"))])
+def discover_fiba_competitions(
+    from_season: int | None = Query(None, ge=2000, le=2100),
+    to_season: int | None = Query(None, ge=2000, le=2100),
+):
+    """Competencias de FIBA Americas que todavía no están vinculadas a ninguna nuestra.
+
+    Solo lista: el alta la hace una persona desde el formulario, que decide
+    nombre, plantilla y si la competencia se divide en ventanas o grupos. Lleva
+    `edit` porque existe para dar de alta, y cada llamada gasta cuota de GDAP.
+    """
+    this_year = date.today().year
+    from_season = from_season or this_year
+    to_season = to_season or this_year + 1
+    if to_season < from_season:
+        raise HTTPException(400, "to_season must be >= from_season")
+    try:
+        return fiba_sync.discover(fiba_sync.GdapClient(), from_season, to_season)
+    except fiba_sync.FibaSyncError as e:
+        raise HTTPException(502, str(e))
+
+
 @router.post("", dependencies=[Depends(require_edit("competitions"))])
 def create_competition(data: CompetitionCreate):
     record = data.model_dump()
+    # Un campo del formulario que quedó en blanco es NULL, no "": un
+    # fiba_group_codes "" se leería como "filtrar por ningún grupo".
+    for k in ("fiba_games_url", "fiba_window_code", "fiba_group_codes", "start_date", "end_date", "location"):
+        if isinstance(record.get(k), str) and not record[k].strip():
+            record[k] = None
+    _link_fiba_id(record, record)
     # Not sent explicitly → national-team flag follows the template (WCQ).
     if record.get("is_national_team") is None:
         record["is_national_team"] = (record.get("template_key") or "").upper() == "WCQ"
@@ -38,7 +88,9 @@ _CLEARABLE_DATE_FIELDS = {
     "default_letter_date", "default_arrival_date", "default_departure_date",
     "default_confirmation_deadline",
 }
-_CLEARABLE_TEXT_FIELDS = {"fiba_games_url", "fiba_window_code", "default_location", "default_venue"}
+_CLEARABLE_TEXT_FIELDS = {
+    "fiba_games_url", "fiba_window_code", "fiba_group_codes", "default_location", "default_venue",
+}
 
 
 @router.put("/{competition_id}", dependencies=[Depends(require_edit("competitions"))])
@@ -57,6 +109,12 @@ def update_competition(competition_id: str, data: CompetitionUpdate):
     # by sending an empty string in the payload.
     if "fiba_games_url" in raw and raw["fiba_games_url"] == "":
         updates["fiba_games_url"] = None
+    # 0 = desvincular de FIBA (un int no puede llegar como "").
+    if raw.get("fiba_competition_id") == 0:
+        updates["fiba_competition_id"] = None
+    if raw.get("fiba_games_url") is not None:
+        prev = supabase.table("competitions").select("fiba_games_url").eq("id", competition_id).execute().data
+        _link_fiba_id(raw, updates, (prev[0].get("fiba_games_url") if prev else None))
     result = supabase.table("competitions").update(updates).eq("id", competition_id).execute()
     if not result.data:
         raise HTTPException(status_code=404, detail="Competition not found")

@@ -1,12 +1,10 @@
 """
 Game Schedule router — CRUD for competition game schedules,
-FIBA website scraping for auto-import, results sync, and per-game
+FIBA sync (services/fiba_sync.py), Excel import, and per-game
 TD/VGO assignments (WCQ, BCLA, LSB).
 """
 import io
 import logging
-import os
-import re
 from fastapi import APIRouter, HTTPException, Query, UploadFile, File, Form, Depends
 from pydantic import BaseModel, Field
 from typing import Optional, List
@@ -17,7 +15,7 @@ from api._lib.auth import require_view, require_edit
 from api._lib.crew import get_competition, is_tournament_mode, list_crew
 
 logger = logging.getLogger(__name__)
-from api._lib.net import safe_get
+from api._lib.services import fiba_sync
 from api._lib.roles import VALID_ROLES
 from api._lib.travel import sede_pairs, format_sedes
 
@@ -29,20 +27,6 @@ router = APIRouter(prefix="/games", tags=["games"], dependencies=[Depends(requir
 ASSIGNMENT_TEMPLATES = {"WCQ", "BCLA", "LSB"}
 
 _MAX_UPLOAD_BYTES = 5 * 1024 * 1024
-
-# Campos del cronograma que manda FIBA y que el sync pisa sobre lo que haya.
-# `phase` NO está: la deriva _detect_phase() por heurística y pisaría una fase
-# corregida a mano.
-#
-# Son también los que se reportan en `rescheduled`: lo que una persona lee y lo
-# que arrastra operación (traslados, crew, checklists).
-_SCHEDULE_FIELDS = ("date", "time", "venue", "city", "country", "group_label", "game_number")
-
-# Se sincronizan igual, pero NO se reportan: son la misma hora contada de otra
-# forma —el instante en UTC y la zona de la sede— para poder mostrar el partido
-# en la hora del war room. Meterlos en el reporte sería contar cada cambio de
-# horario dos veces.
-_DERIVED_TIME_FIELDS = ("datetime_utc", "venue_timezone")
 
 
 # ── Schemas ──────────────────────────────────────────────────────────────────
@@ -241,384 +225,26 @@ def delete_game(game_id: str):
     return {"ok": True}
 
 
-# ── Sync results (update scores from FIBA) ───────────────────────────────────
-
-def _team_mismatch(ours: dict, fiba: dict) -> dict | None:
-    """¿Nuestra fila y FIBA discrepan en los equipos? Devuelve el detalle o None.
-
-    El caso frecuente es `swapped`: los mismos dos equipos con el local y el
-    visitante al revés. Se nota poco a simple vista y se paga caro, porque el
-    local define la sede — un partido cargado "COL vs MEX" jugándose en
-    Zacatecas es Mexico de local con el nombre invertido.
-
-    `differs` es que FIBA cambió el cruce para ese mismo gameId. Es raro y
-    merece que alguien lo mire, no que el sync lo aplique solo.
-    """
-    ours_pair = ((ours.get("team_a_code") or "").upper(), (ours.get("team_b_code") or "").upper())
-    fiba_pair = ((fiba.get("team_a_code") or "").upper(), (fiba.get("team_b_code") or "").upper())
-    # Sin códigos de los dos lados no hay comparación posible que valga la pena.
-    if not all(ours_pair) or not all(fiba_pair) or ours_pair == fiba_pair:
-        return None
-
-    kind = "swapped" if ours_pair == fiba_pair[::-1] else "differs"
-    return {
-        "game_id": ours["id"],
-        "game_number": ours.get("game_number"),
-        "date": fiba.get("date") or ours.get("date"),
-        "kind": kind,
-        "ours": {k: ours.get(k) for k in ("team_a", "team_a_code", "team_b", "team_b_code")},
-        # Lo que la UI manda de vuelta por PUT /games/{id} si el usuario acepta.
-        "fiba": {k: fiba.get(k) for k in ("team_a", "team_a_code", "team_b", "team_b_code")},
-    }
-
+# ── Sync con FIBA (partidos, resultados, fechas) ────────────────────────────
+# El núcleo vive en services/fiba_sync.py: lo comparte con el cron
+# (scripts/fiba_sync.py). Acá queda el endpoint del botón Sync.
 
 @router.post("/sync-results", dependencies=[Depends(require_edit("games"))])
 def sync_results(competition_id: str = Query(...)):
-    """Fetch latest results from FIBA website and update scores."""
-    # Get competition to find the FIBA URL
-    comp = (
-        supabase.table("competitions")
-        .select("fiba_games_url,fiba_window_code")
-        .eq("id", competition_id)
-        .execute()
-        .data
-    )
-    if not comp or not comp[0].get("fiba_games_url"):
-        raise HTTPException(400, "Competition has no FIBA games URL configured")
-
-    fiba_url = comp[0]["fiba_games_url"]
-    # FIBA devuelve el clasificatorio entero, no la ventana. Ver _scrape_fiba_games.
-    window_code = comp[0].get("fiba_window_code")
+    """Trae de FIBA los partidos del tramo de esta competencia y los aplica."""
+    comp = supabase.table("competitions").select("*").eq("id", competition_id).execute().data
+    if not comp:
+        raise HTTPException(404, "Competition not found")
+    if not fiba_sync.is_linked(comp[0]):
+        raise HTTPException(400, "Competition has no FIBA link (ID or URL) configured")
 
     try:
-        games_data, fetch_info = _scrape_fiba_games(fiba_url, window_code)
+        report = fiba_sync.sync_competition(comp[0])
     except Exception as e:
+        fiba_sync.record_sync_error(competition_id, str(e))
         raise HTTPException(500, f"Failed to fetch games from FIBA: {str(e)}")
 
-    if not games_data:
-        return {"synced": 0, "created": 0, "errors": [], "rescheduled": [],
-                "mismatches": [], **fetch_info,
-                "message": "No games found on FIBA page"}
-
-    # Get existing games
-    existing = supabase.table("game_schedule").select("*").eq("competition_id", competition_id).execute().data
-
-    synced = 0
-    created = 0
-    errors = []
-    rescheduled = []
-    mismatches = []
-
-    for fiba_game in games_data:
-        # Try to match by fiba_game_id first
-        match = None
-        if fiba_game.get("fiba_game_id"):
-            match = next((e for e in existing if e.get("fiba_game_id") == fiba_game["fiba_game_id"]), None)
-
-        # Fallback: match by date + teams
-        if not match:
-            match = next(
-                (e for e in existing
-                 if e["date"] == fiba_game["date"]
-                 and e["team_a"] == fiba_game["team_a"]
-                 and e["team_b"] == fiba_game["team_b"]),
-                None,
-            )
-
-        if match:
-            update_data = {"updated_at": datetime.utcnow().isoformat()}
-            if fiba_game.get("score_a") is not None:
-                update_data["score_a"] = fiba_game["score_a"]
-            if fiba_game.get("score_b") is not None:
-                update_data["score_b"] = fiba_game["score_b"]
-            if fiba_game.get("status"):
-                update_data["status"] = fiba_game["status"]
-
-            # FIBA es la fuente del CRONOGRAMA, no solo del resultado. Hasta acá
-            # el sync escribía score y estado nada más, así que un cambio de
-            # horario o de sede no llegaba nunca: la fila se quedaba con lo que
-            # tenía del import original (por eso había partidos en 00:00 y sin
-            # sede después de sincronizar).
-            #
-            # `phase` queda afuera a propósito: sale de _detect_phase(), que es
-            # una heurística sobre el nombre del partido y pisaría una fase
-            # corregida a mano.
-            for field in _SCHEDULE_FIELDS + _DERIVED_TIME_FIELDS:
-                value = fiba_game.get(field)
-                if value not in (None, ""):
-                    update_data[field] = value
-
-            # Un partido que se mueve de hora o de sede arrastra traslados,
-            # crew y checklists. Que el sync lo devuelva callado y el desk se
-            # entere por el grupo de WhatsApp no sirve.
-            moved = {
-                field: {"before": match.get(field), "after": update_data[field]}
-                for field in _SCHEDULE_FIELDS
-                if field in update_data and (match.get(field) or None) != (update_data[field] or None)
-            }
-            if moved:
-                rescheduled.append({
-                    "game_id": match["id"],
-                    "game": f"{match.get('team_a')} vs {match.get('team_b')}",
-                    "game_number": match.get("game_number"),
-                    "date": update_data.get("date") or match.get("date"),
-                    "changes": moved,
-                })
-
-            # Los equipos NO se pisan automáticamente: cambiar quién es local
-            # cambia la sede, los traslados y el texto de las cartas, así que es
-            # una decisión de una persona, no del sync. Pero tampoco puede pasar
-            # inadvertida — antes solo se descubría mirando la web de FIBA al
-            # lado del calendario. Se reporta con los dos valores para que la UI
-            # pueda ofrecer aplicarlo de un clic.
-            mismatch = _team_mismatch(match, fiba_game)
-            if mismatch:
-                mismatches.append(mismatch)
-
-            supabase.table("game_schedule").update(update_data).eq("id", match["id"]).execute()
-            synced += 1
-        else:
-            # Create new game
-            record = {
-                "competition_id": competition_id,
-                **fiba_game,
-            }
-            try:
-                supabase.table("game_schedule").insert(record).execute()
-                created += 1
-            except Exception as e:
-                # No abortar todo el sync por un partido malo, pero tampoco
-                # tragarlo: el usuario veía 'created' menor a lo esperado sin
-                # ninguna pista de qué partido falló ni por qué.
-                logger.warning("sync_results: no se pudo insertar partido %s: %s",
-                               fiba_game.get("fiba_game_id") or fiba_game.get("team_a"), e)
-                errors.append({
-                    "game": f"{fiba_game.get('team_a')} vs {fiba_game.get('team_b')} ({fiba_game.get('date')})",
-                    "error": str(e),
-                })
-
-    return {
-        "synced": synced,
-        "created": created,
-        "errors": errors,
-        "rescheduled": rescheduled,
-        "mismatches": mismatches,
-        # total_from_fiba / window_applied / skipped_other_windows: cuántos
-        # partidos trajo FIBA y cuántos quedaron afuera por no ser de esta
-        # ventana. Va al reporte para que "84 en FIBA, 12 importados" se lea
-        # como lo correcto que es y no como que se perdió algo.
-        **fetch_info,
-        "imported_from_window": len(games_data),
-    }
-
-
-# ── FIBA API integration ────────────────────────────────────────────────────
-
-_FIBA_API_BASE = "https://digital-api.fiba.basketball/hapi"
-# Subscription key for FIBA's GDAP API. Read from the environment — never
-# hardcode it (the previous literal was committed and must be rotated).
-_FIBA_API_KEY = os.environ.get("FIBA_API_KEY", "")
-
-
-def _scrape_fiba_games(fiba_url: str, window_code: str | None = None) -> tuple[list, dict]:
-    """Partidos de FIBA para esta competencia. Acepta:
-    - la URL de la página del evento (saca el competitionId del HTML)
-    - un GDAP competition ID directo (string numérico)
-
-    `window_code` (W1..W6) acota el resultado a una ventana. Hace falta porque
-    FIBA **no devuelve una ventana: devuelve el clasificatorio entero**. El feed
-    del WC 2027 Americas Qualifiers trae los 84 partidos de las seis ventanas,
-    de noviembre 2025 a marzo 2027, y acá cada ventana es una competencia
-    aparte. Sin este filtro cada una se lleva el calendario completo.
-
-    Falla del lado seguro: si la competencia declara una ventana pero **ningún**
-    partido del feed trae `windowCode`, no se filtra nada. Un feed sin ventanas
-    (una AmeriCup, la BCLA) tiene que devolver sus partidos, no cero.
-
-    Devuelve (partidos, info) — `info` es lo que el sync le cuenta al usuario.
-    """
-    import httpx
-
-    competition_id = _extract_fiba_competition_id(fiba_url)
-    if not competition_id:
-        raise Exception(f"Could not extract FIBA competition ID from: {fiba_url[:100]}")
-
-    # Call the FIBA GDAP API directly
-    api_url = f"{_FIBA_API_BASE}/getgdapgamesbycompetitionid"
-    with httpx.Client(timeout=30.0) as client:
-        resp = client.get(
-            api_url,
-            params={"gdapCompetitionId": competition_id},
-            headers={
-                "Ocp-Apim-Subscription-Key": _FIBA_API_KEY,
-                "Accept": "application/json",
-                "Accept-Encoding": "gzip, deflate",
-            },
-        )
-    if resp.status_code != 200:
-        raise Exception(f"FIBA API HTTP {resp.status_code}: {resp.text[:200]}")
-
-    data = resp.json()
-
-    # The API returns an array of game objects
-    games_list = data if isinstance(data, list) else data.get("games", data.get("data", []))
-    if not isinstance(games_list, list):
-        raise Exception(f"Unexpected FIBA API format: {type(data).__name__}")
-
-    games_list = [g for g in games_list if g.get("gameId")]
-    total = len(games_list)
-
-    info = {"total_from_fiba": total, "window_code": window_code,
-            "window_applied": False, "skipped_other_windows": 0}
-
-    if window_code:
-        want = window_code.strip().upper()
-        # El feed puede no tener ventanas en absoluto. Filtrar ahí devolvería
-        # cero partidos y parecería que FIBA se cayó.
-        if any((g.get("windowCode") or "").strip() for g in games_list):
-            kept = [g for g in games_list if (g.get("windowCode") or "").strip().upper() == want]
-            info["window_applied"] = True
-            info["skipped_other_windows"] = total - len(kept)
-            games_list = kept
-        else:
-            logger.info(
-                "sync: la competencia declara ventana %s pero el feed no trae windowCode; "
-                "se importan los %d partidos sin filtrar", want, total,
-            )
-
-    return [_fiba_json_to_game(g) for g in games_list], info
-
-
-def _extract_fiba_competition_id(fiba_url: str) -> str | None:
-    """Extract the GDAP competitionId from a FIBA URL or RSC payload."""
-    # If it's already a numeric ID, return it
-    stripped = fiba_url.strip()
-    if stripped.isdigit():
-        return stripped
-
-    # Fetch the page and look for competitionId in the RSC payload.
-    # safe_get is an SSRF guard: it rejects non-http(s) URLs and any host that
-    # resolves to a private/internal address, re-checking each redirect hop.
-    try:
-        resp = safe_get(stripped, headers={
-            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
-            "Accept-Encoding": "gzip, deflate",
-        })
-        if resp.status_code != 200:
-            return None
-
-        html = resp.text
-
-        # The RSC payload contains escaped JSON like:
-        # \"competitionId\":209032  or  "competitionId":209032
-        all_patterns = [
-            re.compile(r'\\?"gdapCompetitionId\\?"\s*:\s*\\?"?(\d+)\\?"?'),
-            re.compile(r'\\?"competitionId\\?"\s*:\s*\\?"?(\d+)\\?"?'),
-            re.compile(r'"gdapCompetitionId"\s*:\s*"?(\d+)"?'),
-            re.compile(r'"competitionId"\s*:\s*"?(\d+)"?'),
-            re.compile(r'competitionId[=:](\d+)'),
-        ]
-        for pattern in all_patterns:
-            m = pattern.search(html)
-            if m:
-                return m.group(1)
-    except Exception:
-        pass
-
-    return None
-
-
-def _utc_iso(raw: str | None) -> str | None:
-    """`gameDateTimeUTC` de FIBA → ISO con zona explícita.
-
-    FIBA lo manda sin sufijo ("2026-08-27T23:10:00") aunque el nombre del campo
-    diga UTC. Guardarlo así deja que Postgres lo interprete en la zona del
-    servidor, que es exactamente el bug que esta columna viene a evitar.
-    """
-    raw = (raw or "").strip()
-    if len(raw) < 19:
-        return None
-    # Por si algún día viene ya con zona.
-    if raw.endswith("Z") or raw[19:].startswith(("+", "-")):
-        return raw
-    return raw + "Z"
-
-
-def _fiba_json_to_game(g: dict) -> dict:
-    """Convert a FIBA API game object to our schema."""
-    # `gameDateTime` es hora LOCAL de la sede; `gameDateTimeUTC` es la otra cara
-    # del mismo dato. Va la local a propósito: es la que le sirve al VGO parado
-    # en el gimnasio y la que muestra la web de FIBA.
-    game_dt = g.get("gameDateTime", "") or ""
-    date_str = game_dt[:10] if game_dt else ""
-    # hasTimeGameDateTime=false → FIBA todavía no fijó el horario y la parte de
-    # hora es relleno (hoy, 24 de 84 partidos). Mejor sin hora que con una
-    # inventada: el front ya muestra "--:--".
-    has_time = g.get("hasTimeGameDateTime", True)
-    time_str = game_dt[11:16] if (has_time and len(game_dt) >= 16) else None
-    # El instante real, para poder mostrar el partido en la hora del war room.
-    # Sin horario fijado no hay instante que valga: el UTC de esos partidos es
-    # el reflejo del mismo relleno.
-    datetime_utc = _utc_iso(g.get("gameDateTimeUTC")) if has_time else None
-
-    score_a = g.get("teamAScore")
-    score_b = g.get("teamBScore")
-
-    # El estado sale de `statusCode`, no del score: FIBA manda 0-0 en todo lo
-    # que no se jugó, así que derivarlo del score marcaba como "FINAL 0-0" cada
-    # partido futuro. INIT = programado, VALID = resultado oficial.
-    status_code = (g.get("statusCode") or "").upper()
-    if g.get("isLive", False):
-        status = "live"
-    elif status_code == "VALID":
-        status = "completed"
-    elif status_code == "INIT":
-        status = "scheduled"
-    else:
-        # statusCode que no conocemos: volver al score, pero un partido de
-        # básquet no termina 0-0.
-        status = "completed" if (score_a or 0) or (score_b or 0) else "scheduled"
-
-    team_a = g.get("teamA") or {}
-    team_b = g.get("teamB") or {}
-
-    return {
-        "fiba_game_id": g.get("gameId"),
-        "game_number": g.get("gameName"),
-        "date": date_str,
-        "time": time_str,
-        "datetime_utc": datetime_utc,
-        "venue_timezone": g.get("ianaTimeZone") or None,
-        "team_a": team_a.get("officialName") or team_a.get("shortName", ""),
-        "team_a_code": team_a.get("code", ""),
-        "team_b": team_b.get("officialName") or team_b.get("shortName", ""),
-        "team_b_code": team_b.get("code", ""),
-        "score_a": score_a,
-        "score_b": score_b,
-        "venue": g.get("venueName", ""),
-        "city": g.get("hostCity", ""),
-        "country": g.get("hostCountry", "") or g.get("country", ""),
-        "phase": _detect_phase(g),
-        "group_label": g.get("groupPairingCode"),
-        "status": status,
-        "sport": "Basketball",
-    }
-
-
-def _detect_phase(g: dict) -> str:
-    """Detect game phase from the FIBA game name / pairing code."""
-    name = (g.get("gameName") or "").lower()
-    pairing = (g.get("groupPairingCode") or "").lower()
-
-    if "final" in name or "final" in pairing:
-        return "Finals"
-    if "semi" in name or "semi" in pairing:
-        return "Semifinals"
-    if "quarter" in name or "qf" in pairing:
-        return "Quarterfinals"
-    if "class" in name or "class" in pairing:
-        return "Classification"
-    return "Group Phase"
+    return report
 
 
 # ── Excel import ─────────────────────────────────────────────────────────────

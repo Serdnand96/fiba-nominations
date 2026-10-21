@@ -3,12 +3,12 @@ import { useNavigate } from 'react-router-dom'
 import {
   getCalendarCompetitions, getCalendarCompetition,
   createCalendarEvent, updateCalendarEvent, deleteCalendarEvent,
-  assignStaff, removeAssignment, getPersonnel, getCompetitionAvailability,
+  assignStaff, removeAssignment, getPersonnel, getCompetitionAvailability, applyFibaDates,
 } from '../api/client'
 import { useLanguage } from '../i18n/LanguageContext'
 import { useToast } from '../components/ui/Toast'
 import { useAuth } from '../contexts/AuthContext'
-import { SELECTABLE_COMPETITION_TYPES, competitionTypeColor } from '../lib/competitions'
+import { SELECTABLE_COMPETITION_TYPES, competitionTypeColor, fibaDatesDiffer, fibaDateRange } from '../lib/competitions'
 
 // El registro de tipos vive en src/lib/competitions.js — estaba duplicado acá y
 // en Availability.jsx, y las dos copias habían quedado desactualizadas.
@@ -76,6 +76,7 @@ export default function Calendar() {
   const [selectedEvent, setSelectedEvent] = useState(null)
   const [panelData, setPanelData] = useState(null)
   const [panelLoading, setPanelLoading] = useState(false)
+  const [applyingFiba, setApplyingFiba] = useState(false)
   const [personnel, setPersonnel] = useState([])
   const [staffSearch, setStaffSearch] = useState('')
   const [selectedPerson, setSelectedPerson] = useState(null)
@@ -144,6 +145,18 @@ export default function Calendar() {
     setPanelLoading(false)
   }
   function closePanel() { setSelectedEvent(null); setPanelData(null) }
+
+  async function handleApplyFibaDates() {
+    const id = panelData?.id || selectedEvent?.id
+    if (!id) return
+    setApplyingFiba(true)
+    try {
+      await applyFibaDates(id)
+      setPanelData(await getCalendarCompetition(id))
+      await load()
+    } catch (err) { push({ type: 'error', title: err.response?.data?.detail || t('common.error') }) }
+    setApplyingFiba(false)
+  }
 
   async function handleAssign() {
     if (!selectedPerson || !panelData) return
@@ -330,6 +343,12 @@ export default function Calendar() {
                           ) : (
                             <span className="text-xs bg-amber-100 text-amber-800 dark:bg-amber-500/20 dark:text-amber-400 px-1.5 py-0.5 rounded font-medium">TBD</span>
                           )}
+                          {fibaDatesDiffer(ev) && (
+                            <span className="text-[10px] bg-amber-100 text-amber-800 dark:bg-amber-500/20 dark:text-amber-400 px-1.5 py-0.5 rounded font-medium"
+                              title={t('calendar.fibaDatesHint')}>
+                              FIBA: {fibaDateRange(ev, MONTHS_SHORT)}
+                            </span>
+                          )}
                           {ev.assignment_count > 0 && (
                             <span className="text-xs text-blue-400">{ev.assignment_count} {ev.assignment_count > 1 ? t('calendar.assignedPlural') : t('calendar.assigned')}</span>
                           )}
@@ -422,6 +441,29 @@ export default function Calendar() {
                 </div>
                 <h3 className="text-lg font-bold text-ink-900 dark:text-white">{panelData?.name || selectedEvent.name}</h3>
                 <p className="text-sm text-fiba-muted mt-1">{formatFullDate(panelData || selectedEvent)}</p>
+                {/* FIBA no pisa nuestras fechas: las nuestras incluyen viaje.
+                    Se muestra la diferencia y una persona decide. */}
+                {fibaDatesDiffer(panelData || selectedEvent) && (
+                  <div className="mt-2 flex flex-wrap items-center gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-2.5 py-1.5">
+                    <span className="text-xs text-amber-700 dark:text-amber-400">
+                      {t('calendar.fibaDates')}: <strong>{fibaDateRange(panelData || selectedEvent, MONTHS_SHORT)}</strong>
+                    </span>
+                    {canEdit && (
+                      <button onClick={handleApplyFibaDates} disabled={applyingFiba}
+                        className="text-xs font-medium text-fiba-accent hover:underline disabled:opacity-50">
+                        {applyingFiba ? t('common.saving') : t('calendar.fibaDatesApply')}
+                      </button>
+                    )}
+                  </div>
+                )}
+                {panelData?.fiba_synced_at && (
+                  <p className="text-[11px] text-fiba-muted/60 mt-1">
+                    {t('calendar.fibaLastSync')}: {new Date(panelData.fiba_synced_at).toLocaleString(lang === 'es' ? 'es' : 'en-US')}
+                  </p>
+                )}
+                {panelData?.fiba_sync_error && (
+                  <p className="text-[11px] text-red-400 mt-1">{t('calendar.fibaSyncError')}: {panelData.fiba_sync_error}</p>
+                )}
                 {(panelData?.location || selectedEvent.location) && (
                   <p className="text-sm text-fiba-muted/60 mt-0.5">{panelData?.location || selectedEvent.location}</p>
                 )}

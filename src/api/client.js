@@ -37,6 +37,8 @@ export const importPersonnel = (file) => {
 // Competitions
 export const getCompetitions = () => api.get('/competitions').then(r => r.data)
 export const createCompetition = (data) => api.post('/competitions', data).then(r => r.data)
+// Competencias de FIBA Americas (GDAP) que todavía no están vinculadas a ninguna nuestra.
+export const discoverFibaCompetitions = (params) => api.get('/competitions/fiba/discover', { params, timeout: 60000 }).then(r => r.data)
 export const updateCompetition = (id, data) => api.put(`/competitions/${id}`, data).then(r => r.data)
 export const deleteCompetition = (id, force = false) => api.delete(`/competitions/${id}`, { params: { force } }).then(r => r.data)
 
@@ -400,6 +402,8 @@ export const getCalendarCompetitions = (params) => api.get('/calendar/competitio
 export const getCalendarCompetition = (id) => api.get(`/calendar/competitions/${id}`).then(r => r.data)
 export const createCalendarEvent = (data) => api.post('/calendar/competitions', data).then(r => r.data)
 export const updateCalendarEvent = (id, data) => api.put(`/calendar/competitions/${id}`, data).then(r => r.data)
+// Copia a start/end las fechas que FIBA le da al tramo (fiba_start/end_date).
+export const applyFibaDates = (id) => api.post(`/calendar/competitions/${id}/apply-fiba-dates`).then(r => r.data)
 export const deleteCalendarEvent = (id) => api.delete(`/calendar/competitions/${id}`).then(r => r.data)
 export const assignStaff = (compId, data) => api.post(`/calendar/competitions/${compId}/assign`, data).then(r => r.data)
 export const removeAssignment = (assignmentId) => api.delete(`/calendar/assignments/${assignmentId}`).then(r => r.data)
