@@ -253,6 +253,19 @@ los GET exigen **ver** ese departamento y los PUT **editarlo**.
   módulo (`budget` con `can_view`, o superadmin): una fila suelta de `budget_access` no recibe títulos de gastos (con
   monto y departamento) de un módulo que no puede abrir.
 
+### 10f. Google Calendar (`/api/me/google-calendar`)
+
+- Router con `require_user`; toda query por el `user_id` del caller. Conectar y
+  sincronizar piden además `has_view('calendar') or has_view('games')`; el cron
+  re-chequea el permiso por usuario en cada corrida (`user_can_sync`).
+- `refresh_token_enc` va cifrado con Fernet (`GOOGLE_TOKEN_KEY`). **Ninguna**
+  respuesta lo devuelve, ni `oauth_state_hash`: todo pasa por `_public()` del
+  router. Un campo nuevo en la respuesta se agrega ahí, no devolviendo la fila.
+- El `state` del OAuth se guarda hasheado, vence a los 10 minutos, se compara
+  con `hmac.compare_digest` y se consume aunque el callback falle.
+- Scope mínimo `calendar.app.created`. Ampliarlo es un cambio de seguridad, no
+  de comodidad.
+
 ## 11. Regla de dominio — neutralidad de árbitros
 
 - No se nomina/asigna un árbitro a juegos que involucran su país. La lógica se

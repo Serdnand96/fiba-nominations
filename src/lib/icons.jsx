@@ -54,6 +54,7 @@ export const Icon = {
   Feed: I(<><path d="M16 4h3a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h3"/><path d="M8 4h8v4H8z"/><path d="M8 12h8"/><path d="M8 16h5"/></>),
   Message: I(<><path d="M8 9h8"/><path d="M8 13h6"/><path d="M12 3c-4.97 0-9 3.58-9 8c0 1.9.75 3.64 2 5l-1 4l4.5-1.5A10.4 10.4 0 0 0 12 19c4.97 0 9-3.58 9-8s-4.03-8-9-8"/></>),
   Photo: I(<><path d="M15 8h.01"/><rect x="4" y="4" width="16" height="16" rx="3"/><path d="M4 15l4-4a3 5 0 0 1 3 0l5 5"/><path d="M14 14l1-1a3 5 0 0 1 3 0l2 2"/></>),
+  Refresh: I(<><path d="M20 11a8.1 8.1 0 0 0-15.5-2m-.5-4v4h4"/><path d="M4 13a8.1 8.1 0 0 0 15.5 2m.5 4v-4h-4"/></>),
   Link: I(<><path d="M9 15l6-6"/><path d="M11 6l.463-.536a5 5 0 0 1 7.071 7.072L18 13"/><path d="M13 18l-.397.534a5.068 5.068 0 0 1-7.127 0a4.972 4.972 0 0 1 0-7.071L6 11"/></>),
   Poll: I(<><path d="M4 20h16"/><rect x="5" y="10" width="3" height="7"/><rect x="10.5" y="5" width="3" height="12"/><rect x="16" y="13" width="3" height="4"/></>),
   Dots: I(<><circle cx="5" cy="12" r="1" fill="currentColor"/><circle cx="12" cy="12" r="1" fill="currentColor"/><circle cx="19" cy="12" r="1" fill="currentColor"/></>),
