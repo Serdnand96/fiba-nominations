@@ -246,10 +246,47 @@ CORS_ORIGINS=https://www.fibaapp.com,https://fibaapp.com
 GDAP_API_KEY=…
 # Feed de la web de FIBA: respaldo del sync de partidos si falta la de GDAP
 FIBA_API_KEY=…
+
+# Google Calendar — sync de partidos al calendario de cada usuario (ver abajo).
+# Sin las tres, la pestaña de Mi perfil dice "no configurado" y el cron no hace nada.
+GOOGLE_OAUTH_CLIENT_ID=….apps.googleusercontent.com
+GOOGLE_OAUTH_CLIENT_SECRET=…
+# Cifra los refresh tokens guardados. Generarla UNA vez con:
+#   ./venv/bin/python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+# Cambiarla desconecta a todos (tienen que volver a conectar): no la rotes sin avisar.
+GOOGLE_TOKEN_KEY=…
+# Opcional: por defecto es $PUBLIC_APP_URL/google/callback (https://www.fibaapp.com/google/callback)
+# GOOGLE_OAUTH_REDIRECT_URI=
 ```
 
 Después de tocar `.env`, **reiniciar el servicio** (`sudo systemctl
 restart fiba-api`).
+
+### Google Calendar: setup en Google Cloud (una vez)
+
+1. En https://console.cloud.google.com crear un proyecto (p.ej. "FIBA Americas
+   App") y habilitar **Google Calendar API** (APIs & Services → Library).
+2. **OAuth consent screen**: tipo *External*, nombre "FIBA Americas", dominio
+   autorizado `fibaapp.com`, email de soporte. Scopes: `openid`, `email` y
+   `https://www.googleapis.com/auth/calendar.app.created` (la app solo ve los
+   calendarios que ella crea, no el principal de nadie).
+3. **Credentials → Create credentials → OAuth client ID → Web application**.
+   Authorized redirect URIs:
+   - `https://www.fibaapp.com/google/callback`
+   - `http://localhost:5173/google/callback` (dev)
+4. Pasar la app a **"In production"** (Publishing status). ⚠️ En *Testing*
+   Google vence los refresh tokens **a los 7 días** y solo entran los test
+   users: todos tendrían que reconectar cada semana. En producción sin
+   verificar, Google muestra el aviso de "app no verificada" (Avanzado →
+   continuar) y permite hasta 100 usuarios: alcanza para el equipo. La
+   verificación formal es opcional.
+5. **Antes del push** del código: aplicar a mano
+   `supabase/migrations/052_google_calendar.sql` en Supabase (como todas las
+   migraciones, CLAUDE.md punto 17).
+6. Copiar client ID y secret al `.env` (arriba), generar `GOOGLE_TOKEN_KEY` y
+   reiniciar `fiba-api`. Sin esas variables la pestaña dice "no configurado" y
+   no toca la tabla.
+7. Instalar el cron (cabecera de `scripts/google_calendar_sync.py`).
 
 ---
 
@@ -338,4 +375,9 @@ ssh fiba sudo systemctl is-active nginx
   curso, `--all` a las 06:00 UTC). Instalación en la cabecera de
   `scripts/fiba_sync.py`. El último error de cada competencia queda además en
   `competitions.fiba_sync_error` y se ve en Competencias y en el Calendario.
+- **Sync con Google Calendar:** `/var/log/fiba-google-calendar.log` (cron
+  `/etc/cron.d/fiba-google-calendar`, minutos 5/20/35/50, después del `--live`
+  de FIBA). Instalación en la cabecera de `scripts/google_calendar_sync.py`. El
+  último error de cada usuario queda en `google_calendar_links.last_sync_error`
+  y lo ve en Mi perfil → Google Calendar.
 - **No hay alerting externo** (Sentry / Datadog) — pendiente

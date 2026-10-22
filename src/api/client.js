@@ -526,6 +526,16 @@ export const uploadMyAvatar = (file) => {
   return api.post('/me/avatar', fd, { headers: { 'Content-Type': 'multipart/form-data' } }).then(r => r.data)
 }
 export const deleteMyAvatar = () => api.delete('/me/avatar').then(r => r.data)
+
+// Google Calendar del usuario (api/_lib/routers/google_calendar.py, bajo /me).
+// El code/state del OAuth van en el body: el activity log guarda los query params.
+export const getGoogleCalendar = () => api.get('/me/google-calendar').then(r => r.data)
+export const connectGoogleCalendar = () => api.post('/me/google-calendar/connect').then(r => r.data)
+export const finishGoogleCalendar = (code, state) =>
+  api.post('/me/google-calendar/callback', { code, state }).then(r => r.data)
+export const syncGoogleCalendar = () => api.post('/me/google-calendar/sync').then(r => r.data)
+export const disconnectGoogleCalendar = (deleteCalendar = true) =>
+  api.delete('/me/google-calendar', { params: { delete_calendar: deleteCalendar } }).then(r => r.data)
 export const updateUserPermissions = (userId, permissions) => api.put(`/permissions/${userId}`, { permissions }).then(r => r.data)
 
 // Training

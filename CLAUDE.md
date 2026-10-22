@@ -523,6 +523,45 @@ legacy `fibaamericascloud.com`).
       bucket privado `nominations` bajo `banking/`.
     - El export de pagos no lleva números de cuenta.
 
+26. **Los partidos van al Google Calendar de cada usuario, no a uno
+    compartido.** Migración 052, `services/google_calendar.py`, router
+    `google_calendar.py` (`/api/me/google-calendar`), cron
+    `scripts/google_calendar_sync.py` (cada 15 min, después del `--live` de
+    FIBA). Quien tiene `calendar` o `games` conecta su cuenta desde Mi perfil →
+    Google Calendar y la app le crea un calendario **secundario** propio,
+    "FIBA Americas — Partidos", con los partidos de las competencias activas
+    (`end_date >= hoy - 3 días`: la gracia es para que llegue el resultado del
+    último partido, que en América termina cuando en UTC ya es mañana).
+
+    - Scope `calendar.app.created`: la app solo ve los calendarios que creó.
+      No pidas `calendar` ni `calendar.events` "para simplificar": eso es leer y
+      escribir el calendario principal de la persona.
+    - **No hay tabla de mapeo partido ↔ evento.** El ID del evento es
+      `"g" + game_id sin guiones` (hex ⊂ base32hex) y el hash del contenido va en
+      `extendedProperties.private.fiba_hash`: solo se escribe lo que cambió.
+    - Cuando una competencia termina, sus eventos **se quedan** como historial.
+      Solo se borra un evento si su partido ya no existe en `game_schedule`.
+    - La hora sale de `datetime_utc` (punto 12). Sin `datetime_utc` o con el
+      `'00:00'` de relleno, el partido va como evento de día completo.
+    - Es lo propio del usuario: `require_user` y toda query por su `user_id`.
+      Conectar y sincronizar piden además `calendar` o `games`; ver el estado y
+      desconectar no (quien perdió el permiso tiene que poder cortar). El cron
+      **vuelve a chequear** el permiso en cada corrida (`user_can_sync`).
+    - **Una sync por usuario a la vez** (`sync_started_at`, claim atómico con
+      lease de 10 min) y el `calendar_id` se guarda apenas se crea el
+      calendario. Sacar cualquiera de las dos le deja calendarios duplicados a
+      la persona cuando una sync se corta o el cron pisa al botón.
+    - Un evento que Google rechaza no corta la sync de los demás (`failed`);
+      un token revocado sí, y además borra el token guardado y avisa por la
+      campana. Borrar un usuario revoca su token (`forget_user`).
+    - El refresh token se guarda **cifrado** con Fernet (`GOOGLE_TOKEN_KEY`) y
+      nunca vuelve al frontend. Cambiar la clave desconecta a todos.
+    - El OAuth vuelve a la ruta del **frontend** `/google/callback`, que le pasa
+      `code` y `state` al backend por POST con el JWT: no hay endpoint público.
+      Van en el body porque el activity log guarda los query params.
+    - El setup de Google Cloud y el aviso de los tokens de 7 días en modo
+      *Testing* están en DEPLOYMENT.md.
+
 ---
 
 ## 🗺️ Mapa del repo
@@ -556,6 +595,7 @@ fiba-nominations/
 │           ├── document_generator.py  ← docx (docxtpl) → pdf (LibreOffice)
 │           ├── fiba_sync.py           ← sync con FIBA GDAP: partidos, resultados, fechas (punto 13)
 │           ├── finance_history.py     ← record_transition / history_for (punto 23)
+│           ├── google_calendar.py     ← OAuth + sync de partidos al Google Calendar de cada usuario (punto 26)
 │           ├── notify.py              ← notify(), budget_approvers_for, module_editors (punto 24)
 │           └── xlsx_utils.py          ← helpers de los exports .xlsx nuevos
 │
@@ -577,6 +617,7 @@ fiba-nominations/
 ├── scripts/
 │   ├── build_letter_templates.py  ← regenera los *_TPL.docx (correr si cambia el membrete)
 │   ├── fiba_sync.py               ← cron del sync con FIBA (corre en droplet, punto 13)
+│   ├── google_calendar_sync.py    ← cron del sync a Google Calendar (corre en droplet, punto 26)
 │   ├── fiba-security-scan.sh      ← scanner horario de nginx logs (corre en droplet)
 │   └── fiba-supabase-keepalive.sh ← ping diario a Supabase (evita el auto-pause del Free)
 ├── supabase/migrations/       ← schema SQL

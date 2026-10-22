@@ -8,6 +8,8 @@ openpyxl>=3.1,<4.0
 python-multipart>=0.0.6,<0.1
 qrcode[pil]>=7.4,<9.0
 docxtpl>=0.16,<1.0
+# Cifra los refresh tokens de Google Calendar (Fernet, services/google_calendar.py)
+cryptography>=42,<47
 
 # Runtime server (previously installed unpinned in the deploy workflow)
 gunicorn>=21.0,<24.0

@@ -1,5 +1,5 @@
 import { lazy, Suspense, useState, useEffect } from 'react'
-import { Routes, Route, NavLink, Navigate } from 'react-router-dom'
+import { Routes, Route, NavLink, Navigate, useLocation, useSearchParams } from 'react-router-dom'
 import { useAuth } from './contexts/AuthContext'
 import { useLanguage } from './i18n/LanguageContext'
 import { Icon } from './lib/icons'
@@ -42,6 +42,7 @@ const Budget       = lazy(() => import('./pages/Budget'))
 const Reports      = lazy(() => import('./pages/Reports'))
 const Evaluations  = lazy(() => import('./pages/Evaluations'))
 const Activity     = lazy(() => import('./pages/Activity'))
+const GoogleCallback = lazy(() => import('./pages/GoogleCallback'))
 
 /* ── Module → icon map (uses Tabler-style icons from lib/icons) ──── */
 const moduleIcon = {
@@ -358,7 +359,9 @@ export default function App() {
               </div>
             }>
               <Routes>
-                <Route path="/" element={<Navigate to={defaultRoute} replace />} />
+                <Route path="/" element={<RootRedirect to={defaultRoute} />} />
+                {/* Vuelta del OAuth de Google. Sin PermissionGuard: el backend exige calendar o games. */}
+                <Route path="/google/callback" element={<GoogleCallback />} />
                 <Route path="/muro"            element={<PermissionGuard module="feed"><Feed /></PermissionGuard>} />
                 <Route path="/calendar"        element={<PermissionGuard module="calendar"><Calendar /></PermissionGuard>} />
                 <Route path="/nominations"     element={<PermissionGuard module="nominations"><Nominations /></PermissionGuard>} />
@@ -417,16 +420,34 @@ function LanguageSwitcher() {
   )
 }
 
+// `/` → la primera página visible, sin perder el query: `/?profile=google`
+// (la campana y la vuelta del OAuth de Google) tiene que llegar a UserCard.
+function RootRedirect({ to }) {
+  const { search } = useLocation()
+  return <Navigate to={{ pathname: to, search }} replace />
+}
+
 function UserCard({ collapsed, onOpen }) {
   const { signOut, user, isSuperadmin, profile } = useAuth()
   const { t } = useLanguage()
   const [open, setOpen] = useState(false)
+  const [initialTab, setInitialTab] = useState('photo')
+  const [searchParams, setSearchParams] = useSearchParams()
   const role = isSuperadmin ? t('common.superadmin') : t('common.user')
 
+  // `?profile=<pestaña>` abre Mi perfil en esa pestaña y se borra de la URL.
+  const profileParam = searchParams.get('profile')
+  useEffect(() => {
+    if (!profileParam) return
+    setInitialTab(profileParam)
+    setOpen(true)
+    setSearchParams(prev => { const next = new URLSearchParams(prev); next.delete('profile'); return next }, { replace: true })
+  }, [profileParam, setSearchParams])
+
   // Cierra el drawer móvil al abrir el perfil, si no queda abierto detrás.
-  const openProfile = () => { setOpen(true); onOpen?.() }
+  const openProfile = () => { setInitialTab('photo'); setOpen(true); onOpen?.() }
   const avatar = <Avatar name={user.email} src={profile?.avatar_url || null} size="md" tone="basketball" />
-  const modal = <ProfileModal open={open} onClose={() => setOpen(false)} />
+  const modal = <ProfileModal open={open} initialTab={initialTab} onClose={() => setOpen(false)} />
   const logoutBtn = (
     <button
       type="button"
