@@ -129,6 +129,9 @@ export default function Login() {
 
         <p className="text-center text-xs text-navy-300 mt-6">
           © {new Date().getFullYear()} FIBA Americas
+          {/* Página estática (public/privacidad): Google exige que la portada enlace la política. */}
+          {' · '}
+          <a href="/privacidad/" className="underline hover:text-white">{t('login.privacy')}</a>
         </p>
       </div>
     </div>

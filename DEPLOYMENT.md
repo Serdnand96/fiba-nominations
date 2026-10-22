@@ -267,7 +267,10 @@ restart fiba-api`).
 1. En https://console.cloud.google.com crear un proyecto (p.ej. "FIBA Americas
    App") y habilitar **Google Calendar API** (APIs & Services → Library).
 2. **OAuth consent screen**: tipo *External*, nombre "FIBA Americas", dominio
-   autorizado `fibaapp.com`, email de soporte. Scopes: `openid`, `email` y
+   autorizado `fibaapp.com`, email de soporte, página principal
+   `https://www.fibaapp.com` y política de privacidad
+   `https://www.fibaapp.com/privacidad/` (`public/privacidad/index.html`, sin
+   logo: subir uno obliga a verificar la marca). Scopes: `openid`, `email` y
    `https://www.googleapis.com/auth/calendar.app.created` (la app solo ve los
    calendarios que ella crea, no el principal de nadie).
 3. **Credentials → Create credentials → OAuth client ID → Web application**.
