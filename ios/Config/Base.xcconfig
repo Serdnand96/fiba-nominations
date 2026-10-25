@@ -1,0 +1,14 @@
+// Configuración de la app. Nada de acá es secreto: la anon key de Supabase es
+// pública por diseño (la web la manda al navegador). La app NUNCA lleva la
+// service_role key.
+//
+// `https:/$()/…` es el truco de xcconfig: `//` empieza un comentario.
+
+API_BASE_URL = https:/$()/www.fibaapp.com/api
+WEB_BASE_URL = https:/$()/www.fibaapp.com
+SUPABASE_URL = https:/$()/mckaplalscnvaanukrmz.supabase.co
+SUPABASE_ANON_KEY =
+
+// La anon key va en Config/Secrets.xcconfig (gitignoreado, copiar del .example),
+// igual que VITE_SUPABASE_ANON_KEY vive en el .env de la web.
+#include? "Secrets.xcconfig"

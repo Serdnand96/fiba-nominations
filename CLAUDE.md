@@ -562,6 +562,22 @@ legacy `fibaamericascloud.com`).
     - El setup de Google Cloud y el aviso de los tokens de 7 días en modo
       *Testing* están en DEPLOYMENT.md.
 
+27. **Hay una app de iOS nativa (SwiftUI) en `ios/`.** Es un cliente más del
+    mismo backend: login de Supabase con la anon key, JWT como Bearer, los mismos
+    endpoints y permisos. Contrato y convenciones en `ios/README.md`.
+
+    - **No se compila acá.** Las sesiones corren en Linux, sin Xcode: la que
+      compila y corre los tests es la CI `.github/workflows/ios.yml` (runner
+      macOS, solo en PRs que tocan `ios/`). Un cambio en Swift no está probado
+      hasta que esa CI pasa.
+    - El `.xcodeproj` **no se commitea**: sale de `ios/project.yml` con XcodeGen.
+    - Al agregar un permiso, sumarlo también a `AppModule` (`ios/.../Core/Permissions.swift`):
+      un test lo compara contra `MODULES` del backend. Es el cuarto lugar del punto 10.
+    - El `user_id` va en **minúsculas** (`AuthStore.backendID`): `UUID.uuidString`
+      sale en mayúsculas y `GET /permissions/{id}` daría 403.
+    - Fase 0 (octubre 2026): login, permisos, menú, perfil. Los módulos muestran
+      "Próximamente" con link a la web y se portan de a uno (plan en `ios/README.md`).
+
 ---
 
 ## 🗺️ Mapa del repo
@@ -622,6 +638,7 @@ fiba-nominations/
 │   └── fiba-supabase-keepalive.sh ← ping diario a Supabase (evita el auto-pause del Free)
 ├── supabase/migrations/       ← schema SQL
 ├── tests/                     ← pytest sin red ni base (ver DEVELOPMENT.md → Tests)
+├── ios/                       ← app iOS nativa en SwiftUI (punto 27, ios/README.md)
 ├── verify_security.sh         ← smoke test post-deploy
 ├── .github/workflows/deploy.yml  ← CI/CD
 └── tailwind.config.js         ← tokens del DS

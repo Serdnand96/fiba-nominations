@@ -1,0 +1,56 @@
+name: iOS app
+
+# Compila la app de iOS y corre sus tests. Es la única forma de compilarla sin
+# una Mac: el resto del desarrollo (y las sesiones de IA) corre en Linux.
+on:
+  pull_request:
+    paths:
+      - "ios/**"
+      - "fonts/IBMPlexSans-*.ttf"
+      - ".github/workflows/ios.yml"
+  # Cualquier rama: así un branch de la app se valida sin abrir PR.
+  push:
+    paths:
+      - "ios/**"
+      - "fonts/IBMPlexSans-*.ttf"
+      - ".github/workflows/ios.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ios-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-test:
+    name: Build & test
+    runs-on: macos-15
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: ios
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Xcode version
+        run: xcodebuild -version
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate project
+        run: xcodegen generate
+
+      - name: Build & test (simulator)
+        run: |
+          set -o pipefail
+          xcodebuild test \
+            -project FIBAAmericas.xcodeproj \
+            -scheme FIBAAmericas \
+            -destination 'platform=iOS Simulator,name=iPhone 16' \
+            -skipMacroValidation \
+            -skipPackagePluginValidation \
+            CODE_SIGNING_ALLOWED=NO \
+            | tee xcodebuild.log

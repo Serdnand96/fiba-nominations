@@ -1,0 +1,9 @@
+# Generado por XcodeGen
+FIBAAmericas.xcodeproj/
+Generated/*
+!Generated/.gitkeep
+Config/Secrets.xcconfig
+DerivedData/
+build/
+*.xcuserstate
+xcuserdata/
