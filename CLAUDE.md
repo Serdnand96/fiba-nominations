@@ -568,7 +568,7 @@ legacy `fibaamericascloud.com`).
 
     - **No se compila acá.** Las sesiones corren en Linux, sin Xcode: la que
       compila y corre los tests es la CI `.github/workflows/ios.yml` (runner
-      macOS, solo en PRs que tocan `ios/`). Un cambio en Swift no está probado
+      macOS, en cada push o PR que toca `ios/`). Un cambio en Swift no está probado
       hasta que esa CI pasa.
     - El `.xcodeproj` **no se commitea**: sale de `ios/project.yml` con XcodeGen.
     - Al agregar un permiso, sumarlo también a `AppModule` (`ios/.../Core/Permissions.swift`):

@@ -26,7 +26,7 @@ open FIBAAmericas.xcodeproj                                  # ⌘R en un simula
 ## CI
 
 `.github/workflows/ios.yml` genera el proyecto, compila y corre los tests en un
-runner `macos-15` en cada PR que toque `ios/`. Es la forma de validar la app sin
+runner `macos-15` en cada push o PR que toque `ios/` (cualquier rama). Es la forma de validar la app sin
 Mac.
 
 ## Estructura
@@ -71,7 +71,8 @@ Las fuentes IBM Plex salen de `../fonts/` (las mismas de las cartas), no se copi
 ## Estado y plan
 
 **Fase 0 (hecha):** login, sesión persistida, permisos, menú por permisos,
-perfil (foto, idioma, apariencia), cerrar sesión. Los módulos todavía no
+perfil (foto, idioma, apariencia), cerrar sesión. Las descargas se borran al
+cerrar sesión. Los módulos todavía no
 portados muestran "Próximamente en la app" con un link a la misma pantalla en la web.
 
 Siguientes fases (un PR por módulo o grupo chico):

@@ -64,3 +64,21 @@ final class PermissionsTests: XCTestCase {
         XCTAssertEqual(AuthStore.backendID(id), "6f9619ff-8b86-d011-b42d-00c04fc964ff")
     }
 }
+
+final class ShellLayoutTests: XCTestCase {
+    private func items(_ n: Int) -> [NavItem] { Array(NavItem.all.prefix(n)) }
+
+    func testFewModulesAllInTabBar() {
+        let layout = ShellView.layout(items(4))
+        XCTAssertEqual(layout.tabs.count, 4)
+        XCTAssertTrue(layout.more.isEmpty)
+    }
+
+    /// Con más de lo que entra: 3 directos + Más + Perfil, sin perder ninguno.
+    func testManyModulesGoToMore() {
+        let all = items(12)
+        let layout = ShellView.layout(all)
+        XCTAssertEqual(layout.tabs.count, 3)
+        XCTAssertEqual((layout.tabs + layout.more).map(\.route), all.map(\.route))
+    }
+}

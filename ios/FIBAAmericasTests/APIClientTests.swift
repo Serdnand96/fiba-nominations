@@ -73,3 +73,9 @@ final class APIClientTests: XCTestCase {
         XCTAssertEqual(me, MeProfile(id: "u1", email: "a@b.com", avatarURL: nil))
     }
 }
+
+final class MultipartTests: XCTestCase {
+    func testHeaderSafe() {
+        XCTAssertEqual(APIClient.headerSafe("a\"b\r\nc.pdf"), "a'b  c.pdf")
+    }
+}

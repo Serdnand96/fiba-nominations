@@ -57,8 +57,8 @@ final class APIClient: @unchecked Sendable {
         let boundary = "fiba-\(UUID().uuidString)"
         var body = Data()
         body.append("--\(boundary)\r\n")
-        body.append("Content-Disposition: form-data; name=\"\(field)\"; filename=\"\(filename)\"\r\n")
-        body.append("Content-Type: \(mimeType)\r\n\r\n")
+        body.append("Content-Disposition: form-data; name=\"\(Self.headerSafe(field))\"; filename=\"\(Self.headerSafe(filename))\"\r\n")
+        body.append("Content-Type: \(Self.headerSafe(mimeType))\r\n\r\n")
         body.append(data)
         body.append("\r\n--\(boundary)--\r\n")
 
@@ -85,11 +85,28 @@ final class APIClient: @unchecked Sendable {
         let (data, response) = try await perform(request)
         let name = Self.filename(fromContentDisposition: response.value(forHTTPHeaderField: "Content-Disposition"))
             ?? fallbackName
-        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let dir = Self.downloadsRoot.appendingPathComponent(UUID().uuidString, isDirectory: true)
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         let url = dir.appendingPathComponent(name)
         try data.write(to: url, options: .completeFileProtection)
         return url
+    }
+
+    /// Carpeta de las descargas (cartas, W-8). Se borra entera al cerrar sesión:
+    /// un PDF de otra persona no puede quedar en el teléfono del que se fue.
+    static var downloadsRoot: URL {
+        FileManager.default.temporaryDirectory.appendingPathComponent("downloads", isDirectory: true)
+    }
+
+    static func removeDownloads() {
+        try? FileManager.default.removeItem(at: downloadsRoot)
+    }
+
+    /// Un nombre de archivo del usuario no puede romper la cabecera multipart.
+    static func headerSafe(_ value: String) -> String {
+        value.replacingOccurrences(of: "\"", with: "'")
+            .replacingOccurrences(of: "\r", with: " ")
+            .replacingOccurrences(of: "\n", with: " ")
     }
 
     // MARK: - Internos

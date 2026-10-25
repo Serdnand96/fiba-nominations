@@ -19,6 +19,9 @@ final class AuthStore {
     private(set) var email: String?
     private(set) var permissions: PermissionSet = .none
     var profile: MeProfile?
+    /// El id que se está cargando: el login y el evento `.signedIn` llegan
+    /// juntos y sin esto pedían permisos y perfil dos veces.
+    @ObservationIgnored private var loadingID: String?
 
     let supabase: SupabaseClient
     let api: APIClient
@@ -50,7 +53,8 @@ final class AuthStore {
             switch event {
             case .initialSession, .signedIn, .tokenRefreshed, .userUpdated:
                 if let session {
-                    if userID != Self.backendID(session.user.id) || phase != .signedIn {
+                    let id = Self.backendID(session.user.id)
+                    if userID != id || phase != .signedIn {
                         await load(session)
                     }
                 } else {
@@ -72,6 +76,15 @@ final class AuthStore {
     func signOut() async {
         try? await supabase.auth.signOut()
         clear()
+        APIClient.removeDownloads()
+    }
+
+    /// Reintento cuando los permisos no cargaron (p. ej. sin red al abrir).
+    func reloadPermissions() async {
+        guard let id = userID else { return }
+        if let response: PermissionsResponse = try? await api.get("/permissions/\(id)") {
+            permissions = PermissionSet(response)
+        }
     }
 
     func reloadProfile() async {
@@ -87,6 +100,9 @@ final class AuthStore {
 
     private func load(_ session: Session) async {
         let id = Self.backendID(session.user.id)
+        guard loadingID != id else { return }
+        loadingID = id
+        defer { loadingID = nil }
         userID = id
         email = session.user.email
 

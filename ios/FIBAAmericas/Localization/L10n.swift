@@ -39,6 +39,7 @@ enum L10n {
         "nav.activity": [.en: "Activity", .es: "Actividad"],
         "nav.profile": [.en: "Profile", .es: "Perfil"],
         "nav.home": [.en: "Home", .es: "Inicio"],
+        "nav.more": [.en: "More", .es: "Más"],
 
         // ── Login ──
         "login.subtitle": [.en: "Administration", .es: "Administración"],
@@ -81,6 +82,7 @@ enum L10n {
 
         "common.error": [.en: "Error", .es: "Error"],
         "common.ok": [.en: "OK", .es: "OK"],
+        "common.retry": [.en: "Retry", .es: "Reintentar"],
     ]
 }
 
