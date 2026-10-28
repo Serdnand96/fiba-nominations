@@ -130,13 +130,18 @@ def main() -> int:
             filt.append(f"ventana {r['window_code']}")
         if r["group_applied"]:
             filt.append("grupos " + ",".join(r["group_codes"]))
+        if r["date_applied"]:
+            filt.append(f"fechas {r['date_from']}..{r['date_to']}")
         log(
             f"ok {name}: fiba={r['fiba_competition_id']} feed={r['total_from_fiba']}"
             f"{' [' + '; '.join(filt) + ']' if filt else ''} tramo={r['imported_from_window']}"
             f" synced={r['synced']} created={r['created']} rescheduled={len(r['rescheduled'])}"
             f" mismatches={len(r['mismatches'])} pending={len(r['pending_in_fiba'])}"
+            f"{' claimed=' + str(len(r['claimed_elsewhere'])) if r['claimed_elsewhere'] else ''}"
             f" errors={len(r['errors'])} fechas={r['fiba_start_date']}..{r['fiba_end_date']}"
         )
+        if r["claimed_elsewhere"]:
+            log("   ya en otra competencia: " + ", ".join(r["claimed_elsewhere"]))
         for m in r["rescheduled"]:
             log(f"   movido {m.get('game_number')} {m['game']}: "
                 + ", ".join(f"{k} {v['before']} → {v['after']}" for k, v in m["changes"].items()))

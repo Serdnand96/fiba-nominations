@@ -7,8 +7,9 @@ sistema.
 Una competencia de FIBA puede ser varias de las nuestras. El WCQ 2027 son 84
 partidos bajo un solo ID y acá son seis ventanas; la LSB 2026 son 40 partidos y
 acá son siete competencias (grupos A–D, QF E, QF F, Finals). El tramo de cada
-una lo acotan `fiba_window_code` (windowCode) y `fiba_group_codes`
-(groupPairingCode). Ver migraciones 040 y 051.
+una lo acotan `fiba_window_code` (windowCode), `fiba_group_codes`
+(groupPairingCode) y, para la BCLA, que no trae ventanas, `fiba_segment_from` /
+`fiba_segment_to` (fecha de los partidos). Ver migraciones 040, 051 y 053.
 
 Lo usan dos caminos, con el mismo código:
 - `POST /games/sync-results` (botón Sync, `routers/games.py`).
@@ -214,17 +215,22 @@ def parse_codes(raw: str | None) -> list[str]:
 
 # ── Tramo: ventana y grupos ──────────────────────────────────────────────────
 
-def filter_segment(games: list[dict], window_code: str | None, group_codes: list[str]) -> tuple[list[dict], dict]:
+def filter_segment(games: list[dict], window_code: str | None, group_codes: list[str],
+                   date_from: str | None = None, date_to: str | None = None,
+                   owned_ids: frozenset[str] = frozenset()) -> tuple[list[dict], dict]:
     """Los partidos de ESTA competencia dentro del feed entero de FIBA.
 
-    Los dos filtros fallan del lado seguro: si la competencia declara ventana (o
+    Ventana y grupos fallan del lado seguro: si la competencia declara ventana (o
     grupos) pero NINGÚN partido del feed trae ese campo, no se filtra nada. Un
     feed sin ventanas tiene que devolver sus partidos, no cero — si no, parece
     que FIBA se cayó.
 
-    No se filtra por el rango de fechas de la competencia: W3 de FIBA termina el
+    No se filtra por start_date/end_date de la competencia: W3 de FIBA termina el
     2026-07-08 y la competencia declara hasta el 07-07, y ese filtro se comería
-    un partido con TD y VGO asignados (CLAUDE.md, punto 13).
+    un partido con TD y VGO asignados (CLAUDE.md, punto 13). El tramo de fechas
+    (`date_from`/`date_to`, migración 053) es otra cosa: las fechas de los
+    partidos, declaradas a propósito para feeds como el de la BCLA, que no trae
+    ventanas y solo se separa por fecha.
     """
     total = len(games)
     info = {
@@ -235,6 +241,10 @@ def filter_segment(games: list[dict], window_code: str | None, group_codes: list
         "group_codes": group_codes,
         "group_applied": False,
         "skipped_other_groups": 0,
+        "date_from": date_from,
+        "date_to": date_to,
+        "date_applied": False,
+        "skipped_other_dates": 0,
     }
 
     if window_code:
@@ -258,6 +268,18 @@ def filter_segment(games: list[dict], window_code: str | None, group_codes: list
         else:
             logger.info("fiba_sync: la competencia declara grupos %s pero el feed no trae groupPairingCode; "
                         "no se filtra por grupo", ",".join(group_codes))
+
+    # Sin "fallar del lado seguro": todo partido definido tiene fecha. Uno sin
+    # fecha (0001-01-01) queda afuera porque no se sabe de qué tramo es. Uno que
+    # ya es nuestro se queda aunque FIBA lo haya movido fuera del tramo: así el
+    # cambio llega y se reporta, en vez de quedar congelado sin aviso.
+    if date_from and date_to:
+        kept = [g for g in games
+                if date_from <= (g.get("gameDateTime") or "")[:10] <= date_to
+                or str(g.get("gameId")) in owned_ids]
+        info["date_applied"] = True
+        info["skipped_other_dates"] = len(games) - len(kept)
+        games = kept
 
     return games, info
 
@@ -413,10 +435,11 @@ def team_mismatch(ours: dict, fiba: dict) -> dict | None:
 def segment_dates(client: GdapClient, fiba_id: int, info: dict, games: list[dict]) -> tuple[str | None, str | None]:
     """Inicio y fin que FIBA le da al tramo de esta competencia.
 
-    Ventana → las fechas de la ventana en /windows. Grupos → el primer y último
-    partido del grupo (FIBA no publica fechas por grupo). Competencia entera →
-    inicio y fin de la competencia. En los tres casos, si FIBA no lo trae, el
-    rango de los partidos.
+    Ventana → las fechas de la ventana en /windows. Grupos o tramo de fechas →
+    el primer y último partido (FIBA no publica fechas por grupo, y si
+    publicara ventanas no haría falta el tramo). Competencia entera → inicio y
+    fin de la competencia. En todos los casos, si FIBA no lo trae, el rango de
+    los partidos.
     """
     dates = sorted(g["date"] for g in games if g.get("date"))
     by_games = (dates[0], dates[-1]) if dates else (None, None)
@@ -428,7 +451,7 @@ def segment_dates(client: GdapClient, fiba_id: int, info: dict, games: list[dict
                 return (w.get("startDate") or "")[:10] or None, (w.get("endDate") or "")[:10] or None
         return by_games
 
-    if info.get("group_applied"):
+    if info.get("group_applied") or info.get("date_applied"):
         return by_games
 
     comp = client.competition(fiba_id) or {}
@@ -484,15 +507,39 @@ def sync_competition(comp: dict, client: GdapClient | None = None, *, dry_run: b
         raise FibaSyncError("Competition has no FIBA link (ID or URL) configured")
 
     raw = client.games(fiba_id)
-    kept, info = filter_segment(raw, comp.get("fiba_window_code"), parse_codes(comp.get("fiba_group_codes")))
+
+    existing = (
+        supabase.table("game_schedule").select("*").eq("competition_id", competition_id).execute().data
+    ) or []
+
+    kept, info = filter_segment(
+        raw, comp.get("fiba_window_code"), parse_codes(comp.get("fiba_group_codes")),
+        comp.get("fiba_segment_from"), comp.get("fiba_segment_to"),
+        frozenset(str(e["fiba_game_id"]) for e in existing if e.get("fiba_game_id")),
+    )
 
     defined = [g for g in kept if is_defined(g)]
     pending = [g.get("gameName") or str(g.get("gameId")) for g in kept if not is_defined(g)]
     games_data = [fiba_json_to_game(g) for g in defined]
 
-    existing = (
-        supabase.table("game_schedule").select("*").eq("competition_id", competition_id).execute().data
-    ) or []
+    # Tramos por fecha que comparten feed (las ventanas de la BCLA): si FIBA mueve
+    # un partido de W2 a la semana de W3, W3 lo ve en su rango y W2 lo sigue
+    # teniendo. No se crea dos veces: es de la competencia que ya lo tenía.
+    claimed_elsewhere = []
+    if info["date_applied"]:
+        mine = {str(e["fiba_game_id"]) for e in existing if e.get("fiba_game_id")}
+        candidates = [g["fiba_game_id"] for g in games_data
+                      if g.get("fiba_game_id") and str(g["fiba_game_id"]) not in mine]
+        if candidates:
+            taken = {
+                str(r["fiba_game_id"]) for r in (
+                    supabase.table("game_schedule").select("fiba_game_id, competition_id")
+                    .in_("fiba_game_id", candidates).execute().data or []
+                ) if r.get("competition_id") != competition_id
+            }
+            claimed_elsewhere = [g.get("game_number") or str(g["fiba_game_id"])
+                                 for g in games_data if str(g.get("fiba_game_id")) in taken]
+            games_data = [g for g in games_data if str(g.get("fiba_game_id")) not in taken]
 
     synced = 0
     created = 0
@@ -604,21 +651,30 @@ def sync_competition(comp: dict, client: GdapClient | None = None, *, dry_run: b
     fiba_start, fiba_end = segment_dates(client, fiba_id, info, games_data)
 
     # Un tramo sin ningún partido (ni siquiera pendiente) es casi siempre una
-    # ventana o un grupo mal tipeado ("W9"): que se vea, en vez de quedar en
-    # verde con cero partidos.
-    segment_filtered = info["window_applied"] or info["group_applied"]
+    # ventana, un grupo o unas fechas mal tipeados ("W9"): que se vea, en vez de
+    # quedar en verde con cero partidos.
+    segment_filtered = info["window_applied"] or info["group_applied"] or info["date_applied"]
     empty_segment = bool(segment_filtered and info["total_from_fiba"] and not kept)
     message = None
     if not info["total_from_fiba"]:
         message = "No games found on FIBA"
     elif empty_segment:
+        dates = (f"{comp.get('fiba_segment_from')}..{comp.get('fiba_segment_to')}"
+                 if info["date_applied"] else "-")
         message = (f"FIBA tiene {info['total_from_fiba']} partidos pero ninguno de este tramo "
-                   f"(ventana {comp.get('fiba_window_code') or '-'}, grupos {comp.get('fiba_group_codes') or '-'})")
+                   f"(ventana {comp.get('fiba_window_code') or '-'}, grupos {comp.get('fiba_group_codes') or '-'}, "
+                   f"fechas {dates})")
+    elif claimed_elsewhere:
+        message = (f"{len(claimed_elsewhere)} partido(s) del tramo ya están en otra competencia: "
+                   + ", ".join(claimed_elsewhere[:10]))
+    # Que todo el tramo esté en otra competencia tampoco es "sano con cero
+    # partidos": es la misma señal que un tramo mal tipeado.
+    all_claimed = bool(claimed_elsewhere and not games_data)
 
     comp_update = {
         "fiba_competition_id": fiba_id,
         "fiba_synced_at": _now_iso(),
-        "fiba_sync_error": message if empty_segment else None,
+        "fiba_sync_error": message if (empty_segment or all_claimed) else None,
     }
     # Sin fechas (tramo todavía sin partidos definidos) no se borran las que ya
     # había: un QF sin fecha hoy no anula lo que FIBA dijo ayer.
@@ -651,6 +707,8 @@ def sync_competition(comp: dict, client: GdapClient | None = None, *, dry_run: b
         "imported_from_window": len(games_data),
         # Cruces que FIBA todavía no definió (sin fecha o sin equipos).
         "pending_in_fiba": pending,
+        # Del tramo por fechas pero ya cargados en otra competencia (FIBA los movió).
+        "claimed_elsewhere": claimed_elsewhere,
         "fiba_competition_id": fiba_id,
         "fiba_start_date": fiba_start,
         "fiba_end_date": fiba_end,

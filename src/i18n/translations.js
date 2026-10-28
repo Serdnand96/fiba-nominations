@@ -1482,6 +1482,13 @@ const translations = {
       en: 'Leagues like the LSB are one competition on FIBA and several here. List this competition’s groups (A, or 37,38,39,40 for a Final Four) so the sync only imports its games. Empty = no filter.',
       es: 'Ligas como la LSB son una competencia en FIBA y varias acá. Poné los grupos de esta competencia (A, o 37,38,39,40 para un Final Four) para que el sync importe solo sus partidos. Vacío = sin filtro.',
     },
+    fibaSegment: { en: 'FIBA game dates', es: 'Fechas de partidos en FIBA' },
+    fibaSegmentFrom: { en: 'First game day', es: 'Primer día de partidos' },
+    fibaSegmentTo: { en: 'Last game day', es: 'Último día de partidos' },
+    fibaSegmentHint: {
+      en: 'Only when FIBA doesn’t split the windows (BCLA): the first and last game day of this competition, local venue date. Not the travel dates. Empty = no filter.',
+      es: 'Solo si FIBA no separa las ventanas (BCLA): el primer y el último día de partidos de esta competencia, en fecha local de la sede. No son las fechas del viaje. Vacío = sin filtro.',
+    },
     fibaDiscover: { en: 'New on FIBA', es: 'Nuevas en FIBA' },
     fibaDiscoverTitle: { en: 'FIBA Americas competitions not yet in the system', es: 'Competencias de FIBA Americas que todavía no están en el sistema' },
     fibaDiscoverHint: {

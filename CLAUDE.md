@@ -191,7 +191,7 @@ legacy `fibaamericascloud.com`).
     **84 partidos de las seis ventanas**; el de la LSB 2026 trae los 40 de
     grupos, QFs y Finals. Acá cada ventana o grupo es una **competencia
     aparte** con su crew, sus nominaciones y sus fees. Por eso, en
-    `competitions` (migraciones 040 y 051):
+    `competitions` (migraciones 040, 051 y 053):
     - `fiba_competition_id` → el ID de GDAP. Varias competencias nuestras lo
       comparten. `fiba_games_url` (URL o ID) sigue valiendo: el sync lo resuelve
       y lo guarda.
@@ -199,6 +199,14 @@ legacy `fibaamericascloud.com`).
       (`A`, o `37,38,39,40` para un Final Four) filtra por `groupPairingCode`.
       `NULL` = sin filtro, que es lo correcto para una AmeriCup o un
       CentroBasket — la mayoría.
+    - `fiba_segment_from` / `fiba_segment_to` (053) → tercer filtro: la fecha
+      **local** de los partidos tiene que caer en ese rango. Es para la **BCLA**:
+      la temporada entera es un solo ID (S8 = 209060), el feed no trae
+      `windowCode`, `/windows` viene vacío y B, C y D juegan en las tres
+      ventanas, así que lo único que separa W1/W2/W3 es la fecha. Van las dos
+      o ninguna (400). Un partido que ya es de la competencia se sigue
+      sincronizando aunque FIBA lo saque del rango, y uno que ya está en otra
+      competencia no se duplica (`claimed_elsewhere` en el reporte).
     - `fiba_start_date` / `fiba_end_date` → las fechas que FIBA le da al tramo.
       **No pisan** `start_date`/`end_date`: el Calendario muestra la diferencia
       y una persona la aplica (`POST /calendar/competitions/{id}/apply-fiba-dates`).
@@ -208,14 +216,19 @@ legacy `fibaamericascloud.com`).
     Reglas que se ven raras y son correctas:
     - **Usá la v1 de `/games`, no la v2.** La v2 no trae `windowCode` ni
       `groupPairingCode`.
-    - **No filtres por el rango de fechas de la competencia.** Window 3 de FIBA
-      termina el 2026-07-08 y la competencia declara hasta el 07-07: ese filtro
-      se come un partido, y en el caso real ese partido tenía TD y VGO
+    - **No filtres por `start_date`/`end_date` de la competencia.** Window 3 de
+      FIBA termina el 2026-07-08 y la competencia declara hasta el 07-07: ese
+      filtro se come un partido, y en el caso real ese partido tenía TD y VGO
       asignados. Los bordes de un tramo no coinciden con las fechas que carga
-      el equipo, que incluyen viaje.
-    - Los dos filtros **fallan del lado seguro**: si la competencia declara
+      el equipo, que incluyen viaje. El tramo de `fiba_segment_*` es otra cosa:
+      son las fechas de los partidos, se declaran a propósito y solo cuando el
+      feed no separa las ventanas.
+    - Ventana y grupos **fallan del lado seguro**: si la competencia declara
       ventana (o grupos) pero ningún partido del feed trae ese campo, no
       filtran. Un feed sin ventanas tiene que devolver sus partidos, no cero.
+      Por eso vincular las ventanas de la BCLA solo con `fiba_window_code`
+      metía los 36 partidos en cada una. El filtro de fechas no tiene ese
+      fallback porque todo partido definido tiene fecha.
     - Los cruces que FIBA publica **sin fecha (`0001-01-01`) o sin equipos**
       (un QF o una final todavía no definidos) no se importan: el reporte los
       cuenta en `pending_in_fiba` y entran solos cuando FIBA los complete.

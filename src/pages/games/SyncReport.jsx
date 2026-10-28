@@ -38,8 +38,9 @@ export default function SyncReport({ report, onClose, onApplied, canEdit }) {
   const mismatches = (report.mismatches || []).filter(m => !applied.includes(m.game_id))
   const rescheduled = report.rescheduled || []
   const pending = report.pending_in_fiba || []
+  const claimed = report.claimed_elsewhere || []
 
-  // "Ventana W5", "Grupo D", "Grupos 37, 38, 39, 40" o la combinación.
+  // "Ventana W5", "Grupo D", "Grupos 37, 38, 39, 40", "Fechas …" o la combinación.
   function segmentLabel(l) {
     const parts = []
     if (report.window_applied) parts.push(`${l === 'es' ? 'Ventana' : 'Window'} ${report.window_code}`)
@@ -48,6 +49,7 @@ export default function SyncReport({ report, onClose, onApplied, canEdit }) {
       const word = l === 'es' ? (codes.length > 1 ? 'Grupos' : 'Grupo') : (codes.length > 1 ? 'Groups' : 'Group')
       parts.push(`${word} ${codes.join(', ')}`)
     }
+    if (report.date_applied) parts.push(`${l === 'es' ? 'Fechas' : 'Dates'} ${report.date_from} → ${report.date_to}`)
     return parts.join(' · ')
   }
 
@@ -84,7 +86,7 @@ export default function SyncReport({ report, onClose, onApplied, canEdit }) {
           {/* FIBA devuelve el clasificatorio entero por una sola URL. Sin esta
               línea, "84 en FIBA / 12 importados" se lee como que se perdieron
               72 partidos, cuando es exactamente lo correcto. */}
-          {report.window_applied || report.group_applied ? (
+          {report.window_applied || report.group_applied || report.date_applied ? (
             <div className="text-[11px] text-fiba-muted/80 mt-0.5">
               {t(
                 `${segmentLabel('es')}: ${report.imported_from_window} de los ${report.total_from_fiba} partidos que devuelve FIBA. Los otros ${report.total_from_fiba - report.imported_from_window - pending.length} son de otro tramo.`,
@@ -104,6 +106,16 @@ export default function SyncReport({ report, onClose, onApplied, canEdit }) {
               {t(
                 `${pending.length} partidos todavía sin fecha o sin equipos en FIBA: se importan cuando FIBA los defina.`,
                 `${pending.length} games still without date or teams on FIBA: they will be imported once FIBA sets them.`,
+              )}
+            </div>
+          )}
+          {/* Tramo por fechas (BCLA): FIBA movió un partido a la semana de otra
+              ventana. Sigue en la competencia que ya lo tenía; no se duplica. */}
+          {claimed.length > 0 && (
+            <div className="text-[11px] text-amber-500 mt-0.5">
+              {t(
+                `${claimed.length} partido(s) del tramo ya están en otra competencia y no se duplicaron: ${claimed.join(', ')}.`,
+                `${claimed.length} game(s) in this segment already belong to another competition and were not duplicated: ${claimed.join(', ')}.`,
               )}
             </div>
           )}

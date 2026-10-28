@@ -1,3 +1,4 @@
+import re
 from datetime import date
 
 from fastapi import APIRouter, HTTPException, Depends, Query
@@ -46,6 +47,28 @@ def _link_fiba_id(raw: dict, out: dict, previous_url: str | None = None) -> None
     out["fiba_competition_id"] = int(url) if fiba_sync.is_fiba_id(url) else None
 
 
+def _check_fiba_segment(date_from: str | None, date_to: str | None) -> None:
+    """Tramo de fechas de FIBA (migración 053): las dos o ninguna, y en orden.
+
+    400 acá en vez del 500 del CHECK de la base. Una sola fecha no es "sin
+    filtro" ni "desde tal día": es un formulario a medio cargar.
+    """
+    if not date_from and not date_to:
+        return
+    if not (date_from and date_to):
+        raise HTTPException(400, "El tramo de FIBA necesita las dos fechas (desde y hasta) o ninguna")
+    # fromisoformat también acepta "20261209" y "2026-W50-3"; el filtro compara
+    # strings YYYY-MM-DD, así que se exige esa forma exacta.
+    if not all(re.fullmatch(r"\d{4}-\d{2}-\d{2}", d) for d in (date_from, date_to)):
+        raise HTTPException(400, "Fechas del tramo de FIBA inválidas (YYYY-MM-DD)")
+    try:
+        start, end = date.fromisoformat(date_from), date.fromisoformat(date_to)
+    except ValueError:
+        raise HTTPException(400, "Fechas del tramo de FIBA inválidas (YYYY-MM-DD)")
+    if start > end:
+        raise HTTPException(400, "El tramo de FIBA termina antes de empezar")
+
+
 @router.get("/fiba/discover", dependencies=[Depends(require_edit("competitions"))])
 def discover_fiba_competitions(
     from_season: int | None = Query(None, ge=2000, le=2100),
@@ -73,9 +96,11 @@ def create_competition(data: CompetitionCreate):
     record = data.model_dump()
     # Un campo del formulario que quedó en blanco es NULL, no "": un
     # fiba_group_codes "" se leería como "filtrar por ningún grupo".
-    for k in ("fiba_games_url", "fiba_window_code", "fiba_group_codes", "start_date", "end_date", "location"):
+    for k in ("fiba_games_url", "fiba_window_code", "fiba_group_codes", "fiba_segment_from",
+              "fiba_segment_to", "start_date", "end_date", "location"):
         if isinstance(record.get(k), str) and not record[k].strip():
             record[k] = None
+    _check_fiba_segment(record.get("fiba_segment_from"), record.get("fiba_segment_to"))
     _link_fiba_id(record, record)
     # Not sent explicitly → national-team flag follows the template (WCQ).
     if record.get("is_national_team") is None:
@@ -86,7 +111,7 @@ def create_competition(data: CompetitionCreate):
 
 _CLEARABLE_DATE_FIELDS = {
     "default_letter_date", "default_arrival_date", "default_departure_date",
-    "default_confirmation_deadline",
+    "default_confirmation_deadline", "fiba_segment_from", "fiba_segment_to",
 }
 _CLEARABLE_TEXT_FIELDS = {
     "fiba_games_url", "fiba_window_code", "fiba_group_codes", "default_location", "default_venue",
@@ -112,6 +137,13 @@ def update_competition(competition_id: str, data: CompetitionUpdate):
     # 0 = desvincular de FIBA (un int no puede llegar como "").
     if raw.get("fiba_competition_id") == 0:
         updates["fiba_competition_id"] = None
+    # Se valida lo que quedaría guardado: mandar solo "hasta" sobre una fila que
+    # ya tiene "desde" es válido.
+    if "fiba_segment_from" in updates or "fiba_segment_to" in updates:
+        current = (supabase.table("competitions").select("fiba_segment_from, fiba_segment_to")
+                   .eq("id", competition_id).execute().data or [{}])[0]
+        merged = {**current, **{k: updates[k] for k in ("fiba_segment_from", "fiba_segment_to") if k in updates}}
+        _check_fiba_segment(merged.get("fiba_segment_from"), merged.get("fiba_segment_to"))
     if raw.get("fiba_games_url") is not None:
         prev = supabase.table("competitions").select("fiba_games_url").eq("id", competition_id).execute().data
         _link_fiba_id(raw, updates, (prev[0].get("fiba_games_url") if prev else None))
