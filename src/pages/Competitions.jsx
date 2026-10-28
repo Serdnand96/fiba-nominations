@@ -28,8 +28,11 @@ const ALL_YEARS = 'all'
 
 const EMPTY_FORM = {
   name: '', template_key: 'WCQ', year: new Date().getFullYear(), fiba_games_url: '', fiba_window_code: '',
-  fiba_group_codes: '', fee_type: 'per_game', is_national_team: true,
+  fiba_group_codes: '', fiba_segment_from: '', fiba_segment_to: '', fee_type: 'per_game', is_national_team: true,
 }
+
+// '2026-12-09' → '09/12', para el resumen del tramo en la lista.
+const dayMonth = iso => `${iso.slice(8, 10)}/${iso.slice(5, 7)}`
 
 function loadLastSearch() {
   const parsed = readLastSearch(LAST_SEARCH_KEY)
@@ -179,7 +182,7 @@ export default function Competitions() {
 
   function openEdit(comp) {
     setEditing(comp)
-    setForm({ name: comp.name, template_key: comp.template_key, year: comp.year || new Date().getFullYear(), fiba_games_url: comp.fiba_games_url || (comp.fiba_competition_id ? String(comp.fiba_competition_id) : ''), fiba_window_code: comp.fiba_window_code || '', fiba_group_codes: comp.fiba_group_codes || '', fee_type: comp.fee_type || 'per_game', is_national_team: !!comp.is_national_team })
+    setForm({ name: comp.name, template_key: comp.template_key, year: comp.year || new Date().getFullYear(), fiba_games_url: comp.fiba_games_url || (comp.fiba_competition_id ? String(comp.fiba_competition_id) : ''), fiba_window_code: comp.fiba_window_code || '', fiba_group_codes: comp.fiba_group_codes || '', fiba_segment_from: comp.fiba_segment_from || '', fiba_segment_to: comp.fiba_segment_to || '', fee_type: comp.fee_type || 'per_game', is_national_team: !!comp.is_national_team })
     setShowModal(true)
   }
 
@@ -341,8 +344,12 @@ export default function Competitions() {
                       </svg>
                       FIBA linked
                       {c.fiba_competition_id && <span className="font-mono text-emerald-400/70">#{c.fiba_competition_id}</span>}
-                      {(c.fiba_window_code || c.fiba_group_codes) && (
-                        <span className="text-emerald-400/70">· {[c.fiba_window_code, c.fiba_group_codes].filter(Boolean).join(' · ')}</span>
+                      {(c.fiba_window_code || c.fiba_group_codes || c.fiba_segment_from) && (
+                        <span className="text-emerald-400/70">· {[
+                          c.fiba_window_code,
+                          c.fiba_group_codes,
+                          c.fiba_segment_from && c.fiba_segment_to && `${dayMonth(c.fiba_segment_from)}–${dayMonth(c.fiba_segment_to)}`,
+                        ].filter(Boolean).join(' · ')}</span>
                       )}
                     </div>
                   )}
@@ -444,6 +451,22 @@ export default function Competitions() {
                   onChange={e => setForm(f => ({ ...f, fiba_group_codes: e.target.value }))}
                   className="fiba-input" />
                 <p className="text-xs text-fiba-muted/60 mt-1">{t('competitions.fibaGroupsHint')}</p>
+              </div>
+              {/* Tramo por fechas: la BCLA no trae ventanas en el feed y B, C y D
+                  juegan en las tres, así que lo único que separa W1/W2/W3 es la
+                  fecha de los partidos (migración 053). No son start/end_date. */}
+              <div>
+                <label className="text-xs text-fiba-muted block mb-1">{t('competitions.fibaSegment')}</label>
+                <div className="grid grid-cols-2 gap-2">
+                  <input type="date" aria-label={t('competitions.fibaSegmentFrom')} value={form.fiba_segment_from}
+                    onChange={e => setForm(f => ({ ...f, fiba_segment_from: e.target.value }))}
+                    className="fiba-input" />
+                  <input type="date" aria-label={t('competitions.fibaSegmentTo')} value={form.fiba_segment_to}
+                    min={form.fiba_segment_from || undefined}
+                    onChange={e => setForm(f => ({ ...f, fiba_segment_to: e.target.value }))}
+                    className="fiba-input" />
+                </div>
+                <p className="text-xs text-fiba-muted/60 mt-1">{t('competitions.fibaSegmentHint')}</p>
               </div>
               {!editing && form.start_date && (
                 <p className="text-xs text-fiba-muted">

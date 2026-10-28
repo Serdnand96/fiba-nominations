@@ -89,6 +89,43 @@ def test_window_filter_and_fail_safe():
     assert len(kept) == 2 and not info["window_applied"]
 
 
+# La forma de la BCLA S8 (209060): grupos A–D sin windowCode, y B/C/D juegan
+# en las tres ventanas. Solo la fecha separa W1 (9), W2 (9) y W3 (18).
+BCLA_FEED = (
+    [game(100 + i, group=g, date=f"2026-12-{9 + i % 6:02d}") for i, g in enumerate("BBBCCCDDD")]
+    + [game(200 + i, group=g, date=f"2027-01-{13 + i % 6:02d}") for i, g in enumerate("BBBCCCDDD")]
+    + [game(300 + i, group="A", date=f"2027-01-{23 + i:02d}") for i in range(9)]
+    + [game(400 + i, group=g, date=f"2027-02-{10 + i % 6:02d}") for i, g in enumerate("BBBCCCDDD")]
+    + [game(500 + i, group=str(37 + i % 4), date="0001-01-01", b=None) for i in range(11)]
+)
+
+
+def test_date_filter_splits_bcla_windows():
+    def count(date_from, date_to):
+        kept, info = fiba_sync.filter_segment(BCLA_FEED, "W1", [], date_from, date_to)
+        assert info["date_applied"] and not info["window_applied"]
+        return len(kept)
+
+    assert count("2026-12-09", "2026-12-14") == 9
+    assert count("2027-01-13", "2027-01-18") == 9
+    assert count("2027-01-23", "2027-02-15") == 18
+
+
+def test_date_filter_drops_undated_and_keeps_owned_games():
+    feed = [game(1, date="2026-12-10"), game(2, date="2026-12-20"), game(3, date="0001-01-01", b=None)]
+    kept, info = fiba_sync.filter_segment(feed, None, [], "2026-12-09", "2026-12-14")
+    assert [g["gameId"] for g in kept] == [1] and info["skipped_other_dates"] == 2
+
+    # El 2 ya es nuestro: FIBA lo movió fuera del tramo y tiene que seguir llegando.
+    kept, _ = fiba_sync.filter_segment(feed, None, [], "2026-12-09", "2026-12-14", frozenset({"2"}))
+    assert [g["gameId"] for g in kept] == [1, 2]
+
+
+def test_without_segment_dates_nothing_changes():
+    kept, info = fiba_sync.filter_segment(BCLA_FEED, None, [])
+    assert len(kept) == len(BCLA_FEED) and not info["date_applied"]
+
+
 def test_parse_codes_accepts_commas_and_spaces():
     assert fiba_sync.parse_codes(" 37, 38,39 40 ") == ["37", "38", "39", "40"]
     assert fiba_sync.parse_codes("a") == ["A"]
@@ -192,6 +229,52 @@ def test_whole_competition_dates_come_from_competition(fake_db):
     assert (report["fiba_start_date"], report["fiba_end_date"]) == ("2026-10-02", "2026-12-07")
 
 
+def test_date_segment_follows_a_game_fiba_moved_out_of_it(fake_db):
+    seg = dict(fiba_segment_from="2027-01-23", fiba_segment_to="2027-02-15")
+    fake_db.seed("competitions", [comp(**seg)])
+    fake_db.seed("game_schedule", [{
+        "id": "g-1", "competition_id": "comp-1", "fiba_game_id": 9, "game_number": "G-9",
+        "date": "2027-02-15", "time": "17:10", "team_a": "Team DSC", "team_a_code": "DSC",
+        "team_b": "Team OTC", "team_b_code": "OTC", "venue": "Maracanazinho",
+        "city": "Rio de Janeiro", "country": "Brazil",
+    }])
+    report = fiba_sync.sync_competition(comp(**seg), FakeClient([game(9, date="2027-02-16")]))
+    assert fake_db.tables["game_schedule"][0]["date"] == "2027-02-16"
+    assert report["rescheduled"][0]["changes"]["date"] == {"before": "2027-02-15", "after": "2027-02-16"}
+
+
+def test_date_segment_does_not_duplicate_another_competitions_game(fake_db):
+    seg = dict(fiba_segment_from="2027-01-23", fiba_segment_to="2027-02-15")
+    fake_db.seed("competitions", [comp(**seg), comp(id="w2")])
+    # FIBA pasó el 7 de W2 a la semana de W3: sigue siendo de W2.
+    fake_db.seed("game_schedule", [{"id": "g-7", "competition_id": "w2", "fiba_game_id": 7,
+                                    "date": "2027-01-15", "team_a": "Team DSC", "team_b": "Team OTC"}])
+    feed = [game(7, date="2027-01-25"), game(8, date="2027-01-26")]
+    report = fiba_sync.sync_competition(comp(**seg), FakeClient(feed))
+    mine = [r["fiba_game_id"] for r in fake_db.tables["game_schedule"] if r["competition_id"] == "comp-1"]
+    assert mine == [8]
+    assert report["created"] == 1 and report["claimed_elsewhere"] == ["G-7"]
+    # Parcial: se avisa en el reporte, pero no es un error de sync.
+    assert "G-7" in report["message"] and fake_db.tables["competitions"][0]["fiba_sync_error"] is None
+
+
+def test_date_segment_fully_claimed_elsewhere_flags_error(fake_db):
+    seg = dict(fiba_segment_from="2027-01-23", fiba_segment_to="2027-02-15")
+    fake_db.seed("competitions", [comp(**seg), comp(id="w2")])
+    fake_db.seed("game_schedule", [{"id": "g-7", "competition_id": "w2", "fiba_game_id": 7,
+                                    "date": "2027-01-15", "team_a": "Team DSC", "team_b": "Team OTC"}])
+    fiba_sync.sync_competition(comp(**seg), FakeClient([game(7, date="2027-01-25")]))
+    assert "ya están en otra competencia" in fake_db.tables["competitions"][0]["fiba_sync_error"]
+
+
+def test_empty_date_segment_flags_error(fake_db):
+    seg = dict(fiba_segment_from="2027-03-01", fiba_segment_to="2027-03-02")
+    fake_db.seed("competitions", [comp(**seg)])
+    report = fiba_sync.sync_competition(comp(**seg), FakeClient([game(1, date="2026-12-10")]))
+    assert fake_db.tables["competitions"][0]["fiba_sync_error"]
+    assert "fechas 2027-03-01..2027-03-02" in report["message"]
+
+
 def test_unlinked_competition_raises():
     with pytest.raises(fiba_sync.FibaSyncError):
         fiba_sync.sync_competition(comp(fiba_competition_id=None), FakeClient([]))
@@ -221,6 +304,34 @@ def test_competition_form_links_numeric_id(fake_db):
     row = create_competition(CompetitionCreate(name="X", template_key="GENERIC", fiba_games_url=" 209049 ",
                                                fiba_group_codes=""))
     assert row["fiba_competition_id"] == 209049 and row["fiba_group_codes"] is None
+
+
+def test_competition_segment_needs_both_dates_in_order(fake_db):
+    from fastapi import HTTPException
+    from api._lib.routers.competitions import create_competition, update_competition
+    from api._lib.schemas import CompetitionCreate, CompetitionUpdate
+
+    for bad in ({"fiba_segment_from": "2026-12-09"},
+                {"fiba_segment_from": "2026-12-14", "fiba_segment_to": "2026-12-09"},
+                {"fiba_segment_from": "09/12/2026", "fiba_segment_to": "2026-12-14"},
+                {"fiba_segment_from": "2026-W50-3", "fiba_segment_to": "2026-12-14"}):
+        with pytest.raises(HTTPException) as e:
+            create_competition(CompetitionCreate(name="X", template_key="BCLA_RS", **bad))
+        assert e.value.status_code == 400
+
+    row = create_competition(CompetitionCreate(name="X", template_key="BCLA_RS",
+                                               fiba_segment_from="", fiba_segment_to=""))
+    assert row["fiba_segment_from"] is None and row["fiba_segment_to"] is None
+
+    fake_db.seed("competitions", [{"id": "w1", "fiba_segment_from": "2026-12-09", "fiba_segment_to": "2026-12-14"}])
+    # Solo "hasta" sobre una fila que ya tiene "desde": se valida lo que queda guardado.
+    assert update_competition("w1", CompetitionUpdate(fiba_segment_to="2026-12-15"))["fiba_segment_to"] == "2026-12-15"
+    with pytest.raises(HTTPException):
+        update_competition("w1", CompetitionUpdate(fiba_segment_to="2026-12-01"))
+    with pytest.raises(HTTPException):
+        update_competition("w1", CompetitionUpdate(fiba_segment_from=""))
+    cleared = update_competition("w1", CompetitionUpdate(fiba_segment_from="", fiba_segment_to=""))
+    assert cleared["fiba_segment_from"] is None and cleared["fiba_segment_to"] is None
 
 
 def test_apply_fiba_dates(fake_db):
