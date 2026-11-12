@@ -8,6 +8,8 @@ import {
   downloadLogisticsXlsx,
 } from '../../api/client'
 import SheetImport from './SheetImport'
+import MovementTrips from './MovementTrips'
+import { DEFAULT_CATEGORY } from './audiences'
 
 // Sección Travel Manifest: el padrón de quién viene, y con qué vuelo llega y se
 // va cada uno.
@@ -74,7 +76,7 @@ function LegCell({ participant, direction, lang, canEdit, openLeg }) {
   )
 }
 
-export default function ManifestTab({ competitionId, canEdit }) {
+export default function ManifestTab({ competitionId, canEdit, audience }) {
   const { lang } = useLanguage()
   const { push } = useToast()
   const t = (es, en) => (lang === 'es' ? es : en)
@@ -90,6 +92,7 @@ export default function ManifestTab({ competitionId, canEdit }) {
   const [personForm, setPersonForm] = useState(EMPTY_PARTICIPANT)
 
   const [legTarget, setLegTarget] = useState(null)   // { participant, direction, leg }
+  const [showTrips, setShowTrips] = useState(false)
   const [legForm, setLegForm] = useState(EMPTY_LEG)
 
   const load = useCallback(async () => {
@@ -97,13 +100,13 @@ export default function ManifestTab({ competitionId, canEdit }) {
     setLoading(true)
     try {
       const [p, m] = await Promise.all([
-        getLogisticsParticipants(competitionId),
-        getLogisticsMovements(competitionId),
+        getLogisticsParticipants(competitionId, audience),
+        getLogisticsMovements(competitionId, audience),
       ])
       setParticipants(p); setMovements(m)
     } catch (err) { console.error('Manifest load error:', err) }
     finally { setLoading(false) }
-  }, [competitionId])
+  }, [competitionId, audience])
 
   useEffect(() => { load() }, [load])
 
@@ -115,7 +118,10 @@ export default function ManifestTab({ competitionId, canEdit }) {
   }, [participants, search])
 
   function openCreatePerson() {
-    setEditingPerson(null); setPersonForm(EMPTY_PARTICIPANT); setShowPersonModal(true)
+    // Quien se carga desde la pestaña de una audiencia nace en esa audiencia.
+    setEditingPerson(null)
+    setPersonForm({ ...EMPTY_PARTICIPANT, category: DEFAULT_CATEGORY[audience || ''] })
+    setShowPersonModal(true)
   }
 
   function openEditPerson(p) {
@@ -206,21 +212,34 @@ export default function ManifestTab({ competitionId, canEdit }) {
         <div className="flex flex-wrap items-center gap-2">
           <input value={search} onChange={e => setSearch(e.target.value)} placeholder={t('Buscar persona...', 'Search person...')}
             className="fiba-input w-auto text-xs h-8" />
-          <button onClick={() => downloadLogisticsXlsx('manifest', competitionId)} className="btn-fiba-ghost text-xs px-3 py-1.5">
+          <button onClick={() => downloadLogisticsXlsx('manifest', competitionId, audience)} className="btn-fiba-ghost text-xs px-3 py-1.5">
             {t('Exportar Excel', 'Export Excel')}
           </button>
           {canEdit && (
             <>
-              <button onClick={handleSeedFromCrew} className="btn-fiba-ghost text-xs px-3 py-1.5">
-                {t('Traer crew asignado', 'Pull assigned crew')}
-              </button>
+              {view === 'groups' && (
+                <button onClick={() => setShowTrips(true)} className="btn-fiba-ghost text-xs px-3 py-1.5">
+                  {t('Generar traslados', 'Generate transfers')}
+                </button>
+              )}
+              {/* El crew son oficiales: no tiene sentido traerlo a Delegación o VIP. */}
+              {(!audience || audience === 'staff') && (
+                <button onClick={handleSeedFromCrew} className="btn-fiba-ghost text-xs px-3 py-1.5">
+                  {t('Traer crew asignado', 'Pull assigned crew')}
+                </button>
+              )}
               <button onClick={openCreatePerson} className="btn-fiba text-xs px-3 py-1.5">+ {t('Persona', 'Person')}</button>
             </>
           )}
         </div>
       </div>
 
-      {canEdit && <SheetImport kind="manifest" competitionId={competitionId} onDone={load} />}
+      {/* La key descarta el preview al cambiar de competencia o de audiencia:
+          si no, "Confirmar" importaría en un lugar distinto del que se previsualizó. */}
+      {canEdit && (
+        <SheetImport key={`${competitionId}-${audience}`} kind="manifest"
+          competitionId={competitionId} audience={audience} onDone={load} />
+      )}
 
       {loading ? (
         <div className="text-center py-8 text-fiba-muted text-sm">{t('Cargando...', 'Loading...')}</div>
@@ -300,7 +319,14 @@ export default function ManifestTab({ competitionId, canEdit }) {
                         <span className="text-sm font-semibold text-ink-900 dark:text-white">
                           {shortDate(group.date, lang)} · {group.airport || t('Sin aeropuerto', 'No airport')}
                         </span>
-                        <span className="text-xs text-fiba-muted">{group.pax} pax</span>
+                        <span className="flex items-center gap-2 text-xs text-fiba-muted">
+                          {group.covered && (
+                            <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-500">
+                              {t('con traslado', 'transfer set')}
+                            </span>
+                          )}
+                          {group.pax} pax
+                        </span>
                       </div>
                       <table className="fiba-table">
                         <tbody>
@@ -324,6 +350,12 @@ export default function ManifestTab({ competitionId, canEdit }) {
             </div>
           ))}
         </div>
+      )}
+
+      {showTrips && (
+        <MovementTrips competitionId={competitionId} audience={audience} movements={movements}
+          onClose={() => setShowTrips(false)}
+          onDone={async () => { setShowTrips(false); await load() }} />
       )}
 
       {/* ── Modal de persona ────────────────────────────────── */}

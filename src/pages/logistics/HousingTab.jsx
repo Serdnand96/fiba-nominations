@@ -8,6 +8,8 @@ import {
   getLogisticsParticipants, downloadLogisticsXlsx,
 } from '../../api/client'
 import SheetImport from './SheetImport'
+import SchedulePanel from './SchedulePanel'
+import { audienceLabel } from './audiences'
 
 // Sección Hospedaje: hoteles, rooming list y plan de comidas.
 //
@@ -30,7 +32,7 @@ function shortDate(iso, lang) {
   return new Date(iso + 'T12:00:00').toLocaleDateString(lang === 'es' ? 'es' : 'en-US', { day: 'numeric', month: 'short' })
 }
 
-export default function HousingTab({ competitionId, canEdit }) {
+export default function HousingTab({ competitionId, competitionName, canEdit, audience }) {
   const { lang } = useLanguage()
   const { push } = useToast()
   const t = (es, en) => (lang === 'es' ? es : en)
@@ -58,14 +60,16 @@ export default function HousingTab({ competitionId, canEdit }) {
     try {
       const [h, r, m, p] = await Promise.all([
         getLogisticsHotels(competitionId),
-        getLogisticsRooming(competitionId),
+        // Rooming y padrón van recortados a la audiencia: al hotel se le manda
+        // una rooming por grupo, con su propio total de habitaciones.
+        getLogisticsRooming(competitionId, audience),
         getLogisticsMeals(competitionId),
-        getLogisticsParticipants(competitionId),
+        getLogisticsParticipants(competitionId, audience),
       ])
       setHotels(h); setRooming(r); setMeals(m); setParticipants(p)
     } catch (err) { console.error('Housing load error:', err) }
     finally { setLoading(false) }
-  }, [competitionId])
+  }, [competitionId, audience])
 
   useEffect(() => { load() }, [load])
 
@@ -215,7 +219,9 @@ export default function HousingTab({ competitionId, canEdit }) {
       <section>
         <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
           <div className="flex items-baseline gap-3">
-            <h3 className="text-lg font-semibold text-ink-900 dark:text-white">Rooming list</h3>
+            <h3 className="text-lg font-semibold text-ink-900 dark:text-white">
+              Rooming list{audience ? ` · ${audienceLabel(audience, lang)}` : ''}
+            </h3>
             {rooming.rows.length > 0 && (
               <span className="text-xs text-fiba-muted">
                 {rooming.rows.length} {t('personas', 'people')} · <strong className="text-ink-700 dark:text-ink-200">{rooming.total_nights}</strong> {t('noches de habitación', 'room nights')}
@@ -223,7 +229,7 @@ export default function HousingTab({ competitionId, canEdit }) {
             )}
           </div>
           <div className="flex items-center gap-2">
-            <button onClick={() => downloadLogisticsXlsx('rooming', competitionId)} className="btn-fiba-ghost text-xs px-3 py-1.5">
+            <button onClick={() => downloadLogisticsXlsx('rooming', competitionId, audience)} className="btn-fiba-ghost text-xs px-3 py-1.5">
               {t('Exportar Excel', 'Export Excel')}
             </button>
             {canEdit && <button onClick={openCreateStay} disabled={withoutStay.length === 0} className="btn-fiba text-xs px-3 py-1.5 disabled:opacity-50">+ {t('Estadía', 'Stay')}</button>}
@@ -231,7 +237,8 @@ export default function HousingTab({ competitionId, canEdit }) {
         </div>
 
         {canEdit && (
-          <SheetImport kind="rooming" competitionId={competitionId} onDone={load} />
+          <SheetImport key={`${competitionId}-${audience}`} kind="rooming"
+            competitionId={competitionId} audience={audience} onDone={load} />
         )}
 
         {loading ? (
@@ -303,10 +310,21 @@ export default function HousingTab({ competitionId, canEdit }) {
         )}
       </section>
 
+      {/* ── Cronograma de comidas ───────────────────────────── */}
+      <section>
+        <h3 className="text-lg font-semibold text-ink-900 dark:text-white mb-1">{t('Cronograma de comidas', 'Meals schedule')}</h3>
+        <p className="text-xs text-fiba-muted mb-3">
+          {t('La planilla que se le manda al hotel: almuerzo, merienda y cena de cada equipo, día por día.',
+             'The sheet sent to the hotel: each team\'s lunch, snack and dinner, day by day.')}
+        </p>
+        <SchedulePanel competitionId={competitionId} competitionName={competitionName}
+          section="meals" audience={audience} canEdit={canEdit} />
+      </section>
+
       {/* ── Alimentación ────────────────────────────────────── */}
       <section>
         <div className="flex items-center justify-between mb-3">
-          <h3 className="text-lg font-semibold text-ink-900 dark:text-white">{t('Alimentación', 'Meals')}</h3>
+          <h3 className="text-lg font-semibold text-ink-900 dark:text-white">{t('Horarios generales del hotel', 'Hotel general meal times')}</h3>
           {canEdit && <button onClick={() => setShowMealModal(true)} className="btn-fiba text-xs px-3 py-1.5">+ {t('Agregar', 'Add')}</button>}
         </div>
         {meals.length === 0 ? (

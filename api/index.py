@@ -6,7 +6,7 @@ from api._lib.routers import (
     personnel, competitions, nominations, users, calendar, transport,
     availability, permissions, training, games,
     assets, loans, public_assets, public_availability, employees, templates, payments,
-    activity, reports, evaluations, logistics, public_logistics, staffing,
+    activity, reports, evaluations, logistics, logistics_schedules, public_logistics, staffing,
     budget, checklists, public_checklists, feed, profile, notifications,
     google_calendar,
 )
@@ -247,6 +247,7 @@ app.include_router(activity.router, prefix="/api")
 app.include_router(reports.router, prefix="/api")
 app.include_router(evaluations.router, prefix="/api")
 app.include_router(logistics.router, prefix="/api")
+app.include_router(logistics_schedules.router, prefix="/api")
 app.include_router(public_logistics.router, prefix="/api")
 app.include_router(staffing.router, prefix="/api")
 app.include_router(budget.router, prefix="/api")

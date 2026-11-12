@@ -162,6 +162,52 @@ Reglas de diseño (distintas de los otros dos importers):
 El mapeo fino de columnas vive en `logistics_import.py` — **leelo antes de
 tocar nada**; este resumen no reemplaza el código.
 
+Los cuatro endpoints y los dos exports aceptan `audience` (`staff` /
+`delegation` / `vip`). Importando desde la pestaña de una audiencia,
+`apply_default_category()` (`api/_lib/logistics_audiences.py`) reclasifica
+**solo** las filas que `categorize()` dejó en el fallback `official` y que no
+matchearon contra `personnel` / `employees`.
+
+### 3b) Cronogramas de transporte y comidas (`logistics_schedule_import.py`)
+
+`read_schedule(content, section)` con `section` = `transport` | `meals`,
+expuesto en `api/_lib/routers/logistics_schedules.py`
+(`POST /api/logistics/schedules/import/{preview,commit}`). Tres planillas
+reales con el mismo esqueleto de **bloques por día** (fila `FECHA` + título
+del día + `Comentarios/Notas`):
+
+| | Equipos, transporte | Equipos, comidas | Staff (árbitros) |
+|---|---|---|---|
+| Columnas propias | `PICK UP HOTEL`, `RETURN HOTEL` | `ALMUERZO`, `MERIENDA`, `CENA` | `PICK UP HOTEL`, `DEPARTURE TO HOTL` (sic), `PARTIDO` |
+| Rótulos | en la fila **siguiente** a `FECHA` | ídem | en la fila `FECHA` |
+| Filas | entrenamientos + franja `PARTIDOS` | ídem | solo partidos |
+
+Reglas, todas con test en `tests/test_logistics_schedule_import.py`:
+
+- **Las columnas ocultas no existen.** Las planillas de equipos traen B:C
+  ocultas con los mismos rótulos y horarios viejos. Ni se leen ni cuentan para
+  detectar encabezados (`_hidden_columns`: ojo que openpyxl agrupa el rango en
+  la dimensión de la primera columna, `min`/`max`).
+- **Las filas tachadas en negro no se importan** (equipo local). El relleno es
+  "tema 1", no un RGB: `_is_black_fill` resuelve `dk1` del tema del libro. Van
+  a `skipped`, igual que las filas ocultas.
+- La columna `Estadio` trae el **nombre del equipo**.
+- En un partido los equipos son los textos a la derecha de la hora (las celdas
+  están combinadas de a dos).
+- Un bloque **hereda** del anterior las columnas que no rotula: la planilla de
+  árbitros pone `PARTIDO` solo en el primer día.
+- Comidas en **texto** (`TAKE AWAY`, `15:30 al IN`); pick-up/return por
+  `parse_time`, y lo ilegible es warning + `NULL`.
+- Sin columnas visibles de la sección → `ScheduleFormatError` (400), con la
+  pista de que el archivo parece el de la otra sección.
+- Un bloque con fecha que queda **sin filas** (o sin columna de hora que
+  heredar) siempre deja un warning: nunca se pierde un día en silencio.
+- Un texto suelto sin hora y con menos de dos equipos (pie de página, firma)
+  no es un partido: warning y no se importa. Una celda `vs` entre los equipos
+  no es un equipo.
+- El recorrido está acotado (`_MAX_ROWS` / `_MAX_COLS`): una celda perdida en
+  la fila 200.000 no pone al handler a iterar vacío.
+
 ---
 
 ## 4) Presupuesto — `budget_import.py`

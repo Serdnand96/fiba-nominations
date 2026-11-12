@@ -24,7 +24,7 @@ const STATUS_STYLES = {
   new: 'bg-fiba-surface text-fiba-muted',
 }
 
-export default function SheetImport({ kind, competitionId, onDone }) {
+export default function SheetImport({ kind, competitionId, audience, onDone }) {
   const { lang } = useLanguage()
   const t = (es, en) => (lang === 'es' ? es : en)
   const inputRef = useRef(null)
@@ -51,7 +51,7 @@ export default function SheetImport({ kind, competitionId, onDone }) {
     if (!picked) return
     setFile(picked); setError(null); setResult(null); setBusy(true)
     try {
-      setPreview(await ENDPOINTS[kind].preview(competitionId, picked))
+      setPreview(await ENDPOINTS[kind].preview(competitionId, picked, audience))
     } catch (err) {
       setError(err.response?.data?.detail || t('No se pudo leer el archivo.', 'Could not read the file.'))
       setPreview(null)
@@ -62,7 +62,7 @@ export default function SheetImport({ kind, competitionId, onDone }) {
     if (!file) return
     setBusy(true); setError(null)
     try {
-      const res = await ENDPOINTS[kind].commit(competitionId, file)
+      const res = await ENDPOINTS[kind].commit(competitionId, file, audience)
       setResult(res); setPreview(null); setFile(null)
       if (inputRef.current) inputRef.current.value = ''
       onDone?.()

@@ -80,15 +80,24 @@ documentos: el muro es solo fotos).
 - Logística es un **módulo normal permisado**: todos sus endpoints usan
   `require_view("logistics")` / `require_edit("logistics")`. Vive en **dos
   routers** que comparten ese único permiso:
-  `api/_lib/routers/logistics.py` (padrón, manifest, hospedaje, comidas, links)
-  y `api/_lib/routers/transport.py` (vehículos, choferes, viajes; su prefijo de
-  URL sigue siendo `/transport`). En el frontend comparte el **mismo
+  `api/_lib/routers/logistics.py` (padrón, manifest, hospedaje, comidas, links),
+  `api/_lib/routers/logistics_schedules.py` (cronogramas de transporte y
+  comidas) y `api/_lib/routers/transport.py` (vehículos, choferes, viajes; su
+  prefijo de URL sigue siendo `/transport`). En el frontend comparte el **mismo
   `AuthContext` y el mismo cliente de Supabase** (`src/lib/supabase.js`) que
   todo el resto.
 - **No existe** una "Supabase Auth standalone" ni un aislamiento especial.
   Revisalo con **el mismo** checklist de permisos que cualquier otro módulo: lo
   que hay que verificar es que cada endpoint lleve su dependency, no un supuesto
   sandbox separado.
+- La **audiencia** (`staff` / `delegation` / `vip`) es un filtro de vista, **no
+  un permiso**: quien tiene `logistics` ve las tres. No la uses para decidir
+  quién puede leer qué; un valor desconocido es 400 (`categories_for`).
+- El **Excel original de un cronograma** va al bucket privado `nominations`
+  bajo `logistics/schedules/` y se baja por `GET /logistics/schedules/{id}/file`
+  con JWT. La respuesta de la API nunca lleva `file_path` (`schedule_view`).
+- `POST /transport/trips/from-movements` valida que cada vehículo sea del evento
+  de esa competencia antes de crear nada.
 - El permiso `transport` **ya no existe** (migración 025 lo renombró a
   `logistics` en `user_permissions`). Un `require_view("transport")` que
   sobreviva en el código es un endpoint al que nadie puede entrar.
@@ -104,7 +113,10 @@ documentos: el muro es solo fotos).
 - **Por decisión explícita del cliente la vista publica los datos completos,
   número de pasaporte incluido.** El único punto para recortar eso es
   `_redact()`; si alguna vez hay que ocultar campos, se cambia ahí y no en los
-  cuatro endpoints.
+  cinco endpoints.
+- `/schedules` publica la **tabla** de los cronogramas, no el archivo: sin
+  `file_name`, `has_file` ni `uploaded_at` (`_REDACT_FIELDS["schedule"]`), y sin
+  endpoint público de descarga.
 - Las respuestas bajo `/api/public/` llevan `X-Robots-Tag: noindex` (middleware
   en `api/index.py`). Si agregás una vista pública nueva, cae bajo esa regla
   sola — pero no la saques del prefijo `/api/public/`, porque ahí también viven

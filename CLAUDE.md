@@ -68,7 +68,8 @@ legacy `fibaamericascloud.com`).
    - **Hospedaje** — hoteles, rooming list y comidas.
    - **Travel Manifest** — llegadas y salidas de cada persona.
 
-   Las dos últimas viven en `api/_lib/routers/logistics.py`. Todo cuelga de
+   Las dos últimas viven en `api/_lib/routers/logistics.py`; los cronogramas
+   (más abajo) en `api/_lib/routers/logistics_schedules.py`. Todo cuelga de
    `logistics_participants`, el padrón de quién viene a la competencia
    (oficiales de `personnel`, staff de `employees`, VIPs y delegaciones sin
    vínculo). **No hay "Supabase Auth standalone"** ni sandbox separado:
@@ -85,12 +86,52 @@ legacy `fibaamericascloud.com`).
      reales (`Guyo`/`Juyo`, `BUELVAS`/`Vuelvas`) y con `Names`/`Last Name`
      invertidos en varias filas.
 
+   **Las tres secciones se dividen por audiencia** (noviembre 2026):
+   `staff` (oficiales y staff FIBA), `delegation` (equipos) y `vip` (VIPs e
+   invitados). No es un dato nuevo: sale de `logistics_participants.category`
+   vía `AUDIENCES` en `api/_lib/logistics_audiences.py`. `audience` es un
+   parámetro **opcional** en participantes, movimientos, rooming, imports y
+   exports; sin él no hay recorte, como antes. Es un **filtro de vista, no un
+   permiso**: quien tiene `logistics` ve las tres. La flota de Transporte no se
+   divide (un vehículo sirve a staff y a delegaciones).
+
+   **Los cronogramas son documentos, no una vista derivada** (migración 054,
+   `logistics_schedules` + `logistics_schedule_rows`). Son las dos planillas que
+   logística manda afuera: transporte (`PICK UP HOTEL` / `RETURN HOTEL`) y
+   comidas (`ALMUERZO` / `MERIENDA` / `CENA`). Un documento por competencia +
+   sección + audiencia; transporte y comidas son dos documentos aunque repitan
+   la base de entrenamientos.
+   - No salen de `training_slots` ni de `game_schedule` y el import **no los
+     toca**: cada fila guarda su texto y sus horas, porque el pick-up no sigue
+     ninguna regla y la planilla se vuelve a subir cuando cambia.
+   - Reimportar **reemplaza** el documento (el Excel es la autoridad; el preview
+     avisa cuántas filas pisa) y guarda el original en el bucket privado
+     `nominations` bajo `logistics/schedules/`.
+   - El parser (`services/logistics_schedule_import.py`) **ignora las columnas
+     ocultas** — las planillas de equipos traen B:C ocultas con los mismos
+     rótulos y horarios viejos — y **no importa las filas tachadas en negro**
+     (el equipo local, que no usa transporte ni hotel): las lista en el preview.
+     Una sección que no encuentra sus columnas visibles es un 400, no una
+     adivinanza.
+   - Las comidas son **texto**, no hora: el hotel recibe `TAKE AWAY` y
+     `15:30 al IN`.
+   - En Transporte, "Cronograma" es este documento y "Viajes por vehículo" es
+     el despacho de flota de siempre (`transport_trips`). No son lo mismo.
+
+   **Traslados desde el manifiesto:** `POST /transport/trips/from-movements`
+   crea un viaje `transfer` por grupo de llegadas/salidas (fecha + aeropuerto)
+   y deja los tramos apuntando a su traslado (`logistics_travel_legs.trip_id`).
+   La persona elige vehículo y hora en un modal; un grupo ya cubierto
+   (`covered`) se saltea en vez de duplicarse.
+
 8. **Hay una vista pública de logística, sin auth.** `/logistica/<token>`
    (frontend) → `/api/public/logistics/<token>` (backend). Un link secreto por
    competencia, rotable y desactivable desde el panel "Compartir".
    **Publica los datos completos, número de pasaporte incluido** — fue una
    decisión explícita del cliente. Si alguna vez hay que recortar, el único
-   lugar es `_redact()` en `public_logistics.py`.
+   lugar es `_redact()` en `public_logistics.py`. Los cronogramas (punto 7)
+   también se publican ahí (`/schedules`), pero solo la tabla: el Excel
+   original no se sirve por el link.
 
 9. **Hay dos formas de asignar personal, y las decide `competitions.fee_type`:**
    - `per_game` → asignación **por partido** en `game_assignments` (un cargo
@@ -602,6 +643,7 @@ fiba-nominations/
 │       ├── auth.py            ← require_view, require_edit, require_user, has_view/has_edit
 │       ├── database.py        ← lightweight supabase client (httpx)
 │       ├── budget_accounts.py ← rol → cuenta de fees / de travel (payments ↔ budget)
+│       ├── logistics_audiences.py ← staff / delegation / vip → categorías del padrón (punto 7)
 │       ├── finance_years.py   ← a qué año cae un pago (budget y la cola de payments)
 │       ├── routers/           ← uno por módulo (nominations, training, …) + notifications (/me)
 │       └── services/
@@ -609,6 +651,7 @@ fiba-nominations/
 │           ├── fiba_sync.py           ← sync con FIBA GDAP: partidos, resultados, fechas (punto 13)
 │           ├── finance_history.py     ← record_transition / history_for (punto 23)
 │           ├── google_calendar.py     ← OAuth + sync de partidos al Google Calendar de cada usuario (punto 26)
+│           ├── logistics_schedule_import.py ← lee los cronogramas de transporte y comidas (punto 7)
 │           ├── notify.py              ← notify(), budget_approvers_for, module_editors (punto 24)
 │           └── xlsx_utils.py          ← helpers de los exports .xlsx nuevos
 │

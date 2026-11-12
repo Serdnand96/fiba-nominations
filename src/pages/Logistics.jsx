@@ -8,6 +8,7 @@ import TransportTab from './logistics/TransportTab'
 import HousingTab from './logistics/HousingTab'
 import ManifestTab from './logistics/ManifestTab'
 import SharePanel from './logistics/SharePanel'
+import AudienceSwitch, { AUDIENCE_KEYS } from './logistics/audiences'
 
 // Módulo Logística: la competencia se elige una vez acá arriba y las tres
 // secciones la comparten. Antes esto era el módulo Transporte, que solo cubría
@@ -23,6 +24,7 @@ function loadLastSearch() {
     compId: typeof parsed.compId === 'string' ? parsed.compId : '',
     tab: TAB_KEYS.includes(parsed.tab) ? parsed.tab : '',
     date: typeof parsed.date === 'string' ? parsed.date : '',
+    audience: AUDIENCE_KEYS.includes(parsed.audience) ? parsed.audience : '',
   }
 }
 
@@ -37,6 +39,9 @@ export default function Logistics() {
   const [competitions, setCompetitions] = useState([])
   const [competitionId, setCompetitionId] = useState('')
   const [showShare, setShowShare] = useState(false)
+  // Staff / Delegación / VIP: la división la comparten las tres secciones,
+  // así que se elige una vez acá. '' = Todos.
+  const [audience, setAudience] = useState(() => lastSearchRef.current?.audience || '')
   // La fecha la maneja la sección de transporte; el shell solo la recuerda.
   const [transportDate, setTransportDate] = useState(lastSearchRef.current?.date || '')
 
@@ -66,8 +71,8 @@ export default function Logistics() {
   // pendiente, para que los defaults no pisen lo guardado.
   useEffect(() => {
     if (!competitionId || lastSearchRef.current) return
-    writeLastSearch(LAST_SEARCH_KEY, { compId: competitionId, tab, date: transportDate })
-  }, [competitionId, tab, transportDate])
+    writeLastSearch(LAST_SEARCH_KEY, { compId: competitionId, tab, date: transportDate, audience })
+  }, [competitionId, tab, transportDate, audience])
 
   const TAB_LABELS = {
     transport: t('Transporte', 'Transport'),
@@ -107,7 +112,7 @@ export default function Logistics() {
       </div>
 
       {/* Secciones del módulo */}
-      <div className="flex border-b border-fiba-border mb-6 overflow-x-auto">
+      <div className="flex border-b border-fiba-border mb-4 overflow-x-auto">
         {Object.entries(TAB_LABELS).map(([key, label]) => (
           <button key={key} onClick={() => setTab(key)}
             className={`px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors whitespace-nowrap ${
@@ -119,18 +124,26 @@ export default function Logistics() {
       </div>
 
       {competitionId && (
+        <div className="flex flex-wrap items-center gap-3 mb-6">
+          <span className="text-xs text-fiba-muted">{t('Ver', 'Show')}</span>
+          <AudienceSwitch value={audience} onChange={setAudience} lang={lang} />
+        </div>
+      )}
+
+      {competitionId && (
         <>
           {tab === 'transport' && (
             <TransportTab
               competitionId={competitionId}
               selectedComp={selectedComp}
               canEdit={canEdit}
+              audience={audience}
               savedDate={lastSearchRef.current?.compId === competitionId ? lastSearchRef.current?.date : ''}
               onDateChange={setTransportDate}
             />
           )}
-          {tab === 'housing' && <HousingTab competitionId={competitionId} canEdit={canEdit} />}
-          {tab === 'manifest' && <ManifestTab competitionId={competitionId} canEdit={canEdit} />}
+          {tab === 'housing' && <HousingTab competitionId={competitionId} competitionName={selectedComp?.name} canEdit={canEdit} audience={audience} />}
+          {tab === 'manifest' && <ManifestTab competitionId={competitionId} canEdit={canEdit} audience={audience} />}
         </>
       )}
 

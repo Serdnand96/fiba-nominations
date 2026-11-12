@@ -1,9 +1,11 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import {
   getPublicLogistics, getPublicLogisticsTransport,
-  getPublicLogisticsManifest, getPublicLogisticsRooming,
+  getPublicLogisticsManifest, getPublicLogisticsRooming, getPublicLogisticsSchedules,
 } from '../api/client'
+import AudienceSwitch, { audienceLabel } from './logistics/audiences'
+import { ScheduleDay, groupByDay } from './logistics/ScheduleDay'
 import { useLanguage } from '../i18n/LanguageContext'
 import { LogoMonogram } from '../components/brand/Logo'
 
@@ -47,6 +49,10 @@ export default function PublicLogistics() {
   const [invalid, setInvalid] = useState(false)
 
   const [section, setSection] = useState('transport')
+  // Staff / Delegación / VIP: recorta cronogramas, hospedaje y vuelos. '' = todos.
+  const [audience, setAudience] = useState('')
+  const audienceRef = useRef('')
+  const [schedules, setSchedules] = useState(null)
   const [transport, setTransport] = useState(null)
   const [transportDate, setTransportDate] = useState(null)
   const [manifest, setManifest] = useState(null)
@@ -55,8 +61,19 @@ export default function PublicLogistics() {
 
   useEffect(() => {
     let cancelled = false
-    getPublicLogistics(token)
-      .then(data => { if (!cancelled) { setOverview(data); setLoading(false) } })
+    // Los cronogramas se piden junto con la cabecera: si hay alguno publicado
+    // son la pantalla de entrada; si no (o si fallan), se entra por traslados
+    // como siempre.
+    Promise.all([
+      getPublicLogistics(token),
+      getPublicLogisticsSchedules(token).catch(() => []),
+    ])
+      .then(([data, docs]) => {
+        if (cancelled) return
+        setSchedules(docs)
+        if (docs.some(d => d.rows.length > 0)) setSection('schedules')
+        setOverview(data); setLoading(false)
+      })
       .catch(() => { if (!cancelled) { setInvalid(true); setLoading(false) } })
     return () => { cancelled = true }
   }, [token])
@@ -68,13 +85,22 @@ export default function PublicLogistics() {
     if (section === 'transport' && !transport) {
       getPublicLogisticsTransport(token).then(setTransport).catch(() => setTransport({ dates: [], trips: [] }))
     }
+    // Hospedaje y vuelos se piden recortados a la audiencia. Una respuesta
+    // que llega después de que el visitante cambió de audiencia se descarta.
+    const current = (apply) => (data) => { if (audienceRef.current === audience) apply(data) }
     if (section === 'manifest' && !manifest) {
-      getPublicLogisticsManifest(token).then(setManifest).catch(() => setManifest({ rows: [] }))
+      getPublicLogisticsManifest(token, audience).then(current(setManifest)).catch(current(() => setManifest({ rows: [] })))
     }
     if (section === 'rooming' && !rooming) {
-      getPublicLogisticsRooming(token).then(setRooming).catch(() => setRooming({ rows: [], dates: [] }))
+      getPublicLogisticsRooming(token, audience).then(current(setRooming)).catch(current(() => setRooming({ rows: [], dates: [] })))
     }
-  }, [section, overview, token])
+  }, [section, overview, token, audience, manifest, rooming])
+
+  // Al cambiar de audiencia se descartan y el efecto de arriba los vuelve a traer.
+  function pickAudience(next) {
+    audienceRef.current = next
+    setAudience(next); setManifest(null); setRooming(null)
+  }
 
   function pickDate(date) {
     setTransportDate(date)
@@ -108,6 +134,7 @@ export default function PublicLogistics() {
 
   const comp = overview.competition
   const SECTIONS = {
+    schedules: t('Cronogramas', 'Schedules'),
     transport: t('Traslados', 'Transfers'),
     rooming: t('Hospedaje', 'Housing'),
     manifest: t('Vuelos', 'Flights'),
@@ -154,6 +181,40 @@ export default function PublicLogistics() {
       </nav>
 
       <main className="max-w-5xl mx-auto px-4 py-6 space-y-6">
+        {section !== 'transport' && (
+          <div className="print:hidden">
+            <AudienceSwitch value={audience} onChange={pickAudience} lang={lang} />
+          </div>
+        )}
+
+        {/* ── Cronogramas (pick-up / return y comidas) ──────── */}
+        {section === 'schedules' && (() => {
+          if (!schedules) return <p className="text-sm text-ink-500 dark:text-ink-400">{t('Cargando...', 'Loading...')}</p>
+          const shown = schedules.filter(s => (!audience || s.audience === audience) && s.rows.length > 0)
+          if (shown.length === 0) {
+            return (
+              <div className={`${card} p-8 text-center`}>
+                <p className="text-sm text-ink-500 dark:text-ink-400">
+                  {t('Todavía no hay cronogramas publicados.', 'No schedules published yet.')}
+                </p>
+              </div>
+            )
+          }
+          return shown.map(s => (
+            <section key={s.id} className="space-y-3">
+              <div>
+                <h2 className="text-sm font-semibold uppercase tracking-wide text-ink-500 dark:text-ink-400">
+                  {s.section === 'transport' ? t('Transporte', 'Transport') : t('Comidas', 'Meals')} · {audienceLabel(s.audience, lang)}
+                </h2>
+                {(s.title || s.subtitle) && (
+                  <p className="text-xs text-ink-500 dark:text-ink-400">{[s.title, s.subtitle].filter(Boolean).join(' · ')}</p>
+                )}
+              </div>
+              {groupByDay(s).map(day => <ScheduleDay key={day.date} day={day} section={s.section} lang={lang} />)}
+            </section>
+          ))
+        })()}
+
         {/* ── Traslados ─────────────────────────────────────── */}
         {section === 'transport' && (
           <>
