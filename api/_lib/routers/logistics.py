@@ -17,6 +17,7 @@ from pydantic import BaseModel, Field
 
 from api._lib.auth import require_edit, require_view
 from api._lib.database import supabase
+from api._lib.logistics_audiences import categories_for
 
 router = APIRouter(
     prefix="/logistics",
@@ -216,21 +217,28 @@ def nights(stay: dict) -> int:
 
 # ── Participantes ────────────────────────────────────────────────────────────
 
+def _people(competition_id: str, audience: Optional[str] = None) -> list[dict]:
+    """Padrón de una competencia, opcionalmente recortado a una audiencia."""
+    query = (
+        supabase.table("logistics_participants")
+        .select(PARTICIPANT_FIELDS)
+        .eq("competition_id", competition_id)
+    )
+    categories = categories_for(audience)
+    if categories:
+        query = query.in_("category", list(categories))
+    return query.order("last_name").execute().data or []
+
+
 @router.get("/participants")
-def list_participants(competition_id: str = Query(...)):
+def list_participants(competition_id: str = Query(...), audience: Optional[str] = Query(None)):
     """Padrón de la competencia, enriquecido con la estadía y los tramos.
 
     Devuelve todo junto porque las tres pestañas del módulo arrancan del mismo
     padrón y separarlo obligaría a la UI a hacer tres viajes en cascada.
+    `audience` (staff / delegation / vip) lo recorta por categoría.
     """
-    people = (
-        supabase.table("logistics_participants")
-        .select(PARTICIPANT_FIELDS)
-        .eq("competition_id", competition_id)
-        .order("last_name")
-        .execute()
-        .data
-    )
+    people = _people(competition_id, audience)
     if not people:
         return []
 
@@ -408,19 +416,17 @@ def delete_travel_leg(leg_id: str):
     return {"ok": True}
 
 
-def build_movement_groups(competition_id: str, direction: str) -> list[dict]:
+def build_movement_groups(competition_id: str, direction: str,
+                          audience: Optional[str] = None) -> list[dict]:
     """Agrupa tramos por fecha + aeropuerto, que es como se arma un traslado.
 
     Es la hoja "Hoja1" del manifest: nadie manda una combi por persona, se
     juntan los que caen en el mismo aeropuerto el mismo día.
+
+    `covered` dice si todos los tramos del grupo ya tienen traslado
+    (`trip_id`): es lo que evita generar dos veces el mismo viaje.
     """
-    people = (
-        supabase.table("logistics_participants")
-        .select(PARTICIPANT_FIELDS)
-        .eq("competition_id", competition_id)
-        .execute()
-        .data
-    )
+    people = _people(competition_id, audience)
     if not people:
         return []
     by_id = {p["id"]: p for p in people}
@@ -451,18 +457,20 @@ def build_movement_groups(competition_id: str, direction: str) -> list[dict]:
         out.append({
             "date": day or None,
             "airport": airport or None,
+            "direction": direction,
             "pax": sum(i.get("pax") or 1 for i in items),
+            "covered": all(i.get("trip_id") for i in items),
             "legs": items,
         })
     return out
 
 
 @router.get("/movements")
-def list_movements(competition_id: str = Query(...)):
+def list_movements(competition_id: str = Query(...), audience: Optional[str] = Query(None)):
     """Llegadas y salidas agrupadas, listas para convertir en traslados."""
     return {
-        "arrivals": build_movement_groups(competition_id, "arrival"),
-        "departures": build_movement_groups(competition_id, "departure"),
+        "arrivals": build_movement_groups(competition_id, "arrival", audience),
+        "departures": build_movement_groups(competition_id, "departure", audience),
     }
 
 
@@ -505,22 +513,17 @@ def delete_hotel(hotel_id: str):
 
 # ── Rooming list ─────────────────────────────────────────────────────────────
 
-def build_rooming(competition_id: str) -> dict:
+def build_rooming(competition_id: str, audience: Optional[str] = None) -> dict:
     """Rooming list con la grilla de noches que espera el hotel.
 
     `dates` son las columnas (una por noche) y cada fila trae en qué noches
     está esa persona. La grilla no se guarda: sale de check_in/check_out.
+    Con `audience` las filas, la grilla y los totales son solo de ese grupo:
+    al hotel se le manda una rooming por grupo.
     """
-    people = (
-        supabase.table("logistics_participants")
-        .select(PARTICIPANT_FIELDS)
-        .eq("competition_id", competition_id)
-        .order("last_name")
-        .execute()
-        .data
-    )
+    people = _people(competition_id, audience)
     if not people:
-        return {"dates": [], "rows": [], "total_nights": 0, "hotels": []}
+        return {"dates": [], "rows": [], "total_nights": 0, "person_nights": 0, "hotels": []}
 
     by_id = {p["id"]: p for p in people}
     stays = (
@@ -571,7 +574,10 @@ def build_rooming(competition_id: str) -> dict:
         # Al hotel se le factura la habitación, no la cama: de una pareja que
         # comparte cuarto, las noches las cuenta una sola de las dos filas. El
         # criterio es el id más chico — arbitrario, pero estable entre lecturas.
-        is_room_holder = not stay.get("share_with_id") or p["id"] < stay["share_with_id"]
+        # Si el compañero quedó fuera de esta vista (otra audiencia), esta fila
+        # es la única que puede sumar la habitación.
+        partner = stay.get("share_with_id")
+        is_room_holder = not partner or partner not in by_id or p["id"] < partner
         rows.append({
             "is_room_holder": is_room_holder,
             "participant_id": p["id"],
@@ -606,8 +612,8 @@ def build_rooming(competition_id: str) -> dict:
 
 
 @router.get("/rooming")
-def get_rooming(competition_id: str = Query(...)):
-    return build_rooming(competition_id)
+def get_rooming(competition_id: str = Query(...), audience: Optional[str] = Query(None)):
+    return build_rooming(competition_id, audience)
 
 
 @router.post("/stays", dependencies=[Depends(require_edit("logistics"))])
@@ -760,33 +766,37 @@ async def _read_upload(file: UploadFile) -> bytes:
 
 
 @router.post("/import/manifest/preview", dependencies=[Depends(require_edit("logistics"))])
-async def preview_manifest_import(competition_id: str = Query(...), file: UploadFile = File(...)):
+async def preview_manifest_import(competition_id: str = Query(...), audience: Optional[str] = Query(None),
+                                  file: UploadFile = File(...)):
     from api._lib.services.logistics_import import preview_manifest
-    return preview_manifest(await _read_upload(file), competition_id)
+    return preview_manifest(await _read_upload(file), competition_id, audience)
 
 
 @router.post("/import/manifest/commit", dependencies=[Depends(require_edit("logistics"))])
-async def commit_manifest_import(competition_id: str = Query(...), file: UploadFile = File(...)):
+async def commit_manifest_import(competition_id: str = Query(...), audience: Optional[str] = Query(None),
+                                 file: UploadFile = File(...)):
     from api._lib.services.logistics_import import commit_manifest
-    return commit_manifest(await _read_upload(file), competition_id)
+    return commit_manifest(await _read_upload(file), competition_id, audience)
 
 
 @router.post("/import/rooming/preview", dependencies=[Depends(require_edit("logistics"))])
-async def preview_rooming_import(competition_id: str = Query(...), file: UploadFile = File(...)):
+async def preview_rooming_import(competition_id: str = Query(...), audience: Optional[str] = Query(None),
+                                  file: UploadFile = File(...)):
     from api._lib.services.logistics_import import preview_rooming
-    return preview_rooming(await _read_upload(file), competition_id)
+    return preview_rooming(await _read_upload(file), competition_id, audience)
 
 
 @router.post("/import/rooming/commit", dependencies=[Depends(require_edit("logistics"))])
-async def commit_rooming_import(competition_id: str = Query(...), file: UploadFile = File(...)):
+async def commit_rooming_import(competition_id: str = Query(...), audience: Optional[str] = Query(None),
+                                 file: UploadFile = File(...)):
     from api._lib.services.logistics_import import commit_rooming
-    return commit_rooming(await _read_upload(file), competition_id)
+    return commit_rooming(await _read_upload(file), competition_id, audience)
 
 
 @router.get("/export/manifest.xlsx")
-def export_manifest(competition_id: str = Query(...)):
+def export_manifest(competition_id: str = Query(...), audience: Optional[str] = Query(None)):
     from api._lib.services.logistics_import import export_manifest_xlsx
-    content = export_manifest_xlsx(competition_id)
+    content = export_manifest_xlsx(competition_id, audience)
     return Response(
         content=content,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -795,9 +805,9 @@ def export_manifest(competition_id: str = Query(...)):
 
 
 @router.get("/export/rooming.xlsx")
-def export_rooming(competition_id: str = Query(...)):
+def export_rooming(competition_id: str = Query(...), audience: Optional[str] = Query(None)):
     from api._lib.services.logistics_import import export_rooming_xlsx
-    content = export_rooming_xlsx(competition_id)
+    content = export_rooming_xlsx(competition_id, audience)
     return Response(
         content=content,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",

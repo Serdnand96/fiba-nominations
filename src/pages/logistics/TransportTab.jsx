@@ -10,6 +10,7 @@ import {
   getTransportVenues, createTransportVenue, deleteTransportVenue,
   getTransportEventByCompetition, createTransportEvent,
 } from '../../api/client'
+import SchedulePanel from './SchedulePanel'
 
 // Sección Transporte del módulo Logística. La competencia la elige el shell
 // (Logistics.jsx) y baja por props, porque las tres secciones miran siempre la
@@ -43,10 +44,10 @@ const TRIP_TYPE_LABELS = {
   en: { pickup: 'Pick up', return: 'Return', transfer: 'Trip' },
 }
 
-export default function TransportTab({ competitionId, selectedComp, canEdit, savedDate, onDateChange }) {
+export default function TransportTab({ competitionId, selectedComp, canEdit, audience, savedDate, onDateChange }) {
   const { lang } = useLanguage()
   const { push } = useToast()
-  const [tab, setTab] = useState('schedule')
+  const [tab, setTab] = useState('cronograma')
 
   const [eventId, setEventId] = useState(null)
   const [eventLoading, setEventLoading] = useState(false)
@@ -330,8 +331,13 @@ export default function TransportTab({ competitionId, selectedComp, canEdit, sav
     setTimeout(() => { win.print(); URL.revokeObjectURL(url) }, 600)
   }
 
+  // Dos cosas distintas que antes compartían nombre: el cronograma es el
+  // documento que se manda (pick-up / return por equipo o por partido); los
+  // viajes por vehículo son el despacho de la flota, que no se divide por
+  // audiencia porque un vehículo sirve a staff y a delegaciones.
   const TAB_LABELS = {
-    schedule: lang === 'es' ? 'Cronograma' : 'Schedule',
+    cronograma: lang === 'es' ? 'Cronograma' : 'Schedule',
+    schedule: lang === 'es' ? 'Viajes por vehículo' : 'Trips by vehicle',
     config: lang === 'es' ? 'Vehículos, choferes y venues' : 'Vehicles, drivers & venues',
   }
 
@@ -359,6 +365,11 @@ export default function TransportTab({ competitionId, selectedComp, canEdit, sav
           </button>
         )}
       </div>
+
+      {tab === 'cronograma' && (
+        <SchedulePanel competitionId={competitionId} competitionName={selectedComp?.name}
+          section="transport" audience={audience} canEdit={canEdit} />
+      )}
 
       {/* SCHEDULE */}
       {tab === 'schedule' && (

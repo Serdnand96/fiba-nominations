@@ -26,6 +26,7 @@ from typing import Optional
 from openpyxl import Workbook, load_workbook
 
 from api._lib.database import supabase
+from api._lib.logistics_audiences import apply_default_category, categories_for
 
 # ── Normalización y parseo de celdas ─────────────────────────────────────────
 
@@ -762,13 +763,15 @@ def _summarize(rows: list[dict], warnings: list[dict], **extra) -> dict:
     }
 
 
-def preview_manifest(content: bytes, competition_id: str) -> dict:
+def preview_manifest(content: bytes, competition_id: str, audience: Optional[str] = None) -> dict:
     parsed = read_manifest(content, competition_id)
+    apply_default_category(parsed["rows"], audience)
     return _summarize(parsed["rows"], parsed["warnings"], sheet=parsed.get("sheet"))
 
 
-def preview_rooming(content: bytes, competition_id: str) -> dict:
+def preview_rooming(content: bytes, competition_id: str, audience: Optional[str] = None) -> dict:
     parsed = read_rooming(content, competition_id)
+    apply_default_category(parsed["rows"], audience)
     return _summarize(
         parsed["rows"], parsed["warnings"],
         sheet=parsed.get("sheet"),
@@ -850,8 +853,9 @@ def _resolve_participant(row: dict, existing: list[dict], competition_id: str,
     return created["id"]
 
 
-def commit_manifest(content: bytes, competition_id: str) -> dict:
+def commit_manifest(content: bytes, competition_id: str, audience: Optional[str] = None) -> dict:
     parsed = read_manifest(content, competition_id)
+    apply_default_category(parsed["rows"], audience)
     existing = _existing_participants(competition_id)
     warnings = list(parsed["warnings"])
 
@@ -877,8 +881,9 @@ def commit_manifest(content: bytes, competition_id: str) -> dict:
     }
 
 
-def commit_rooming(content: bytes, competition_id: str) -> dict:
+def commit_rooming(content: bytes, competition_id: str, audience: Optional[str] = None) -> dict:
     parsed = read_rooming(content, competition_id)
+    apply_default_category(parsed["rows"], audience)
     existing = _existing_participants(competition_id)
     warnings = list(parsed["warnings"])
     before = len(existing)
@@ -993,19 +998,20 @@ def _save(wb: Workbook) -> bytes:
     return buf.getvalue()
 
 
-def export_manifest_xlsx(competition_id: str) -> bytes:
+def export_manifest_xlsx(competition_id: str, audience: Optional[str] = None) -> bytes:
     """Manifest en el mismo layout que usa la organización: llegadas a la
     izquierda, salidas a la derecha, una fila por persona."""
     from api._lib.routers.logistics import PARTICIPANT_FIELDS, full_name
 
-    people = (
+    query = (
         supabase.table("logistics_participants")
         .select(PARTICIPANT_FIELDS)
         .eq("competition_id", competition_id)
-        .order("last_name")
-        .execute()
-        .data
-    ) or []
+    )
+    categories = categories_for(audience)
+    if categories:
+        query = query.in_("category", list(categories))
+    people = query.order("last_name").execute().data or []
     legs_by_person: dict = {}
     if people:
         legs = (
@@ -1042,12 +1048,12 @@ def export_manifest_xlsx(competition_id: str) -> bytes:
     return _save(wb)
 
 
-def export_rooming_xlsx(competition_id: str) -> bytes:
+def export_rooming_xlsx(competition_id: str, audience: Optional[str] = None) -> bytes:
     """Rooming list con la grilla de noches y el total, que es lo que espera
     recibir el hotel."""
     from api._lib.routers.logistics import build_rooming
 
-    data = build_rooming(competition_id)
+    data = build_rooming(competition_id, audience)
     wb = Workbook()
     ws = wb.active
     ws.title = "Rooming"

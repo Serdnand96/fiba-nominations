@@ -17,12 +17,14 @@ from typing import Optional
 from fastapi import APIRouter, HTTPException, Query
 
 from api._lib.database import supabase
+from api._lib.logistics_audiences import categories_for
 from api._lib.routers.logistics import (
     PARTICIPANT_FIELDS,
     build_movement_groups,
     build_rooming,
     full_name,
 )
+from api._lib.routers.logistics_schedules import load_schedules
 
 router = APIRouter(prefix="/public/logistics", tags=["public"])
 
@@ -68,6 +70,10 @@ _REDACT_FIELDS = {
     "hotel": {"email", "competition_id", "created_at", "updated_at"},
     "meal": {"competition_id", "created_at", "updated_at"},
     "trip": {"contact", "created_at", "updated_at"},
+    # Del cronograma se publica la tabla, no el Excel: ni su nombre ni cuándo
+    # se subió. (La ruta de Storage y quién lo subió ya no salen de
+    # load_schedules.)
+    "schedule": {"competition_id", "file_name", "has_file", "uploaded_at"},
     # El manifiesto se arma con un dict explícito (ver get_manifest), así que
     # el cliente ya eligió exactamente qué publicar; acá no se recorta nada más.
     "participant": set(),
@@ -77,8 +83,8 @@ _REDACT_FIELDS = {
 def _redact(row: dict, kind: str = "participant") -> dict:
     """Punto ÚNICO de recorte de la vista pública.
 
-    Todos los endpoints (overview, transport, manifest, rooming) pasan sus
-    filas por acá. Para ocultar algo mañana, tocar `_REDACT_FIELDS` y nada más.
+    Todos los endpoints (overview, transport, schedules, manifest, rooming)
+    pasan sus filas por acá. Para ocultar algo mañana, tocar `_REDACT_FIELDS` y nada más.
     """
     if row is None:
         return row
@@ -210,21 +216,33 @@ def get_transport(token: str, date: Optional[str] = Query(None)):
 
 
 # ---------------------------------------------------------------------------
+# GET /public/logistics/{token}/schedules — cronogramas de transporte y comidas
+# ---------------------------------------------------------------------------
+@router.get("/{token}/schedules")
+def get_schedules(token: str):
+    """Los cronogramas que subió logística (pick-up / return y comidas), por
+    audiencia. Solo la tabla: el Excel original no se sirve por el link."""
+    link = _resolve_link(token)
+    return [_redact(s, "schedule") for s in load_schedules(link["competition_id"])]
+
+
+# ---------------------------------------------------------------------------
 # GET /public/logistics/{token}/manifest — llegadas y salidas
 # ---------------------------------------------------------------------------
 @router.get("/{token}/manifest")
-def get_manifest(token: str):
+def get_manifest(token: str, audience: Optional[str] = Query(None)):
     link = _resolve_link(token)
     competition_id = link["competition_id"]
 
-    people = (
+    query = (
         supabase.table("logistics_participants")
         .select(PARTICIPANT_FIELDS)
         .eq("competition_id", competition_id)
-        .order("last_name")
-        .execute()
-        .data
     )
+    categories = categories_for(audience)
+    if categories:
+        query = query.in_("category", list(categories))
+    people = query.order("last_name").execute().data
     if not people:
         return {"rows": [], "arrival_groups": [], "departure_groups": []}
 
@@ -258,8 +276,8 @@ def get_manifest(token: str):
 
     return {
         "rows": rows,
-        "arrival_groups": build_movement_groups(competition_id, "arrival"),
-        "departure_groups": build_movement_groups(competition_id, "departure"),
+        "arrival_groups": build_movement_groups(competition_id, "arrival", audience),
+        "departure_groups": build_movement_groups(competition_id, "departure", audience),
     }
 
 
@@ -267,8 +285,8 @@ def get_manifest(token: str):
 # GET /public/logistics/{token}/rooming — rooming list con la grilla de noches
 # ---------------------------------------------------------------------------
 @router.get("/{token}/rooming")
-def get_rooming(token: str):
+def get_rooming(token: str, audience: Optional[str] = Query(None)):
     link = _resolve_link(token)
-    data = build_rooming(link["competition_id"])
+    data = build_rooming(link["competition_id"], audience)
     data["rows"] = [_redact(r) for r in data["rows"]]
     return data

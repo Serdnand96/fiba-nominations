@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException, Query, Depends
 from pydantic import BaseModel
-from typing import Optional
+from typing import List, Optional
 
 from api._lib.database import supabase
 from api._lib.auth import require_view, require_edit
@@ -75,6 +75,21 @@ class VenueCreate(BaseModel):
     event_id: str
     name: str
     type: str = "venue"
+
+class MovementTrip(BaseModel):
+    direction: str               # arrival | departure
+    date: str
+    airport: Optional[str] = None
+    vehicle_id: str
+    departure_time: str          # HH:MM
+    origin: str
+    destination: str
+    notes: Optional[str] = None
+
+class TripsFromMovements(BaseModel):
+    competition_id: str
+    audience: Optional[str] = None
+    trips: List[MovementTrip]
 
 
 # ── Events ───────────────────────────────────────────────────────────────────
@@ -285,6 +300,138 @@ def create_trip(data: TripCreate):
     record = data.model_dump()
     result = supabase.table("transport_trips").insert(record).execute()
     return result.data[0]
+
+# ── Traslados desde el Travel Manifest ───────────────────────────────────────
+# El manifest ya agrupa llegadas y salidas por fecha + aeropuerto
+# (logistics.build_movement_groups): cada grupo es un traslado en potencia. Acá
+# se convierten en viajes, de a uno por grupo y solo los que la persona eligió
+# en el modal — el vehículo y la hora los decide ella, no el sistema.
+
+def plan_movement_trips(items: list[dict], groups: dict, vehicle_ids: set,
+                        next_number) -> tuple[list[dict], list[dict]]:
+    """Qué viajes crear y qué tramos cubre cada uno. Función pura.
+
+    `groups` es `{direction: [grupo, ...]}` y `next_number(vehicle_id, date)`
+    devuelve el próximo número de viaje libre. Devuelve `(planned, skipped)`:
+    un grupo cuyos tramos ya tienen traslado se saltea en vez de duplicarse.
+    """
+    from api._lib.services.logistics_import import parse_time
+
+    planned, skipped = [], []
+    seen: set = set()
+    for item in items:
+        if item["direction"] not in ("arrival", "departure"):
+            raise HTTPException(400, "direction must be arrival or departure")
+        if item["vehicle_id"] not in vehicle_ids:
+            raise HTTPException(400, "Vehicle does not belong to this competition")
+        departure = parse_time(item.get("departure_time"))
+        if not departure:
+            raise HTTPException(400, "departure_time must be a time (HH:MM)")
+        origin = (item.get("origin") or "").strip()
+        destination = (item.get("destination") or "").strip()
+        if not origin or not destination:
+            raise HTTPException(400, "origin and destination are required")
+
+        airport = (item.get("airport") or "").strip() or None
+        key = (item["direction"], item["date"], airport)
+        if key in seen:
+            # Dos items del mismo grupo crearían dos viajes para los mismos tramos.
+            raise HTTPException(400, f"Duplicate movement group {item['date']} / {airport or '—'}")
+        seen.add(key)
+        group = next(
+            (g for g in groups.get(item["direction"], [])
+             if g.get("date") == item["date"] and ((g.get("airport") or "").strip() or None) == airport),
+            None,
+        )
+        if not group:
+            raise HTTPException(400, f"No movement group for {item['date']} / {airport or '—'}")
+        pending = [leg for leg in group["legs"] if not leg.get("trip_id")]
+        if not pending:
+            skipped.append({"direction": item["direction"], "date": item["date"], "airport": airport})
+            continue
+
+        pax = sum(leg.get("pax") or 1 for leg in pending)
+        planned.append({
+            "trip": {
+                "vehicle_id": item["vehicle_id"],
+                "date": item["date"],
+                "trip_number": next_number(item["vehicle_id"], item["date"]),
+                "departure_time": departure,
+                "origin": origin,
+                "destination": destination,
+                "trip_type": "transfer",
+                "notes": (item.get("notes") or "").strip() or f"{pax} pax",
+            },
+            "leg_ids": [leg["id"] for leg in pending],
+            "direction": item["direction"],
+            "airport": airport,
+        })
+    return planned, skipped
+
+
+@router.post("/trips/from-movements", dependencies=[Depends(require_edit("logistics"))])
+def create_trips_from_movements(data: TripsFromMovements):
+    """Un viaje `transfer` por grupo del manifest, y los tramos quedan apuntando
+    a su traslado (`logistics_travel_legs.trip_id`)."""
+    from api._lib.routers.logistics import build_movement_groups
+
+    if not data.trips:
+        raise HTTPException(400, "No trips to create")
+    events = supabase.table("transport_events").select("id").eq("competition_id", data.competition_id).execute().data
+    if not events:
+        raise HTTPException(404, "No transport event for this competition")
+    vehicles = supabase.table("transport_vehicles").select("id").eq("event_id", events[0]["id"]).execute().data
+    vehicle_ids = {v["id"] for v in vehicles}
+
+    groups = {
+        direction: build_movement_groups(data.competition_id, direction, data.audience)
+        for direction in ("arrival", "departure")
+    }
+
+    numbers: dict = {}
+
+    def next_number(vehicle_id: str, day: str) -> int:
+        key = (vehicle_id, day)
+        if key not in numbers:
+            taken = (
+                supabase.table("transport_trips").select("trip_number")
+                .eq("vehicle_id", vehicle_id).eq("date", day).execute().data
+            ) or []
+            numbers[key] = max((t.get("trip_number") or 0 for t in taken), default=0)
+        numbers[key] += 1
+        return numbers[key]
+
+    planned, skipped = plan_movement_trips(
+        [t.model_dump() for t in data.trips], groups, vehicle_ids, next_number,
+    )
+
+    created = []
+    for plan in planned:
+        trip = supabase.table("transport_trips").insert(plan["trip"]).execute().data[0]
+        ids = plan["leg_ids"]
+        claimed = 0
+        try:
+            for start in range(0, len(ids), 50):   # los ids van en la URL del UPDATE
+                # Solo los tramos que SIGUEN sin traslado: si otro request los
+                # tomó entre la lectura y este UPDATE, no se los pisa.
+                result = (
+                    supabase.table("logistics_travel_legs").update({"trip_id": trip["id"]})
+                    .in_("id", ids[start:start + 50]).is_("trip_id").execute()
+                )
+                claimed += len(result.data or [])
+        except Exception:
+            # Un viaje sin tramos es basura que el reintento duplicaría. Los
+            # tramos que alcanzó a tomar quedan libres por el ON DELETE SET NULL.
+            supabase.table("transport_trips").delete().eq("id", trip["id"]).execute()
+            raise
+        if claimed == 0:
+            supabase.table("transport_trips").delete().eq("id", trip["id"]).execute()
+            skipped.append({"direction": plan["direction"], "date": plan["trip"]["date"],
+                            "airport": plan["airport"]})
+            continue
+        created.append({**trip, "legs": claimed})
+    return {"created": created, "skipped": skipped}
+
 
 @router.put("/trips/{trip_id}", dependencies=[Depends(require_edit("logistics"))])
 def update_trip(trip_id: str, data: TripUpdate):
