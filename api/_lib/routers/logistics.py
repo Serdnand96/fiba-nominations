@@ -17,6 +17,8 @@ from pydantic import BaseModel, Field
 
 from api._lib.auth import require_edit, require_view
 from api._lib.database import supabase
+from api._lib.logistics_audiences import categories_for, check_audience, for_audience
+from api._lib.routers.payments import _delete_from_storage
 
 router = APIRouter(
     prefix="/logistics",
@@ -54,6 +56,8 @@ class ParticipantCreate(BaseModel):
     # sentido y build_movement_groups lo enmascara con `or 1`.
     pax: int = Field(default=1, ge=1)
     notes: Optional[str] = None
+    # Club o selección (migración 055). Texto libre, como viene en la rooming list.
+    team: Optional[str] = None
 
 
 class ParticipantUpdate(BaseModel):
@@ -70,6 +74,7 @@ class ParticipantUpdate(BaseModel):
     dietary_restrictions: Optional[str] = None
     pax: Optional[int] = None
     notes: Optional[str] = None
+    team: Optional[str] = None
 
 
 class TravelLegCreate(BaseModel):
@@ -110,6 +115,9 @@ class HotelCreate(BaseModel):
     map_url: Optional[str] = None
     notes: Optional[str] = None
     is_primary: bool = False
+    # A quién aloja (staff / delegation / vip). None = compartido (migración 055).
+    audience: Optional[str] = None
+    contact_name: Optional[str] = None
 
 
 class HotelUpdate(BaseModel):
@@ -122,6 +130,8 @@ class HotelUpdate(BaseModel):
     map_url: Optional[str] = None
     notes: Optional[str] = None
     is_primary: Optional[bool] = None
+    audience: Optional[str] = None
+    contact_name: Optional[str] = None
 
 
 class StayCreate(BaseModel):
@@ -170,7 +180,7 @@ class MealUpdate(BaseModel):
 
 PARTICIPANT_FIELDS = (
     "id,competition_id,personnel_id,employee_id,first_name,last_name,role,"
-    "category,passport,nationality,phone,email,dietary_restrictions,pax,notes"
+    "category,passport,nationality,phone,email,dietary_restrictions,pax,notes,team"
 )
 
 
@@ -183,6 +193,36 @@ def participant_ids(competition_id: str) -> list[str]:
         .data
     )
     return [r["id"] for r in rows]
+
+
+def _blank_to_none(value):
+    """'' → NULL en un texto libre (el formulario manda vacío por 'sin dato')."""
+    if isinstance(value, str):
+        return value.strip() or None
+    return value
+
+
+def document_paths(column: str, value: str) -> list[str]:
+    """Rutas de Storage de los documentos que cuelgan de una fila.
+
+    `logistics_documents` cae en cascada con su dueño (participante, hotel,
+    cargo), pero el objeto del bucket privado NO: hay que juntar las rutas
+    ANTES de borrar la fila, que se llevaría los registros, y quitar los
+    objetos después (`remove_objects`).
+    """
+    rows = (
+        supabase.table("logistics_documents")
+        .select("file_path")
+        .eq(column, value)
+        .execute()
+        .data
+    ) or []
+    return [r["file_path"] for r in rows if r.get("file_path")]
+
+
+def remove_objects(paths: list[str]) -> None:
+    for path in paths:
+        _delete_from_storage(path)   # best-effort: loguea y sigue
 
 
 def full_name(p: dict) -> str:
@@ -216,21 +256,28 @@ def nights(stay: dict) -> int:
 
 # ── Participantes ────────────────────────────────────────────────────────────
 
+def _people(competition_id: str, audience: Optional[str] = None) -> list[dict]:
+    """Padrón de una competencia, opcionalmente recortado a una audiencia."""
+    query = (
+        supabase.table("logistics_participants")
+        .select(PARTICIPANT_FIELDS)
+        .eq("competition_id", competition_id)
+    )
+    categories = categories_for(audience)
+    if categories:
+        query = query.in_("category", list(categories))
+    return query.order("last_name").execute().data or []
+
+
 @router.get("/participants")
-def list_participants(competition_id: str = Query(...)):
+def list_participants(competition_id: str = Query(...), audience: Optional[str] = Query(None)):
     """Padrón de la competencia, enriquecido con la estadía y los tramos.
 
     Devuelve todo junto porque las tres pestañas del módulo arrancan del mismo
     padrón y separarlo obligaría a la UI a hacer tres viajes en cascada.
+    `audience` (staff / delegation / vip) lo recorta por categoría.
     """
-    people = (
-        supabase.table("logistics_participants")
-        .select(PARTICIPANT_FIELDS)
-        .eq("competition_id", competition_id)
-        .order("last_name")
-        .execute()
-        .data
-    )
+    people = _people(competition_id, audience)
     if not people:
         return []
 
@@ -269,7 +316,9 @@ def list_participants(competition_id: str = Query(...)):
 def create_participant(data: ParticipantCreate):
     if data.category not in CATEGORIES:
         raise HTTPException(400, f"category must be one of {', '.join(CATEGORIES)}")
-    result = supabase.table("logistics_participants").insert(data.model_dump()).execute()
+    record = data.model_dump()
+    record["team"] = _blank_to_none(record.get("team"))
+    result = supabase.table("logistics_participants").insert(record).execute()
     return result.data[0]
 
 
@@ -280,6 +329,8 @@ def update_participant(participant_id: str, data: ParticipantUpdate):
         raise HTTPException(400, "No fields to update")
     if updates.get("category") and updates["category"] not in CATEGORIES:
         raise HTTPException(400, f"category must be one of {', '.join(CATEGORIES)}")
+    if "team" in updates:
+        updates["team"] = _blank_to_none(updates["team"])
     r = supabase.table("logistics_participants").update(updates).eq("id", participant_id).execute()
     if not r.data:
         raise HTTPException(404, "Participant not found")
@@ -288,7 +339,11 @@ def update_participant(participant_id: str, data: ParticipantUpdate):
 
 @router.delete("/participants/{participant_id}", dependencies=[Depends(require_edit("logistics"))])
 def delete_participant(participant_id: str):
+    # Los pasaportes escaneados caen por el ON DELETE CASCADE de la fila, pero el
+    # objeto de Storage no: se juntan las rutas antes y se borran después.
+    paths = document_paths("participant_id", participant_id)
     supabase.table("logistics_participants").delete().eq("id", participant_id).execute()
+    remove_objects(paths)
     return {"ok": True}
 
 
@@ -408,19 +463,17 @@ def delete_travel_leg(leg_id: str):
     return {"ok": True}
 
 
-def build_movement_groups(competition_id: str, direction: str) -> list[dict]:
+def build_movement_groups(competition_id: str, direction: str,
+                          audience: Optional[str] = None) -> list[dict]:
     """Agrupa tramos por fecha + aeropuerto, que es como se arma un traslado.
 
     Es la hoja "Hoja1" del manifest: nadie manda una combi por persona, se
     juntan los que caen en el mismo aeropuerto el mismo día.
+
+    `covered` dice si todos los tramos del grupo ya tienen traslado
+    (`trip_id`): es lo que evita generar dos veces el mismo viaje.
     """
-    people = (
-        supabase.table("logistics_participants")
-        .select(PARTICIPANT_FIELDS)
-        .eq("competition_id", competition_id)
-        .execute()
-        .data
-    )
+    people = _people(competition_id, audience)
     if not people:
         return []
     by_id = {p["id"]: p for p in people}
@@ -451,38 +504,46 @@ def build_movement_groups(competition_id: str, direction: str) -> list[dict]:
         out.append({
             "date": day or None,
             "airport": airport or None,
+            "direction": direction,
             "pax": sum(i.get("pax") or 1 for i in items),
+            "covered": all(i.get("trip_id") for i in items),
             "legs": items,
         })
     return out
 
 
 @router.get("/movements")
-def list_movements(competition_id: str = Query(...)):
+def list_movements(competition_id: str = Query(...), audience: Optional[str] = Query(None)):
     """Llegadas y salidas agrupadas, listas para convertir en traslados."""
     return {
-        "arrivals": build_movement_groups(competition_id, "arrival"),
-        "departures": build_movement_groups(competition_id, "departure"),
+        "arrivals": build_movement_groups(competition_id, "arrival", audience),
+        "departures": build_movement_groups(competition_id, "departure", audience),
     }
 
 
 # ── Hoteles ──────────────────────────────────────────────────────────────────
 
 @router.get("/hotels")
-def list_hotels(competition_id: str = Query(...)):
-    return (
+def list_hotels(competition_id: str = Query(...), audience: Optional[str] = None):
+    """Hoteles de la competencia. Con `audience`: los de esa audiencia más los
+    compartidos (audience NULL), que sirven a todas."""
+    hotels = (
         supabase.table("logistics_hotels")
         .select("*")
         .eq("competition_id", competition_id)
         .order("name")
         .execute()
         .data
-    )
+    ) or []
+    return for_audience(hotels, audience)
 
 
 @router.post("/hotels", dependencies=[Depends(require_edit("logistics"))])
 def create_hotel(data: HotelCreate):
-    result = supabase.table("logistics_hotels").insert(data.model_dump()).execute()
+    record = data.model_dump()
+    record["audience"] = check_audience(record.get("audience"))
+    record["contact_name"] = _blank_to_none(record.get("contact_name"))
+    result = supabase.table("logistics_hotels").insert(record).execute()
     return result.data[0]
 
 
@@ -491,6 +552,10 @@ def update_hotel(hotel_id: str, data: HotelUpdate):
     updates = data.model_dump(exclude_unset=True)
     if not updates:
         raise HTTPException(400, "No fields to update")
+    if "audience" in updates:
+        updates["audience"] = check_audience(updates["audience"])
+    if "contact_name" in updates:
+        updates["contact_name"] = _blank_to_none(updates["contact_name"])
     r = supabase.table("logistics_hotels").update(updates).eq("id", hotel_id).execute()
     if not r.data:
         raise HTTPException(404, "Hotel not found")
@@ -499,28 +564,32 @@ def update_hotel(hotel_id: str, data: HotelUpdate):
 
 @router.delete("/hotels/{hotel_id}", dependencies=[Depends(require_edit("logistics"))])
 def delete_hotel(hotel_id: str):
+    # Menús del hotel y PDFs de sus cotizaciones caen en cascada (hotel →
+    # documentos, hotel → cargos → documentos): sus objetos de Storage no.
+    paths = set(document_paths("hotel_id", hotel_id))
+    charges = (
+        supabase.table("logistics_hotel_charges").select("id").eq("hotel_id", hotel_id).execute().data
+    ) or []
+    for charge in charges:
+        paths.update(document_paths("charge_id", charge["id"]))
     supabase.table("logistics_hotels").delete().eq("id", hotel_id).execute()
+    remove_objects(sorted(paths))
     return {"ok": True}
 
 
 # ── Rooming list ─────────────────────────────────────────────────────────────
 
-def build_rooming(competition_id: str) -> dict:
+def build_rooming(competition_id: str, audience: Optional[str] = None) -> dict:
     """Rooming list con la grilla de noches que espera el hotel.
 
     `dates` son las columnas (una por noche) y cada fila trae en qué noches
     está esa persona. La grilla no se guarda: sale de check_in/check_out.
+    Con `audience` las filas, la grilla y los totales son solo de ese grupo:
+    al hotel se le manda una rooming por grupo.
     """
-    people = (
-        supabase.table("logistics_participants")
-        .select(PARTICIPANT_FIELDS)
-        .eq("competition_id", competition_id)
-        .order("last_name")
-        .execute()
-        .data
-    )
+    people = _people(competition_id, audience)
     if not people:
-        return {"dates": [], "rows": [], "total_nights": 0, "hotels": []}
+        return {"dates": [], "rows": [], "total_nights": 0, "person_nights": 0, "hotels": []}
 
     by_id = {p["id"]: p for p in people}
     stays = (
@@ -571,7 +640,10 @@ def build_rooming(competition_id: str) -> dict:
         # Al hotel se le factura la habitación, no la cama: de una pareja que
         # comparte cuarto, las noches las cuenta una sola de las dos filas. El
         # criterio es el id más chico — arbitrario, pero estable entre lecturas.
-        is_room_holder = not stay.get("share_with_id") or p["id"] < stay["share_with_id"]
+        # Si el compañero quedó fuera de esta vista (otra audiencia), esta fila
+        # es la única que puede sumar la habitación.
+        partner = stay.get("share_with_id")
+        is_room_holder = not partner or partner not in by_id or p["id"] < partner
         rows.append({
             "is_room_holder": is_room_holder,
             "participant_id": p["id"],
@@ -601,13 +673,16 @@ def build_rooming(competition_id: str) -> dict:
         "rows": rows,
         "total_nights": sum(r["nights"] for r in rows if r["is_room_holder"]),
         "person_nights": sum(r["nights"] for r in rows),
-        "hotels": hotels,
+        # Con audiencia, los hoteles de esa audiencia y los compartidos: la
+        # rooming de delegaciones no lista el hotel del staff. Las filas siguen
+        # resolviendo su nombre contra todos (`hotel_by_id`).
+        "hotels": for_audience(hotels, audience),
     }
 
 
 @router.get("/rooming")
-def get_rooming(competition_id: str = Query(...)):
-    return build_rooming(competition_id)
+def get_rooming(competition_id: str = Query(...), audience: Optional[str] = Query(None)):
+    return build_rooming(competition_id, audience)
 
 
 @router.post("/stays", dependencies=[Depends(require_edit("logistics"))])
@@ -760,33 +835,37 @@ async def _read_upload(file: UploadFile) -> bytes:
 
 
 @router.post("/import/manifest/preview", dependencies=[Depends(require_edit("logistics"))])
-async def preview_manifest_import(competition_id: str = Query(...), file: UploadFile = File(...)):
+async def preview_manifest_import(competition_id: str = Query(...), audience: Optional[str] = Query(None),
+                                  file: UploadFile = File(...)):
     from api._lib.services.logistics_import import preview_manifest
-    return preview_manifest(await _read_upload(file), competition_id)
+    return preview_manifest(await _read_upload(file), competition_id, audience)
 
 
 @router.post("/import/manifest/commit", dependencies=[Depends(require_edit("logistics"))])
-async def commit_manifest_import(competition_id: str = Query(...), file: UploadFile = File(...)):
+async def commit_manifest_import(competition_id: str = Query(...), audience: Optional[str] = Query(None),
+                                 file: UploadFile = File(...)):
     from api._lib.services.logistics_import import commit_manifest
-    return commit_manifest(await _read_upload(file), competition_id)
+    return commit_manifest(await _read_upload(file), competition_id, audience)
 
 
 @router.post("/import/rooming/preview", dependencies=[Depends(require_edit("logistics"))])
-async def preview_rooming_import(competition_id: str = Query(...), file: UploadFile = File(...)):
+async def preview_rooming_import(competition_id: str = Query(...), audience: Optional[str] = Query(None),
+                                  file: UploadFile = File(...)):
     from api._lib.services.logistics_import import preview_rooming
-    return preview_rooming(await _read_upload(file), competition_id)
+    return preview_rooming(await _read_upload(file), competition_id, audience)
 
 
 @router.post("/import/rooming/commit", dependencies=[Depends(require_edit("logistics"))])
-async def commit_rooming_import(competition_id: str = Query(...), file: UploadFile = File(...)):
+async def commit_rooming_import(competition_id: str = Query(...), audience: Optional[str] = Query(None),
+                                 file: UploadFile = File(...)):
     from api._lib.services.logistics_import import commit_rooming
-    return commit_rooming(await _read_upload(file), competition_id)
+    return commit_rooming(await _read_upload(file), competition_id, audience)
 
 
 @router.get("/export/manifest.xlsx")
-def export_manifest(competition_id: str = Query(...)):
+def export_manifest(competition_id: str = Query(...), audience: Optional[str] = Query(None)):
     from api._lib.services.logistics_import import export_manifest_xlsx
-    content = export_manifest_xlsx(competition_id)
+    content = export_manifest_xlsx(competition_id, audience)
     return Response(
         content=content,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -795,9 +874,9 @@ def export_manifest(competition_id: str = Query(...)):
 
 
 @router.get("/export/rooming.xlsx")
-def export_rooming(competition_id: str = Query(...)):
+def export_rooming(competition_id: str = Query(...), audience: Optional[str] = Query(None)):
     from api._lib.services.logistics_import import export_rooming_xlsx
-    content = export_rooming_xlsx(competition_id)
+    content = export_rooming_xlsx(competition_id, audience)
     return Response(
         content=content,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",

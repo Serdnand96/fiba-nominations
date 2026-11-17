@@ -193,6 +193,22 @@ def delete_competition(competition_id: str, force: bool = False):
             ),
         )
 
+    # Los archivos privados de logística (menús, pasaportes, cotizaciones y el
+    # Excel original de cada cronograma) caen en cascada como FILAS, pero el
+    # objeto del bucket no: hay que juntar las rutas antes de borrar la
+    # competencia y quitarlas después. Si no, quedan pasaportes huérfanos.
+    from api._lib.routers.logistics import document_paths, remove_objects
+
+    logistics_files = document_paths("competition_id", competition_id)
+    schedule_files = (
+        supabase.table("logistics_schedules")
+        .select("file_path")
+        .eq("competition_id", competition_id)
+        .execute()
+        .data
+    ) or []
+    logistics_files += [s["file_path"] for s in schedule_files if s.get("file_path")]
+
     for n in noms:
         supabase.table("nominations").delete().eq("id", n["id"]).execute()
         _delete_pdf_from_storage(n.get("pdf_path"))
@@ -200,4 +216,5 @@ def delete_competition(competition_id: str, force: bool = False):
     result = supabase.table("competitions").delete().eq("id", competition_id).execute()
     if not result.data:
         raise HTTPException(status_code=404, detail="Competition not found")
+    remove_objects(logistics_files)
     return {"ok": True, "nominations_deleted": len(noms)}

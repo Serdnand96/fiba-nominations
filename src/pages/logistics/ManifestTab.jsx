@@ -8,6 +8,9 @@ import {
   downloadLogisticsXlsx,
 } from '../../api/client'
 import SheetImport from './SheetImport'
+import MovementTrips from './MovementTrips'
+import { DEFAULT_CATEGORY } from './audiences'
+import { DocumentsPanel } from './opsShared'
 
 // Sección Travel Manifest: el padrón de quién viene, y con qué vuelo llega y se
 // va cada uno.
@@ -32,7 +35,7 @@ const CATEGORY_STYLES = {
 const MODE_ICONS = { flight: '✈', bus: '🚌', ferry: '⛴', car: '🚗', other: '•' }
 
 const EMPTY_PARTICIPANT = {
-  first_name: '', last_name: '', role: '', category: 'official',
+  first_name: '', last_name: '', role: '', category: 'official', team: '',
   passport: '', nationality: '', phone: '', email: '', dietary_restrictions: '', pax: 1, notes: '',
 }
 
@@ -74,7 +77,7 @@ function LegCell({ participant, direction, lang, canEdit, openLeg }) {
   )
 }
 
-export default function ManifestTab({ competitionId, canEdit }) {
+export default function ManifestTab({ competitionId, canEdit, audience }) {
   const { lang } = useLanguage()
   const { push } = useToast()
   const t = (es, en) => (lang === 'es' ? es : en)
@@ -90,6 +93,7 @@ export default function ManifestTab({ competitionId, canEdit }) {
   const [personForm, setPersonForm] = useState(EMPTY_PARTICIPANT)
 
   const [legTarget, setLegTarget] = useState(null)   // { participant, direction, leg }
+  const [showTrips, setShowTrips] = useState(false)
   const [legForm, setLegForm] = useState(EMPTY_LEG)
 
   const load = useCallback(async () => {
@@ -97,13 +101,13 @@ export default function ManifestTab({ competitionId, canEdit }) {
     setLoading(true)
     try {
       const [p, m] = await Promise.all([
-        getLogisticsParticipants(competitionId),
-        getLogisticsMovements(competitionId),
+        getLogisticsParticipants(competitionId, audience),
+        getLogisticsMovements(competitionId, audience),
       ])
       setParticipants(p); setMovements(m)
     } catch (err) { console.error('Manifest load error:', err) }
     finally { setLoading(false) }
-  }, [competitionId])
+  }, [competitionId, audience])
 
   useEffect(() => { load() }, [load])
 
@@ -115,14 +119,17 @@ export default function ManifestTab({ competitionId, canEdit }) {
   }, [participants, search])
 
   function openCreatePerson() {
-    setEditingPerson(null); setPersonForm(EMPTY_PARTICIPANT); setShowPersonModal(true)
+    // Quien se carga desde la pestaña de una audiencia nace en esa audiencia.
+    setEditingPerson(null)
+    setPersonForm({ ...EMPTY_PARTICIPANT, category: DEFAULT_CATEGORY[audience || ''] })
+    setShowPersonModal(true)
   }
 
   function openEditPerson(p) {
     setEditingPerson(p)
     setPersonForm({
       first_name: p.first_name || '', last_name: p.last_name || '', role: p.role || '',
-      category: p.category || 'official', passport: p.passport || '', nationality: p.nationality || '',
+      category: p.category || 'official', team: p.team || '', passport: p.passport || '', nationality: p.nationality || '',
       phone: p.phone || '', email: p.email || '', dietary_restrictions: p.dietary_restrictions || '',
       pax: p.pax || 1, notes: p.notes || '',
     })
@@ -206,21 +213,34 @@ export default function ManifestTab({ competitionId, canEdit }) {
         <div className="flex flex-wrap items-center gap-2">
           <input value={search} onChange={e => setSearch(e.target.value)} placeholder={t('Buscar persona...', 'Search person...')}
             className="fiba-input w-auto text-xs h-8" />
-          <button onClick={() => downloadLogisticsXlsx('manifest', competitionId)} className="btn-fiba-ghost text-xs px-3 py-1.5">
+          <button onClick={() => downloadLogisticsXlsx('manifest', competitionId, audience)} className="btn-fiba-ghost text-xs px-3 py-1.5">
             {t('Exportar Excel', 'Export Excel')}
           </button>
           {canEdit && (
             <>
-              <button onClick={handleSeedFromCrew} className="btn-fiba-ghost text-xs px-3 py-1.5">
-                {t('Traer crew asignado', 'Pull assigned crew')}
-              </button>
+              {view === 'groups' && (
+                <button onClick={() => setShowTrips(true)} className="btn-fiba-ghost text-xs px-3 py-1.5">
+                  {t('Generar traslados', 'Generate transfers')}
+                </button>
+              )}
+              {/* El crew son oficiales: no tiene sentido traerlo a Delegación o VIP. */}
+              {(!audience || audience === 'staff') && (
+                <button onClick={handleSeedFromCrew} className="btn-fiba-ghost text-xs px-3 py-1.5">
+                  {t('Traer crew asignado', 'Pull assigned crew')}
+                </button>
+              )}
               <button onClick={openCreatePerson} className="btn-fiba text-xs px-3 py-1.5">+ {t('Persona', 'Person')}</button>
             </>
           )}
         </div>
       </div>
 
-      {canEdit && <SheetImport kind="manifest" competitionId={competitionId} onDone={load} />}
+      {/* La key descarta el preview al cambiar de competencia o de audiencia:
+          si no, "Confirmar" importaría en un lugar distinto del que se previsualizó. */}
+      {canEdit && (
+        <SheetImport key={`${competitionId}-${audience}`} kind="manifest"
+          competitionId={competitionId} audience={audience} onDone={load} />
+      )}
 
       {loading ? (
         <div className="text-center py-8 text-fiba-muted text-sm">{t('Cargando...', 'Loading...')}</div>
@@ -240,6 +260,7 @@ export default function ManifestTab({ competitionId, canEdit }) {
                 <th>{t('Nombre', 'Name')}</th>
                 <th>{t('Rol', 'Role')}</th>
                 <th>{t('Categoría', 'Category')}</th>
+                {audience === 'delegation' && <th>{t('Equipo', 'Team')}</th>}
                 <th>{t('Pasaporte', 'Passport')}</th>
                 <th>{t('Llegada', 'Arrival')}</th>
                 <th>{t('Salida', 'Departure')}</th>
@@ -259,6 +280,7 @@ export default function ManifestTab({ competitionId, canEdit }) {
                       {CATEGORY_LABELS[lang]?.[p.category] || p.category}
                     </span>
                   </td>
+                  {audience === 'delegation' && <td className="px-4 py-2 text-xs whitespace-nowrap">{p.team || '—'}</td>}
                   <td className="px-4 py-2 font-mono text-xs text-fiba-muted">{p.passport || '—'}</td>
                   <td className="px-4 py-2"><LegCell participant={p} direction="arrival" lang={lang} canEdit={canEdit} openLeg={openLeg} /></td>
                   <td className="px-4 py-2"><LegCell participant={p} direction="departure" lang={lang} canEdit={canEdit} openLeg={openLeg} /></td>
@@ -273,7 +295,7 @@ export default function ManifestTab({ competitionId, canEdit }) {
                 </tr>
               ))}
               {filtered.length === 0 && (
-                <tr><td colSpan={canEdit ? 7 : 6} className="px-4 py-6 text-center text-fiba-muted/60 text-xs">
+                <tr><td colSpan={(canEdit ? 7 : 6) + (audience === 'delegation' ? 1 : 0)} className="px-4 py-6 text-center text-fiba-muted/60 text-xs">
                   {t('Nadie coincide con la búsqueda.', 'Nobody matches the search.')}
                 </td></tr>
               )}
@@ -300,7 +322,14 @@ export default function ManifestTab({ competitionId, canEdit }) {
                         <span className="text-sm font-semibold text-ink-900 dark:text-white">
                           {shortDate(group.date, lang)} · {group.airport || t('Sin aeropuerto', 'No airport')}
                         </span>
-                        <span className="text-xs text-fiba-muted">{group.pax} pax</span>
+                        <span className="flex items-center gap-2 text-xs text-fiba-muted">
+                          {group.covered && (
+                            <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-500">
+                              {t('con traslado', 'transfer set')}
+                            </span>
+                          )}
+                          {group.pax} pax
+                        </span>
                       </div>
                       <table className="fiba-table">
                         <tbody>
@@ -324,6 +353,12 @@ export default function ManifestTab({ competitionId, canEdit }) {
             </div>
           ))}
         </div>
+      )}
+
+      {showTrips && (
+        <MovementTrips competitionId={competitionId} audience={audience} movements={movements}
+          onClose={() => setShowTrips(false)}
+          onDone={async () => { setShowTrips(false); await load() }} />
       )}
 
       {/* ── Modal de persona ────────────────────────────────── */}
@@ -351,6 +386,8 @@ export default function ManifestTab({ competitionId, canEdit }) {
                   </select>
                 </div>
               </div>
+              <div><label className="fiba-label">{t('Equipo / delegación', 'Team / delegation')}</label>
+                <input placeholder={t('Ej: Argentina', 'e.g. Argentina')} value={personForm.team} onChange={e => setPersonForm(f => ({ ...f, team: e.target.value }))} className="fiba-input" /></div>
               <div className="grid grid-cols-3 gap-3">
                 <div><label className="fiba-label">{t('Pasaporte', 'Passport')}</label>
                   <input value={personForm.passport} onChange={e => setPersonForm(f => ({ ...f, passport: e.target.value }))} className="fiba-input" /></div>
@@ -369,6 +406,16 @@ export default function ManifestTab({ competitionId, canEdit }) {
                 <input value={personForm.dietary_restrictions} onChange={e => setPersonForm(f => ({ ...f, dietary_restrictions: e.target.value }))} className="fiba-input" /></div>
               <div><label className="fiba-label">{t('Notas', 'Notes')}</label>
                 <textarea rows={2} value={personForm.notes} onChange={e => setPersonForm(f => ({ ...f, notes: e.target.value }))} className="fiba-input" /></div>
+              {/* Solo al editar: el archivo cuelga de una persona que ya existe. Los
+                  escaneos son privados y no salen en el link público. */}
+              {editingPerson && (
+                <div className="pt-3 border-t border-fiba-border">
+                  <label className="fiba-label">{t('Documentos · pasaporte', 'Documents · passport')}</label>
+                  <DocumentsPanel competitionId={competitionId}
+                    filters={{ kind: 'passport', participant_id: editingPerson.id }} canEdit={canEdit}
+                    labels={{ empty: t('Sin escaneo de pasaporte cargado.', 'No passport scan uploaded.'), upload: t('Subir escaneo', 'Upload scan') }} />
+                </div>
+              )}
               <div className="flex justify-end gap-3 pt-2">
                 <button type="button" onClick={() => setShowPersonModal(false)} className="px-4 py-2 text-sm text-fiba-muted">{t('Cancelar', 'Cancel')}</button>
                 <button type="submit" className="btn-fiba">{editingPerson ? t('Guardar', 'Save') : t('Crear', 'Create')}</button>

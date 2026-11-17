@@ -8,6 +8,10 @@ import {
   getLogisticsParticipants, downloadLogisticsXlsx,
 } from '../../api/client'
 import SheetImport from './SheetImport'
+import SchedulePanel from './SchedulePanel'
+import HotelDetail from './HotelDetail'
+import { AudienceBadge, audienceOptions } from './opsShared'
+import { audienceLabel } from './audiences'
 
 // Sección Hospedaje: hoteles, rooming list y plan de comidas.
 //
@@ -23,6 +27,11 @@ const MEAL_LABELS = {
   en: { breakfast: 'Breakfast', lunch: 'Lunch', dinner: 'Dinner', snack: 'Snack' },
 }
 
+const EMPTY_HOTEL = {
+  name: '', address: '', phone: '', email: '', contact_name: '', audience: '',
+  check_in_time: '', check_out_time: '', map_url: '', notes: '', is_primary: false,
+}
+
 const EMPTY_ROOMING = { dates: [], rows: [], total_nights: 0, person_nights: 0, hotels: [] }
 
 function shortDate(iso, lang) {
@@ -30,12 +39,15 @@ function shortDate(iso, lang) {
   return new Date(iso + 'T12:00:00').toLocaleDateString(lang === 'es' ? 'es' : 'en-US', { day: 'numeric', month: 'short' })
 }
 
-export default function HousingTab({ competitionId, canEdit }) {
+export default function HousingTab({ competitionId, competitionName, canEdit, audience }) {
   const { lang } = useLanguage()
   const { push } = useToast()
   const t = (es, en) => (lang === 'es' ? es : en)
 
   const [hotels, setHotels] = useState([])
+  // Todos los hoteles de la competencia, sin recorte de audiencia: "principal" es
+  // uno solo por competencia, no uno por audiencia.
+  const [allHotelsCount, setAllHotelsCount] = useState(0)
   const [rooming, setRooming] = useState(EMPTY_ROOMING)
   const [meals, setMeals] = useState([])
   const [participants, setParticipants] = useState([])
@@ -43,7 +55,8 @@ export default function HousingTab({ competitionId, canEdit }) {
 
   const [showHotelModal, setShowHotelModal] = useState(false)
   const [editingHotel, setEditingHotel] = useState(null)
-  const [hotelForm, setHotelForm] = useState({ name: '', address: '', phone: '', email: '', check_in_time: '', check_out_time: '', map_url: '', notes: '', is_primary: false })
+  const [hotelForm, setHotelForm] = useState(EMPTY_HOTEL)
+  const [detailHotelId, setDetailHotelId] = useState(null)   // hotel abierto en HotelDetail
 
   const [showStayModal, setShowStayModal] = useState(false)
   const [editingStay, setEditingStay] = useState(null)
@@ -56,22 +69,32 @@ export default function HousingTab({ competitionId, canEdit }) {
     if (!competitionId) return
     setLoading(true)
     try {
-      const [h, r, m, p] = await Promise.all([
-        getLogisticsHotels(competitionId),
-        getLogisticsRooming(competitionId),
+      const [h, r, m, p, all] = await Promise.all([
+        // Hoteles de la audiencia activa más los compartidos (audience null).
+        getLogisticsHotels(competitionId, audience),
+        // Rooming y padrón van recortados a la audiencia: al hotel se le manda
+        // una rooming por grupo, con su propio total de habitaciones.
+        getLogisticsRooming(competitionId, audience),
         getLogisticsMeals(competitionId),
-        getLogisticsParticipants(competitionId),
+        getLogisticsParticipants(competitionId, audience),
+        // Sin audiencia activa, la lista de arriba ya es el total.
+        audience ? getLogisticsHotels(competitionId) : null,
       ])
+      setAllHotelsCount((all || h).length)
       setHotels(h); setRooming(r); setMeals(m); setParticipants(p)
-    } catch (err) { console.error('Housing load error:', err) }
+    } catch (err) {
+      console.error('Housing load error:', err)
+      push({ type: 'error', title: err.response?.data?.detail || t('No se pudo cargar el hospedaje.', 'Could not load housing.') })
+    }
     finally { setLoading(false) }
-  }, [competitionId])
+  }, [competitionId, audience])
 
   useEffect(() => { load() }, [load])
 
   function openCreateHotel() {
     setEditingHotel(null)
-    setHotelForm({ name: '', address: '', phone: '', email: '', check_in_time: '', check_out_time: '', map_url: '', notes: '', is_primary: hotels.length === 0 })
+    // Un hotel cargado desde la pestaña de una audiencia nace en esa audiencia.
+    setHotelForm({ ...EMPTY_HOTEL, audience: audience || '', is_primary: allHotelsCount === 0 })
     setShowHotelModal(true)
   }
 
@@ -79,6 +102,7 @@ export default function HousingTab({ competitionId, canEdit }) {
     setEditingHotel(h)
     setHotelForm({
       name: h.name || '', address: h.address || '', phone: h.phone || '', email: h.email || '',
+      contact_name: h.contact_name || '', audience: h.audience || '',
       check_in_time: (h.check_in_time || '').slice(0, 5), check_out_time: (h.check_out_time || '').slice(0, 5),
       map_url: h.map_url || '', notes: h.notes || '', is_primary: !!h.is_primary,
     })
@@ -188,6 +212,7 @@ export default function HousingTab({ competitionId, canEdit }) {
                     <div className="font-semibold text-ink-900 dark:text-white flex items-center gap-2">
                       {h.name}
                       {h.is_primary && <span className="bg-fiba-accent/20 text-fiba-accent px-1.5 py-0.5 rounded text-[10px] font-medium">{t('Principal', 'Primary')}</span>}
+                      <AudienceBadge audience={h.audience} />
                     </div>
                     {h.address && <div className="text-xs text-fiba-muted mt-0.5">{h.address}</div>}
                   </div>
@@ -199,12 +224,17 @@ export default function HousingTab({ competitionId, canEdit }) {
                   )}
                 </div>
                 <dl className="text-xs text-fiba-muted space-y-0.5">
+                  {h.contact_name && <div>{t('Contacto', 'Contact')}: {h.contact_name}</div>}
                   {h.phone && <div>{t('Teléfono', 'Phone')}: {h.phone}</div>}
+                  {h.email && <div>Email: <a href={`mailto:${h.email}`} className="text-fiba-accent hover:underline break-all">{h.email}</a></div>}
                   {(h.check_in_time || h.check_out_time) && (
                     <div>Check-in {(h.check_in_time || '—').slice(0, 5)} · Check-out {(h.check_out_time || '—').slice(0, 5)}</div>
                   )}
                   {h.notes && <div className="text-ink-600 dark:text-ink-300">{h.notes}</div>}
                 </dl>
+                <button onClick={() => setDetailHotelId(h.id)} className="mt-3 text-fiba-accent hover:underline text-xs font-medium">
+                  {t('Menús, adicionales y pagos', 'Menus, extras & payments')} →
+                </button>
               </div>
             ))}
           </div>
@@ -215,7 +245,9 @@ export default function HousingTab({ competitionId, canEdit }) {
       <section>
         <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
           <div className="flex items-baseline gap-3">
-            <h3 className="text-lg font-semibold text-ink-900 dark:text-white">Rooming list</h3>
+            <h3 className="text-lg font-semibold text-ink-900 dark:text-white">
+              Rooming list{audience ? ` · ${audienceLabel(audience, lang)}` : ''}
+            </h3>
             {rooming.rows.length > 0 && (
               <span className="text-xs text-fiba-muted">
                 {rooming.rows.length} {t('personas', 'people')} · <strong className="text-ink-700 dark:text-ink-200">{rooming.total_nights}</strong> {t('noches de habitación', 'room nights')}
@@ -223,7 +255,7 @@ export default function HousingTab({ competitionId, canEdit }) {
             )}
           </div>
           <div className="flex items-center gap-2">
-            <button onClick={() => downloadLogisticsXlsx('rooming', competitionId)} className="btn-fiba-ghost text-xs px-3 py-1.5">
+            <button onClick={() => downloadLogisticsXlsx('rooming', competitionId, audience)} className="btn-fiba-ghost text-xs px-3 py-1.5">
               {t('Exportar Excel', 'Export Excel')}
             </button>
             {canEdit && <button onClick={openCreateStay} disabled={withoutStay.length === 0} className="btn-fiba text-xs px-3 py-1.5 disabled:opacity-50">+ {t('Estadía', 'Stay')}</button>}
@@ -231,7 +263,8 @@ export default function HousingTab({ competitionId, canEdit }) {
         </div>
 
         {canEdit && (
-          <SheetImport kind="rooming" competitionId={competitionId} onDone={load} />
+          <SheetImport key={`${competitionId}-${audience}`} kind="rooming"
+            competitionId={competitionId} audience={audience} onDone={load} />
         )}
 
         {loading ? (
@@ -303,10 +336,21 @@ export default function HousingTab({ competitionId, canEdit }) {
         )}
       </section>
 
+      {/* ── Cronograma de comidas ───────────────────────────── */}
+      <section>
+        <h3 className="text-lg font-semibold text-ink-900 dark:text-white mb-1">{t('Cronograma de comidas', 'Meals schedule')}</h3>
+        <p className="text-xs text-fiba-muted mb-3">
+          {t('La planilla que se le manda al hotel: almuerzo, merienda y cena de cada equipo, día por día.',
+             'The sheet sent to the hotel: each team\'s lunch, snack and dinner, day by day.')}
+        </p>
+        <SchedulePanel competitionId={competitionId} competitionName={competitionName}
+          section="meals" audience={audience} canEdit={canEdit} />
+      </section>
+
       {/* ── Alimentación ────────────────────────────────────── */}
       <section>
         <div className="flex items-center justify-between mb-3">
-          <h3 className="text-lg font-semibold text-ink-900 dark:text-white">{t('Alimentación', 'Meals')}</h3>
+          <h3 className="text-lg font-semibold text-ink-900 dark:text-white">{t('Horarios generales del hotel', 'Hotel general meal times')}</h3>
           {canEdit && <button onClick={() => setShowMealModal(true)} className="btn-fiba text-xs px-3 py-1.5">+ {t('Agregar', 'Add')}</button>}
         </div>
         {meals.length === 0 ? (
@@ -349,6 +393,11 @@ export default function HousingTab({ competitionId, canEdit }) {
       </section>
 
       {/* ── Modales ─────────────────────────────────────────── */}
+      {detailHotelId && hotels.find(h => h.id === detailHotelId) && (
+        <HotelDetail hotel={hotels.find(h => h.id === detailHotelId)} competitionId={competitionId}
+          canEdit={canEdit} onClose={() => setDetailHotelId(null)} />
+      )}
+
       {showHotelModal && (
         <div className="fiba-modal-overlay">
           <div className="fiba-modal max-w-lg p-6">
@@ -360,6 +409,15 @@ export default function HousingTab({ competitionId, canEdit }) {
                 <input required value={hotelForm.name} onChange={e => setHotelForm(f => ({ ...f, name: e.target.value }))} className="fiba-input" /></div>
               <div><label className="fiba-label">{t('Dirección', 'Address')}</label>
                 <input value={hotelForm.address} onChange={e => setHotelForm(f => ({ ...f, address: e.target.value }))} className="fiba-input" /></div>
+              <div className="grid grid-cols-2 gap-3">
+                <div><label className="fiba-label">{t('Persona de contacto', 'Contact person')}</label>
+                  <input value={hotelForm.contact_name} onChange={e => setHotelForm(f => ({ ...f, contact_name: e.target.value }))} className="fiba-input" /></div>
+                <div><label className="fiba-label">{t('Audiencia', 'Audience')}</label>
+                  <select value={hotelForm.audience} onChange={e => setHotelForm(f => ({ ...f, audience: e.target.value }))} className="fiba-select">
+                    {audienceOptions(lang).map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                  </select>
+                </div>
+              </div>
               <div className="grid grid-cols-2 gap-3">
                 <div><label className="fiba-label">{t('Teléfono', 'Phone')}</label>
                   <input value={hotelForm.phone} onChange={e => setHotelForm(f => ({ ...f, phone: e.target.value }))} className="fiba-input" /></div>

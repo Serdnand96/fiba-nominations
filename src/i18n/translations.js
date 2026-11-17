@@ -788,6 +788,12 @@ const translations = {
       en: 'Pick a department and an account first',
       es: 'Elige departamento y cuenta primero',
     },
+    hotel: { en: 'Hotel', es: 'Hotel' },
+    hotelNone: { en: 'No hotel', es: 'Sin hotel' },
+    hotelHint: {
+      en: 'Optional. Links the expense to a hotel of the event; it shows in the hotel detail in Logistics.',
+      es: 'Opcional. Vincula el gasto a un hotel del evento; aparece en el detalle del hotel en Logística.',
+    },
     approvalNoEditableDepts: {
       en: 'You do not edit any department, so you cannot load expenses.',
       es: 'No editas ningún departamento, así que no puedes cargar gastos.',
