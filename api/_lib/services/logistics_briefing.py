@@ -709,7 +709,7 @@ def _rooms_section(doc: Document, rooms: list) -> None:
             r.get("notes") or "",
         ])
     _add_table(doc, ["Salón", "Actividad", "Fecha", "Horario", "Lugar", "Capacidad", "Notas"],
-               [4.6, 3.4, 4.6, 2.8, 5.0, 1.8, 4.5], rows, drop_empty=True)
+               [4.4, 3.2, 4.4, 2.8, 4.8, 2.6, 4.5], rows, drop_empty=True)
 
 
 def _contacts_section(doc: Document, contacts: list) -> None:
