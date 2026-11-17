@@ -35,6 +35,31 @@ def categories_for(audience: Optional[str]) -> Optional[tuple]:
     return AUDIENCES[audience]
 
 
+def check_audience(audience: Optional[str]) -> Optional[str]:
+    """Valida una audiencia que se GUARDA en una fila (hotel, contacto, salón).
+
+    '' y None son lo mismo: NULL = "compartido por todas las audiencias". Una
+    audiencia desconocida es 400, no un NULL silencioso.
+    """
+    audience = (audience or "").strip()
+    if not audience:
+        return None
+    categories_for(audience)  # valida
+    return audience
+
+
+def for_audience(rows: list[dict], audience: Optional[str]) -> list[dict]:
+    """Filas de `audience` más las compartidas (audience NULL).
+
+    Se filtra en Python y no con `.or_()`: es lo que usan hoteles, contactos y
+    salones, y el fake de los tests no soporta `.or_`. Sin audiencia no recorta.
+    """
+    audience = check_audience(audience)
+    if not audience:
+        return rows
+    return [r for r in rows if r.get("audience") in (None, audience)]
+
+
 def audience_of(category: Optional[str]) -> str:
     for audience, categories in AUDIENCES.items():
         if category in categories:

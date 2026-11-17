@@ -17,7 +17,8 @@ from pydantic import BaseModel, Field
 
 from api._lib.auth import require_edit, require_view
 from api._lib.database import supabase
-from api._lib.logistics_audiences import categories_for
+from api._lib.logistics_audiences import categories_for, check_audience, for_audience
+from api._lib.routers.payments import _delete_from_storage
 
 router = APIRouter(
     prefix="/logistics",
@@ -55,6 +56,8 @@ class ParticipantCreate(BaseModel):
     # sentido y build_movement_groups lo enmascara con `or 1`.
     pax: int = Field(default=1, ge=1)
     notes: Optional[str] = None
+    # Club o selección (migración 055). Texto libre, como viene en la rooming list.
+    team: Optional[str] = None
 
 
 class ParticipantUpdate(BaseModel):
@@ -71,6 +74,7 @@ class ParticipantUpdate(BaseModel):
     dietary_restrictions: Optional[str] = None
     pax: Optional[int] = None
     notes: Optional[str] = None
+    team: Optional[str] = None
 
 
 class TravelLegCreate(BaseModel):
@@ -111,6 +115,9 @@ class HotelCreate(BaseModel):
     map_url: Optional[str] = None
     notes: Optional[str] = None
     is_primary: bool = False
+    # A quién aloja (staff / delegation / vip). None = compartido (migración 055).
+    audience: Optional[str] = None
+    contact_name: Optional[str] = None
 
 
 class HotelUpdate(BaseModel):
@@ -123,6 +130,8 @@ class HotelUpdate(BaseModel):
     map_url: Optional[str] = None
     notes: Optional[str] = None
     is_primary: Optional[bool] = None
+    audience: Optional[str] = None
+    contact_name: Optional[str] = None
 
 
 class StayCreate(BaseModel):
@@ -171,7 +180,7 @@ class MealUpdate(BaseModel):
 
 PARTICIPANT_FIELDS = (
     "id,competition_id,personnel_id,employee_id,first_name,last_name,role,"
-    "category,passport,nationality,phone,email,dietary_restrictions,pax,notes"
+    "category,passport,nationality,phone,email,dietary_restrictions,pax,notes,team"
 )
 
 
@@ -184,6 +193,36 @@ def participant_ids(competition_id: str) -> list[str]:
         .data
     )
     return [r["id"] for r in rows]
+
+
+def _blank_to_none(value):
+    """'' → NULL en un texto libre (el formulario manda vacío por 'sin dato')."""
+    if isinstance(value, str):
+        return value.strip() or None
+    return value
+
+
+def document_paths(column: str, value: str) -> list[str]:
+    """Rutas de Storage de los documentos que cuelgan de una fila.
+
+    `logistics_documents` cae en cascada con su dueño (participante, hotel,
+    cargo), pero el objeto del bucket privado NO: hay que juntar las rutas
+    ANTES de borrar la fila, que se llevaría los registros, y quitar los
+    objetos después (`remove_objects`).
+    """
+    rows = (
+        supabase.table("logistics_documents")
+        .select("file_path")
+        .eq(column, value)
+        .execute()
+        .data
+    ) or []
+    return [r["file_path"] for r in rows if r.get("file_path")]
+
+
+def remove_objects(paths: list[str]) -> None:
+    for path in paths:
+        _delete_from_storage(path)   # best-effort: loguea y sigue
 
 
 def full_name(p: dict) -> str:
@@ -277,7 +316,9 @@ def list_participants(competition_id: str = Query(...), audience: Optional[str] 
 def create_participant(data: ParticipantCreate):
     if data.category not in CATEGORIES:
         raise HTTPException(400, f"category must be one of {', '.join(CATEGORIES)}")
-    result = supabase.table("logistics_participants").insert(data.model_dump()).execute()
+    record = data.model_dump()
+    record["team"] = _blank_to_none(record.get("team"))
+    result = supabase.table("logistics_participants").insert(record).execute()
     return result.data[0]
 
 
@@ -288,6 +329,8 @@ def update_participant(participant_id: str, data: ParticipantUpdate):
         raise HTTPException(400, "No fields to update")
     if updates.get("category") and updates["category"] not in CATEGORIES:
         raise HTTPException(400, f"category must be one of {', '.join(CATEGORIES)}")
+    if "team" in updates:
+        updates["team"] = _blank_to_none(updates["team"])
     r = supabase.table("logistics_participants").update(updates).eq("id", participant_id).execute()
     if not r.data:
         raise HTTPException(404, "Participant not found")
@@ -296,7 +339,11 @@ def update_participant(participant_id: str, data: ParticipantUpdate):
 
 @router.delete("/participants/{participant_id}", dependencies=[Depends(require_edit("logistics"))])
 def delete_participant(participant_id: str):
+    # Los pasaportes escaneados caen por el ON DELETE CASCADE de la fila, pero el
+    # objeto de Storage no: se juntan las rutas antes y se borran después.
+    paths = document_paths("participant_id", participant_id)
     supabase.table("logistics_participants").delete().eq("id", participant_id).execute()
+    remove_objects(paths)
     return {"ok": True}
 
 
@@ -477,20 +524,26 @@ def list_movements(competition_id: str = Query(...), audience: Optional[str] = Q
 # ── Hoteles ──────────────────────────────────────────────────────────────────
 
 @router.get("/hotels")
-def list_hotels(competition_id: str = Query(...)):
-    return (
+def list_hotels(competition_id: str = Query(...), audience: Optional[str] = None):
+    """Hoteles de la competencia. Con `audience`: los de esa audiencia más los
+    compartidos (audience NULL), que sirven a todas."""
+    hotels = (
         supabase.table("logistics_hotels")
         .select("*")
         .eq("competition_id", competition_id)
         .order("name")
         .execute()
         .data
-    )
+    ) or []
+    return for_audience(hotels, audience)
 
 
 @router.post("/hotels", dependencies=[Depends(require_edit("logistics"))])
 def create_hotel(data: HotelCreate):
-    result = supabase.table("logistics_hotels").insert(data.model_dump()).execute()
+    record = data.model_dump()
+    record["audience"] = check_audience(record.get("audience"))
+    record["contact_name"] = _blank_to_none(record.get("contact_name"))
+    result = supabase.table("logistics_hotels").insert(record).execute()
     return result.data[0]
 
 
@@ -499,6 +552,10 @@ def update_hotel(hotel_id: str, data: HotelUpdate):
     updates = data.model_dump(exclude_unset=True)
     if not updates:
         raise HTTPException(400, "No fields to update")
+    if "audience" in updates:
+        updates["audience"] = check_audience(updates["audience"])
+    if "contact_name" in updates:
+        updates["contact_name"] = _blank_to_none(updates["contact_name"])
     r = supabase.table("logistics_hotels").update(updates).eq("id", hotel_id).execute()
     if not r.data:
         raise HTTPException(404, "Hotel not found")
@@ -507,7 +564,16 @@ def update_hotel(hotel_id: str, data: HotelUpdate):
 
 @router.delete("/hotels/{hotel_id}", dependencies=[Depends(require_edit("logistics"))])
 def delete_hotel(hotel_id: str):
+    # Menús del hotel y PDFs de sus cotizaciones caen en cascada (hotel →
+    # documentos, hotel → cargos → documentos): sus objetos de Storage no.
+    paths = set(document_paths("hotel_id", hotel_id))
+    charges = (
+        supabase.table("logistics_hotel_charges").select("id").eq("hotel_id", hotel_id).execute().data
+    ) or []
+    for charge in charges:
+        paths.update(document_paths("charge_id", charge["id"]))
     supabase.table("logistics_hotels").delete().eq("id", hotel_id).execute()
+    remove_objects(sorted(paths))
     return {"ok": True}
 
 
@@ -607,7 +673,10 @@ def build_rooming(competition_id: str, audience: Optional[str] = None) -> dict:
         "rows": rows,
         "total_nights": sum(r["nights"] for r in rows if r["is_room_holder"]),
         "person_nights": sum(r["nights"] for r in rows),
-        "hotels": hotels,
+        # Con audiencia, los hoteles de esa audiencia y los compartidos: la
+        # rooming de delegaciones no lista el hotel del staff. Las filas siguen
+        # resolviendo su nombre contra todos (`hotel_by_id`).
+        "hotels": for_audience(hotels, audience),
     }
 
 

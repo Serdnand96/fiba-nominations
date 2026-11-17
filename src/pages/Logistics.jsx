@@ -3,19 +3,24 @@ import { useLanguage } from '../i18n/LanguageContext'
 import { useAuth } from '../contexts/AuthContext'
 import CompetitionSearch from '../components/CompetitionSearch'
 import { readLastSearch, writeLastSearch } from '../lib/lastSearch'
-import { getCalendarCompetitions } from '../api/client'
+import { getCalendarCompetitions, downloadLogisticsBriefing } from '../api/client'
+import { useToast } from '../components/ui/Toast'
+import { Button } from '../components/ui/Button'
+import { Icon } from '../lib/icons'
 import TransportTab from './logistics/TransportTab'
 import HousingTab from './logistics/HousingTab'
 import ManifestTab from './logistics/ManifestTab'
+import ServicesTab from './logistics/ServicesTab'
+import { errorMessage } from './logistics/opsShared'
 import SharePanel from './logistics/SharePanel'
 import AudienceSwitch, { AUDIENCE_KEYS } from './logistics/audiences'
 
-// Módulo Logística: la competencia se elige una vez acá arriba y las tres
-// secciones la comparten. Antes esto era el módulo Transporte, que solo cubría
+// Módulo Logística: la competencia se elige una vez acá arriba y las cuatro
+// secciones (transporte, hospedaje, manifiesto y servicios) la comparten. Antes esto era el módulo Transporte, que solo cubría
 // vehículos y viajes; el hospedaje y el manifiesto vivían en planillas sueltas.
 
 const LAST_SEARCH_KEY = 'fiba_logistics_last_search'
-const TAB_KEYS = ['transport', 'housing', 'manifest']
+const TAB_KEYS = ['transport', 'housing', 'manifest', 'services']
 
 function loadLastSearch() {
   const parsed = readLastSearch(LAST_SEARCH_KEY)
@@ -31,6 +36,7 @@ function loadLastSearch() {
 export default function Logistics() {
   const { lang } = useLanguage()
   const { hasEdit } = useAuth()
+  const { push } = useToast()
   const canEdit = hasEdit('logistics')
   const t = (es, en) => (lang === 'es' ? es : en)
 
@@ -39,6 +45,7 @@ export default function Logistics() {
   const [competitions, setCompetitions] = useState([])
   const [competitionId, setCompetitionId] = useState('')
   const [showShare, setShowShare] = useState(false)
+  const [briefingBusy, setBriefingBusy] = useState(false)
   // Staff / Delegación / VIP: la división la comparten las tres secciones,
   // así que se elige una vez acá. '' = Todos.
   const [audience, setAudience] = useState(() => lastSearchRef.current?.audience || '')
@@ -74,10 +81,25 @@ export default function Logistics() {
     writeLastSearch(LAST_SEARCH_KEY, { compId: competitionId, tab, date: transportDate, audience })
   }, [competitionId, tab, transportDate, audience])
 
+  // PDF general para las delegaciones: sin datos personales. Si el servidor no
+  // pudo convertirlo, baja el .docx (la extensión la decide el content-type).
+  async function handleBriefing() {
+    if (briefingBusy) return
+    setBriefingBusy(true)
+    try {
+      const slug = (selectedComp?.name || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+        .replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
+      await downloadLogisticsBriefing(competitionId, slug ? `delegaciones-${slug}` : 'delegaciones')
+    } catch (err) {
+      push({ type: 'error', title: errorMessage(err, t('No se pudo generar el PDF de delegaciones.', 'Could not generate the delegations PDF.')) })
+    } finally { setBriefingBusy(false) }
+  }
+
   const TAB_LABELS = {
     transport: t('Transporte', 'Transport'),
     housing: t('Hoteles y alimentación', 'Hotels & meals'),
     manifest: t('Travel Manifest', 'Travel Manifest'),
+    services: t('Servicios', 'Services'),
   }
 
   if (competitions.length === 0) {
@@ -104,10 +126,19 @@ export default function Logistics() {
             placeholder={t('Buscar competencia...', 'Search competition...')}
           />
         </div>
-        {canEdit && competitionId && (
-          <button onClick={() => setShowShare(true)} className="btn-fiba-ghost whitespace-nowrap">
-            {t('Compartir', 'Share')}
-          </button>
+        {competitionId && (
+          <div className="flex flex-wrap items-center gap-2">
+            <Button variant="secondary" icon={<Icon.Download />} onClick={handleBriefing} disabled={briefingBusy}
+              title={t('Un PDF general para los equipos: hoteles, cronogramas, salones y contactos. Sin datos personales.',
+                       'One general PDF for the teams: hotels, schedules, rooms and contacts. No personal data.')}>
+              {briefingBusy ? t('Generando...', 'Generating...') : t('PDF delegaciones', 'Delegations PDF')}
+            </Button>
+            {canEdit && (
+              <button onClick={() => setShowShare(true)} className="btn-fiba-ghost whitespace-nowrap">
+                {t('Compartir', 'Share')}
+              </button>
+            )}
+          </div>
         )}
       </div>
 
@@ -144,6 +175,7 @@ export default function Logistics() {
           )}
           {tab === 'housing' && <HousingTab competitionId={competitionId} competitionName={selectedComp?.name} canEdit={canEdit} audience={audience} />}
           {tab === 'manifest' && <ManifestTab competitionId={competitionId} canEdit={canEdit} audience={audience} />}
+          {tab === 'services' && <ServicesTab competitionId={competitionId} canEdit={canEdit} audience={audience} />}
         </>
       )}
 

@@ -5,11 +5,12 @@
 > de gastos con aprobador separado, pagos como pipeline, historial de estados,
 > campana de notificaciones, dashboard con gráficos y exports a Excel.
 >
-> Migraciones del módulo: **033-037** (aplicadas a prod), **041** y **045-050**.
-> Las 038-040 son de otros módulos (checklists, hora UTC, ventanas FIBA). Todas
-> se aplican **a mano** antes del push (CLAUDE.md §17).
+> Migraciones del módulo: **033-037** (aplicadas a prod), **041**, **045-050** y
+> **056** (`expenses.hotel_id`, noviembre 2026).
+> Las 038-040 son de otros módulos (checklists, hora UTC, ventanas FIBA) y la 055
+> es de Logística. Todas se aplican **a mano** antes del push (CLAUDE.md §17).
 >
-> Código: `api/_lib/routers/budget.py` (**55 endpoints**),
+> Código: `api/_lib/routers/budget.py` (**56 endpoints**),
 > `api/_lib/routers/payments.py` (26), `api/_lib/routers/notifications.py` (4);
 > `src/pages/Budget.jsx` es un shell de 6 pestañas (+ Cuentas para el admin
 > general) que viven en `src/pages/budget/`, y `src/pages/Payments.jsx` uno de 2
@@ -75,7 +76,7 @@ Competitions son `(línea, competencia)`, y la columna "General Expenses" es
 | 6 | **Una sola versión vigente** del presupuesto, editable | Sin tabla de versiones. Los cambios quedan en el activity log existente (migración 018). |
 | 7 | Todo en **USD** | Sin multi-moneda, sin tipo de cambio. |
 | 8 | Recurrentes por **plantilla con generación perezosa** | Nada corre por cron; los gastos esperados del mes se muestran al abrir el mes y se confirman en bloque. |
-| 9 | Hotel y transporte: **Logística queda puramente operativa** | El host los asume casi siempre. Cuando FIBA sí paga (ej. "Hotel Extra Nights" de AmeriCup W), va como gasto normal. Nunca se derivan costos desde Logística → cero doble conteo. |
+| 9 | Hotel y transporte: **Logística queda puramente operativa** | El host los asume casi siempre. Cuando FIBA sí paga (ej. "Hotel Extra Nights" de AmeriCup W), va como gasto normal. Nunca se derivan costos desde Logística → cero doble conteo. Los **adicionales y cotizaciones de hotel** (`logistics_hotel_charges`, migración 055) son un registro operativo con monto **informativo**: no entran en `/budget/summary` ni en ningún reporte. El pago real sigue siendo un `expense`, que se vincula al hotel con `expenses.hotel_id` (migración 056) y Logística lee en solo lectura (§9). |
 | 10 | **Ingresos** también se registran | El Summary de Competitions tiene *Expected Revenue* y *Grant Requested*. |
 | 11 | `status` **nunca por PATCH/PUT**: solo por `POST /{id}/transition`, con una función pura por máquina | Es lo que hace cumplir la máquina de estados, el motivo obligatorio y la traza (§14). Con el status en el PATCH, un `{"status": "paid"}` se saltea todo. |
 | 12 | Completar un pago exige el permiso no-página **`payments_approve`**, además de `payments:edit` | Completar es soltar la plata. Payments no está recortado por departamento, así que un flag en `budget_access` no aplica; el precedente es `comp_days` (migración 030). |
@@ -88,7 +89,7 @@ Competitions son `(línea, competencia)`, y la columna "General Expenses" es
 
 ## 3. Schema
 
-Migraciones `033` → `037`, `041` y `045` → `050`. Todas las tablas con RLS
+Migraciones `033` → `037`, `041`, `045` → `050` y `056`. Todas las tablas con RLS
 activada y **sin políticas** (backend-only vía `service_role`), igual que
 `payments` — son datos financieros sensibles.
 
@@ -498,6 +499,25 @@ de funciones: sin esto, A podía llevar a $10.000 un gasto de $100 que cargó B 
 después aprobarlo, porque `created_by` seguía siendo B (§4, §14). Sin backfill:
 `NULL` = nadie editó montos desde que existe la columna.
 
+### 056 — Hotel de un gasto
+
+`expenses.hotel_id uuid NULL REFERENCES logistics_hotels(id) ON DELETE SET NULL`
++ índice parcial `idx_expenses_hotel` (donde no es NULL). Es el vínculo que le
+faltaba al gasto para decir "de qué hotel es" (noches extra, salones,
+adicionales); la plata sigue cargándose, aprobándose y pagándose acá. Necesita
+la 025 (`logistics_hotels`). Sin backfill: los gastos que ya existen quedan sin
+hotel. Reglas del backend (§5):
+
+- Exige `competition_id` y que el hotel sea de **esa** competencia (400 si no;
+  un hotel inexistente y uno ajeno contestan igual, para no confirmar que el id
+  existe). En el PATCH se revalida si cambia el hotel **o** la competencia: sacar
+  la competencia con un hotel puesto es 400.
+- **No es campo financiero**: no está en `_EXPENSE_EDIT_TRACKED`, así que no
+  sella `last_financial_edit_by` ni escribe en `finance_status_history`, y por
+  eso está en `_EXPENSE_PAID_EDITABLE`: se puede vincular o corregir en `paid`,
+  que es cuando el hotel suele facturar. `null` o `''` desvincula.
+- `ON DELETE SET NULL`: borrar un hotel no borra ni bloquea el gasto.
+
 ---
 
 ## 4. Autorización
@@ -532,7 +552,8 @@ la cifra del evento no sirve para nada.
 
 Concretamente: el filtro `department_code IN (departamentos del caller)` rige
 las bandejas (`/budget/expenses`, `/budget/lines`) y toda escritura. La vista
-`/budget/competitions/{id}/cost` es la excepción explícita y no filtra.
+`/budget/competitions/{id}/cost` es una excepción explícita y no filtra; la otra
+es la lectura de pagos por hotel que hace Logística (§9).
 
 ### Tres acciones: ver, editar, aprobar
 
@@ -602,7 +623,7 @@ Router `api/_lib/routers/budget.py`, prefijo `/api/budget/*`,
 `dependencies=[Depends(require_view("budget"))]` a nivel `APIRouter` y
 `require_edit("budget")` en cada escritura, **más** el filtro por departamento.
 
-Son **55** (`grep -c "@router\." api/_lib/routers/budget.py`). Las marcas
+Son **56** (`grep -c "@router\." api/_lib/routers/budget.py`). Las marcas
 entre corchetes son lo que se exige **además** de eso:
 
 ```
@@ -646,8 +667,8 @@ GET      /budget/expenses?year=&department=&account=&competition_id=&general_onl
          # mine=1 → solo los que cargó el caller
 GET      /budget/expenses/summary?year=&department=&account=&competition_id=&general_only=&date_from=&date_to=
 GET      /budget/expenses/export.xlsx?(los filtros de la bandeja)&lang=
-POST     /budget/expenses                  # nace draft; `paid` directo solo admin general
-PATCH    /budget/expenses/{id}             # sin status ni payment_date (§14)
+POST     /budget/expenses                  # nace draft; `paid` directo solo admin general; `hotel_id` opcional (056)
+PATCH    /budget/expenses/{id}             # sin status ni payment_date (§14); `hotel_id` editable hasta en `paid`
 DELETE   /budget/expenses/{id}             # solo draft / rejected / cancelled
 POST     /budget/expenses/{id}/transition  [sin require_edit, ver §4]  # única forma de cambiar status
 POST     /budget/expenses/{id}/approve     [sin require_edit, ver §4]  # alias de transition → approved
@@ -673,12 +694,23 @@ DELETE   /budget/revenues/{id}
 
 # Vista de costo de evento
 GET      /budget/competitions/{id}/cost    # sin _scoped, a propósito (§9)
+GET      /budget/competitions/{id}/hotels  # [{id, name}] para el selector "Hotel" del gasto; no pide `logistics`
+GET      /logistics/hotels/{hotel_id}/payments   # NO es de este router ni cuenta en los 56: logistics_ops.py, permiso `logistics`;
+                                                 # sin _scoped, a propósito (§9)
 
 # Tarifario
 GET      /budget/fee-schedule?event_type=
 PUT      /budget/fee-schedule              [superadmin]
 POST     /budget/fee-schedule/apply        [budget:edit + competitions:edit]
 ```
+
+`GET /budget/competitions/{id}/hotels` devuelve `[{id, name}]` de los hoteles de
+la competencia, ordenados por nombre, para el selector del editor de gastos
+(§6). Hereda `require_view("budget")` y **no exige `logistics`**: quien carga un
+gasto tiene que poder vincularlo a un hotel sin tener el módulo de Logística. Es
+seguro sin `_scoped()` porque los hoteles no son datos de un departamento y solo
+salen id y nombre (ni teléfono, ni email, ni contacto). Una competencia sin
+hoteles, inexistente o con un id que no es uuid da lista vacía.
 
 Toda escritura lleva `require_edit("budget")` salvo las dos de transición (§4)
 y las de superadmin. Los dos exports nuevos (`/expenses/export.xlsx` y
@@ -800,7 +832,9 @@ editables, y editar/borrar/aprobar sale de `canEditDept(row.department_code)` /
    fecha. "Aprobar" no aparece sobre lo propio, salvo al superadmin, que lo ve
    como override con motivo. El editor (`ExpenseEditor`) muestra el
    `StatusHistory` y bloquea los campos financieros en `approved` (y todo menos
-   comentarios y factura en `paid`).
+   comentarios, factura y hotel en `paid`). El selector **Hotel** aparece solo
+   si el gasto tiene competencia y esa competencia tiene hoteles (los trae
+   `/budget/competitions/{id}/hotels`); cambiar de competencia lo limpia.
 3. **Recurrentes** — plantillas + el panel "pendientes de este mes".
 4. **Ingresos** — bandeja simple; los ingresos sin fecha (que no imputan a
    ningún año, §8) se marcan en ámbar.
@@ -1029,12 +1063,32 @@ separadas:
 | `expenses` | gasto del evento sin persona: shipping, branding, seguros |
 | `budget_lines` | contra qué se compara |
 
-⚠️ **Es la única excepción al recorte por departamento**: no llama a `_scoped()`
-y muestra todos los departamentos, sea cual sea el acceso del caller. Fue
-decisión explícita del cliente — el scoping rige cargar y editar, no leer el
-total de un evento, y una competencia cruza departamentos. Sigue detrás de
-`require_view("budget")` a nivel de router. La excepción está anotada en el
-auditor de scope para que no se confunda con un olvido.
+⚠️ **Son dos las excepciones al recorte por departamento** (lecturas que no
+llaman a `_scoped()`), y las dos son decisiones explícitas:
+
+1. **`/cost`**: muestra todos los departamentos, sea cual sea el acceso del
+   caller. Fue decisión del cliente — el scoping rige cargar y editar, no leer
+   el total de un evento, y una competencia cruza departamentos. Sigue detrás de
+   `require_view("budget")` a nivel de router. La excepción está anotada en el
+   auditor de scope para que no se confunda con un olvido.
+2. **`GET /logistics/hotels/{hotel_id}/payments`** (migración 056, router
+   `logistics_ops.py`): lo que FIBA ya aprobó o pagó a un hotel. Logística
+   necesita ver qué se pagó por hotel sin tener acceso al departamento que lo
+   imputó, así que acá manda el permiso **`logistics`**, no `budget`, y no hay
+   recorte por fila. Lo que la hace tolerable:
+   - **Solo gastos `approved` y `paid`** con `hotel_id` de ese hotel: un
+     borrador, un rechazo o una cancelación todavía no son plata comprometida.
+   - **Proyección cerrada**: `record_no`, `description`, `amount`, `status`,
+     `expense_date`, `payment_date`, `invoice_no` y `vendor_name` (más
+     `total_paid` y `total_approved`). Nunca `bank_confirmation`,
+     `payment_method`, `comments`, `created_by`, departamento, cuenta, emails ni
+     adjuntos, y del proveedor solo el nombre (ni `bank_info` ni `tax_id`).
+   - **Solo lectura**: no suma ni escribe nada en Budget. Los adicionales y
+     cotizaciones que carga Logística (`logistics_hotel_charges`) son otra cosa,
+     informativa, y no se mezclan con esto (§2, decisión 9).
+
+   Cualquier otra lectura de `expenses` / `payments` / `budget_*` sin `_scoped()`
+   es un agujero P0: no ensanches esa proyección ni copies el patrón.
 
 ---
 
@@ -1559,7 +1613,7 @@ no tiene ningún campo bancario.
 
 ## 17. Tests
 
-`tests/` (pytest, ver DEVELOPMENT.md → Tests): 279 tests unitarios **sin red
+`tests/` (pytest, ver DEVELOPMENT.md → Tests): más de 500 tests unitarios **sin red
 ni base**. `tests/conftest.py` reemplaza el cliente de `api/_lib/database.py`
 por un supabase falso en memoria que hereda del `_QueryBuilder` real (así la
 regla de "un filtro por columna" es la de producción) y trae un `FakeRequest`
@@ -1579,6 +1633,7 @@ con `state.user` y `state._is_superadmin` precargados.
 | `test_notifications.py` | `notify()`, `budget_approvers_for`, `module_editors`, `/pending` por permiso y el aislamiento por usuario de `/me/notifications` |
 | `test_authorization.py` | `require_view` / `require_edit` / `require_superadmin` y la autoría del Muro |
 | `test_finance_review.py` | lo que cerró la revisión de la rama: `record-partial` y `completed ⇒ paid == total`, `last_financial_edit_by`, `by_month == totals`, descarga del W-8 por POST, vendors `name`/`active`, `cm_pending`, traza de ediciones y borrados, `generate_recurring`, headcount/supuestos con Competitions |
+| `test_logistics_ops.py` | lo de Budget que toca Logística: `hotel_id` en alta y PATCH de gasto (hotel de otra competencia, sin competencia, id inválido y cambio de competencia → 400; `''`/null desvincula; no es edición financiera, no escribe historial y se puede en `paid`), `/budget/competitions/{id}/hotels` (solo id y nombre; exige `budget:view`, no `logistics`) y la proyección de `/logistics/hotels/{id}/payments` (solo `approved`/`paid`, ningún campo sensible, un solo SELECT a `vendors`). El resto del archivo cubre el router de Logística |
 
 Las funciones de transición y de año/balde son puras justamente para poder
 testear las reglas de plata sin base. **Si agregás una transición**, sumá la

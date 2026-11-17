@@ -205,6 +205,8 @@ export default function PublicLogistics() {
               <div>
                 <h2 className="text-sm font-semibold uppercase tracking-wide text-ink-500 dark:text-ink-400">
                   {s.section === 'transport' ? t('Transporte', 'Transport') : t('Comidas', 'Meals')} · {audienceLabel(s.audience, lang)}
+                  {/* Hay varios cronogramas por audiencia (árbitros, Comunicaciones…): la etiqueta los distingue. */}
+                  {s.label ? ` · ${s.label}` : ''}
                 </h2>
                 {(s.title || s.subtitle) && (
                   <p className="text-xs text-ink-500 dark:text-ink-400">{[s.title, s.subtitle].filter(Boolean).join(' · ')}</p>

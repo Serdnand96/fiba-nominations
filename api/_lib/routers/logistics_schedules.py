@@ -2,14 +2,18 @@
 
 Son los dos documentos que logística arma en Excel y manda afuera — a los
 equipos, a los árbitros, al hotel. Acá se suben, se leen a datos y se guarda el
-original. Un documento por (competencia, sección, audiencia); ver la migración
-054 para por qué son documentos y no una vista derivada de training / games.
+original. Un documento por (competencia, sección, audiencia, label); ver la
+migración 054 para por qué son documentos y no una vista derivada de training /
+games, y la 055 para `label`: dentro de una misma audiencia puede haber más de
+un cronograma (los árbitros y Comunicaciones tienen horarios propios). El
+cronograma general tiene label '' y es el que ya existía.
 
 Comparte el permiso `logistics` con el resto del módulo. La lectura del Excel
 vive en services/logistics_schedule_import.py y no toca la base.
 """
 import logging
 import re
+import unicodedata
 import uuid
 from datetime import date, datetime, timedelta, timezone
 from typing import List, Optional
@@ -69,12 +73,14 @@ class ScheduleCreate(BaseModel):
     audience: str
     title: Optional[str] = None
     subtitle: Optional[str] = None
+    label: str = ""
 
 
 class ScheduleUpdate(BaseModel):
     title: Optional[str] = None
     subtitle: Optional[str] = None
     days: Optional[List[DayMeta]] = None
+    label: Optional[str] = None
 
 
 class RowCreate(BaseModel):
@@ -136,7 +142,50 @@ def _schedule_or_404(schedule_id: str) -> dict:
     return rows[0]
 
 
-def _find(competition_id: str, section: str, audience: str) -> Optional[dict]:
+_LABEL_MAX = 60
+_GENERAL_LABEL = "general"
+
+
+def _norm_label(label: Optional[str]) -> str:
+    """Espacios colapsados y "General" = '' (lo mismo para quien lo escribe).
+    No valida el largo: también se usa para leer lo que ya está guardado."""
+    text = re.sub(r"\s+", " ", label or "").strip()
+    return "" if text.casefold() == _GENERAL_LABEL else text
+
+
+def _clean_label(label: Optional[str]) -> str:
+    """Label que llega de un cliente: normalizado y de a lo sumo 60 caracteres."""
+    text = _norm_label(label)
+    if len(text) > _LABEL_MAX:
+        raise HTTPException(400, f"label must be at most {_LABEL_MAX} characters")
+    return text
+
+
+def _same_label(a: Optional[str], b: Optional[str]) -> bool:
+    """"Árbitros" y "árbitros" son el mismo documento."""
+    return _norm_label(a).casefold() == _norm_label(b).casefold()
+
+
+def _conflict_or_raise(error: Exception) -> None:
+    """Un UNIQUE violado entre el chequeo y el INSERT/UPDATE (dos requests a la
+    vez) es 409, no un 500. Cualquier otro error sigue su camino."""
+    if getattr(error, "pg_code", None) == "23505":
+        raise HTTPException(409, "Another schedule already uses that label")
+
+
+def _label_sort_key(label: Optional[str]) -> str:
+    """Orden alfabético a la española: "Árbitros" antes que "Comunicaciones"
+    (por código de carácter la Á caería al final)."""
+    folded = unicodedata.normalize("NFKD", label or "")
+    return "".join(c for c in folded if not unicodedata.combining(c)).casefold()
+
+
+def _find(competition_id: str, section: str, audience: str, label: str = "") -> Optional[dict]:
+    """El documento de (competencia, sección, audiencia, label), si existe.
+
+    El label se compara en Python: '' es un valor real (el cronograma general),
+    no un "sin filtro", y así no depende de cómo cada cliente arma `eq.`.
+    """
     rows = (
         supabase.table("logistics_schedules")
         .select("*")
@@ -145,8 +194,8 @@ def _find(competition_id: str, section: str, audience: str) -> Optional[dict]:
         .eq("audience", audience)
         .execute()
         .data
-    )
-    return rows[0] if rows else None
+    ) or []
+    return next((r for r in rows if _same_label(r.get("label"), label)), None)
 
 
 def _iso_date(value: str) -> str:
@@ -196,6 +245,7 @@ def schedule_view(schedule: dict, rows: list[dict]) -> dict:
         "competition_id": schedule["competition_id"],
         "section": schedule["section"],
         "audience": schedule["audience"],
+        "label": schedule.get("label") or "",
         "title": schedule.get("title"),
         "subtitle": schedule.get("subtitle"),
         "days": schedule.get("days") or [],
@@ -229,8 +279,17 @@ def load_schedules(competition_id: str, section: Optional[str] = None,
     for row in rows:
         by_schedule.setdefault(row["schedule_id"], []).append(row)
     order = {(s, a): i for i, (s, a) in enumerate((s, a) for s in SECTIONS for a in AUDIENCES)}
-    schedules.sort(key=lambda s: order.get((s["section"], s["audience"]), 99))
+    # (sección, audiencia) en el orden de siempre y, dentro de cada uno, por label:
+    # el general ('') primero.
+    schedules.sort(key=lambda s: (order.get((s["section"], s["audience"]), 99), _label_sort_key(s.get("label"))))
     return [schedule_view(s, by_schedule.get(s["id"], [])) for s in schedules]
+
+
+def _load_one(schedule_id: str) -> dict:
+    """Un documento con sus filas, por id (lo que devuelve el commit del import)."""
+    schedule = _schedule_or_404(schedule_id)
+    rows = supabase.table("logistics_schedule_rows").select(ROW_FIELDS).eq("schedule_id", schedule_id).execute().data
+    return schedule_view(schedule, rows or [])
 
 
 def date_range_warning(competition: dict, days: list[dict]) -> Optional[dict]:
@@ -310,13 +369,19 @@ def download_schedule_file(schedule_id: str):
 
 @router.post("/import/preview", dependencies=[Depends(require_edit("logistics"))])
 async def preview_schedule_import(competition_id: str = Query(...), section: str = Query(...),
-                                  audience: str = Query(...), file: UploadFile = File(...)):
-    """Lee el archivo y muestra qué se va a guardar. No escribe nada."""
+                                  audience: str = Query(...), label: str = "",
+                                  file: UploadFile = File(...)):
+    """Lee el archivo y muestra qué se va a guardar. No escribe nada.
+
+    `replaces` cuenta las filas del documento con ESE label: el de otro
+    cronograma de la misma sección y audiencia no se toca.
+    """
     _check_scope(section, audience)
+    label = _clean_label(label)
     competition = _competition_or_404(competition_id)
     parsed = _parse(await _read_upload(file), section, competition)
 
-    existing = _find(competition_id, section, audience)
+    existing = _find(competition_id, section, audience, label)
     existing_rows = 0
     if existing:
         existing_rows = len(
@@ -336,14 +401,16 @@ async def preview_schedule_import(competition_id: str = Query(...), section: str
 @router.post("/import/commit", dependencies=[Depends(require_edit("logistics"))])
 async def commit_schedule_import(request: Request, competition_id: str = Query(...),
                                  section: str = Query(...), audience: str = Query(...),
-                                 file: UploadFile = File(...)):
+                                 label: str = "", file: UploadFile = File(...)):
     """Reemplaza el cronograma por el del archivo y guarda el original.
 
     El archivo es la autoridad: reimportar pisa las ediciones hechas a mano
     (el preview lo avisa). El orden cuida que un fallo a mitad de camino no
     deje el documento vacío — primero entra lo nuevo, después sale lo viejo.
+    Con `label` reemplaza solo el documento de ese label (o crea uno nuevo).
     """
     _check_scope(section, audience)
+    label = _clean_label(label)
     competition = _competition_or_404(competition_id)
     content = await _read_upload(file)
     parsed = _parse(content, section, competition)
@@ -360,7 +427,7 @@ async def commit_schedule_import(request: Request, competition_id: str = Query(.
         raise HTTPException(502, "Upload failed")
     new_path = f"storage://{_BUCKET}/{key}"
 
-    existing = _find(competition_id, section, audience)
+    existing = _find(competition_id, section, audience, label)
     header = {
         "title": parsed["title"],
         "subtitle": parsed["subtitle"],
@@ -383,9 +450,14 @@ async def commit_schedule_import(request: Request, competition_id: str = Query(.
             old_ids = []
             # El documento nace sin encabezado ni archivo: eso se sella al
             # final, cuando las filas ya entraron.
-            created_id = schedule_id = supabase.table("logistics_schedules").insert({
-                "competition_id": competition_id, "section": section, "audience": audience,
-            }).execute().data[0]["id"]
+            try:
+                created_id = schedule_id = supabase.table("logistics_schedules").insert({
+                    "competition_id": competition_id, "section": section, "audience": audience,
+                    "label": label,
+                }).execute().data[0]["id"]
+            except Exception as e:
+                _conflict_or_raise(e)
+                raise
 
         records = [
             {k: v for k, v in row.items() if k != "source_row"} | {"schedule_id": schedule_id}
@@ -421,7 +493,9 @@ async def commit_schedule_import(request: Request, competition_id: str = Query(.
         _delete_from_storage(old_path)
 
     return {
-        "schedule": load_schedules(competition_id, section, audience)[0],
+        # Por id: con varios documentos en la misma sección y audiencia, el [0]
+        # de la lista puede ser otro.
+        "schedule": _load_one(schedule_id),
         "rows": len(records),
         "replaced": len(old_ids),
         "skipped": parsed["skipped"],
@@ -436,18 +510,29 @@ def create_schedule(data: ScheduleCreate):
     """Documento vacío, para cargar el cronograma a mano sin Excel."""
     _check_scope(data.section, data.audience)
     _competition_or_404(data.competition_id)
-    if _find(data.competition_id, data.section, data.audience):
+    record = {**data.model_dump(), "label": _clean_label(data.label)}
+    if _find(data.competition_id, data.section, data.audience, record["label"]):
         raise HTTPException(409, "Schedule already exists")
-    created = supabase.table("logistics_schedules").insert(data.model_dump()).execute().data[0]
+    try:
+        created = supabase.table("logistics_schedules").insert(record).execute().data[0]
+    except Exception as e:
+        _conflict_or_raise(e)
+        raise
     return schedule_view(created, [])
 
 
 @router.patch("/{schedule_id}", dependencies=[Depends(require_edit("logistics"))])
 def update_schedule(schedule_id: str, data: ScheduleUpdate):
-    _schedule_or_404(schedule_id)
+    current = _schedule_or_404(schedule_id)
     updates = data.model_dump(exclude_unset=True)
     if not updates:
         raise HTTPException(400, "No fields to update")
+    if "label" in updates:
+        # NOT NULL: un null explícito es "volver al cronograma general" (label '').
+        updates["label"] = _clean_label(updates["label"])
+        clash = _find(current["competition_id"], current["section"], current["audience"], updates["label"])
+        if clash and clash["id"] != schedule_id:
+            raise HTTPException(409, "Another schedule already uses that label")
     if updates.get("days") is not None:
         updates["days"] = [
             {"date": _iso_date(d["date"]), "label": (d.get("label") or "").strip() or None,
@@ -459,7 +544,11 @@ def update_schedule(schedule_id: str, data: ScheduleUpdate):
     for field in ("title", "subtitle"):
         if field in updates:
             updates[field] = (updates[field] or "").strip() or None
-    schedule = supabase.table("logistics_schedules").update(updates).eq("id", schedule_id).execute().data[0]
+    try:
+        schedule = supabase.table("logistics_schedules").update(updates).eq("id", schedule_id).execute().data[0]
+    except Exception as e:
+        _conflict_or_raise(e)
+        raise
     rows = supabase.table("logistics_schedule_rows").select(ROW_FIELDS).eq("schedule_id", schedule_id).execute().data
     return schedule_view(schedule, rows or [])
 

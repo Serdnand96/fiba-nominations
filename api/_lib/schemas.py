@@ -432,6 +432,9 @@ class ExpenseCreate(BaseModel):
     department_code: str
     account_code: str
     competition_id: Optional[str] = None     # None → gasto general, sin evento
+    # Hotel de logística al que corresponde el gasto (migración 056). Exige
+    # competition_id y que el hotel sea de esa competencia. No es campo financiero.
+    hotel_id: Optional[str] = None
     payee_type: Optional[str] = "vendor"     # vendor | employee | other
     vendor_id: Optional[str] = None
     employee_id: Optional[str] = None
@@ -456,6 +459,7 @@ class ExpenseUpdate(BaseModel):
     department_code: Optional[str] = None
     account_code: Optional[str] = None
     competition_id: Optional[str] = None
+    hotel_id: Optional[str] = None           # null explícito = desvincular
     payee_type: Optional[str] = None
     vendor_id: Optional[str] = None
     employee_id: Optional[str] = None

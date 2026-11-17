@@ -1641,6 +1641,28 @@ def competition_cost(competition_id: str, request: Request):
     }
 
 
+@router.get("/competitions/{competition_id}/hotels")
+def competition_hotels(competition_id: str):
+    """Hoteles de una competencia (`[{id, name}]`), para el selector "Hotel" del
+    editor de gastos (migración 056).
+
+    Hereda `require_view("budget")` y NO exige `logistics`: quien carga un gasto
+    tiene que poder vincularlo a un hotel sin tener el módulo de Logística. Es
+    seguro sin `_scoped()` porque los hoteles no son datos de un departamento y
+    solo salen id y nombre (ni teléfono, ni email, ni contacto). Una competencia
+    sin hoteles, o inexistente, da lista vacía.
+    """
+    try:
+        uuid.UUID(str(competition_id))
+    except ValueError:
+        return []
+    rows = (
+        supabase.table("logistics_hotels").select("id, name")
+        .eq("competition_id", competition_id).order("name").execute().data
+    ) or []
+    return [{"id": r["id"], "name": r["name"]} for r in rows]
+
+
 # ─── Headcount y supuestos (base de las líneas calculadas — UI en fase 5) ────
 def _assert_can_view_competitions(request: Request) -> None:
     """Headcount y supuestos son el insumo del presupuesto de viaje de
@@ -2309,7 +2331,9 @@ _EXPENSE_FINANCIAL_FIELDS = (
 # aprueba el gasto — segunda pata de la separación de funciones.
 _EXPENSE_EDIT_TRACKED = frozenset(_EXPENSE_FINANCIAL_FIELDS) | {"budget_line_id"}
 # Un gasto pagado es un hecho contable: solo se le completan datos administrativos.
-_EXPENSE_PAID_EDITABLE = {"comments", "invoice_no"}
+# `hotel_id` es una etiqueta de logística (migración 056), no plata: se puede
+# vincular o corregir después de pagado, que es cuando el hotel la factura.
+_EXPENSE_PAID_EDITABLE = {"comments", "invoice_no", "hotel_id"}
 _EXPENSE_DELETABLE = ("draft", "rejected", "cancelled")
 
 
@@ -2574,6 +2598,33 @@ def _check_budget_line(request: Request, line_id: str, department_code: str,
         )
 
 
+def _check_expense_hotel(hotel_id: Optional[str], competition_id: Optional[str]) -> None:
+    """`expenses.hotel_id` (migración 056): el hotel tiene que ser de la
+    competencia del gasto, y un gasto sin competencia no puede tener hotel.
+
+    Un hotel inexistente y uno de otra competencia contestan igual: un mensaje
+    distinto confirmaría que el id existe. La consulta es sobre
+    `logistics_hotels`, no sobre `expenses`: no hay recorte por departamento
+    que aplicar (los hoteles no son datos de un departamento).
+    """
+    if not hotel_id:
+        return
+    if not competition_id:
+        raise HTTPException(status_code=400, detail="hotel_id requires the expense to have a competition")
+    try:
+        uuid.UUID(str(hotel_id))
+        uuid.UUID(str(competition_id))
+    except ValueError:
+        raise HTTPException(status_code=400, detail="The hotel does not belong to the expense's competition")
+    rows = (
+        supabase.table("logistics_hotels").select("id")
+        .eq("id", hotel_id).eq("competition_id", competition_id)
+        .execute().data
+    )
+    if not rows:
+        raise HTTPException(status_code=400, detail="The hotel does not belong to the expense's competition")
+
+
 def _same_value(field: str, new, old) -> bool:
     """¿El PATCH deja el campo como estaba? (el editor manda el form entero)."""
     if new in (None, "") and old in (None, ""):
@@ -2622,8 +2673,13 @@ def create_expense(data: ExpenseCreate, request: Request):
     if data.budget_line_id:
         _check_budget_line(request, data.budget_line_id, data.department_code,
                            data.account_code, data.expense_date)
+    hotel_id = _clean_text(data.hotel_id)
+    _check_expense_hotel(hotel_id, data.competition_id)
 
     record = {k: v for k, v in data.model_dump().items() if v is not None}
+    record.pop("hotel_id", None)
+    if hotel_id:
+        record["hotel_id"] = hotel_id
     record["payee_type"] = payee_type
     record["status"] = status
     record["created_by"] = _user_id(request)
@@ -2656,6 +2712,8 @@ def update_expense(expense_id: str, data: ExpenseUpdate, request: Request):
     current_status = current.get("status")
 
     updates = _patch_updates(data, "expenses")
+    if "hotel_id" in updates:
+        updates["hotel_id"] = _clean_text(updates["hotel_id"])   # '' → NULL, no un uuid inválido
 
     # status y payment_date SOLO por /transition (ver la cabecera de la máquina
     # de estados). Si vienen con el valor que ya tenían se ignoran — el editor
@@ -2682,7 +2740,7 @@ def update_expense(expense_id: str, data: ExpenseUpdate, request: Request):
         if locked:
             raise HTTPException(
                 status_code=409,
-                detail=f"The expense is paid: only comments and invoice_no can change (not {', '.join(locked)})",
+                detail=f"The expense is paid: only comments, invoice_no and hotel_id can change (not {', '.join(locked)})",
             )
     if not updates:
         raise HTTPException(status_code=400, detail="Nothing to update")
@@ -2721,6 +2779,14 @@ def update_expense(expense_id: str, data: ExpenseUpdate, request: Request):
             updates.get("account_code", current.get("account_code")),
             updates.get("expense_date", current.get("expense_date")),
         )
+
+    # El hotel tiene que ser de la competencia del gasto, tanto si cambian el
+    # hotel como si cambian la competencia y el hotel que ya tenía deja de
+    # corresponder. (hotel_id no entra en _EXPENSE_EDIT_TRACKED: no sella
+    # last_financial_edit_by ni escribe historial.)
+    hotel_id = updates.get("hotel_id", current.get("hotel_id"))
+    if hotel_id and ({"hotel_id", "competition_id"} & changed):
+        _check_expense_hotel(hotel_id, updates.get("competition_id", current.get("competition_id")))
 
     now = _now_iso()
     updates["updated_at"] = now

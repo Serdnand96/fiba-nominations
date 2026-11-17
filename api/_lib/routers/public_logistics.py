@@ -67,7 +67,9 @@ def _competition(competition_id: str) -> dict:
 # que solo salían porque los endpoints hacían select("*")/`**row`: el email
 # comercial del hotel, el contacto interno del traslado y timestamps.
 _REDACT_FIELDS = {
-    "hotel": {"email", "competition_id", "created_at", "updated_at"},
+    # `contact_name` es la persona de contacto del hotel que carga logística
+    # (migración 055): como el email, es dato interno que la página no muestra.
+    "hotel": {"email", "contact_name", "audience", "competition_id", "created_at", "updated_at"},
     "meal": {"competition_id", "created_at", "updated_at"},
     "trip": {"contact", "created_at", "updated_at"},
     # Del cronograma se publica la tabla, no el Excel: ni su nombre ni cuándo
@@ -221,7 +223,9 @@ def get_transport(token: str, date: Optional[str] = Query(None)):
 @router.get("/{token}/schedules")
 def get_schedules(token: str):
     """Los cronogramas que subió logística (pick-up / return y comidas), por
-    audiencia. Solo la tabla: el Excel original no se sirve por el link."""
+    audiencia. Solo la tabla: el Excel original no se sirve por el link. Cada
+    uno lleva su `label` ("Árbitros", "Comunicaciones"; '' = el general): es el
+    título que la página muestra cuando hay más de un cronograma por audiencia."""
     link = _resolve_link(token)
     return [_redact(s, "schedule") for s in load_schedules(link["competition_id"])]
 
@@ -289,4 +293,7 @@ def get_rooming(token: str, audience: Optional[str] = Query(None)):
     link = _resolve_link(token)
     data = build_rooming(link["competition_id"], audience)
     data["rows"] = [_redact(r) for r in data["rows"]]
+    # `hotels` sale de un select("*") dentro de build_rooming: sin esto salían el
+    # email y el contacto del hotel.
+    data["hotels"] = [_redact(h, "hotel") for h in data["hotels"]]
     return data

@@ -291,3 +291,172 @@ class ReviewCasesTest(unittest.TestCase):
         wb.active.cell(row=150000, column=1, value="x")
         result = read_schedule(_bytes(wb), "transport")
         self.assertEqual(4, len(result["rows"]))
+
+
+def referee_workbook():
+    """Planilla de árbitros completa, como la real: tres días, dos partidos por
+    día, rótulos en la fila FECHA y `PARTIDO` solo en el primer bloque."""
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Hoja1"
+    ws["F1"] = "GRUPO F (QF)"
+    ws["L1"] = "Medellin, COL\n13 - 15 de noviembre"
+    days = [
+        (datetime(2026, 11, 13), "DÍA DE PARTIDO 1", [
+            (time(15, 30), time(19, 20), time(17, 10), "Brasilia Basquete", "Boca Juniors"),
+            (time(19, 0), time(22, 40), time(20, 40), "Paisas", "Flamengo")]),
+        (datetime(2026, 11, 14), "DÍA DE PARTIDO 2", [
+            (time(14, 30), time(18, 10), time(16, 10), "Flamengo", "Brasilia Basquete"),
+            (time(18, 30), time(23, 0), time(20, 40), "Paisas", "Boca Juniors")]),
+        (datetime(2026, 11, 15), "DÍA DE PARTIDO 3", [
+            (time(14, 30), time(18, 10), time(16, 10), "Boca Juniors", "Flamengo"),
+            (time(18, 0), time(21, 50), time(19, 40), "Paisas", "Brasilia Basquete")]),
+    ]
+    row = 3
+    for n, (day, label, games) in enumerate(days):
+        ws.cell(row=row, column=1, value="FECHA")
+        ws.cell(row=row, column=2, value="PICK UP HOTEL")
+        ws.cell(row=row, column=3, value="DEPARTURE TO HOTL")
+        if n == 0:
+            ws.cell(row=row, column=4, value="PARTIDO")
+        ws.cell(row=row, column=6, value=label)
+        ws.cell(row=row, column=12, value="Comentarios/Notas")
+        row += 1
+        ws.cell(row=row, column=1, value=day)
+        for pickup, back, tip, home, away in games:
+            ws.cell(row=row, column=2, value=pickup)
+            ws.cell(row=row, column=3, value=back)
+            ws.cell(row=row, column=4, value=tip)
+            ws.cell(row=row, column=6, value=home)
+            ws.cell(row=row, column=8, value=away)
+            row += 1
+    ws["L4"] = "Salida del lobby, no de la puerta lateral."
+    return wb
+
+
+class RefereeLayoutTest(unittest.TestCase):
+    def setUp(self):
+        self.result = read_schedule(_bytes(referee_workbook()), "transport")
+
+    def test_six_games_in_three_days(self):
+        self.assertEqual(["2026-11-13", "2026-11-14", "2026-11-15"], [d["date"] for d in self.result["days"]])
+        self.assertEqual(["DÍA DE PARTIDO 1", "DÍA DE PARTIDO 2", "DÍA DE PARTIDO 3"],
+                         [d["label"] for d in self.result["days"]])
+        self.assertEqual(6, len(self.result["rows"]))
+        self.assertEqual(["game"] * 6, [r["kind"] for r in self.result["rows"]])
+        self.assertEqual([0, 1, 0, 1, 0, 1], [r["position"] for r in self.result["rows"]])
+        self.assertEqual([], self.result["warnings"])
+        self.assertEqual([], self.result["skipped"])
+
+    def test_times_and_teams_of_a_game(self):
+        last = self.result["rows"][-1]
+        self.assertEqual(("18:00", "21:50", "19:40"),
+                         (last["pickup_time"], last["return_time"], last["start_time"]))
+        self.assertEqual(("Paisas", "Brasilia Basquete"), (last["team"], last["team_b"]))
+        self.assertIsNone(last["end_time"])
+        self.assertEqual(["pickup_time", "return_time"], self.result["columns"])
+
+    def test_day_notes_come_from_the_notes_column(self):
+        self.assertEqual("Salida del lobby, no de la puerta lateral.", self.result["days"][0]["notes"])
+        self.assertIsNone(self.result["days"][1]["notes"])
+
+    def test_same_output_keys_as_the_team_layout(self):
+        team = read_schedule(_bytes(team_workbook("transport")), "transport")
+        self.assertEqual(sorted(team), sorted(self.result))
+        self.assertEqual(sorted(team["rows"][0]), sorted(self.result["rows"][0]))
+
+    def test_a_team_named_like_a_label_is_not_a_column(self):
+        wb = referee_workbook()
+        wb.active["F4"] = "Final"      # el primer local de la hoja
+        result = read_schedule(_bytes(wb), "transport")
+        self.assertEqual(("Final", "Boca Juniors"), (result["rows"][0]["team"], result["rows"][0]["team_b"]))
+        self.assertEqual(6, len(result["rows"]))
+
+    def test_referee_file_uploaded_as_meals_is_pointed_at_transport(self):
+        with self.assertRaises(ScheduleFormatError) as raised:
+            read_schedule(_bytes(referee_workbook()), "meals")
+        self.assertIn("transporte", str(raised.exception))
+
+
+class NeitherLayoutTest(unittest.TestCase):
+    def test_pickup_without_return_is_not_the_referee_layout(self):
+        wb = staff_workbook()
+        ws = wb.active
+        for r in (3, 6):
+            ws.cell(row=r, column=3).value = None          # sin DEPARTURE TO HOTL
+        with self.assertRaises(ScheduleFormatError) as raised:
+            read_schedule(_bytes(wb), "transport")
+        self.assertIn("formatos conocidos", str(raised.exception))
+
+    def test_hidden_pickup_and_return_columns_do_not_make_a_referee_layout(self):
+        # Las columnas B:C de la planilla de equipos traen los rótulos de
+        # árbitros, pero ocultas; sin Comienzo ni columnas propias visibles no
+        # queda nada que leer.
+        wb = staff_workbook()
+        wb.active.column_dimensions.group("B", "C", hidden=True)
+        with self.assertRaises(ScheduleFormatError) as raised:
+            read_schedule(_bytes(wb), "transport")
+        self.assertIn("PICK UP HOTEL", str(raised.exception))
+
+    def test_fecha_only_in_a_hidden_column(self):
+        wb = Workbook()
+        ws = wb.active
+        ws["A3"] = "FECHA"
+        ws.column_dimensions["A"].hidden = True
+        ws["B3"] = "PICK UP HOTEL"
+        with self.assertRaises(ScheduleFormatError):
+            read_schedule(_bytes(wb), "transport")
+
+    def test_team_layout_still_ignores_hidden_columns_after_the_change(self):
+        result = read_schedule(_bytes(team_workbook("transport")), "transport")
+        self.assertEqual(4, len(result["rows"]))
+        self.assertEqual({"08:10", "09:10"}, {r["pickup_time"] for r in result["rows"] if r["kind"] == "training"})
+        self.assertNotIn("08:30", {r["pickup_time"] for r in result["rows"]})
+
+
+def meals_staff_workbook(only_lunch: bool = False):
+    """Comidas con forma de planilla de staff: sin `Comienzo`, con ALMUERZO /
+    CENA rotuladas en la propia fila FECHA y solo partidos. El parser anterior
+    al layout explícito la importaba; no se puede perder."""
+    wb = staff_workbook()
+    ws = wb.active
+    for r in (3, 6):
+        ws.cell(row=r, column=2).value = "ALMUERZO"
+        ws.cell(row=r, column=3).value = None if only_lunch else "CENA"
+    ws["B4"] = "TAKE AWAY"
+    ws["C4"] = "20:00"
+    ws["B7"] = "15:30 al IN"
+    return wb
+
+
+class MealsWithoutStartColumnTest(unittest.TestCase):
+    def test_meals_labelled_in_the_fecha_row_still_import(self):
+        result = read_schedule(_bytes(meals_staff_workbook()), "meals")
+        rows = result["rows"]
+        self.assertEqual(["game"] * 3, [r["kind"] for r in rows])
+        self.assertEqual(("TAKE AWAY", "20:00"), (rows[0]["lunch"], rows[0]["dinner"]))
+        self.assertEqual("15:30 al IN", rows[2]["lunch"])
+        self.assertEqual(("Brasilia Basquete", "Boca Juniors"), (rows[0]["team"], rows[0]["team_b"]))
+        self.assertEqual(["dinner", "lunch"], result["columns"])   # ordenadas
+
+    def test_one_meal_column_is_enough(self):
+        result = read_schedule(_bytes(meals_staff_workbook(only_lunch=True)), "meals")
+        self.assertEqual(3, len(result["rows"]))
+        self.assertEqual(["lunch"], result["columns"])
+
+    def test_the_same_file_as_transport_is_pointed_at_meals(self):
+        with self.assertRaises(ScheduleFormatError) as raised:
+            read_schedule(_bytes(meals_staff_workbook()), "transport")
+        self.assertIn("comidas", str(raised.exception))
+
+    def test_meals_section_still_rejects_a_sheet_with_no_meal_column(self):
+        # Pick-up y regreso rotulados, sin Comienzo ni comidas: es el de árbitros.
+        with self.assertRaises(ScheduleFormatError) as raised:
+            read_schedule(_bytes(referee_workbook()), "meals")
+        self.assertIn("ALMUERZO", str(raised.exception))
+
+    def test_hidden_meal_columns_do_not_count(self):
+        wb = meals_staff_workbook()
+        wb.active.column_dimensions.group("B", "C", hidden=True)
+        with self.assertRaises(ScheduleFormatError):
+            read_schedule(_bytes(wb), "meals")

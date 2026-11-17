@@ -1,6 +1,10 @@
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef, useId } from 'react'
 import { useLanguage } from '../../i18n/LanguageContext'
 import { useToast } from '../../components/ui/Toast'
+import { Button } from '../../components/ui/Button'
+import { Input } from '../../components/ui/Input'
+import { Modal } from '../../components/ui/Modal'
+import { Icon } from '../../lib/icons'
 import {
   getLogisticsSchedules, previewLogisticsSchedule, commitLogisticsSchedule,
   createLogisticsSchedule, updateLogisticsSchedule, deleteLogisticsSchedule,
@@ -14,10 +18,22 @@ import { ScheduleDay, SECTION_COLUMNS, groupByDay, cellValue, longDate, hhmm } f
 // el de comidas (ALMUERZO / MERIENDA / CENA). Son los documentos que logística
 // arma en Excel y manda a los equipos, a los árbitros y al hotel.
 //
-// Un documento por competencia + sección + audiencia. El Excel se importa en
-// dos pasos (preview → confirmar), igual que el manifest y la rooming list, y
-// el original queda guardado para bajarlo. Reimportar reemplaza el documento:
-// el archivo es la autoridad.
+// Un documento por competencia + sección + audiencia + etiqueta. La etiqueta
+// vacía es el cronograma general; una misma audiencia puede tener más (los
+// árbitros, Comunicaciones), cada uno con su propio Excel. El Excel se importa
+// en dos pasos (preview → confirmar), igual que el manifest y la rooming list, y
+// el original queda guardado para bajarlo. Reimportar reemplaza el documento
+// *seleccionado* (su sección + audiencia + etiqueta): el archivo es la autoridad.
+
+// Misma normalización que hace el backend: espacios colapsados y "general" (sin
+// distinguir mayúsculas) es la etiqueta vacía. Así la UI no puede crear un
+// segundo botón "General" con nombre propio.
+const normalizeLabel = (value) => {
+  const clean = String(value || '').trim().replace(/\s+/g, ' ')
+  return clean.toLowerCase() === 'general' ? '' : clean
+}
+const isConflict = (err) => err?.response?.status === 409
+const GENERAL_KEY = 'general'   // entrada del selector cuando el General todavía no existe
 
 const EMPTY_ROW = {
   date: '', kind: 'training', start_time: '', end_time: '', team: '', team_b: '',
@@ -54,7 +70,8 @@ function printableHtml(schedule, section, lang, competitionName, audienceText) {
     if (day.notes) body += `<p class="notes">${esc(day.notes)}</p>`
   }
 
-  const sectionTitle = section === 'transport' ? t('Cronograma de transporte', 'Transport schedule') : t('Cronograma de comidas', 'Meals schedule')
+  const baseTitle = section === 'transport' ? t('Cronograma de transporte', 'Transport schedule') : t('Cronograma de comidas', 'Meals schedule')
+  const sectionTitle = schedule.label ? `${baseTitle} — ${schedule.label}` : baseTitle
   return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${esc(sectionTitle)} - ${esc(competitionName || '')}</title><style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body { font-family: Arial, sans-serif; font-size: 11px; color: #111; padding: 18px; }
@@ -78,12 +95,16 @@ function printableHtml(schedule, section, lang, competitionName, audienceText) {
   </body></html>`
 }
 
-function ScheduleDoc({ competitionId, competitionName, section, audience, schedule, canEdit, reload }) {
+function ScheduleDoc({ competitionId, competitionName, section, audience, schedule, canEdit, reload, onSelect }) {
   const { lang } = useLanguage()
   const { push } = useToast()
   const t = (es, en) => (lang === 'es' ? es : en)
   const inputRef = useRef(null)
   const cols = SECTION_COLUMNS[section]
+  // Sobre qué cronograma opera el import: el seleccionado ('' = el general; sin
+  // documento todavía, el import crea el general).
+  const label = schedule?.label ?? ''
+  const labelText = label || t('General', 'General')
 
   const [file, setFile] = useState(null)
   const [preview, setPreview] = useState(null)
@@ -108,7 +129,7 @@ function ScheduleDoc({ competitionId, competitionName, section, audience, schedu
     if (!picked) return
     setFile(picked); setError(null); setBusy(true)
     try {
-      setPreview(await previewLogisticsSchedule(competitionId, section, audience, picked))
+      setPreview(await previewLogisticsSchedule(competitionId, section, audience, picked, label))
     } catch (err) {
       setError(err.response?.data?.detail || t('No se pudo leer el archivo.', 'Could not read the file.'))
       setPreview(null)
@@ -119,22 +140,29 @@ function ScheduleDoc({ competitionId, competitionName, section, audience, schedu
     if (!file) return
     setBusy(true); setError(null)
     try {
-      const res = await commitLogisticsSchedule(competitionId, section, audience, file)
+      const res = await commitLogisticsSchedule(competitionId, section, audience, file, label)
       push({ type: 'success', title: t(`Cronograma importado: ${res.rows} filas.`, `Schedule imported: ${res.rows} rows.`) })
       resetImport(); await reload()
+      // Si el import creó el documento, queda seleccionado.
+      onSelect?.(res.schedule?.id || res.id)
     } catch (err) {
       setError(err.response?.data?.detail || t('No se pudo importar.', 'Import failed.'))
     } finally { setBusy(false) }
   }
 
   async function handleCreateEmpty() {
-    try { await createLogisticsSchedule({ competition_id: competitionId, section, audience }); await reload() }
-    catch (err) { fail(err) }
+    try {
+      const created = await createLogisticsSchedule({ competition_id: competitionId, section, audience, label: '' })
+      await reload(); onSelect?.(created?.id)
+    } catch (err) {
+      if (isConflict(err)) push({ type: 'error', title: t('Ya existe un cronograma con esa etiqueta.', 'A schedule with that label already exists.') })
+      else fail(err)
+    }
   }
 
   async function handleDeleteDoc() {
-    if (!confirm(t('¿Eliminar este cronograma? Se borran sus filas y el Excel guardado.',
-                   'Delete this schedule? Its rows and the stored Excel file are removed.'))) return
+    if (!confirm(t(`¿Eliminar el cronograma «${labelText}»? Se borran sus filas y el Excel guardado.`,
+                   `Delete the "${labelText}" schedule? Its rows and the stored Excel file are removed.`))) return
     try { await deleteLogisticsSchedule(schedule.id); await reload() } catch (err) { fail(err) }
   }
 
@@ -174,7 +202,7 @@ function ScheduleDoc({ competitionId, competitionName, section, audience, schedu
 
   function openHead() {
     setHeadForm({
-      title: schedule.title || '', subtitle: schedule.subtitle || '',
+      label: schedule.label || '', title: schedule.title || '', subtitle: schedule.subtitle || '',
       days: days.map(d => ({ date: d.date, label: d.label, notes: d.notes })),
     })
   }
@@ -183,8 +211,16 @@ function ScheduleDoc({ competitionId, competitionName, section, audience, schedu
     e.preventDefault()
     if (saving) return
     setSaving(true)
-    try { await updateLogisticsSchedule(schedule.id, headForm); setHeadForm(null); await reload() }
-    catch (err) { fail(err) }
+    // La etiqueta solo viaja si cambió: el backend responde 409 si choca con otro
+    // cronograma de la misma sección y audiencia.
+    const { label: rawLabel, ...rest } = headForm
+    const newLabel = normalizeLabel(rawLabel)
+    const body = newLabel === (schedule.label || '') ? rest : { ...rest, label: newLabel }
+    try { await updateLogisticsSchedule(schedule.id, body); setHeadForm(null); await reload() }
+    catch (err) {
+      if (isConflict(err)) push({ type: 'error', title: t('Ya existe un cronograma con esa etiqueta.', 'A schedule with that label already exists.') })
+      else fail(err)
+    }
     finally { setSaving(false) }
   }
 
@@ -208,10 +244,7 @@ function ScheduleDoc({ competitionId, competitionName, section, audience, schedu
     <section className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h4 className="text-sm font-semibold text-ink-900 dark:text-white">
-            {audienceLabel(audience, lang)}
-            {schedule?.title && <span className="font-normal text-fiba-muted"> · {schedule.title}</span>}
-          </h4>
+          {schedule?.title && <h5 className="text-sm font-semibold text-ink-900 dark:text-white">{schedule.title}</h5>}
           {schedule?.subtitle && <p className="text-xs text-fiba-muted">{schedule.subtitle}</p>}
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -238,8 +271,8 @@ function ScheduleDoc({ competitionId, competitionName, section, audience, schedu
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="text-xs text-fiba-muted">
               {schedule
-                ? t('Subir una versión nueva reemplaza este cronograma, incluidas las ediciones hechas a mano.',
-                    'Uploading a new version replaces this schedule, manual edits included.')
+                ? t(`Subir una versión nueva reemplaza el cronograma «${labelText}», incluidas las ediciones hechas a mano.`,
+                    `Uploading a new version replaces the "${labelText}" schedule, manual edits included.`)
                 : t('Sube el Excel del cronograma. Se muestra un resumen antes de guardar nada.',
                     'Upload the schedule Excel. You get a summary before anything is saved.')}
             </div>
@@ -266,7 +299,8 @@ function ScheduleDoc({ competitionId, competitionName, section, audience, schedu
                 <span>{t('Partidos', 'Games')}: <strong className="text-ink-700 dark:text-ink-200">{preview.games}</strong></span>
                 {preview.replaces > 0 && (
                   <span className="px-2 py-0.5 rounded bg-amber-100 text-amber-800 dark:bg-amber-500/15 dark:text-amber-500">
-                    {t(`Reemplaza las ${preview.replaces} filas actuales`, `Replaces the current ${preview.replaces} rows`)}
+                    {t(`Reemplaza las ${preview.replaces} filas actuales del cronograma «${labelText}»`,
+                       `Replaces the current ${preview.replaces} rows of the "${labelText}" schedule`)}
                   </span>
                 )}
               </div>
@@ -406,6 +440,9 @@ function ScheduleDoc({ competitionId, competitionName, section, audience, schedu
           <div className="fiba-modal max-w-2xl p-6">
             <h3 className="text-lg font-bold text-ink-900 dark:text-white mb-4">{t('Encabezado y notas', 'Heading & notes')}</h3>
             <form onSubmit={handleHeadSubmit} className="space-y-3">
+              <div><label className="fiba-label">{t('Etiqueta del cronograma (vacía = general)', 'Schedule label (blank = general)')}</label>
+                <input value={headForm.label} placeholder={t('Árbitros', 'Referees')} maxLength={60}
+                  onChange={e => setHeadForm(f => ({ ...f, label: e.target.value }))} className="fiba-input" /></div>
               <div className="grid grid-cols-2 gap-3">
                 <div><label className="fiba-label">{t('Título', 'Title')}</label>
                   <input value={headForm.title} placeholder="GRUPO F (QF)"
@@ -439,8 +476,146 @@ function ScheduleDoc({ competitionId, competitionName, section, audience, schedu
   )
 }
 
-// Panel de una sección. Con una audiencia elegida muestra su documento; en
-// "Todos" muestra los tres, uno debajo del otro.
+// Etiquetas que logística ya usa para los cronogramas aparte de la audiencia.
+const LABEL_SUGGESTIONS = { es: ['Árbitros', 'Comunicaciones'], en: ['Referees', 'Communications'] }
+
+// Pide la etiqueta del cronograma nuevo. Crea el documento vacío: después se le
+// sube el Excel (que lo reemplaza) o se le cargan las filas a mano.
+function NewScheduleModal({ audience, takenLabels, hasGeneral, onClose, onCreate }) {
+  const { lang } = useLanguage()
+  const t = (es, en) => (lang === 'es' ? es : en)
+  const formId = useId()
+  const [label, setLabel] = useState('')
+  const [saving, setSaving] = useState(false)
+  const typed = label.trim().replace(/\s+/g, ' ')
+  const clean = normalizeLabel(label)
+  // "General" no es una etiqueta con nombre: es el cronograma sin etiqueta.
+  const wantsGeneral = !!typed && clean === ''
+  const taken = wantsGeneral
+    ? hasGeneral
+    : takenLabels.some(l => l.toLowerCase() === clean.toLowerCase())
+
+  async function submit(e) {
+    e.preventDefault()
+    if (saving || !typed || taken) return
+    setSaving(true)
+    try { await onCreate(clean) } finally { setSaving(false) }
+  }
+
+  return (
+    <Modal open onClose={onClose} closeDisabled={saving} closeLabel={t('Cerrar', 'Close')} size="sm"
+      title={t('Nuevo cronograma', 'New schedule')}
+      subtitle={audienceLabel(audience, lang)}
+      footer={(
+        <>
+          <Button variant="ghost" onClick={onClose} disabled={saving}>{t('Cancelar', 'Cancel')}</Button>
+          <Button type="submit" form={formId} disabled={saving || !typed || taken}>{t('Crear', 'Create')}</Button>
+        </>
+      )}>
+      <form id={formId} onSubmit={submit} className="space-y-3">
+        <Input label={`${t('Etiqueta', 'Label')} *`} required maxLength={60} value={label}
+          onChange={e => setLabel(e.target.value)}
+          error={taken ? t('Ya existe un cronograma con esa etiqueta.', 'A schedule with that label already exists.') : undefined}
+          hint={wantsGeneral && !taken
+            ? t('"General" es el cronograma sin etiqueta: se crea ese.', '"General" is the schedule with no label: that one is created.')
+            : t('Distingue este cronograma de los otros de la misma audiencia.', 'Tells this schedule apart from the others of the same audience.')} />
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-xs text-fiba-muted">{t('Sugeridas', 'Suggested')}:</span>
+          {LABEL_SUGGESTIONS[lang === 'es' ? 'es' : 'en'].map(s => (
+            <Button key={s} type="button" variant="secondary" size="xs" onClick={() => setLabel(s)}>{s}</Button>
+          ))}
+        </div>
+      </form>
+    </Modal>
+  )
+}
+
+// Los cronogramas de una audiencia. Con más de uno hay un selector por etiqueta
+// ("General" es la vacía); el import y el alta a mano operan sobre el elegido.
+function AudienceSchedules({ competitionId, competitionName, section, audience, docs, canEdit, reload }) {
+  const { lang } = useLanguage()
+  const { push } = useToast()
+  const t = (es, en) => (lang === 'es' ? es : en)
+  const [selectedId, setSelectedId] = useState(null)
+  const [showNew, setShowNew] = useState(false)
+
+  // El general primero, el resto por etiqueta. Si lo elegido ya no existe (se
+  // borró), cae en el primero.
+  const sorted = useMemo(() => [...docs].sort((a, b) => (
+    (a.label ? 1 : 0) - (b.label ? 1 : 0) || (a.label || '').localeCompare(b.label || '')
+  )), [docs])
+  const hasGeneral = sorted.some(d => !d.label)
+  // Con al menos un cronograma con etiqueta, el selector siempre ofrece
+  // "General", exista o no: si no existe, al elegirlo se ve el estado vacío con
+  // "Importar Excel" y "Cargarlo a mano" operando sobre la etiqueta vacía.
+  const entries = useMemo(() => (
+    sorted.length > 0 && !hasGeneral
+      ? [{ id: GENERAL_KEY, label: '', doc: null }, ...sorted.map(d => ({ id: d.id, label: d.label, doc: d }))]
+      : sorted.map(d => ({ id: d.id, label: d.label, doc: d }))
+  ), [sorted, hasGeneral])
+  const entry = entries.find(e => e.id === selectedId) || entries[0] || null
+  const schedule = entry?.doc || null
+  const showSwitch = entries.length > 1 || !!entries[0]?.label
+
+  async function handleCreate(label) {
+    try {
+      const created = await createLogisticsSchedule({ competition_id: competitionId, section, audience, label })
+      setShowNew(false)
+      await reload()
+      if (created?.id) setSelectedId(created.id)
+    } catch (err) {
+      push({ type: 'error', title: isConflict(err)
+        ? t('Ya existe un cronograma con esa etiqueta.', 'A schedule with that label already exists.')
+        : (err.response?.data?.detail || t('No se pudo crear el cronograma.', 'Could not create the schedule.')) })
+    }
+  }
+
+  return (
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h4 className="text-sm font-semibold text-ink-900 dark:text-white">{audienceLabel(audience, lang)}</h4>
+        <div className="flex flex-wrap items-center gap-2">
+          {showSwitch && (
+            <div className="inline-flex rounded-lg border border-fiba-border overflow-hidden" role="group"
+              aria-label={t('Cronograma', 'Schedule')}>
+              {entries.map(d => (
+                <button key={d.id} type="button" onClick={() => setSelectedId(d.id)} aria-pressed={entry?.id === d.id}
+                  className={`px-3 py-1.5 text-xs font-medium transition-colors whitespace-nowrap ${
+                    entry?.id === d.id
+                      ? 'bg-fiba-accent text-white'
+                      : 'text-fiba-muted hover:text-ink-700 dark:hover:text-gray-200'
+                  }`}>
+                  {d.label || t('General', 'General')}
+                </button>
+              ))}
+            </div>
+          )}
+          {canEdit && (
+            <Button variant="secondary" size="xs" icon={<Icon.Plus />} onClick={() => setShowNew(true)}>
+              {t('Nuevo cronograma', 'New schedule')}
+            </Button>
+          )}
+        </div>
+      </div>
+
+      {/* La key lleva el id del cronograma: al cambiar de uno a otro se descarta
+          el archivo y el preview, para que "Confirmar" no importe sobre un
+          cronograma distinto del que se previsualizó. */}
+      <ScheduleDoc key={`${competitionId}-${section}-${audience}-${entry?.id || 'none'}`}
+        competitionId={competitionId} competitionName={competitionName}
+        section={section} audience={audience} canEdit={canEdit}
+        schedule={schedule} reload={reload} onSelect={(id) => { if (id) setSelectedId(id) }} />
+
+      {showNew && (
+        <NewScheduleModal audience={audience} takenLabels={sorted.map(d => d.label || '')} hasGeneral={hasGeneral}
+          onClose={() => setShowNew(false)} onCreate={handleCreate} />
+      )}
+    </div>
+  )
+}
+
+// Panel de una sección. Con una audiencia elegida muestra sus cronogramas; en
+// "Todos" muestra las tres, una debajo de la otra.
 export default function SchedulePanel({ competitionId, competitionName, section, audience, canEdit }) {
   const { lang } = useLanguage()
   const t = (es, en) => (lang === 'es' ? es : en)
@@ -486,10 +661,10 @@ export default function SchedulePanel({ competitionId, competitionName, section,
   return (
     <div className="space-y-8">
       {audiences.map(key => (
-        <ScheduleDoc key={`${competitionId}-${section}-${key}`}
+        <AudienceSchedules key={`${competitionId}-${section}-${key}`}
           competitionId={competitionId} competitionName={competitionName}
           section={section} audience={key} canEdit={canEdit}
-          schedule={schedules.find(s => s.audience === key) || null} reload={load} />
+          docs={schedules.filter(s => s.audience === key)} reload={load} />
       ))}
     </div>
   )

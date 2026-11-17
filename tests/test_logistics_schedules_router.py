@@ -56,16 +56,17 @@ def db(fake_db, make_request):
     return fake_db
 
 
-def commit(make_request, workbook, section="transport", audience="delegation"):
+def commit(make_request, workbook, section="transport", audience="delegation", label=""):
     return asyncio.run(logistics_schedules.commit_schedule_import(
-        make_request(), competition_id=COMP, section=section, audience=audience,
+        make_request(), competition_id=COMP, section=section, audience=audience, label=label,
         file=FakeUpload(_bytes(workbook)),
     ))
 
 
-def preview(workbook, section="transport", audience="delegation"):
+def preview(workbook, section="transport", audience="delegation", label=""):
     return asyncio.run(logistics_schedules.preview_schedule_import(
-        competition_id=COMP, section=section, audience=audience, file=FakeUpload(_bytes(workbook)),
+        competition_id=COMP, section=section, audience=audience, label=label,
+        file=FakeUpload(_bytes(workbook)),
     ))
 
 
@@ -356,3 +357,178 @@ def test_group_airport_with_stray_spaces_still_matches(roster):
     result = transport.create_trips_from_movements(
         transport.TripsFromMovements(competition_id=COMP, trips=[_arrival()]))
     assert result["created"][0]["legs"] == 2
+
+
+# ── Varios cronogramas por (sección, audiencia): `label` (migración 055) ─────
+
+def test_schedules_with_different_labels_live_side_by_side(db, make_request):
+    general = commit(make_request, staff_workbook(), "transport", "staff")
+    referees = commit(make_request, staff_workbook(), "transport", "staff", "Árbitros")
+    comms = commit(make_request, staff_workbook(), "transport", "staff", "Comunicaciones")
+    assert len(db.tables["logistics_schedules"]) == 3
+    assert [s["label"] for s in (general["schedule"], referees["schedule"], comms["schedule"])] == [
+        "", "Árbitros", "Comunicaciones"]
+    assert len({s["schedule"]["id"] for s in (general, referees, comms)}) == 3
+
+    listed = logistics_schedules.load_schedules(COMP, "transport", "staff")
+    assert [s["label"] for s in listed] == ["", "Árbitros", "Comunicaciones"]    # el general primero
+    # Entre secciones y audiencias el orden de siempre sigue mandando.
+    commit(make_request, team_workbook("transport"), "transport", "delegation", "B")
+    assert [(s["audience"], s["label"]) for s in logistics_schedules.load_schedules(COMP)] == [
+        ("staff", ""), ("staff", "Árbitros"), ("staff", "Comunicaciones"), ("delegation", "B"),
+    ]
+
+
+def test_commit_with_a_label_replaces_only_its_own_and_returns_it(db, make_request):
+    general = commit(make_request, staff_workbook(), "transport", "staff")["schedule"]
+    referees = commit(make_request, staff_workbook(), "transport", "staff", "Árbitros")["schedule"]
+    general_rows = {r["id"] for r in db.tables["logistics_schedule_rows"] if r["schedule_id"] == general["id"]}
+    assert len(general_rows) == 3
+
+    # El preview avisa cuántas filas pisa ESE label, no las del vecino.
+    assert preview(team_workbook("transport"), "transport", "staff", "Árbitros")["replaces"] == 3
+    assert preview(team_workbook("transport"), "transport", "staff", "Otro")["replaces"] == 0
+
+    again = commit(make_request, team_workbook("transport"), "transport", "staff", " Árbitros ")
+    assert (again["replaced"], again["rows"]) == (3, 4)
+    # Devuelve el documento importado, por id: con el [0] de la lista saldría el general.
+    assert again["schedule"]["id"] == referees["id"] and again["schedule"]["label"] == "Árbitros"
+    assert len(again["schedule"]["rows"]) == 4
+    assert len(db.tables["logistics_schedules"]) == 2
+    assert {r["id"] for r in db.tables["logistics_schedule_rows"] if r["schedule_id"] == general["id"]} == general_rows
+
+    # El general sigue siendo reimportable por separado y vuelve él.
+    back = commit(make_request, team_workbook("transport"), "transport", "staff")
+    assert back["schedule"]["id"] == general["id"] and back["replaced"] == 3
+
+
+def test_import_returns_the_imported_document_even_when_it_sorts_later(db, make_request):
+    commit(make_request, staff_workbook(), "transport", "staff")
+    result = commit(make_request, staff_workbook(), "transport", "staff", "Zeta")
+    assert result["schedule"]["label"] == "Zeta"
+    assert [s["label"] for s in logistics_schedules.load_schedules(COMP, "transport", "staff")] == ["", "Zeta"]
+
+
+def test_manual_schedules_need_distinct_labels(db):
+    def create(label="", audience="staff"):
+        return logistics_schedules.create_schedule(logistics_schedules.ScheduleCreate(
+            competition_id=COMP, section="transport", audience=audience, label=label))
+
+    general = create()
+    referees = create(" Árbitros ")
+    assert (general["label"], referees["label"]) == ("", "Árbitros")
+    for dup in ("", "Árbitros"):
+        with pytest.raises(HTTPException) as raised:
+            create(dup)
+        assert raised.value.status_code == 409
+    create("Árbitros", audience="vip")          # otra audiencia: no choca
+    assert len(db.tables["logistics_schedules"]) == 3
+
+
+def test_patch_label_conflicts_are_409(db):
+    def create(label):
+        return logistics_schedules.create_schedule(logistics_schedules.ScheduleCreate(
+            competition_id=COMP, section="meals", audience="staff", label=label))
+
+    general, referees = create(""), create("Árbitros")
+    update = lambda sid, **kw: logistics_schedules.update_schedule(sid, logistics_schedules.ScheduleUpdate(**kw))
+
+    with pytest.raises(HTTPException) as clash:
+        update(referees["id"], label="")
+    assert clash.value.status_code == 409
+    assert update(referees["id"], label="Árbitros")["label"] == "Árbitros"        # el suyo no choca consigo mismo
+    assert update(referees["id"], label=" Comunicaciones ")["label"] == "Comunicaciones"
+    assert update(general["id"], title="Cena")["label"] == ""                      # sin label no lo toca
+    # null explícito = volver al general; si el general existe, choca.
+    with pytest.raises(HTTPException) as back:
+        update(referees["id"], label=None)
+    assert back.value.status_code == 409
+
+
+def test_public_schedules_carry_their_label(db, make_request):
+    commit(make_request, staff_workbook(), "transport", "staff")
+    commit(make_request, staff_workbook(), "transport", "staff", "Árbitros")
+    db.seed("logistics_public_links", [{"token": "tok", "competition_id": COMP, "enabled": True}])
+    assert [s["label"] for s in public_logistics.get_schedules("tok")] == ["", "Árbitros"]
+
+
+# ── Normalización de `label` (revisión) ──────────────────────────────────────
+
+def _create(label="", audience="staff", section="transport"):
+    return logistics_schedules.create_schedule(logistics_schedules.ScheduleCreate(
+        competition_id=COMP, section=section, audience=audience, label=label))
+
+
+def test_label_collapses_spaces_and_general_means_empty(db):
+    assert _create("  Árbitros    de   campo ")["label"] == "Árbitros de campo"
+    assert _create("GENERAL")["label"] == ""
+    for dup in ("", "general", " General "):
+        with pytest.raises(HTTPException) as raised:
+            _create(dup)
+        assert raised.value.status_code == 409
+    # Solo la palabra completa es el general.
+    assert _create("General Staff")["label"] == "General Staff"
+
+
+def test_label_is_case_insensitive_and_keeps_the_first_spelling(db, make_request):
+    first = _create("Árbitros")
+    with pytest.raises(HTTPException) as raised:
+        _create("árbitros")
+    assert raised.value.status_code == 409
+    assert preview(staff_workbook(), "transport", "staff", "ÁRBITROS")["replaces"] == 0     # vacío: no hay filas aún
+    result = commit(make_request, staff_workbook(), "transport", "staff", "árbitros")
+    assert result["schedule"]["id"] == first["id"] and result["schedule"]["label"] == "Árbitros"
+    assert len(db.tables["logistics_schedules"]) == 1
+    # Un commit con "General" cae en el cronograma general, no en uno llamado "General".
+    general = commit(make_request, staff_workbook(), "transport", "staff", "General")
+    assert general["schedule"]["label"] == ""
+
+    other = _create("Comunicaciones")
+    with pytest.raises(HTTPException) as clash:
+        logistics_schedules.update_schedule(other["id"], logistics_schedules.ScheduleUpdate(label="ÁRBITROS"))
+    assert clash.value.status_code == 409
+    with pytest.raises(HTTPException) as clash_general:
+        logistics_schedules.update_schedule(other["id"], logistics_schedules.ScheduleUpdate(label="general"))
+    assert clash_general.value.status_code == 409
+
+
+def test_label_longer_than_60_is_400_everywhere(db, make_request):
+    too_long = "x" * 61
+    assert len(_create("x" * 60)["label"]) == 60
+    with pytest.raises(HTTPException) as created:
+        _create(too_long)
+    ok = _create("corto")
+    with pytest.raises(HTTPException) as patched:
+        logistics_schedules.update_schedule(ok["id"], logistics_schedules.ScheduleUpdate(label=too_long))
+    with pytest.raises(HTTPException) as previewed:
+        preview(staff_workbook(), "transport", "staff", too_long)
+    with pytest.raises(HTTPException) as committed:
+        commit(make_request, staff_workbook(), "transport", "staff", too_long)
+    assert [e.value.status_code for e in (created, patched, previewed, committed)] == [400] * 4
+    assert db.storage.objects == {}
+
+
+def test_concurrent_label_collision_is_409_not_500(db, make_request, monkeypatch):
+    """Otro request ganó entre el chequeo y el INSERT/UPDATE: el UNIQUE de
+    Postgres (23505) tiene que salir como 409 con el mensaje de la etiqueta."""
+    from api._lib import database
+
+    first = _create("Otro")
+    builder = type(logistics_schedules.supabase.table("logistics_schedules"))
+    real_execute = builder.execute
+
+    def execute(self):
+        if self._table == "logistics_schedules" and self._method in ("POST", "PATCH"):
+            raise database.SupabaseError(409, '{"code": "23505"}', {"code": "23505"})
+        return real_execute(self)
+
+    monkeypatch.setattr(builder, "execute", execute)
+
+    with pytest.raises(HTTPException) as created:
+        _create("Nuevo")
+    with pytest.raises(HTTPException) as patched:
+        logistics_schedules.update_schedule(first["id"], logistics_schedules.ScheduleUpdate(label="Nuevo"))
+    with pytest.raises(HTTPException) as committed:
+        commit(make_request, staff_workbook(), "transport", "staff", "Carrera")
+    assert [e.value.status_code for e in (created, patched, committed)] == [409] * 3
+    assert db.storage.objects == {}                    # el Excel subido se deshizo

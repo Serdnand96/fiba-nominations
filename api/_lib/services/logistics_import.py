@@ -9,6 +9,11 @@ irregulares:
 * **Rooming List** — headers en la fila 2, una columna por noche con `1`/`OUT`,
   y las celdas `Room` combinadas verticalmente cuando dos personas comparten
   habitación.
+* **Rooming List de equipo** (`Team Rooming List`, una hoja por club) — el club
+  arriba (`Club`), y una fila por persona con `Hab` / `Tipo` / `Nombre` /
+  `Check-in` / `Check-out`. El número de habitación aparece solo en la primera
+  fila de cada habitación; las filas siguientes sin número la comparten. Es el
+  segundo layout de `read_rooming`, que se detecta por ese encabezado.
 
 El parseo es deliberadamente tolerante: fechas `30.07.26` conviven con
 `datetime` reales, las horas aparecen como `08:50 am`, `22:30 PM`, `07:00:00` y
@@ -616,6 +621,20 @@ def read_rooming(content: bytes, competition_id: str) -> dict:
     year = _competition_year(competition_id)
     directory = Directory()
 
+    # Layout de equipo: se detecta por el encabezado (Hab / Nombre / Check-in /
+    # Check-out) y procesa todas las hojas que lo tengan, una por club.
+    team_sheets, other_sheets = [], []
+    for sheet in wb.worksheets:
+        if sheet.sheet_state != "visible":
+            continue
+        found = _find_team_header(sheet)
+        if found:
+            team_sheets.append((sheet, found[0], found[1]))
+        else:
+            other_sheets.append(sheet.title)
+    if team_sheets:
+        return _read_team_rooming(team_sheets, other_sheets, year, directory)
+
     ws = next(
         (wb[n] for n in wb.sheetnames if "staff" in norm(n) or "rooming" in norm(n)),
         wb.worksheets[0],
@@ -749,6 +768,312 @@ def read_rooming(content: bytes, competition_id: str) -> dict:
     }
 
 
+# ── Rooming List de equipo (segundo layout) ──────────────────────────────────
+
+_TEAM_MAX_ROWS = 3000
+
+# Texto normalizado del encabezado → campo. El de check-in/out se compara sin
+# signos (`check-in`, `check in`, `Check-In:` son lo mismo).
+_TEAM_HEADERS = {
+    "room": {"hab", "habitacion", "nro hab", "no hab", "n hab", "room", "room no", "room number"},
+    "room_type": {"tipo", "tipo de habitacion", "tipo hab", "room type", "type"},
+    "name": {"nombre", "nombre completo", "nombre y apellido", "full name"},
+    "check_in": {"checkin", "entrada", "ingreso", "llegada"},
+    "check_out": {"checkout", "salida"},
+}
+_CLUB_LABELS = {"club", "equipo", "team", "seleccion", "delegacion", "delegation"}
+
+# Filas que ocupan una cama y no son una persona ("cama libre (fisioterapia)").
+_NOT_A_PERSON = re.compile(
+    r"^(cama|plaza|cupo|lugar|bed|vacante|vacia|vacio|vacant|empty|libre|free|"
+    r"disponible|available|por confirmar|a confirmar|sin nombre|to be confirmed)\b"
+)
+
+_FOOTER_DIETARY = ("requisitos", "alergia", "dietary", "restriccion")
+_FOOTER_CONTACT_NAME = ("nombre", "name", "contacto", "responsable")
+_FOOTER_CONTACT_PHONE = ("whatsapp", "telefono", "celular", "phone", "tel")
+
+
+def _header_key(value) -> str:
+    key = norm(value).rstrip(":. ")
+    squashed = re.sub(r"[^a-z]", "", key)
+    return "checkin" if squashed == "checkin" else "checkout" if squashed == "checkout" else key
+
+
+def _find_team_header(ws, limit: int = 15) -> Optional[tuple[int, dict]]:
+    """(fila, {campo: columna}) si la hoja tiene el encabezado de rooming de equipo.
+
+    Se exige Hab, Nombre, Check-in y Check-out: la grilla de noches del staff
+    no tiene ninguno de los dos últimos, así que no se pisan.
+    """
+    for row in ws.iter_rows(min_row=1, max_row=min(ws.max_row, limit)):
+        found: dict = {}
+        for cell in row:
+            if cell.value is None:
+                continue
+            key = _header_key(cell.value)
+            for field, names in _TEAM_HEADERS.items():
+                if key in names and field not in found:
+                    found[field] = cell.column
+        if all(f in found for f in ("room", "name", "check_in", "check_out")):
+            return row[0].row, found
+    return None
+
+
+def _club_of(ws, header_row: int) -> Optional[str]:
+    """El texto a la derecha de la etiqueta `Club`, por encima del encabezado."""
+    for r in range(1, header_row):
+        cells = [c for c in ws[r] if c.value is not None]
+        for i, cell in enumerate(cells):
+            if norm(cell.value).rstrip(":. ") in _CLUB_LABELS:
+                for other in cells[i + 1:]:
+                    text = clean(other.value)
+                    if text:
+                        return text
+    return None
+
+
+def split_full_name(text: str) -> tuple[str, Optional[str]]:
+    """Nombre completo de una sola celda → (first_name, last_name).
+
+    `Apellido, Nombre` se respeta. Sin coma no hay forma de saber dónde termina
+    el nombre de pila ("Matheus de Carvalho Gueiros"), así que la primera
+    palabra es el nombre y el resto el apellido; el matching contra el padrón
+    ignora el orden, así que un error acá no cambia a quién se vincula.
+    """
+    text = re.sub(r"\s+", " ", text).strip()
+    if "," in text:
+        last, _, first = text.partition(",")
+        if first.strip() and last.strip():
+            return first.strip(), last.strip()
+    words = text.split(" ")
+    return words[0], (" ".join(words[1:]) or None)
+
+
+def _room_number(value) -> Optional[str]:
+    if isinstance(value, float) and value.is_integer():
+        value = int(value)
+    return clean(value)
+
+
+def _read_team_rooming(team_sheets: list, skipped_sheets: list[str], year: Optional[int],
+                       directory: "Directory") -> dict:
+    rows: list[dict] = []
+    warnings: list[dict] = []
+    skipped: list[dict] = []
+    teams: list[dict] = []
+    nights_seen: set[str] = set()
+    many = len(team_sheets) > 1
+
+    for name in skipped_sheets:
+        warnings.append({"row": 0, "field": "sheet",
+                         "message": f"La hoja '{name}' no tiene el formato de rooming de equipo "
+                                    f"(Hab / Tipo / Nombre / Check-in / Check-out) — no se importa"})
+
+    def warn(ws, row, field, message):
+        warnings.append({"row": row, "field": field, "sheet": ws.title,
+                         "message": f"[{ws.title}] {message}" if many else message})
+
+    for ws, header_row, cols in team_sheets:
+        club = _club_of(ws, header_row)
+        if not club:
+            warn(ws, header_row, "team", "No encontré el club (etiqueta 'Club' arriba del encabezado): "
+                                         "las personas se importan sin equipo")
+        info = {"sheet": ws.title, "team": club, "people": 0, "rooms": 0,
+                "contact_name": None, "contact_phone": None, "dietary_note": None}
+        teams.append(info)
+        warn(ws, header_row, "name_split",
+             "Los nombres vienen completos en una celda: se partieron en nombre (primera palabra) "
+             "y apellido (el resto), o 'Apellido, Nombre' si trae coma")
+
+        group = None          # habitación en curso: {number, holder}
+        in_footer = False
+        footer_label = None
+        last_row = min(ws.max_row, _TEAM_MAX_ROWS)
+
+        def value(r, field):
+            col = cols.get(field)
+            return ws.cell(row=r, column=col).value if col else None
+
+        for r in range(header_row + 1, last_row + 1):
+            hab_raw = value(r, "room")
+            name_raw = value(r, "name")
+            type_raw = value(r, "room_type")
+            in_raw, out_raw = value(r, "check_in"), value(r, "check_out")
+
+            if in_footer or (
+                isinstance(hab_raw, str) and clean(hab_raw) and not re.search(r"\d", hab_raw)
+                and not clean(type_raw) and not clean(in_raw) and not clean(out_raw)
+            ):
+                # Pie de la hoja: requisitos alimenticios, contacto y firma.
+                in_footer = True
+                label = norm(hab_raw).rstrip(":. ") if isinstance(hab_raw, str) else None
+                if label:
+                    footer_label = label
+                    rest = [c.value for c in ws[r] if c.column > cols["room"] and clean(c.value)]
+                    text = clean(rest[0]) if rest else None
+                    if text and footer_label.startswith(_FOOTER_DIETARY):
+                        info["dietary_note"] = text
+                    elif text and footer_label.startswith(_FOOTER_CONTACT_PHONE):
+                        info["contact_phone"] = text
+                    elif text and footer_label.startswith(_FOOTER_CONTACT_NAME):
+                        info["contact_name"] = text
+                continue
+
+            if not any(clean(v) for v in (hab_raw, name_raw, type_raw, in_raw, out_raw)):
+                group = None  # una fila en blanco corta la habitación
+                continue
+
+            hab = _room_number(hab_raw)
+            if hab is not None and (group is None or hab != group["number"]):
+                group = {"number": hab, "holder": None}
+                info["rooms"] += 1
+            elif group is None:
+                group = {"number": None, "holder": None}
+                info["rooms"] += 1
+
+            raw_name = clean(name_raw)
+            if raw_name is None or _NOT_A_PERSON.match(norm(raw_name)):
+                label = raw_name or "(sin nombre)"
+                skipped.append({"row": r, "sheet": ws.title, "label": label, "reason": "not_a_person"})
+                warn(ws, r, "name", f"'{label}' no es una persona — no se importa")
+                continue
+
+            first, last = split_full_name(raw_name)
+            match = directory.match(raw_name)
+            if match["status"] == "review":
+                review = review_warning(r, raw_name, match)
+                warn(ws, r, "name", review["message"])
+
+            check_in, check_out = parse_date(in_raw, year), parse_date(out_raw, year)
+            for raw, parsed_value, field in ((in_raw, check_in, "check_in"), (out_raw, check_out, "check_out")):
+                if clean(raw) and parsed_value is None:
+                    warn(ws, r, field, f"Fecha de {'check-in' if field == 'check_in' else 'check-out'} "
+                                       f"ilegible para '{raw_name}': '{raw}'")
+
+            holder = group["holder"]
+            room_type = clean(type_raw)
+            if holder is not None:
+                # La compañera de cuarto hereda lo que la planilla no repite.
+                check_in = check_in or holder["stay"]["check_in"]
+                check_out = check_out or holder["stay"]["check_out"]
+                room_type = room_type or holder["stay"]["room_type"]
+            if not (check_in and check_out):
+                warn(ws, r, "dates", f"'{raw_name}' no tiene fechas de check-in y check-out completas")
+            elif check_out < check_in:
+                # logistics_stays tiene CHECK (check_out >= check_in): con las
+                # fechas invertidas el insert falla. La persona se importa con su
+                # habitación y sin fechas, y se avisa; no se adivina cuál es la
+                # correcta.
+                warn(ws, r, "dates", f"'{raw_name}': el check-out ({check_out}) es anterior al "
+                                     f"check-in ({check_in}) — se importa sin fechas")
+                check_in = check_out = None
+
+            nights = 0
+            if check_in and check_out and check_out > check_in:
+                nights = (date.fromisoformat(check_out) - date.fromisoformat(check_in)).days
+                nights_seen.update(
+                    date.fromordinal(date.fromisoformat(check_in).toordinal() + i).isoformat()
+                    for i in range(nights))
+
+            record = {
+                "source_row": r,
+                "sheet": ws.title,
+                "first_name": first,
+                "last_name": last,
+                "role": None,
+                "category": "team",
+                "team": club,
+                "dietary_restrictions": None,
+                "match": match,
+                "is_room_holder": holder is None,
+                "stay": {
+                    "room_type": room_type,
+                    "room_number": group["number"],
+                    "check_in": check_in,
+                    "check_out": check_out,
+                    "comments": None,
+                    "share_with_row": holder["source_row"] if holder is not None else None,
+                },
+                "nights": nights,
+            }
+            if holder is None:
+                group["holder"] = record
+            rows.append(record)
+            info["people"] += 1
+
+        if info["dietary_note"]:
+            warn(ws, header_row, "dietary",
+                 f"El equipo declara requisitos alimenticios: '{info['dietary_note']}'. "
+                 f"No se asignan a nadie; cargalos en cada persona si corresponde")
+
+    return {
+        "rows": rows,
+        "warnings": warnings,
+        "skipped": skipped,
+        "layout": "team",
+        "teams": teams,
+        "sheet": ", ".join(ws.title for ws, _, _ in team_sheets),
+        "dates": sorted(nights_seen),
+        "total_nights": sum(r["nights"] for r in rows if r["is_room_holder"]),
+    }
+
+
+# ── Hotel de la estadía ──────────────────────────────────────────────────────
+
+def _hotel_label(hotel: dict) -> str:
+    return hotel.get("name") or str(hotel.get("id"))
+
+
+def choose_stay_hotel(competition_id: str, layout: Optional[str]) -> tuple[Optional[str], Optional[dict], Optional[dict]]:
+    """→ (hotel_id, hotel, warning). La rooming list no nombra el hotel.
+
+    Solo cuentan los hoteles de la audiencia de la planilla (`delegation` para la
+    de equipo, `staff` para la de staff) o compartidos (`audience` NULL): un
+    equipo nunca cae en el hotel del staff ni al revés. Entre esos: el único
+    hotel de delegación si la planilla es de equipo y hay exactamente uno; si no,
+    el primario, y si no el primero, ordenados por nombre para que la elección
+    sea la misma siempre (la tabla no tiene índice único de primarios).
+
+    Un hotel inequívoco no avisa. Se avisa cuando la elección fue entre varios
+    sin un único primario, y cuando no hay ninguno compatible (las estadías se
+    crean sin hotel). Una fila sin `audience` cuenta como compartida.
+    """
+    audience = "delegation" if layout == "team" else "staff"
+    hotels = (
+        supabase.table("logistics_hotels")
+        .select("id,name,is_primary,audience")
+        .eq("competition_id", competition_id)
+        .execute()
+        .data
+    ) or []
+    hotels = sorted(hotels, key=lambda h: (norm(h.get("name")), str(h.get("id"))))
+
+    exact = [h for h in hotels if h.get("audience") == "delegation"] if layout == "team" else []
+    if len(exact) == 1:
+        return exact[0]["id"], exact[0], None
+
+    compatible = [h for h in hotels if h.get("audience") in (None, audience)]
+    if not compatible:
+        reason = "la competencia no tiene hoteles cargados" if not hotels else \
+            f"ninguno de sus {len(hotels)} hotel(es) es de la audiencia '{audience}' ni compartido"
+        return None, None, {
+            "row": 0, "field": "hotel",
+            "message": f"Las estadías se importan sin hotel: {reason}. Asignalo después en Hospedaje"}
+
+    primaries = [h for h in compatible if h.get("is_primary")]
+    chosen = (primaries or compatible)[0]
+    ambiguous = len(compatible) > 1 and (len(primaries) != 1 or len(exact) > 1)
+    warning = None
+    if ambiguous:
+        why = "hay más de un hotel de delegación" if len(exact) > 1 else \
+            ("hay varios hoteles principales" if len(primaries) > 1 else "ninguno es el principal")
+        warning = {"row": 0, "field": "hotel",
+                   "message": f"Las estadías van al hotel '{_hotel_label(chosen)}': {why} y la planilla no "
+                              f"dice cuál. Revisá el hotel de cada habitación"}
+    return chosen["id"], chosen, warning
+
+
 # ── Preview (no escribe) ─────────────────────────────────────────────────────
 
 def _summarize(rows: list[dict], warnings: list[dict], **extra) -> dict:
@@ -772,11 +1097,17 @@ def preview_manifest(content: bytes, competition_id: str, audience: Optional[str
 def preview_rooming(content: bytes, competition_id: str, audience: Optional[str] = None) -> dict:
     parsed = read_rooming(content, competition_id)
     apply_default_category(parsed["rows"], audience)
+    hotel_id, hotel, hotel_warning = choose_stay_hotel(competition_id, parsed.get("layout"))
+    warnings = [*parsed["warnings"], *([hotel_warning] if hotel_warning else [])]
     return _summarize(
-        parsed["rows"], parsed["warnings"],
+        parsed["rows"], warnings,
+        hotel={"id": hotel_id, "name": hotel.get("name")} if hotel else None,
         sheet=parsed.get("sheet"),
         dates=parsed.get("dates", []),
         total_nights=parsed.get("total_nights", 0),
+        layout=parsed.get("layout", "staff"),
+        teams=parsed.get("teams", []),
+        skipped=parsed.get("skipped", []),
     )
 
 
@@ -785,11 +1116,25 @@ def preview_rooming(content: bytes, competition_id: str, audience: Optional[str]
 def _existing_participants(competition_id: str) -> list[dict]:
     return (
         supabase.table("logistics_participants")
-        .select("id,first_name,last_name,personnel_id,employee_id")
+        .select("id,first_name,last_name,personnel_id,employee_id,team")
         .eq("competition_id", competition_id)
         .execute()
         .data
     ) or []
+
+
+def _adopt_team(participant: dict, row: dict) -> str:
+    """Le pone el club a un participante que ya estaba y no tenía equipo.
+
+    Nunca pisa uno existente: si la persona ya figura en otro equipo, una
+    planilla no lo cambia en silencio.
+    """
+    if row.get("team") and not participant.get("team"):
+        supabase.table("logistics_participants").update(
+            {"team": row["team"]}
+        ).eq("id", participant["id"]).execute()
+        participant["team"] = row["team"]
+    return participant["id"]
 
 
 def _resolve_participant(row: dict, existing: list[dict], competition_id: str,
@@ -804,14 +1149,14 @@ def _resolve_participant(row: dict, existing: list[dict], competition_id: str,
         key = "personnel_id" if match["kind"] == "personnel" else "employee_id"
         for p in existing:
             if p.get(key) == match["id"]:
-                return p["id"]
+                return _adopt_team(p, row)
 
     incoming = " ".join(x for x in (row.get("first_name"), row.get("last_name")) if x)
     twin = None
     for p in existing:
         current = " ".join(x for x in (p.get("first_name"), p.get("last_name")) if x)
         if _similarity(incoming, current) >= _MATCH_THRESHOLD:
-            return p["id"]
+            return _adopt_team(p, row)
         if twin is None and _possible_duplicate(incoming, current):
             twin = current
 
@@ -839,6 +1184,8 @@ def _resolve_participant(row: dict, existing: list[dict], competition_id: str,
         record["passport"] = row["passport"]
     if row.get("dietary_restrictions"):
         record["dietary_restrictions"] = row["dietary_restrictions"]
+    if row.get("team"):
+        record["team"] = row["team"]
     if match["status"] == "matched" and match["id"]:
         record["personnel_id" if match["kind"] == "personnel" else "employee_id"] = match["id"]
 
@@ -849,6 +1196,7 @@ def _resolve_participant(row: dict, existing: list[dict], competition_id: str,
         "last_name": created.get("last_name"),
         "personnel_id": created.get("personnel_id"),
         "employee_id": created.get("employee_id"),
+        "team": created.get("team") or record.get("team"),
     })
     return created["id"]
 
@@ -888,24 +1236,21 @@ def commit_rooming(content: bytes, competition_id: str, audience: Optional[str] 
     warnings = list(parsed["warnings"])
     before = len(existing)
 
-    # Hotel por defecto: la rooming list no nombra el hotel, así que se cuelga
-    # del principal de la competencia si hay uno cargado.
-    hotels = (
-        supabase.table("logistics_hotels")
-        .select("id,is_primary")
-        .eq("competition_id", competition_id)
-        .execute()
-        .data
-    ) or []
-    hotel_id = next((h["id"] for h in hotels if h.get("is_primary")), None)
-    if hotel_id is None and hotels:
-        hotel_id = hotels[0]["id"]
+    # Hotel por defecto: ver choose_stay_hotel (audiencia, primario, aviso).
+    hotel_id, _, hotel_warning = choose_stay_hotel(competition_id, parsed.get("layout"))
+    if hotel_warning:
+        warnings.append(hotel_warning)
+
+    # Con una hoja por club el número de fila solo no identifica a nadie: la
+    # fila 7 de una hoja y la de otra son personas distintas.
+    def key(row: dict, source_row) -> tuple:
+        return (row.get("sheet"), source_row)
 
     row_to_participant: dict = {}
     stays_written = 0
     for row in parsed["rows"]:
         participant_id = _resolve_participant(row, existing, competition_id, warnings)
-        row_to_participant[row["source_row"]] = participant_id
+        row_to_participant[key(row, row["source_row"])] = participant_id
 
         if row.get("dietary_restrictions"):
             supabase.table("logistics_participants").update(
@@ -913,13 +1258,22 @@ def commit_rooming(content: bytes, competition_id: str, audience: Optional[str] 
             ).eq("id", participant_id).execute()
 
         stay = row["stay"]
+        check_in, check_out = stay["check_in"], stay["check_out"]
+        if check_in and check_out and check_out < check_in:
+            # logistics_stays_dates_check rechaza el insert y dejaría el commit a
+            # medias. El layout de equipo ya lo resuelve al leer; esto cubre el
+            # resto de los caminos (la grilla de staff con OUT antes de la 1).
+            warnings.append({"row": row.get("source_row", 0), "field": "dates",
+                             "message": f"'{row.get('first_name')}': el check-out ({check_out}) es anterior "
+                                        f"al check-in ({check_in}) — se importa sin fechas"})
+            check_in = check_out = None
         record = {
             "participant_id": participant_id,
             "hotel_id": hotel_id,
             "room_type": stay["room_type"],
             "room_number": stay["room_number"],
-            "check_in": stay["check_in"],
-            "check_out": stay["check_out"],
+            "check_in": check_in,
+            "check_out": check_out,
             "comments": stay["comments"],
         }
         supabase.table("logistics_stays").delete().eq("participant_id", participant_id).execute()
@@ -932,8 +1286,8 @@ def commit_rooming(content: bytes, competition_id: str, audience: Optional[str] 
         partner_row = row["stay"].get("share_with_row")
         if not partner_row:
             continue
-        me = row_to_participant.get(row["source_row"])
-        partner = row_to_participant.get(partner_row)
+        me = row_to_participant.get(key(row, row["source_row"]))
+        partner = row_to_participant.get(key(row, partner_row))
         if not me or not partner:
             continue
         supabase.table("logistics_stays").update({"share_with_id": partner}).eq("participant_id", me).execute()
@@ -949,7 +1303,7 @@ def commit_rooming(content: bytes, competition_id: str, audience: Optional[str] 
         partner_row = row["stay"].get("share_with_row")
         if not partner_row:
             continue
-        a, b = row["source_row"], partner_row
+        a, b = key(row, row["source_row"]), key(row, partner_row)
         _share_adj.setdefault(a, set()).add(b)
         _share_adj.setdefault(b, set()).add(a)
     _seen_rows: set = set()
@@ -965,12 +1319,15 @@ def commit_rooming(content: bytes, competition_id: str, audience: Optional[str] 
             _seen_rows.add(node)
             stack.extend(_share_adj.get(node, ()))
         if len(comp) > 2:
+            comp_rows = sorted(r for _, r in comp)
+            sheet = next(iter(comp))[0]
             warnings.append({
-                "row": min(comp),
+                "row": comp_rows[0],
                 "field": "share_with",
                 "message": (
                     f"Habitación compartida por {len(comp)} personas "
-                    f"(filas {sorted(comp)}): el modelo solo guarda parejas, "
+                    f"(filas {comp_rows}{f' de la hoja {sheet}' if sheet else ''}): "
+                    f"el modelo solo guarda parejas, "
                     f"revisá esta habitación en el rooming a mano."
                 ),
             })
@@ -981,6 +1338,8 @@ def commit_rooming(content: bytes, competition_id: str, audience: Optional[str] 
         "stays": stays_written,
         "total_nights": parsed.get("total_nights", 0),
         "warnings": warnings,
+        "layout": parsed.get("layout", "staff"),
+        "teams": parsed.get("teams", []),
     }
 
 

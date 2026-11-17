@@ -29,6 +29,8 @@ class DriverCreate(BaseModel):
     event_id: str
     name: str
     phone: Optional[str] = None
+    # "A disposición de" (el TD, un VIP, Comunicaciones). Texto libre, migración 055.
+    assigned_to: Optional[str] = None
 
 class VehicleUpdate(BaseModel):
     name: Optional[str] = None
@@ -37,6 +39,7 @@ class VehicleUpdate(BaseModel):
 class DriverUpdate(BaseModel):
     name: Optional[str] = None
     phone: Optional[str] = None
+    assigned_to: Optional[str] = None
 
 class VehicleDriverAssign(BaseModel):
     vehicle_id: str
@@ -154,12 +157,18 @@ def list_drivers(event_id: str = Query(...)):
 
 @router.post("/drivers", dependencies=[Depends(require_edit("logistics"))])
 def create_driver(data: DriverCreate):
-    result = supabase.table("transport_drivers").insert(data.model_dump()).execute()
+    record = data.model_dump()
+    record["assigned_to"] = (record.get("assigned_to") or "").strip() or None
+    result = supabase.table("transport_drivers").insert(record).execute()
     return result.data[0]
 
 @router.put("/drivers/{driver_id}", dependencies=[Depends(require_edit("logistics"))])
 def update_driver(driver_id: str, data: DriverUpdate):
     updates = data.model_dump(exclude_none=True)
+    # Este update descarta los None, así que "ya no está a disposición de nadie"
+    # no tendría cómo expresarse: `assigned_to` se lee aparte y '' / null lo borran.
+    if "assigned_to" in data.model_fields_set:
+        updates["assigned_to"] = (data.assigned_to or "").strip() or None
     if not updates:
         raise HTTPException(400, "No fields to update")
     r = supabase.table("transport_drivers").update(updates).eq("id", driver_id).execute()

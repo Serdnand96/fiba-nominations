@@ -319,6 +319,9 @@ export const downloadBudgetLinesXlsx = async (params) => {
 // Costo total del evento. NO está recortado por departamento a propósito: el
 // scoping rige cargar y editar, no leer la cifra de una competencia.
 export const getCompetitionCost = (id) => api.get(`/budget/competitions/${id}/cost`).then(r => r.data)
+// Hoteles de la competencia (id + nombre) para el selector del gasto. No exige
+// el permiso 'logistics'.
+export const getBudgetCompetitionHotels = (id) => api.get(`/budget/competitions/${id}/hotels`).then(r => r.data)
 // Tarifario: rellena competitions.{prefix}_window_fee/_incidentals, que es lo
 // que sync-nominations ya lee. No es una segunda fuente de verdad.
 export const getFeeSchedule = (params) => api.get('/budget/fee-schedule', { params }).then(r => r.data)
@@ -456,7 +459,7 @@ export const updateLogisticsTravelLeg = (id, data) => api.put(`/logistics/travel
 export const deleteLogisticsTravelLeg = (id) => api.delete(`/logistics/travel-legs/${id}`).then(r => r.data)
 export const getLogisticsMovements = (competitionId, audience) => api.get('/logistics/movements', { params: logisticsParams(competitionId, audience) }).then(r => r.data)
 
-export const getLogisticsHotels = (competitionId) => api.get('/logistics/hotels', { params: { competition_id: competitionId } }).then(r => r.data)
+export const getLogisticsHotels = (competitionId, audience) => api.get('/logistics/hotels', { params: logisticsParams(competitionId, audience) }).then(r => r.data)
 export const createLogisticsHotel = (data) => api.post('/logistics/hotels', data).then(r => r.data)
 export const updateLogisticsHotel = (id, data) => api.put(`/logistics/hotels/${id}`, data).then(r => r.data)
 export const deleteLogisticsHotel = (id) => api.delete(`/logistics/hotels/${id}`).then(r => r.data)
@@ -509,11 +512,15 @@ export const downloadLogisticsXlsx = async (kind, competitionId, audience) => {
 }
 
 // Cronogramas (transporte con pick-up/return, y comidas). Un documento por
-// competencia + sección ('transport' | 'meals') + audiencia.
-const scheduleParams = (competitionId, section, audience) => ({ competition_id: competitionId, section, audience })
+// competencia + sección ('transport' | 'meals') + audiencia + etiqueta: una
+// misma audiencia puede tener varios ('' = el general, 'Árbitros', …).
+const scheduleParams = (competitionId, section, audience, label) => ({
+  competition_id: competitionId, section, audience, ...(label ? { label } : {}),
+})
 export const getLogisticsSchedules = (competitionId, section) => api.get('/logistics/schedules', { params: { competition_id: competitionId, section } }).then(r => r.data)
-export const previewLogisticsSchedule = (competitionId, section, audience, file) => uploadLogisticsSheet('/logistics/schedules/import/preview', scheduleParams(competitionId, section, audience), file)
-export const commitLogisticsSchedule = (competitionId, section, audience, file) => uploadLogisticsSheet('/logistics/schedules/import/commit', scheduleParams(competitionId, section, audience), file)
+export const previewLogisticsSchedule = (competitionId, section, audience, file, label) => uploadLogisticsSheet('/logistics/schedules/import/preview', scheduleParams(competitionId, section, audience, label), file)
+// Devuelve el documento importado (el de esa sección + audiencia + etiqueta).
+export const commitLogisticsSchedule = (competitionId, section, audience, file, label) => uploadLogisticsSheet('/logistics/schedules/import/commit', scheduleParams(competitionId, section, audience, label), file)
 export const createLogisticsSchedule = (data) => api.post('/logistics/schedules', data).then(r => r.data)
 export const updateLogisticsSchedule = (id, data) => api.patch(`/logistics/schedules/${id}`, data).then(r => r.data)
 export const deleteLogisticsSchedule = (id) => api.delete(`/logistics/schedules/${id}`).then(r => r.data)
@@ -524,6 +531,69 @@ export const deleteLogisticsScheduleRow = (rowId) => api.delete(`/logistics/sche
 export const downloadLogisticsScheduleFile = async (schedule) => {
   const resp = await api.get(`/logistics/schedules/${schedule.id}/file`, { responseType: 'blob' })
   saveBlob(resp.data, schedule.file_name || 'cronograma.xlsx')
+}
+
+// Con responseType 'blob' el JSON de un error llega como Blob y el `detail` del
+// backend se pierde: se recupera acá y queda en `err.detail` (mismo patrón que
+// downloadTrainingScheduleXlsx).
+const blobRequest = async (config) => {
+  try {
+    return await api.request({ ...config, responseType: 'blob' })
+  } catch (err) {
+    const blob = err?.response?.data
+    if (blob instanceof Blob) {
+      try { err.detail = JSON.parse(await blob.text())?.detail } catch { /* keep generic message */ }
+    }
+    throw err
+  }
+}
+
+// Operación de logística: directorio de contactos y proveedores, salones,
+// adicionales/cotizaciones de hotel y documentos privados (menús, pasaportes,
+// cotizaciones). Mismo permiso 'logistics'. `audience` null = visible a todas;
+// con una audiencia el GET trae la suya más las compartidas.
+export const getLogisticsContacts = (competitionId, audience, kind) => api.get('/logistics/contacts', { params: { ...logisticsParams(competitionId, audience), ...(kind ? { kind } : {}) } }).then(r => r.data)
+export const createLogisticsContact = (data) => api.post('/logistics/contacts', data).then(r => r.data)
+export const updateLogisticsContact = (id, data) => api.put(`/logistics/contacts/${id}`, data).then(r => r.data)
+export const deleteLogisticsContact = (id) => api.delete(`/logistics/contacts/${id}`).then(r => r.data)
+
+export const getLogisticsRooms = (competitionId, audience) => api.get('/logistics/rooms', { params: logisticsParams(competitionId, audience) }).then(r => r.data)
+export const createLogisticsRoom = (data) => api.post('/logistics/rooms', data).then(r => r.data)
+export const updateLogisticsRoom = (id, data) => api.put(`/logistics/rooms/${id}`, data).then(r => r.data)
+export const deleteLogisticsRoom = (id) => api.delete(`/logistics/rooms/${id}`).then(r => r.data)
+
+// Adicionales y cotizaciones de un hotel. Informativo: NO es un gasto de Budget.
+export const getLogisticsHotelCharges = (competitionId, hotelId) => api.get('/logistics/hotel-charges', { params: { competition_id: competitionId, hotel_id: hotelId } }).then(r => r.data)
+export const createLogisticsHotelCharge = (data) => api.post('/logistics/hotel-charges', data).then(r => r.data)
+export const updateLogisticsHotelCharge = (id, data) => api.put(`/logistics/hotel-charges/${id}`, data).then(r => r.data)
+export const deleteLogisticsHotelCharge = (id) => api.delete(`/logistics/hotel-charges/${id}`).then(r => r.data)
+
+// Pagos de FIBA a un hotel: solo lectura, salen de los gastos de Budget que
+// apuntan a ese hotel → { rows, total_paid, total_approved }.
+export const getLogisticsHotelPayments = (hotelId) => api.get(`/logistics/hotels/${hotelId}/payments`).then(r => r.data)
+
+// Documentos privados (PDF, JPG o PNG hasta 10 MB). `filters` = { kind,
+// hotel_id, participant_id, charge_id }. La subida lleva el archivo en `file` y
+// el resto por query params, como las planillas; la descarga es POST a
+// propósito (queda en el activity log) y va por blob + JWT.
+const documentParams = (competitionId, filters = {}) => (
+  Object.fromEntries(Object.entries({ competition_id: competitionId, ...filters }).filter(([, v]) => v))
+)
+export const getLogisticsDocuments = (competitionId, filters) => api.get('/logistics/documents', { params: documentParams(competitionId, filters) }).then(r => r.data)
+export const uploadLogisticsDocument = (competitionId, file, filters) => uploadLogisticsSheet('/logistics/documents', documentParams(competitionId, filters), file)
+export const downloadLogisticsDocument = async (doc) => {
+  const resp = await blobRequest({ method: 'post', url: `/logistics/documents/${doc.id}/download` })
+  saveBlob(resp.data, doc.file_name || 'documento')
+}
+export const deleteLogisticsDocument = (id) => api.delete(`/logistics/documents/${id}`).then(r => r.data)
+
+// PDF operativo para delegaciones (uno por competencia, sin datos personales).
+// Si el servidor no pudo convertir a PDF manda el .docx: la extensión sale del
+// content-type de la respuesta.
+export const downloadLogisticsBriefing = async (competitionId, baseName = 'delegation-briefing') => {
+  const resp = await blobRequest({ method: 'get', url: '/logistics/export/delegation-briefing', params: { competition_id: competitionId } })
+  const isPdf = String(resp.headers?.['content-type'] || resp.data?.type || '').includes('pdf')
+  saveBlob(resp.data, `${baseName}.${isPdf ? 'pdf' : 'docx'}`)
 }
 
 // Un viaje por grupo de llegadas/salidas del manifest.

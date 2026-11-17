@@ -78,12 +78,14 @@ documentos: el muro es solo fotos).
 ## 5. Módulo Logística (antes Transport) — corrección importante
 
 - Logística es un **módulo normal permisado**: todos sus endpoints usan
-  `require_view("logistics")` / `require_edit("logistics")`. Vive en **dos
+  `require_view("logistics")` / `require_edit("logistics")`. Vive en **cuatro
   routers** que comparten ese único permiso:
   `api/_lib/routers/logistics.py` (padrón, manifest, hospedaje, comidas, links),
   `api/_lib/routers/logistics_schedules.py` (cronogramas de transporte y
-  comidas) y `api/_lib/routers/transport.py` (vehículos, choferes, viajes; su
-  prefijo de URL sigue siendo `/transport`). En el frontend comparte el **mismo
+  comidas), `api/_lib/routers/logistics_ops.py` (contactos, salones, adicionales
+  de hotel, documentos privados, pagos por hotel y el PDF para delegaciones; mismo
+  prefijo `/logistics`) y `api/_lib/routers/transport.py` (vehículos, choferes,
+  viajes; su prefijo de URL sigue siendo `/transport`). En el frontend comparte el **mismo
   `AuthContext` y el mismo cliente de Supabase** (`src/lib/supabase.js`) que
   todo el resto.
 - **No existe** una "Supabase Auth standalone" ni un aislamiento especial.
@@ -98,6 +100,39 @@ documentos: el muro es solo fotos).
   con JWT. La respuesta de la API nunca lleva `file_path` (`schedule_view`).
 - `POST /transport/trips/from-movements` valida que cada vehículo sea del evento
   de esa competencia antes de crear nada.
+- **`logistics_ops.py`** lleva `require_view("logistics")` a nivel router y
+  `require_edit("logistics")` en cada POST/PUT/DELETE (un test recorre todas las
+  rutas: sin usuario 401, con otro permiso 403, y las escrituras piden `edit`).
+  Hay **una** ruta que es POST y solo pide `view`, a propósito: la descarga de
+  un documento (abajo). Cada vínculo se valida contra la `competition_id` (el
+  hotel de un contacto, un salón o un cargo; la persona o el cargo de un
+  documento): si no es de esa competencia, 400, así nada queda colgado de lo de
+  otra.
+- **Documentos privados** (`logistics_documents`: menús, pasaportes, PDF de una
+  cotización): bucket privado `nominations` bajo `logistics/docs/`.
+  - Solo PDF, JPEG o PNG **por magic bytes** (el `content-type` que declara el
+    cliente no cuenta; un SVG no pasa), ≤ 10 MB (413), vacío es 400. Si el
+    INSERT falla después del upload, se borra el objeto; si el upload falla, 502
+    y no queda fila.
+  - **`file_path` y `uploaded_by` nunca salen en la respuesta**
+    (`DOCUMENT_FIELDS` / `_doc_view`); el archivo solo baja por
+    `POST /logistics/documents/{id}/download`, que es **POST para que el
+    activity log lo audite** (un pasaporte tiene que dejar rastro de quién lo
+    bajó), igual que el W-8 (10d). Un GET de descarga ahí es un hallazgo.
+  - El `ON DELETE CASCADE` no borra el objeto de Storage: borrar hotel,
+    participante, cargo o competencia junta las rutas **antes**
+    (`document_paths`) y quita los objetos **después** (`remove_objects`). Un
+    borrado nuevo de esas entidades que no lo haga deja pasaportes huérfanos.
+  - **Los pasaportes escaneados viven solo dentro de la plataforma**: ni el link
+    público ni el PDF para delegaciones los leen. (El *número* de pasaporte sí
+    sale por el link público, por decisión del cliente; el *escaneo* no.)
+- **PDF para delegaciones** (`GET /logistics/export/delegation-briefing`) lo
+  reciben **todos** los equipos: `briefing_data()` solo lee competencias,
+  hoteles, cronogramas, salones y contactos, nunca participantes, estadías,
+  choferes, cargos ni documentos (un test lo afirma). Recorta a audiencia
+  `delegation` o compartida, cronograma de label vacío, salones sin PIC y
+  contactos que no son `vip` ni `other`. Un campo nuevo en esas tablas no debe
+  entrar al documento sin pensar quién lo recibe.
 - El permiso `transport` **ya no existe** (migración 025 lo renombró a
   `logistics` en `user_permissions`). Un `require_view("transport")` que
   sobreviva en el código es un endpoint al que nadie puede entrar.
@@ -116,7 +151,17 @@ documentos: el muro es solo fotos).
   cinco endpoints.
 - `/schedules` publica la **tabla** de los cronogramas, no el archivo: sin
   `file_name`, `has_file` ni `uploaded_at` (`_REDACT_FIELDS["schedule"]`), y sin
-  endpoint público de descarga.
+  endpoint público de descarga. Lo único que suma lo nuevo es el `label` de cada
+  cronograma (el título cuando hay más de uno por audiencia).
+- **Lo operativo no se publica**: contactos, salones, adicionales y cotizaciones
+  de hotel y documentos (menús, pasaportes) no tienen endpoint bajo
+  `/api/public/` y un test lo afirma (ningún path con `contacts`, `rooms`,
+  `charges` ni `documents`). Una vista pública nueva no puede leer
+  `logistics_contacts`, `logistics_rooms`, `logistics_hotel_charges` ni
+  `logistics_documents`.
+- Los hoteles pasan por `_redact(h, "hotel")` en **todos** los endpoints que los
+  devuelven, incluido `get_rooming` (`build_rooming` hace un `select("*")` y
+  antes salía el email del hotel). `contact_name` se quita igual que `email`.
 - Las respuestas bajo `/api/public/` llevan `X-Robots-Tag: noindex` (middleware
   en `api/index.py`). Si agregás una vista pública nueva, cae bajo esa regla
   sola — pero no la saques del prefijo `/api/public/`, porque ahí también viven
@@ -166,9 +211,21 @@ recorte vive en el código (el `service_role` bypassa RLS). Contrato completo en
 ### 10a. Scope por departamento
 
 - Toda lectura de `expenses | budget_lines | revenues | recurring_expenses |
-  payments` en `budget.py` va dentro de `_scoped(…)`. La **única** excepción
-  documentada es `GET /budget/competitions/{id}/cost`. Una query sin `_scoped()`
-  es P0.
+  payments` en `budget.py` va dentro de `_scoped(…)`. Las **dos** excepciones
+  documentadas son `GET /budget/competitions/{id}/cost` y
+  `GET /logistics/hotels/{hotel_id}/payments` (`logistics_ops.py`, permiso
+  `logistics`). Esta última lee `expenses` con `hotel_id` de ese hotel, solo
+  `approved`/`paid`, y devuelve una **proyección cerrada** (`record_no`,
+  `description`, `amount`, `status`, `expense_date`, `payment_date`,
+  `invoice_no`, `vendor_name`): si crece un campo (`comments`,
+  `bank_confirmation`, `payment_method`, `created_by`, adjuntos) o se le abre un
+  estado más, es un hallazgo. Una query sin `_scoped()` que no sea una de esas
+  dos es P0. (`GET /budget/competitions/{id}/hotels` tampoco usa `_scoped()`
+  pero lee `logistics_hotels`, que no es de ningún departamento, y solo da id y
+  nombre.)
+- `expenses.hotel_id` (migración 056) no es campo financiero: validar que el
+  hotel sea de la competencia del gasto es obligatorio (400), pero no sella
+  `last_financial_edit_by` ni escribe historial.
 - `_scoped()` aplica **un solo** `.eq`/`.in_` sobre `department_code`: el
   builder guarda un filtro por columna y un segundo filtro encadenado pisa el
   scope (bypass con `?department=finance`).
@@ -306,7 +363,9 @@ de Supabase Auth). Tenelos presentes pero no son código de este repo.
 - [ ] ¿Se preservan los headers/CSP/CORS y el activity log?
 - [ ] Si toca REFs: ¿neutralidad intacta?
 - [ ] Budget: ¿toda query nueva (incluidos exports) pasa por `_scoped()`, con
-      un solo filtro sobre `department_code`?
+      un solo filtro sobre `department_code`? (Las únicas dos lecturas sin
+      `_scoped` son `/cost` y `/logistics/hotels/{id}/payments`, con su
+      proyección angosta.)
 - [ ] Gastos/pagos: ¿el `status` cambia solo por `/transition`, con
       `created_by` y `last_financial_edit_by` distintos del aprobador y `reason`
       obligatorio en el override? ¿`paid_amount` solo por `/record-partial` y
@@ -318,3 +377,7 @@ de Supabase Auth). Tenelos presentes pero no son código de este repo.
 - [ ] ¿`personnel_banking` sigue fuera de `personnel.py`, enmascarado en el GET
       y con `reveal` y la descarga del W-8 como POST auditados?
 - [ ] `/me/*`: ¿cada query filtra por el `user_id` del caller?
+- [ ] Logística: ¿lo nuevo (contactos, salones, cargos, documentos) sigue fuera
+      de `/api/public/*`? ¿Los documentos validan magic bytes + 10 MB, nunca
+      devuelven `file_path` y se bajan por POST? ¿Un borrado que cascadea a
+      `logistics_documents` quita también los objetos de Storage?

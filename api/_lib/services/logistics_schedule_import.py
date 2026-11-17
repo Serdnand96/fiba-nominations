@@ -21,6 +21,19 @@ Lo que no se ve en el PDF y este parser tiene que saber:
 * La columna `Estadio` trae el **nombre del equipo**.
 * Las comidas no siempre son una hora: `TAKE AWAY`, `15:30 al IN`.
 
+Hay **dos layouts**, y se reconocen por la forma, no por el nombre del archivo:
+
+* `team` — la planilla de equipos (transporte o comidas): una columna
+  `Comienzo` (en la fila `FECHA` o en la sub-fila de abajo) que habilita los
+  entrenamientos, más la franja `PARTIDOS`.
+* `referee` — la planilla de staff (árbitros): sin sub-fila de entrenamientos y
+  con los rótulos en la propia fila `FECHA`. En `transport` exige `PICK UP HOTEL`
+  **y** `DEPARTURE TO HOTL`; en `meals`, al menos una de `ALMUERZO` / `MERIENDA` /
+  `CENA`. Solo produce filas `game`.
+
+Si la planilla no encaja en ninguno es un `ScheduleFormatError`: con un layout
+adivinado un off-by-one importaría horarios de pick-up corridos sin avisar.
+
 Como el resto de los importadores de logística, este no adivina: una sección
 que no encuentra sus columnas es un error, y lo que no se puede interpretar va
 como warning al preview.
@@ -85,6 +98,9 @@ SECTION_FIELDS = {
 
 _TIME_FIELDS = ("pickup_time", "return_time")
 _TEXT_FIELDS = ("lunch", "snack", "dinner")
+
+LAYOUT_TEAM = "team"
+LAYOUT_REFEREE = "referee"
 
 _NS = {"a": "http://schemas.openxmlformats.org/drawingml/2006/main"}
 
@@ -173,6 +189,39 @@ def _text(value) -> Optional[str]:
     return text or None
 
 
+def _detect_layout(blocks: list[dict], section: str) -> Optional[str]:
+    """Layout de la hoja según los rótulos de sus bloques `FECHA`.
+
+    `team` gana si algún bloque rotula `Comienzo`. Sin `Comienzo` es la planilla
+    de staff (`referee`: solo partidos, rótulos en la propia fila `FECHA`), y lo
+    que se le exige depende de la sección: en `transport`, pick-up y regreso; en
+    `meals`, al menos una columna de comida. Siempre columnas visibles: las
+    ocultas ya se descartaron antes de llegar acá. Cualquier otra cosa es `None`.
+    """
+    if any("start_time" in {**b["top"], **b["sub"]} for b in blocks):
+        return LAYOUT_TEAM
+    if section == "transport":
+        if any("pickup_time" in b["top"] and "return_time" in b["top"] for b in blocks):
+            return LAYOUT_REFEREE
+    elif any(f in b["top"] for b in blocks for f in SECTION_FIELDS["meals"]):
+        return LAYOUT_REFEREE
+    return None
+
+
+def _missing_columns_error(section: str, fields_seen: set[str]) -> ScheduleFormatError:
+    other = next((s for s in SECTIONS if s != section
+                  and any(f in fields_seen for f in SECTION_FIELDS[s])), None)
+    if section == "transport":
+        message = "No encontré columnas visibles PICK UP HOTEL / RETURN HOTEL"
+    else:
+        message = "No encontré columnas visibles ALMUERZO / MERIENDA / CENA"
+    if other == "meals":
+        message += ": este archivo parece el cronograma de comidas"
+    elif other == "transport":
+        message += ": este archivo parece el cronograma de transporte"
+    return ScheduleFormatError(message)
+
+
 def _pick_sheet(wb):
     """Primera hoja visible que tenga una celda `FECHA`."""
     for ws in wb.worksheets:
@@ -226,6 +275,11 @@ def read_schedule(content: bytes, section: str, default_year: Optional[int] = No
         if any(norm(cell.value) == "fecha" for _, cell in visible(r))
     ]
 
+    if not header_rows:
+        # La celda FECHA existe pero en una columna oculta: no cuenta.
+        raise ScheduleFormatError(
+            "No encontré ninguna fila FECHA en las columnas visibles: el archivo no tiene la forma de un cronograma")
+
     # Título y subtítulo: los dos primeros textos por encima del primer bloque.
     heading = []
     for r in range(1, header_rows[0]):
@@ -236,6 +290,26 @@ def read_schedule(content: bytes, section: str, default_year: Optional[int] = No
     title = heading[0] if heading else None
     subtitle = heading[1] if len(heading) > 1 else None
 
+    # Los bloques primero, para decidir el layout antes de interpretar ninguna
+    # fila: `top` son los rótulos de la fila FECHA y `sub` los de la de abajo.
+    blocks = []
+    for index, r0 in enumerate(header_rows):
+        end = header_rows[index + 1] - 1 if index + 1 < len(header_rows) else max_row
+        blocks.append({
+            "r0": r0, "end": end, "top": labels_in(r0),
+            "sub": labels_in(r0 + 1) if r0 + 1 <= end else {},
+        })
+
+    layout = _detect_layout(blocks, section)
+    if layout is None:
+        seen = {f for b in blocks for f in (*b["top"], *b["sub"])}
+        if not any(f in seen for f in SECTION_FIELDS[section]):
+            raise _missing_columns_error(section, seen)
+        raise ScheduleFormatError(
+            "El archivo no tiene ninguno de los dos formatos conocidos: la planilla de equipos "
+            "(con columna Comienzo) o la de staff (en la fila FECHA, PICK UP HOTEL y DEPARTURE TO "
+            "HOTL para transporte, o ALMUERZO / MERIENDA / CENA para comidas)")
+
     days: list[dict] = []
     rows: list[dict] = []
     skipped: list[dict] = []
@@ -243,8 +317,8 @@ def read_schedule(content: bytes, section: str, default_year: Optional[int] = No
     fields_seen: set[str] = set()
     inherited: dict = {}
 
-    for index, r0 in enumerate(header_rows):
-        end = header_rows[index + 1] - 1 if index + 1 < len(header_rows) else max_row
+    for block in blocks:
+        r0, end = block["r0"], block["end"]
 
         date_col = notes_col = None
         label = None
@@ -257,9 +331,11 @@ def read_schedule(content: bytes, section: str, default_year: Optional[int] = No
             elif key and key not in _LABELS and label is None:
                 label = _text(cell.value)
 
-        columns = labels_in(r0)
+        columns = block["top"]
         first_data = r0 + 1
-        sub = labels_in(r0 + 1) if r0 + 1 <= end else {}
+        # En la planilla de árbitros la fila de abajo ya es un partido: no se
+        # la lee como rótulos (un equipo llamado "Final" no es una columna).
+        sub = block["sub"] if layout == LAYOUT_TEAM else {}
         if sub:
             # Los rótulos de la fila de abajo son los de las columnas reales
             # (los de la fila FECHA quedan sobre las columnas ocultas).
@@ -287,7 +363,7 @@ def read_schedule(content: bytes, section: str, default_year: Optional[int] = No
 
         # Sin columna Comienzo el bloque es solo de partidos (planilla de staff).
         time_col = columns.get("start_time") or columns.get("game_time")
-        mode = "training" if "start_time" in columns else "game"
+        mode = "training" if layout == LAYOUT_TEAM and "start_time" in columns else "game"
         # La posición sigue a través de bloques con la misma fecha.
         position = sum(1 for row in rows if row["date"] == day_date)
         rows_before = len(rows) + len(skipped)
@@ -388,17 +464,7 @@ def read_schedule(content: bytes, section: str, default_year: Optional[int] = No
 
     wanted = SECTION_FIELDS[section]
     if not any(f in fields_seen for f in wanted):
-        other = next((s for s in SECTIONS if s != section
-                      and any(f in fields_seen for f in SECTION_FIELDS[s])), None)
-        if section == "transport":
-            message = "No encontré columnas visibles PICK UP HOTEL / RETURN HOTEL"
-        else:
-            message = "No encontré columnas visibles ALMUERZO / MERIENDA / CENA"
-        if other == "meals":
-            message += ": este archivo parece el cronograma de comidas"
-        elif other == "transport":
-            message += ": este archivo parece el cronograma de transporte"
-        raise ScheduleFormatError(message)
+        raise _missing_columns_error(section, fields_seen)
     if not rows:
         raise ScheduleFormatError("El archivo no trae ninguna fila de entrenamiento ni de partido")
 

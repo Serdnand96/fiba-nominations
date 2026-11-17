@@ -79,7 +79,7 @@ export default function TransportTab({ competitionId, selectedComp, canEdit, aud
 
   const [showDriverModal, setShowDriverModal] = useState(false)
   const [editingDriver, setEditingDriver] = useState(null)
-  const [driverForm, setDriverForm] = useState({ name: '', phone: '' })
+  const [driverForm, setDriverForm] = useState({ name: '', phone: '', assigned_to: '' })
 
   const [showVenueModal, setShowVenueModal] = useState(false)
   const [venueForm, setVenueForm] = useState({ name: '', type: 'venue' })
@@ -264,13 +264,14 @@ export default function TransportTab({ competitionId, selectedComp, canEdit, aud
     await deleteTransportVehicle(v.id); await loadAll()
   }
 
-  function openCreateDriver() { setEditingDriver(null); setDriverForm({ name: '', phone: '' }); setShowDriverModal(true) }
-  function openEditDriver(d) { setEditingDriver(d); setDriverForm({ name: d.name, phone: d.phone || '' }); setShowDriverModal(true) }
+  function openCreateDriver() { setEditingDriver(null); setDriverForm({ name: '', phone: '', assigned_to: '' }); setShowDriverModal(true) }
+  function openEditDriver(d) { setEditingDriver(d); setDriverForm({ name: d.name, phone: d.phone || '', assigned_to: d.assigned_to || '' }); setShowDriverModal(true) }
 
   async function handleDriverSubmit(e) {
     e.preventDefault()
-    if (editingDriver) await updateTransportDriver(editingDriver.id, driverForm)
-    else await createTransportDriver({ ...driverForm, event_id: eventId })
+    const payload = { ...driverForm, assigned_to: driverForm.assigned_to.trim() || null }
+    if (editingDriver) await updateTransportDriver(editingDriver.id, payload)
+    else await createTransportDriver({ ...payload, event_id: eventId })
     setShowDriverModal(false); await loadAll()
   }
 
@@ -589,16 +590,17 @@ export default function TransportTab({ competitionId, selectedComp, canEdit, aud
             </div>
             <div className="rounded-xl border border-fiba-border overflow-x-auto">
               <table className="fiba-table">
-                <thead><tr><th>{lang === 'es' ? 'Nombre' : 'Name'}</th><th>{lang === 'es' ? 'Teléfono' : 'Phone'}</th>{canEdit && <th className="w-20"></th>}</tr></thead>
+                <thead><tr><th>{lang === 'es' ? 'Nombre' : 'Name'}</th><th>{lang === 'es' ? 'Teléfono' : 'Phone'}</th><th>{lang === 'es' ? 'A disposición de' : 'Assigned to'}</th>{canEdit && <th className="w-20"></th>}</tr></thead>
                 <tbody>
                   {drivers.map(d => (
                     <tr key={d.id}>
                       <td className="px-4 py-2 font-medium">{d.name}</td>
                       <td className="px-4 py-2 text-fiba-muted">{d.phone || '—'}</td>
+                      <td className="px-4 py-2 text-fiba-muted">{d.assigned_to || '—'}</td>
                       {canEdit && <td className="px-4 py-2"><div className="flex gap-2"><button onClick={() => openEditDriver(d)} className="text-fiba-accent hover:underline text-xs">{lang === 'es' ? 'Editar' : 'Edit'}</button><button onClick={() => handleDeleteDriver(d)} className="text-red-400 hover:underline text-xs">{lang === 'es' ? 'Eliminar' : 'Delete'}</button></div></td>}
                     </tr>
                   ))}
-                  {drivers.length === 0 && <tr><td colSpan={canEdit ? 3 : 2} className="px-4 py-6 text-center text-fiba-muted/60 text-xs">{lang === 'es' ? 'Sin choferes' : 'No drivers'}</td></tr>}
+                  {drivers.length === 0 && <tr><td colSpan={canEdit ? 4 : 3} className="px-4 py-6 text-center text-fiba-muted/60 text-xs">{lang === 'es' ? 'Sin choferes' : 'No drivers'}</td></tr>}
                 </tbody>
               </table>
             </div>
@@ -703,6 +705,7 @@ export default function TransportTab({ competitionId, selectedComp, canEdit, aud
             <form onSubmit={handleDriverSubmit} className="space-y-3">
               <input required placeholder={lang === 'es' ? 'Nombre completo' : 'Full name'} value={driverForm.name} onChange={e => setDriverForm(f => ({ ...f, name: e.target.value }))} className="fiba-input" />
               <input placeholder={lang === 'es' ? 'Teléfono' : 'Phone'} value={driverForm.phone} onChange={e => setDriverForm(f => ({ ...f, phone: e.target.value }))} className="fiba-input" />
+              <input placeholder={lang === 'es' ? 'A disposición de (TD, VIP, equipo...)' : 'Assigned to (TD, VIP, team...)'} value={driverForm.assigned_to} onChange={e => setDriverForm(f => ({ ...f, assigned_to: e.target.value }))} className="fiba-input" />
               <div className="flex justify-end gap-3 pt-2">
                 <button type="button" onClick={() => setShowDriverModal(false)} className="px-4 py-2 text-sm text-fiba-muted">{lang === 'es' ? 'Cancelar' : 'Cancel'}</button>
                 <button type="submit" className="btn-fiba">{editingDriver ? (lang === 'es' ? 'Guardar' : 'Save') : (lang === 'es' ? 'Crear' : 'Create')}</button>
