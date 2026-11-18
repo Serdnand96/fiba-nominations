@@ -1,7 +1,8 @@
 # FIBA Americas Administration System
 
 Sistema admin de FIBA Americas para gestión de nominaciones de oficiales
-(TDs / VGOs), training, logística, inventario, calendario y staff.
+(TDs / VGOs), training, logística, inventario, calendario, staff, pagos,
+presupuesto y el muro interno del equipo.
 
 **Producción:** https://www.fibaapp.com (redirect 301 desde el legacy
 `fibaamericascloud.com`).
@@ -18,7 +19,11 @@ Sistema admin de FIBA Americas para gestión de nominaciones de oficiales
 | [`DEVELOPMENT.md`](DEVELOPMENT.md)     | Correr el stack local.                                        |
 | [`DESIGN_SYSTEM.md`](DESIGN_SYSTEM.md) | Tokens, componentes UI, modo oscuro, migración pendiente.     |
 | [`SECURITY_RUNBOOK.md`](SECURITY_RUNBOOK.md) | Acciones manuales pendientes del último pen-test.         |
+| [`deploy/MANUAL_ACTIONS_2026-08.md`](deploy/MANUAL_ACTIONS_2026-08.md) | Acciones manuales en el droplet de la auditoría de agosto 2026. |
+| [`BUDGET_MODULE.md`](BUDGET_MODULE.md) | Contrato del módulo Budget: schema, endpoints, scoping por departamento. |
 | [`PAYMENTS_MODULE.md`](PAYMENTS_MODULE.md) | Análisis del legacy vbills (histórico — la implementación final difiere). |
+| [`LSB_LETTER_SPEC.md`](LSB_LETTER_SPEC.md) | La carta de LSB: texto, membrete y por qué difiere de `confirmation`. |
+| [`MANUAL_USUARIO.md`](MANUAL_USUARIO.md) | Manual para los usuarios finales (no técnico). |
 
 ---
 
@@ -42,20 +47,21 @@ fiba-nominations/
 ├── api/                      # FastAPI backend
 │   ├── index.py              # entry + middleware + mount routers
 │   └── _lib/
-│       ├── auth.py           # require_view, require_edit
+│       ├── auth.py           # require_view, require_edit, require_user
 │       ├── database.py       # supabase client httpx-based
+│       ├── crew.py           # crew del torneo (fee_type = tournament)
+│       ├── budget_accounts.py# rol → cuenta de fees / travel
 │       ├── routers/          # uno por módulo
-│       └── services/
-│           └── document_generator.py
+│       └── services/         # document_generator, imports de Excel, activity_log
 │
 ├── src/                      # React frontend
 │   ├── App.jsx               # shell + router
 │   ├── pages/                # uno por ruta
 │   ├── components/
 │   │   ├── ui/               # Button, Input, Table, …
-│   │   ├── layout/           # Sidebar, Topbar, AppShell
-│   │   └── brand/            # Logos
-│   ├── lib/icons.jsx         # Tabler icons
+│   │   ├── brand/            # Logos
+│   │   └── ProfileModal.jsx  # "Mi perfil" (foto / avatar)
+│   ├── lib/                  # icons, competitions, warRoom, avatars, …
 │   ├── contexts/             # Auth, Language
 │   └── i18n/                 # ES + EN
 │
@@ -64,8 +70,9 @@ fiba-nominations/
 │   ├── build_letter_templates.py   # regenera los *_TPL.docx de las cartas
 │   ├── fiba-security-scan.sh       # scanner horario de logs (corre en droplet)
 │   └── fiba-supabase-keepalive.sh  # ping diario a Supabase (anti auto-pause)
-├── supabase/migrations/      # schema SQL
+├── supabase/migrations/      # schema SQL (se aplican a mano, no en el deploy)
 ├── templates/                # .docx templates
+├── deploy/                   # referencias de nginx / systemd + acciones manuales
 ├── verify_security.sh        # smoke test post-deploy
 ├── .github/workflows/        # CI/CD
 ├── tailwind.config.js
@@ -109,6 +116,7 @@ inicial.
 
 | Módulo         | Ruta            | Tabla principal       |
 |----------------|-----------------|-----------------------|
+| Muro (feed)    | `/muro`         | `feed_posts` (+ comments, reactions, poll_votes) |
 | Calendar       | `/calendar`     | `competitions`        |
 | Nominations    | `/nominations`  | `nominations`         |
 | Personnel      | `/personnel`    | `personnel` (TDs/VGOs)|
@@ -124,9 +132,19 @@ inicial.
 | Scan           | `/scan`         | (QR landing)          |
 | Employees      | `/employees`    | `employees` (staff interno) |
 | Payments       | `/payments`     | `payments` (1:1 con `nominations`) |
+| Budget         | `/budget`       | `budget_lines`, `expenses`, … (filtrado por departamento) |
 | Reports        | `/reports`      | `competition_reports`  |
 | Evaluations    | `/evaluations`  | `staff_evaluations`    |
 | Activity       | `/activity`     | `activity_log` (solo superadmin) |
+
+Dentro de **Games** viven además tres paneles con el mismo permiso `games`:
+el **Crew del torneo** (`competition_assignments`), el **Staffing Plan**
+(`competition_staffing`, empleados FIBA) y el **Control de operación**
+(checklists de sede por partido). **Mi perfil** (foto/avatar) no es un
+módulo: sale del usuario en el sidebar y usa `/api/me`.
+
+Vistas públicas sin login: `/asset/:id` (QR), `/availability/:token`,
+`/logistica/:token` y `/checklist/:token`.
 
 ---
 
@@ -139,6 +157,18 @@ inicial.
 4. Registralo en `api/_lib/routers/templates.py` → `TEMPLATES` para que
    aparezca en la UI de Templates
 5. Actualizá `src/pages/Nominations.jsx` para lógica template-specific
+
+## Adding a Permission / Module
+
+Un permiso nuevo se declara en **tres** lugares, o la grilla de Usuarios y
+el backend quedan desincronizados:
+
+1. El CHECK de `user_permissions.module` (nueva migración)
+2. `MODULES` en `api/_lib/routers/permissions.py`
+3. `MODULES` en `src/pages/Users.jsx`
+
+El resto del checklist (router, mount, página, ruta, icono, i18n) está en
+[`DEVELOPMENT.md`](DEVELOPMENT.md).
 
 ---
 
@@ -157,15 +187,21 @@ inicial.
 
 ---
 
-## Estado actual (julio 2026)
+## Estado actual (septiembre 2026)
 
-- ✅ Migración a DigitalOcean droplet completada
+- ✅ Migración a DigitalOcean droplet completada; el deploy construye a
+  `dist.new` y hace rollback solo si el smoke test falla
 - ✅ Cartas de nominación con LibreOffice local (CloudConvert queda solo
-  para el export de training schedule)
-- ✅ Pen-test 3 rondas — H1-H9 + N1, N2, N3 cerrados — y pasada de
-  hardening extra en julio 2026
+  para el export de training schedule); la carta de LSB sobre su membrete
+- ✅ Pen-test 3 rondas — H1-H9 + N1, N2, N3 cerrados — hardening en julio
+  y auditoría del droplet en agosto 2026
 - ✅ Design system completo (navy + basketball orange + IBM Plex)
 - ✅ Scanner horario de alertas en `/var/log/fiba-security-alerts.log`
-- ✅ Módulos nuevos: Payments, Reports, Evaluations y Logística
-  (ex Transporte, con vista pública por token)
-- ⏳ Manuales pendientes: ver [`SECURITY_RUNBOOK.md`](SECURITY_RUNBOOK.md)
+- ✅ Módulos: Payments, Reports, Evaluations, Logística (con vista pública),
+  Budget (033-041, filtrado por departamento), Staffing Plan, Control de
+  operación (checklists de sede con vista pública), Muro (043) y Mi perfil
+  con avatar (044)
+- ✅ Partidos con `datetime_utc` (039) y competencias con ventana de FIBA
+  (040) y tipos Zonal / WC (042)
+- ⏳ Manuales pendientes: [`SECURITY_RUNBOOK.md`](SECURITY_RUNBOOK.md) y
+  [`deploy/MANUAL_ACTIONS_2026-08.md`](deploy/MANUAL_ACTIONS_2026-08.md)

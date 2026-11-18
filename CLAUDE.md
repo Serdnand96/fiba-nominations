@@ -724,13 +724,19 @@ fiba-nominations/
 │                                 scoping por departamento, datos cargados)
 ├── LSB_LETTER_SPEC.md         ← la carta de LSB: su texto, su membrete y por qué
 │                                 el starter de `confirmation` no es el de LSB
+├── MANUAL_USUARIO.md          ← manual para usuarios finales (y su PDF exportado
+│                                 a mano, Manual_Usuario_FIBA.pdf)
 ├── .claude/                   ← subagentes + skills para sesiones de IA (ver abajo)
+├── deploy/                    ← referencias versionadas de nginx y systemd +
+│                                 MANUAL_ACTIONS_2026-08.md (auditoría del droplet)
 │
 ├── api/                       ← FastAPI backend
 │   ├── index.py               ← entry, middleware, mounting routers
 │   └── _lib/
 │       ├── auth.py            ← require_view, require_edit, require_user, has_view/has_edit
 │       ├── database.py        ← lightweight supabase client (httpx)
+│       ├── crew.py            ← crew del torneo (competition_assignments)
+│       ├── travel.py          ← sede y fechas de viaje derivadas de los partidos
 │       ├── budget_accounts.py ← rol → cuenta de fees / de travel (payments ↔ budget)
 │       ├── logistics_audiences.py ← staff / delegation / vip → categorías del padrón; for_audience (punto 7)
 │       ├── finance_years.py   ← a qué año cae un pago (budget y la cola de payments)
@@ -921,6 +927,11 @@ Pendientes manuales (ver `SECURITY_RUNBOOK.md`):
 Hay scanner horario corriendo en `/var/log/fiba-security-alerts.log`
 (via cron `/etc/cron.d/fiba-security-scan`).
 
+La auditoría del droplet de agosto 2026 dejó su lista de acciones manuales
+(permisos del `.env`, sudo de la deploy key, hardening de systemd, nginx) en
+`deploy/MANUAL_ACTIONS_2026-08.md`, con las referencias versionadas en
+`deploy/nginx/` y `deploy/systemd/`.
+
 ---
 
 ## 🎨 Trabajo de UI / diseño
@@ -941,7 +952,17 @@ explicación del truco de CSS variables para los aliases legacy
 
 - **"Agregá un módulo nuevo"** → router en `api/_lib/routers/X.py`,
   mount en `api/index.py`, página en `src/pages/X.jsx`, ruta en
-  `App.jsx`, icono en el map `moduleIcon`, permiso en `user_permissions`.
+  `App.jsx`, icono en el map `moduleIcon`, y el permiso en **tres** lugares
+  (CHECK de `user_permissions.module`, `MODULES` en
+  `api/_lib/routers/permissions.py`, `MODULES` en `src/pages/Users.jsx`).
+  Paso a paso en `DEVELOPMENT.md`.
+
+- **"Tocá partidos, crew o checklists"** → puntos 9 a 13. Crew, Staffing
+  Plan y Control de operación comparten el permiso `games`; la hora del
+  partido es local de la sede y se convierte desde `datetime_utc`.
+
+- **"Tocá tipos o selectores de competencia"** → `src/lib/competitions.js`,
+  no una lista local en la página.
 
 - **"Tocá el Muro"** (feed) → punto 18: `can_view` publica, `can_edit`
   modera. No le pongas `require_edit` a publicar/comentar/reaccionar.

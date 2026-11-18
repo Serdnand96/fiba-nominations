@@ -1,7 +1,8 @@
 # Manual de usuario — FIBA Americas
 
 Sistema de administración de FIBA Americas: nominaciones, personal,
-disponibilidad, juegos, entrenamientos y logística.
+disponibilidad, juegos, entrenamientos, logística, pagos, presupuesto,
+empleados, inventario y el muro interno del equipo.
 
 **Dirección:** https://www.fibaapp.com
 
@@ -27,7 +28,23 @@ disponibilidad, juegos, entrenamientos y logística.
 - **Barra superior:** el nombre de la sección actual y el botón para
   cambiar entre **modo claro y oscuro**.
 - **Abajo del menú:** el selector de idioma **ES / EN** y tu usuario con
-  el botón para **cerrar sesión**.
+  el botón para **cerrar sesión**. Haz clic en tu nombre para abrir
+  **Mi perfil** y ponerte una foto (ver más abajo).
+- **Página de entrada:** al entrar caes en el primer módulo de tu menú.
+  Si tienes el **Muro**, entras por ahí.
+
+### Mi perfil (tu foto)
+
+Haz clic en tu usuario, abajo del menú, para abrir **Mi perfil**. Tu imagen
+se ve en el menú lateral, como autor en el Muro y en la lista de Usuarios.
+
+- Pestaña **Foto**: elige una imagen JPG, PNG, WebP o GIF (máximo 2 MB).
+  Se recorta en cuadrado sola.
+- Pestaña **Avatar**: si prefieres no usar una foto, elige un estilo y un
+  dibujo generado. Se guarda igual que una foto.
+- **Quitar imagen** vuelve a las iniciales.
+
+Solo tú puedes cambiar tu imagen. Un administrador no puede cambiarla por ti.
 
 ### Permisos
 
@@ -51,6 +68,37 @@ de las tres líneas (☰), arriba a la izquierda.
 
 ## 2. Los módulos, uno por uno
 
+### 📣 Muro
+
+El espacio informal del equipo: novedades de los compañeros, eventos,
+avisos de RRHH, encuestas y aplausos. Si tienes el módulo, es tu página
+de entrada.
+
+**Para qué sirve:** enterarse de lo que pasa en FIBA Americas día a día y
+participar.
+
+**Cómo se usa:**
+
+- Escribe en el cuadro de arriba y **Publicar** (o Ctrl + Enter). Puedes
+  agregar una **foto**, un **link**, una **encuesta** y vincular la
+  publicación a un **evento** del calendario.
+- Filtra por categoría con las etiquetas: **Todo, General, Novedades,
+  Eventos, RRHH, Para reírse, Aplausos** o solo **Fijados**.
+- Reacciona con emojis, comenta y vota en las encuestas. Lo tuyo lo
+  puedes editar y borrar.
+- La barra lateral muestra **En el calendario** (próximos 60 días, con
+  "En cancha" para lo que está en juego), **De viaje esta semana** (quién
+  está en un evento) y el resumen de la semana.
+
+**Moderadores** (permiso de *editar* en el Muro) pueden además **fijar
+arriba** una publicación, marcarla como **Aviso oficial** (sale con una
+etiqueta destacada) y borrar publicaciones o comentarios ajenos.
+
+> Con solo el permiso de *ver* ya puedes publicar, comentar y reaccionar.
+> Es a propósito: un muro donde solo unos pocos escriben no es un muro.
+
+---
+
 ### 📅 Calendario
 
 Es la vista general del año: todas las competencias y eventos.
@@ -60,7 +108,9 @@ el staff que va a trabajar en ellos.
 
 **Cómo se usa:**
 
-1. Cambia entre vista **Año** y **Mes** con los botones de arriba.
+1. Cambia entre vista **Año** y **Mes** con los botones de arriba, y
+   filtra por **tipo** de competencia (BCLA, WCQ, LSB, LSBF, WBLA,
+   AmeriCup, U-Series, Zonal, WC u Other). Cada tipo tiene su color.
 2. Haz clic en un evento para abrir el panel lateral con su detalle.
 3. En el panel:
     - **Agregar Staff** → busca la persona y agrégala al evento.
@@ -162,12 +212,23 @@ template de carta usa**.
 
 **Cómo se usa:**
 
+- La lista se puede **filtrar por año** y por template. Cuando dos
+  competencias se llaman igual (por ejemplo *LSB – Group A* de 2026 y de
+  2027), el sistema les agrega el año en todos los selectores para que no
+  se confundan.
 - **+ Nueva competencia**: nombre, template, año.
 - Marca **Competencia de selecciones nacionales** cuando corresponda:
   eso activa la restricción de neutralidad arbitral (un árbitro no
   puede dirigir partidos ni grupos donde juegue su país).
 - El **tipo de honorario** define el texto de fees que sale impreso en
-  la carta de nominación.
+  la carta de nominación y **cómo se asigna el personal**: con honorario
+  *por torneo* el crew se arma una sola vez y cubre todo; con honorario
+  *por partido* se asigna partido por partido (ver Juegos).
+- **Ventana de FIBA** (W1 a W6): solo para las ventanas de clasificatorios.
+  La página de FIBA devuelve el clasificatorio entero, las seis ventanas
+  juntas; si eliges la ventana de esta competencia, **Sincronizar
+  Resultados** trae solo sus partidos. Para un torneo que no va por
+  ventanas (AmeriCup, Centrobasket) déjalo en *Sin ventana*.
 
 ---
 
@@ -238,6 +299,12 @@ partido.
 **Para qué sirve:** cargar el fixture, asignar TD, VGO y terna arbitral
 a cada partido, y desde ahí generar las nominaciones.
 
+**La hora de cada partido es la hora local de la sede**, la misma que ve
+el TD en el gimnasio y la que publica FIBA. Al lado, la tarjeta muestra la
+hora en el **war room de Miami** para el seguimiento; si en Miami el
+partido cae otro día, lo marca con +1 o −1. Un partido con `--:--` es uno
+al que FIBA todavía no le fijó horario.
+
 **Cargar los partidos** (tres caminos):
 
 - **+ Agregar Juego**, uno por uno.
@@ -293,6 +360,45 @@ exactamente por qué.
 - **Vuelos**: el ícono de avión junto a cada persona alterna entre
   *vuelo pendiente* y *vuelo comprado*, y la tarjeta **Con vuelo** te
   dice cuántos llevas.
+
+**Staffing Plan (empleados de FIBA en el evento):**
+
+El botón **Staffing Plan** registra a los **empleados de FIBA** que viajan
+a trabajar la competencia (Competition Manager, prensa, etc.), con su
+función en el evento, sus fechas y su estado (Planificado, Confirmado,
+Cancelado). Si la persona no está en Empleados, puedes agregarla como
+**Externo** escribiendo su nombre.
+
+> El Staffing Plan **no es el crew**. Estas personas no se nominan, no
+> reciben carta ni cobran honorario. Sirve para saber quién va, y alimenta
+> la columna **Viajes** de Empleados y la barra lateral del Muro.
+
+**Control de operación (checklists de sede):**
+
+El botón **Control de operación** administra los checklists técnicos que
+el VGO (u otro oficial) completa **al llegar a la sede**, partido por
+partido: conexión al reloj, fill & key, software, gráficos, estadísticas…
+
+1. **Plantillas**: arma una plantilla con sus ítems (por ejemplo
+   *VGO — Control de sede*). Un ítem puede ser **opcional**: no bloquea el
+   cierre. Puedes tener varias plantillas (una para el TD, una para el
+   médico…).
+2. **Link para la sede**: el mismo panel genera un **enlace y un código
+   QR** por competencia. Quien lo tenga abre el checklist de cualquier
+   partido de esa competencia **desde el celular, sin cuenta**: elige su
+   nombre (queda firmado en el registro), marca cada ítem como OK o con
+   falla (explicando qué falló) y cierra el control.
+3. En cada tarjeta de partido ves el estado: **Sin control todavía**,
+   **Control en curso**, **Controlado y firmado** o **N con falla**. Desde
+   la oficina también puedes abrir y completar un checklist.
+
+> ⚠️ A diferencia del link de logística, este link **escribe**: compártelo
+> solo con el grupo de oficiales. Si se filtra, usa **Rotar** (el anterior
+> deja de funcionar) o **Desactivar**. Un checklist cerrado queda de solo
+> lectura desde el link; reabrirlo exige entrar al sistema.
+
+> Cambiar una plantilla no toca los checklists que ya se abrieron en
+> partidos: cada uno se llevó su copia de los ítems.
 
 ---
 
@@ -389,6 +495,160 @@ abre sin usuario ni contraseña.
 
 ---
 
+### 💵 Pagos
+
+**Para qué sirve:** registrar el pago de cada persona nominada a un evento
+y guardar sus documentos de control financiero.
+
+**Cómo se usa:**
+
+1. Selecciona el **evento**. Ves a todos los **nominados** y cuántos ya
+   tienen pago cargado.
+2. **Cargar pago** en la fila de la persona. El **monto** viene prellenado
+   con el valor de la nominación; puedes sumar un **extra** y registrar el
+   **pasaje (airfare)** aparte: el pasaje no se suma al total que cobra la
+   persona, pero sí cuenta en el presupuesto.
+3. Elige el **presupuesto** (obligatorio) y el **estado**: Nuevo, En
+   proceso, Pago dividido o Completado. Solo un pago **Completado** cuenta
+   como ejecutado en Presupuesto.
+4. Guarda y adjunta los **archivos de control financiero** (EXPENSES, W8,
+   BANK INFO…). Se descargan desde la misma pantalla.
+
+> Sin nominación no hay pago: el registro nace de la nominación. Un gasto
+> que no es de una persona nominada (envíos, seguros, licencias) va en
+> **Presupuesto → Gastos**.
+
+---
+
+### 📊 Presupuesto
+
+**Para qué sirve:** cargar el presupuesto anual por departamento y cuenta,
+registrar los gastos y ver cuánto se lleva ejecutado, por departamento,
+por cuenta y por evento.
+
+**Pestañas:**
+
+| Pestaña | Qué hay |
+|---------|---------|
+| **Resumen** | Ejecutado vs. presupuestado por departamento, cuenta y evento; el **costo de un evento** (fees, pasajes y gastos) |
+| **Presupuesto** | Las líneas del plan por año, editables a mano o importadas desde el Excel de FIBA |
+| **Gastos** | Todo gasto que no es el pago a una persona nominada. Se **aprueba** y luego se marca como **pagado** |
+| **Recurrentes** | Costos fijos mensuales (software, internet, leasing). Cada período se confirma; nunca se cargan solos |
+| **Ingresos** | Grants, sponsors, hosting fees, derechos de medios |
+| **Proveedores** | A quién se le paga |
+| **Tarifario** (dentro de Resumen) | Fee oficial por rol y tipo de evento. **Aplicar** rellena los honorarios por defecto del evento; los incidentals son por ciudad |
+
+**Cómo se lee:** solo lo **pagado** consume presupuesto. Lo aprobado pero
+no pagado figura como **comprometido**. Los pagos a personas nominadas
+(módulo Pagos) se suman al ejecutado en la cuenta de fees del rol, y sus
+pasajes en la cuenta de travel.
+
+**Quién ve qué:** además del permiso del módulo, cada usuario tiene sus
+**departamentos de presupuesto** (se asignan en Usuarios). Quien tiene IT
+ve IT y no Competitions. El **costo de un evento** sí se muestra completo,
+sea cual sea tu departamento.
+
+> Si entras a Presupuesto y no ves datos, casi siempre es que no tienes
+> ningún departamento asignado. Pídeselo a un administrador.
+
+> Los **Pagos sin imputar** (en ámbar) son pagos cargados contra un
+> presupuesto que todavía no está mapeado a un departamento. No se cuentan
+> en ningún total hasta que se resuelven.
+
+---
+
+### 🧑‍💼 Empleados
+
+El listado del staff interno de FIBA Americas. No se confunde con
+**Personal**: los empleados no se nominan.
+
+**Para qué sirve:** tener la ficha de cada empleado (cargo, departamento,
+contacto), asignarle inventario, y contar sus viajes del año.
+
+- **Viajes**: cuántas competencias trabajó en el año elegido, sumando el
+  **Staffing Plan** de Juegos y el padrón de **Logística**. Una competencia
+  cuenta como **un viaje**, aunque la persona cubra dos funciones. Haz
+  clic en el número para ver el detalle.
+- **Días comp.**: sábados y domingos caídos dentro de esos viajes, la base
+  de los días compensatorios. Los feriados no se cuentan. Esta columna
+  solo la ve quien tiene el permiso **Días compensatorios**.
+- **Desactivar** deja al empleado fuera de los listados sin borrar su
+  historial.
+
+---
+
+### 📁 Reportes
+
+**Para qué sirve:** guardar la documentación posterior a cada evento
+(reporte final, técnico, de operaciones, de sede, del LOC, médico, de
+seguridad) y encontrarla después.
+
+1. **+ Nuevo reporte**: competencia, tipo, título, sede, LOC, fecha y un
+   resumen corto.
+2. Guarda y **sube los documentos** (PDF, Word, Excel…).
+3. Busca por texto y filtra por competencia, tipo, sede o LOC.
+
+---
+
+### ⭐ Evaluaciones
+
+**Para qué sirve:** calificar al staff externo (TDs, VGOs, árbitros) que
+trabajó un evento. El historial se usa al decidir futuras nominaciones.
+
+1. Selecciona el **evento**. Ves a las personas nominadas, quiénes ya
+   están evaluadas y el promedio del evento.
+2. **Evaluar**: indica tu rol (Competition Lead, Support o Direct Report)
+   y califica de 1 a 5 cada criterio (comunicación, planificación,
+   capacidad de respuesta, ejecución operativa, liderazgo, reportes,
+   desempeño general). Deja en blanco lo que no aplica. Agrega fortalezas,
+   áreas de mejora y comentarios.
+3. Guarda como **Borrador** o **Envía**. En la ficha de cada persona ves su
+   **historial** y su promedio general, y lo que pusieron otros evaluadores.
+
+---
+
+### 💻 Inventario, Préstamos y Escanear QR
+
+**Inventario** es el registro de los equipos de FIBA Americas (Macs,
+monitores, cámaras…): nombre, serial, categoría, marca, modelo, estado
+(Disponible, En uso, En mantenimiento, Retirado), ubicación, foto y notas.
+Cada activo tiene un **código QR** descargable para pegarle encima.
+
+**Préstamos** registra a quién se le entregó cada activo (un empleado de la
+lista o un nombre libre), cuándo y para cuándo se espera la devolución.
+Los vencidos se destacan; **Marcar como devuelto** cierra el préstamo y
+queda en el historial del activo.
+
+**Escanear QR** abre la cámara del celular: apúntala al QR de un activo y
+ves su ficha. El QR también abre una página pública con los datos básicos
+del activo, sin necesidad de entrar al sistema.
+
+---
+
+### 🔐 Usuarios
+
+Solo para administradores del sistema.
+
+- **+ Nuevo usuario**: email y contraseña. No hay registro público.
+- **Permisos**: por cada módulo, **Puede ver** y **Puede editar**. Algunos
+  permisos gobiernan un dato y no una pantalla (*Días compensatorios*):
+  solo tienen "ver".
+- **Departamentos de presupuesto**: qué departamentos ve ese usuario dentro
+  de Presupuesto. Sin ninguno, no ve datos aunque tenga el módulo.
+- **Cambiar contraseña** y **Eliminar** usuario.
+
+Los **superadmin** tienen todos los módulos sin necesidad de marcarlos.
+
+---
+
+### 🕓 Actividad
+
+Solo superadmin. El registro de **quién cambió qué y cuándo**: creaciones,
+ediciones y borrados en cada módulo, filtrables por usuario, módulo y
+fecha. No registra lecturas. Se conserva 180 días.
+
+---
+
 ## 3. Flujo completo de un evento
 
 Así se ve el trabajo de punta a punta:
@@ -406,6 +666,7 @@ Así se ve el trabajo de punta a punta:
                    y asignas TD / VGO / árbitros por partido
         ↓
 5. JUEGOS          Datos comunes → Generar PDFs
+                   Staffing Plan: qué empleados de FIBA viajan
         ↓
 6. NOMINACIONES    Revisas las cartas, las envías
                    y marcas quién confirmó
@@ -414,6 +675,13 @@ Así se ve el trabajo de punta a punta:
                    → exportas Game & Practice
         ↓
 8. LOGÍSTICA       Traslados, hotel y manifest del evento
+        ↓
+9. JUEGOS          Durante el evento: control de sede
+                   (checklist del VGO por partido) y resultados
+        ↓
+10. PAGOS / EVALUACIONES / REPORTES
+                   Después del evento: pagas a los nominados,
+                   evalúas al staff y archivas los reportes
 ```
 
 Para eventos chicos puedes saltarte Juegos y crear las nominaciones a
@@ -463,6 +731,30 @@ rehacerlas desde cero.
 Probablemente el enlace fue rotado. Copia el enlace actual desde
 **Disponibilidad → Enlaces para oficiales** y vuelve a compartirlo.
 
+**El link del checklist dice "Este link no está disponible"**
+Fue rotado o desactivado desde **Juegos → Control de operación**. Copia el
+link vigente de ahí y vuelve a compartirlo con los oficiales.
+
+**La hora del partido no coincide con la mía**
+Es la hora **local de la sede**, no la tuya ni la de Miami. La hora del
+war room de Miami aparece al lado, en la tarjeta del partido.
+
+**Sincronicé resultados y aparecieron partidos de otras fechas**
+La competencia es una ventana de clasificatorio y no tiene marcada su
+**Ventana de FIBA** en Competencias. Márcala y vuelve a sincronizar.
+
+**Entro a Presupuesto y no veo nada**
+No tienes departamentos de presupuesto asignados. Un administrador te los
+da desde **Usuarios → Permisos**.
+
+**No puedo cargar un pago para alguien**
+Solo se paga a personas **nominadas** al evento. Si el gasto no es de un
+nominado, va en **Presupuesto → Gastos**.
+
+**No me deja fijar o marcar como oficial una publicación del Muro**
+Eso es de moderadores (permiso de *editar* en el Muro). Publicar,
+comentar y reaccionar sí lo puede hacer cualquiera con el módulo.
+
 ---
 
 ## 5. Buenas prácticas
@@ -479,6 +771,10 @@ Probablemente el enlace fue rotado. Copia el enlace actual desde
   corregir nominación por nominación después.
 - **Mira la vista de Carga** antes de nominar, para repartir el trabajo
   de forma pareja entre los oficiales.
+- **Comparte el link del checklist solo con los oficiales.** A diferencia
+  del de logística, ese link permite escribir.
+- **Marca la Ventana de FIBA** en cada competencia de clasificatorio antes
+  de sincronizar resultados.
 - **Cierra sesión** si usas una computadora compartida.
 
 ---

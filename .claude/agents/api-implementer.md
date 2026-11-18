@@ -38,7 +38,17 @@ router existente parecido (`api/_lib/routers/`) y copiá su forma.
   endpoints de descarga autenticados. Respetá la convención
   `storage://bucket/key` y su normalización.
 - **Módulo nuevo:** router en `api/_lib/routers/X.py`, importalo y montalo en
-  `api/index.py`, y creá el permiso correspondiente en `user_permissions`.
+  `api/index.py`, y declará el permiso en tres lugares (CHECK de
+  `user_permissions.module`, `MODULES` en `routers/permissions.py`, `MODULES`
+  en `src/pages/Users.jsx`). Si es un panel de un módulo existente (como
+  crew, staffing o checklists dentro de `games`), reusá ese permiso.
+- **Budget:** toda lectura pasa por `_scoped()` además de `require_view`. Un
+  solo filtro por columna: el builder pisa el anterior. Ver `BUDGET_MODULE.md`.
+- **Migraciones:** si necesitás una columna o tabla, escribí
+  `supabase/migrations/NNN_*.sql` con cabecera que explique el porqué y avisá
+  que se aplica a mano en Supabase ANTES del push. El deploy no las corre.
+- **Horas de partido:** `games.date`/`time` son hora local de la sede. Para
+  cualquier otra zona partí de `game_schedule.datetime_utc`.
 
 Prestá atención especial a los **permisos por usuario** (`user_permissions`,
 `user_profiles.is_superadmin`) — son el corazón del control de acceso.

@@ -26,9 +26,22 @@ src/
 │                          NotificationsBell, PersonProfilePanel, …
 ├── contexts/AuthContext.jsx
 ├── i18n/               ← LanguageContext.jsx + translations.js (ES/EN)
-├── lib/                ← icons.jsx, supabase.js, utils, countries, roles, lastSearch
+├── lib/                ← icons.jsx, supabase.js, utils, countries, roles, lastSearch,
+│                          competitions.js, warRoom.js, avatars.js, refereeNeutrality.js
 └── api/client.js       ← todas las llamadas HTTP al backend
 ```
+
+### Módulos de `lib/` que hay que usar en vez de reinventar
+
+- **`competitions.js`** — `COMPETITION_TYPES` / `SELECTABLE_COMPETITION_TYPES`
+  (registro único, coincide con el CHECK de la migración 042),
+  `competitionLabel()` (nombre para mostrar con año) y `sortCompetitions()`. Todo `<select>` o filtro de competencias sale de acá:
+  hay pares con `name` idéntico que solo difieren por el año.
+- **`warRoom.js`** — hora del war room de Miami (`WAR_ROOM_TZ`) desde
+  `game.datetime_utc`. `date`/`time` de un partido son hora local de la sede;
+  nunca sumes un offset.
+- **`avatars.js`** — DiceBear, cargado con `import()` dinámico para no engordar
+  el bundle principal.
 
 ## Routing, lazy-load y permission guards (`App.jsx`)
 
@@ -38,15 +51,32 @@ src/
 - Cada ruta va envuelta en `<PermissionGuard module="X">…</PermissionGuard>`,
   que muestra un 403 si no hay `can_view`. Las rutas superadmin-only usan
   `<SuperadminGuard>` (p.ej. `/activity`).
+- La ruta `/` redirige al **primer item visible** del sidebar (`defaultRoute`):
+  el orden de `allNavItems` decide la página de entrada (hoy, el Muro si el
+  usuario tiene `feed`).
+- Vistas públicas sin login (fuera del shell): `/asset/:id`,
+  `/availability/:token`, `/logistica/:token`, `/checklist/:token`. Pegan a
+  `/api/public/*` sin JWT; no les agregues llamadas a endpoints autenticados.
 - Para una página nueva: (1) `lazy(import)`, (2) `<Route>` con su guard, (3)
   entrada en `allNavItems` (`{ to, label: t('nav.x'), module }`), (4) icono en
-  el map `moduleIcon`. El sidebar filtra items por `hasView`/`isSuperadmin`.
+  el map `moduleIcon`, (5) el permiso en `MODULES` de `src/pages/Users.jsx`
+  (y en el backend: CHECK de `user_permissions.module` + `MODULES` de
+  `api/_lib/routers/permissions.py`). El sidebar filtra items por
+  `hasView`/`isSuperadmin`.
+- No toda funcionalidad es una página: Crew, Staffing Plan y Control de
+  operación son paneles dentro de Games con el permiso `games`; `comp_days` es
+  una columna de Employees. Antes de crear un módulo, fijate si es un panel.
 
 ## Auth (`useAuth()` de `contexts/AuthContext`)
 
 ```jsx
-const { user, loading, signIn, signOut, isSuperadmin, hasView, hasEdit } = useAuth()
+const { user, loading, signIn, signOut, isSuperadmin, hasView, hasEdit, profile, updateProfile } = useAuth()
 ```
+
+- `profile` es lo propio del logueado (hoy `avatar_url`, de `user_profiles`),
+  cargado desde `/api/me`; `updateProfile` lo refresca después de subir o
+  quitar la foto en `ProfileModal` (`/api/me/avatar`). La URL lleva
+  `?v=<timestamp>` porque la key del bucket es siempre la misma.
 
 - La sesión se maneja con Supabase Auth (un único cliente en `lib/supabase.js`,
   anon key). Al loguear/refrescar se cargan los permisos desde el backend
