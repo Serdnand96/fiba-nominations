@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useMemo, useCallback, useLayoutEffect } from 'react'
 import { createPortal } from 'react-dom'
+import { Link } from 'react-router-dom'
 import {
   getGames, getGameDates, getGameTeams, createGame, updateGame, deleteGame,
   syncGameResults, importGamesExcel, getCalendarCompetitions,
@@ -22,8 +23,20 @@ import { COUNTRIES, countryName } from '../lib/countries'
 import { findRefereeGameConflict } from '../lib/refereeNeutrality'
 import { readLastSearch, writeLastSearch } from '../lib/lastSearch'
 import { warRoomTime, formatWarRoom, WAR_ROOM_TZ } from '../lib/warRoom'
+import { isFibaLinked } from '../lib/competitions'
 
 const PHASE_OPTIONS = ['Group Phase', 'Quarterfinals', 'Semifinals', 'Classification', 'Finals']
+// The stored phase stays in English (it is what FIBA and the Excel import
+// write); this is only how it is shown.
+const PHASE_LABELS = {
+  'Group Phase': { es: 'Fase de grupos', en: 'Group phase' },
+  Quarterfinals: { es: 'Cuartos de final', en: 'Quarterfinals' },
+  Semifinals: { es: 'Semifinales', en: 'Semifinals' },
+  Classification: { es: 'Clasificación', en: 'Classification' },
+  Finals: { es: 'Finales', en: 'Finals' },
+  Other: { es: 'Otros partidos', en: 'Other games' },
+}
+const phaseLabel = (phase, lang) => PHASE_LABELS[phase]?.[lang === 'en' ? 'en' : 'es'] || phase
 const ASSIGNMENT_TEMPLATES = new Set(['WCQ', 'BCLA', 'LSB'])
 // Referee crew slots (neutrality-checked): Crew Chief + Umpires.
 const REF_SLOTS = ['CC', 'U1', 'U2']
@@ -107,7 +120,8 @@ function loadLastSearch() {
 }
 
 export default function Games() {
-  const { t } = useLanguage()
+  const { t, lang } = useLanguage()
+  const tx = (es, en) => (lang === 'en' ? en : es)
   const { push } = useToast()
   const { hasEdit } = useAuth()
   const canEdit = hasEdit('games')
@@ -145,6 +159,7 @@ export default function Games() {
   const [importMsg, setImportMsg] = useState('')
   const [syncingNoms, setSyncingNoms] = useState(false)
   const [nomMsg, setNomMsg] = useState('')
+  const [nomErrors, setNomErrors] = useState([])
   const [syncMenuOpen, setSyncMenuOpen] = useState(false)
   const syncMenuRef = useRef(null)
   const [generatingPdfs, setGeneratingPdfs] = useState(false)
@@ -291,8 +306,8 @@ export default function Games() {
       let finalGames = g
       let finalDates = d
 
-      // Auto-sync from FIBA if competition has URL and no games yet
-      if (g.length === 0 && comp?.fiba_games_url && !autoSyncDone.current.has(selectedCompId)) {
+      // Auto-sync from FIBA if competition is linked (ID or URL) and has no games yet
+      if (g.length === 0 && isFibaLinked(comp) && !autoSyncDone.current.has(selectedCompId)) {
         autoSyncDone.current.add(selectedCompId)
         setSyncing(true)
         setSyncMsg(t('games.syncing'))
@@ -317,7 +332,7 @@ export default function Games() {
           finalGames = g2
           finalDates = d2
         } catch (err) {
-          setSyncMsg(err.response?.data?.detail || 'Auto-sync failed')
+          setSyncMsg(err.response?.data?.detail || tx('No se pudo actualizar desde FIBA.', 'Could not update from FIBA.'))
         }
         setSyncing(false)
         setTimeout(() => setSyncMsg(''), 6000)
@@ -408,7 +423,7 @@ export default function Games() {
         : t('games.crewAdded', { name: person.name }))
     } catch (err) {
       const detail = err.response?.data?.detail
-      setCrewMsg(typeof detail === 'string' ? detail : 'Error')
+      setCrewMsg(typeof detail === 'string' ? detail : tx('No se pudo agregar a la persona.', 'Could not add the person.'))
     }
     setCrewSaving(false)
     setTimeout(() => setCrewMsg(''), 6000)
@@ -421,7 +436,7 @@ export default function Games() {
       await reloadCrew()
     } catch (err) {
       const detail = err.response?.data?.detail
-      push({ type: 'error', title: typeof detail === 'string' ? detail : 'Error' })
+      push({ type: 'error', title: typeof detail === 'string' ? detail : tx('No se pudo quitar a la persona.', 'Could not remove the person.') })
     }
   }
 
@@ -493,7 +508,7 @@ export default function Games() {
       setStaffMsg(t('games.staffingAdded', { name: staffPicked?.name || external }))
     } catch (err) {
       const detail = err.response?.data?.detail
-      setStaffMsg(typeof detail === 'string' ? detail : 'Error')
+      setStaffMsg(typeof detail === 'string' ? detail : tx('No se pudo agregar a la persona.', 'Could not add the person.'))
     }
     setStaffSaving(false)
     setTimeout(() => setStaffMsg(''), 6000)
@@ -508,7 +523,7 @@ export default function Games() {
     } catch (err) {
       await reloadStaffing()
       const detail = err.response?.data?.detail
-      setStaffMsg(typeof detail === 'string' ? detail : 'Error')
+      setStaffMsg(typeof detail === 'string' ? detail : tx('No se pudo guardar el cambio.', 'Could not save the change.'))
       setTimeout(() => setStaffMsg(''), 6000)
     }
   }
@@ -520,7 +535,7 @@ export default function Games() {
       await reloadStaffing()
     } catch (err) {
       const detail = err.response?.data?.detail
-      push({ type: 'error', title: typeof detail === 'string' ? detail : 'Error' })
+      push({ type: 'error', title: typeof detail === 'string' ? detail : tx('No se pudo quitar a la persona.', 'Could not remove the person.') })
     }
   }
 
@@ -578,7 +593,7 @@ export default function Games() {
         })
         return
       }
-      push({ type: 'error', title: typeof detail === 'string' ? detail : 'Error' })
+      push({ type: 'error', title: typeof detail === 'string' ? detail : tx('No se pudo asignar a la persona.', 'Could not assign the person.') })
     }
   }
 
@@ -596,7 +611,7 @@ export default function Games() {
         setFlights(await getCompetitionFlights(selectedCompId))
       } catch { /* keep optimistic state if the refetch also fails */ }
       const detail = err.response?.data?.detail
-      push({ type: 'error', title: typeof detail === 'string' ? detail : 'Error' })
+      push({ type: 'error', title: typeof detail === 'string' ? detail : tx('No se pudo guardar el vuelo.', 'Could not save the flight.') })
     }
   }
 
@@ -605,7 +620,7 @@ export default function Games() {
       await deleteGameAssignment(assignmentId)
       await reloadAssignments()
     } catch (err) {
-      push({ type: 'error', title: err.response?.data?.detail || 'Error' })
+      push({ type: 'error', title: err.response?.data?.detail || tx('No se pudo quitar la asignación.', 'Could not remove the assignment.') })
     }
   }
 
@@ -649,11 +664,11 @@ export default function Games() {
     try {
       const r = await syncAssignmentsToNominations(selectedCompId, false, roleFilter)
       let msg = t('games.nominationsSynced', { created: r.created, updated: r.updated, people: r.people })
-      if (roleFilter) msg = `${t(`rolesShort.${roleFilter}`)} · ${msg}`
-      if (r.multi_sede > 0) msg += ` · ${multiSedeNote(r)}`
+      if (roleFilter) msg = `${t(`rolesShort.${roleFilter}`)}: ${msg}`
+      if (r.multi_sede > 0) msg += `. ${multiSedeNote(r)}`
       setNomMsg(msg)
     } catch (err) {
-      setNomMsg(err.response?.data?.detail || 'Error')
+      setNomMsg(err.response?.data?.detail || tx('No se pudieron sincronizar las nominaciones.', 'Could not sync the nominations.'))
     }
     setSyncingNoms(false)
     setTimeout(() => setNomMsg(''), 6000)
@@ -662,19 +677,23 @@ export default function Games() {
   async function handleGeneratePdfs() {
     setGeneratingPdfs(true)
     setNomMsg('')
+    setNomErrors([])
     try {
       // Sync first so any new assignments / default changes are picked up
       await syncAssignmentsToNominations(selectedCompId)
       const r = await generateAssignmentPDFs(selectedCompId)
-      const errCount = (r.errors || []).length
+      const errors = r.errors || []
       let msg = t('games.pdfsGenerated', { count: r.generated, total: r.total })
-      if (errCount > 0) msg += ` · ${t('games.pdfsErrors', { count: errCount })}`
+      if (errors.length > 0) {
+        msg += `. ${t('games.pdfsErrors', { count: errors.length })}`
+        setNomErrors(errors)
+      }
       setNomMsg(msg)
     } catch (err) {
-      setNomMsg(err.response?.data?.detail || 'Error')
+      setNomMsg(err.response?.data?.detail || tx('No se pudieron generar los PDF.', 'Could not generate the PDFs.'))
     }
     setGeneratingPdfs(false)
-    setTimeout(() => setNomMsg(''), 8000)
+    setTimeout(() => { setNomMsg(''); setNomErrors([]) }, 12000)
   }
 
   async function handleSaveDefaults() {
@@ -698,7 +717,7 @@ export default function Games() {
       setCompetitions(cs => cs.map(c => (c.id === selectedCompId ? { ...c, ...updated } : c)))
       setDefaultsMsg(t('games.defaultsSaved'))
     } catch (err) {
-      setDefaultsMsg(err.response?.data?.detail || 'Error')
+      setDefaultsMsg(err.response?.data?.detail || tx('No se pudieron guardar los datos comunes.', 'Could not save the common data.'))
     }
     setSavingDefaults(false)
     setTimeout(() => setDefaultsMsg(''), 5000)
@@ -718,11 +737,11 @@ export default function Games() {
     try {
       const r = await syncAssignmentsToNominations(selectedCompId, true)
       let msg = t('games.travelRecalced', { people: r.people })
-      if (r.multi_sede > 0) msg += ` · ${multiSedeNote(r)}`
+      if (r.multi_sede > 0) msg += `. ${multiSedeNote(r)}`
       setDefaultsMsg(msg)
     } catch (err) {
       const detail = err.response?.data?.detail
-      setDefaultsMsg(typeof detail === 'string' ? detail : 'Error')
+      setDefaultsMsg(typeof detail === 'string' ? detail : tx('No se pudieron recalcular los viajes.', 'Could not recalculate the travel data.'))
     }
     setRecalcingTravel(false)
     setTimeout(() => setDefaultsMsg(''), 6000)
@@ -764,7 +783,7 @@ export default function Games() {
       setTeamCountryDraft({})
     } catch (err) {
       const detail = err.response?.data?.detail
-      setTeamCountriesMsg(typeof detail === 'string' ? detail : 'Error')
+      setTeamCountriesMsg(typeof detail === 'string' ? detail : tx('No se pudieron guardar los países.', 'Could not save the countries.'))
     }
     setSavingTeamCountries(false)
     setTimeout(() => setTeamCountriesMsg(''), 5000)
@@ -928,7 +947,7 @@ export default function Games() {
       setShowModal(false)
       await loadGames()
     } catch (err) {
-      push({ type: 'error', title: err.response?.data?.detail || 'Error' })
+      push({ type: 'error', title: err.response?.data?.detail || tx('No se pudo guardar el partido.', 'Could not save the game.') })
     }
   }
 
@@ -938,13 +957,13 @@ export default function Games() {
       await deleteGame(game.id)
       await loadGames()
     } catch (err) {
-      push({ type: 'error', title: err.response?.data?.detail || 'Error' })
+      push({ type: 'error', title: err.response?.data?.detail || tx('No se pudo eliminar el partido.', 'Could not delete the game.') })
     }
   }
 
   async function handleSync() {
     const comp = competitions.find(c => c.id === selectedCompId)
-    if (!comp?.fiba_games_url) {
+    if (!isFibaLinked(comp)) {
       setSyncMsg(t('games.syncNoUrl'))
       setTimeout(() => setSyncMsg(''), 4000)
       return
@@ -957,7 +976,7 @@ export default function Games() {
       setSyncReport(result)
       await loadGames()
     } catch (err) {
-      setSyncMsg(err.response?.data?.detail || 'Sync failed')
+      setSyncMsg(err.response?.data?.detail || tx('No se pudo actualizar desde FIBA.', 'Could not update from FIBA.'))
       setTimeout(() => setSyncMsg(''), 6000)
     }
     setSyncing(false)
@@ -1104,7 +1123,32 @@ export default function Games() {
           onClose={() => setSyncReport(null)} />
       )}
       {nomMsg && (
-        <div className="mb-4 px-4 py-2 bg-emerald-100 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400 rounded-lg text-sm">{nomMsg}</div>
+        <div className="mb-4 px-4 py-2 bg-emerald-100 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400 rounded-lg text-sm space-y-1.5">
+          <div className="flex items-center justify-between gap-3">
+            <span>{nomMsg}</span>
+            {nomErrors.length > 0 && (
+              <Link to="/nominations" className="text-emerald-800 dark:text-emerald-300 underline whitespace-nowrap">
+                {t('games.viewInNominations')}
+              </Link>
+            )}
+          </div>
+          {nomErrors.length > 0 && (
+            <ul className="text-xs text-emerald-800/80 dark:text-emerald-300/80 list-disc list-inside">
+              {nomErrors.map((e, i) => (
+                <li key={e.id || i}>
+                  {t('games.pdfsErrorDetail', {
+                    name: e.name || e.id,
+                    // missing_fields comes back structured — translate the
+                    // field names instead of echoing the English "Missing: …".
+                    reason: e.code === 'missing_fields' && e.missing?.length
+                      ? `${t('nominations.missingFieldsShort')}: ${e.missing.map(f => t(`nominations.field.${f}`)).join(', ')}`
+                      : (e.error || '-'),
+                  })}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
       )}
 
       {/* Competition selector + filters */}
@@ -1193,7 +1237,8 @@ export default function Games() {
               </p>
             </div>
             <button onClick={() => setShowCrew(false)}
-              className="text-fiba-muted hover:text-ink-900 dark:hover:text-white text-xs">×</button>
+              className="text-fiba-muted hover:text-ink-900 dark:hover:text-white text-xs"
+              title={t('common.close')} aria-label={t('common.close')}><Icon.X className="w-3.5 h-3.5" /></button>
           </div>
 
           {crewMsg && (
@@ -1227,7 +1272,7 @@ export default function Games() {
                           {canEdit && (
                             <button onClick={() => handleRemoveCrew(m)}
                               className="shrink-0 px-1 leading-none text-fiba-muted opacity-50 hover:opacity-100 hover:text-red-400 group-hover:opacity-100"
-                              title={t('games.crewRemove')}>×</button>
+                              title={t('games.crewRemove')} aria-label={t('games.crewRemove')}><Icon.X className="w-3.5 h-3.5" /></button>
                           )}
                         </li>
                       ))}
@@ -1278,7 +1323,8 @@ export default function Games() {
               <p className="text-xs text-fiba-muted mt-0.5">{t('games.staffingSubtitle')}</p>
             </div>
             <button onClick={() => setShowStaffing(false)}
-              className="text-fiba-muted hover:text-ink-900 dark:hover:text-white text-xs">×</button>
+              className="text-fiba-muted hover:text-ink-900 dark:hover:text-white text-xs"
+              title={t('common.close')} aria-label={t('common.close')}><Icon.X className="w-3.5 h-3.5" /></button>
           </div>
 
           {staffMsg && (
@@ -1323,7 +1369,7 @@ export default function Games() {
                       onChange={e => handleUpdateStaffing(entry, { start_date: e.target.value })}
                       title={t('games.staffingStart')}
                       className="fiba-input !w-auto text-xs" />
-                    <span className="text-fiba-muted text-xs">–</span>
+                    <span className="text-fiba-muted text-xs">-</span>
                     <input type="date" value={entry.end_date || ''} disabled={!canEdit}
                       onChange={e => handleUpdateStaffing(entry, { end_date: e.target.value })}
                       title={t('games.staffingEnd')}
@@ -1333,7 +1379,7 @@ export default function Games() {
                   {canEdit && (
                     <button onClick={() => handleRemoveStaffing(entry)}
                       className="text-fiba-muted hover:text-red-400 px-1"
-                      title={t('games.staffingRemove')}>×</button>
+                      title={t('games.staffingRemove')} aria-label={t('games.staffingRemove')}><Icon.X className="w-3.5 h-3.5" /></button>
                   )}
                 </div>
               ))}
@@ -1348,7 +1394,8 @@ export default function Games() {
                   <div className="flex items-center gap-2 h-[42px] px-3 rounded-lg border border-fiba-border bg-fiba-surface">
                     <span className="text-sm text-ink-900 dark:text-white truncate">{staffPicked.name}</span>
                     <button onClick={() => setStaffPicked(null)}
-                      className="ml-auto text-fiba-muted hover:text-red-400 text-xs">×</button>
+                      className="ml-auto text-fiba-muted hover:text-red-400 text-xs"
+                      title={tx('Quitar selección', 'Clear selection')} aria-label={tx('Quitar selección', 'Clear selection')}><Icon.X className="w-3.5 h-3.5" /></button>
                   </div>
                 ) : (
                   <div className="relative">
@@ -1432,7 +1479,8 @@ export default function Games() {
               <p className="text-xs text-fiba-muted mt-0.5">{t('games.defaultsSubtitle')}</p>
             </div>
             <button onClick={() => setShowDefaults(false)}
-              className="text-fiba-muted hover:text-ink-900 dark:hover:text-white text-xs">×</button>
+              className="text-fiba-muted hover:text-ink-900 dark:hover:text-white text-xs"
+              title={t('common.close')} aria-label={t('common.close')}><Icon.X className="w-3.5 h-3.5" /></button>
           </div>
 
           <div className="text-[10px] font-bold uppercase tracking-wider text-fiba-muted/70 mb-2">
@@ -1539,7 +1587,8 @@ export default function Games() {
               <p className="text-xs text-fiba-muted mt-0.5">{t('games.teamCountriesSubtitle')}</p>
             </div>
             <button onClick={() => setShowTeamCountries(false)}
-              className="text-fiba-muted hover:text-ink-900 dark:hover:text-white text-xs">×</button>
+              className="text-fiba-muted hover:text-ink-900 dark:hover:text-white text-xs"
+              title={t('common.close')} aria-label={t('common.close')}><Icon.X className="w-3.5 h-3.5" /></button>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-5 gap-y-2.5">
@@ -1556,7 +1605,7 @@ export default function Games() {
                     disabled={!canEdit}
                     className={`fiba-select !w-auto text-xs ${!value ? 'border-amber-500/50' : ''}`}
                   >
-                    <option value="">—</option>
+                    <option value="">-</option>
                     {COUNTRIES.map(c => (
                       <option key={c.code} value={c.code}>{c.code}</option>
                     ))}
@@ -1590,7 +1639,7 @@ export default function Games() {
       ) : (
         Object.entries(gamesByPhase).map(([phase, dateGroups]) => (
           <div key={phase} className="mb-8">
-            <h3 className="text-sm font-bold text-fiba-muted uppercase tracking-wider mb-4 px-1">{phase}</h3>
+            <h3 className="text-sm font-bold text-fiba-muted uppercase tracking-wider mb-4 px-1">{phaseLabel(phase, lang)}</h3>
             {Object.entries(dateGroups).sort(([a], [b]) => a.localeCompare(b)).map(([date, dateGames]) => (
               <div key={date} className="mb-6">
                 <div className="text-xs font-bold text-ink-600 dark:text-ink-200 uppercase tracking-wide mb-2 px-1">{formatDate(date)}</div>
@@ -1645,13 +1694,13 @@ export default function Games() {
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="fiba-label">{t('games.teamA')}</label>
-                  <input required placeholder="e.g. Argentina" value={form.team_a}
+                  <input required placeholder={tx('Ej.: Argentina', 'e.g. Argentina')} value={form.team_a}
                     onChange={e => setForm(f => ({ ...f, team_a: e.target.value }))}
                     className="fiba-input" />
                 </div>
                 <div>
                   <label className="fiba-label">{t('games.teamB')}</label>
-                  <input required placeholder="e.g. Brazil" value={form.team_b}
+                  <input required placeholder={tx('Ej.: Brasil', 'e.g. Brazil')} value={form.team_b}
                     onChange={e => setForm(f => ({ ...f, team_b: e.target.value }))}
                     className="fiba-input" />
                 </div>
@@ -1680,7 +1729,7 @@ export default function Games() {
                     <select value={form.team_a_country}
                       onChange={e => setForm(f => ({ ...f, team_a_country: e.target.value }))}
                       className="fiba-select">
-                      <option value="">—</option>
+                      <option value="">-</option>
                       {COUNTRIES.map(c => <option key={c.code} value={c.code}>{c.code}</option>)}
                     </select>
                   </div>
@@ -1689,7 +1738,7 @@ export default function Games() {
                     <select value={form.team_b_country}
                       onChange={e => setForm(f => ({ ...f, team_b_country: e.target.value }))}
                       className="fiba-select">
-                      <option value="">—</option>
+                      <option value="">-</option>
                       {COUNTRIES.map(c => <option key={c.code} value={c.code}>{c.code}</option>)}
                     </select>
                   </div>
@@ -1735,7 +1784,7 @@ export default function Games() {
                   <label className="fiba-label">{t('games.phase')}</label>
                   <select value={form.phase} onChange={e => setForm(f => ({ ...f, phase: e.target.value }))}
                     className="fiba-select">
-                    {PHASE_OPTIONS.map(p => <option key={p} value={p}>{p}</option>)}
+                    {PHASE_OPTIONS.map(p => <option key={p} value={p}>{phaseLabel(p, lang)}</option>)}
                   </select>
                 </div>
                 <div>
@@ -1851,7 +1900,7 @@ export default function Games() {
             </div>
 
             <div className="mt-3 text-xs text-fiba-muted/60">
-              <p>Columns: Date | Time | Team A | Team B | Venue | Phase | Group</p>
+              <p>{tx('Columnas del Excel (encabezados en inglés): Date, Time, Team A, Team B, Venue, Phase, Group', 'Excel columns: Date, Time, Team A, Team B, Venue, Phase, Group')}</p>
             </div>
 
             {importMsg && (
@@ -1973,6 +2022,7 @@ function GameCard({
 }) {
   // Staff is collapsed by default; the global Compacto/Detallado toggle drives
   // every card, and this one's "+" overrides it for a single game.
+  const { lang } = useLanguage()
   const [expanded, setExpanded] = useState(defaultExpanded)
   useEffect(() => { setExpanded(defaultExpanded) }, [defaultExpanded])
 
@@ -2058,7 +2108,7 @@ function GameCard({
       {/* Header: group + status + actions */}
       <div className="flex items-center justify-between gap-2 mb-1.5">
         <span className="text-[10px] font-bold uppercase tracking-wider text-fiba-muted">
-          {game.group_label ? `${t('games.group')} ${game.group_label}` : (game.phase || '')}
+          {game.group_label ? `${t('games.group')} ${game.group_label}` : (game.phase ? phaseLabel(game.phase, lang) : '')}
         </span>
         <div className="flex items-center gap-1.5">
           {hasAlert && (
@@ -2080,7 +2130,7 @@ function GameCard({
             </span>
           )}
           {isLive && (
-            <span className="text-[10px] font-bold text-red-500 uppercase tracking-wider">LIVE</span>
+            <span className="text-[10px] font-bold text-red-500 uppercase tracking-wider">{t('games.live')}</span>
           )}
           {isCompleted && !isLive && (
             <span className="text-[10px] font-semibold text-emerald-600/80 dark:text-emerald-400/80 uppercase tracking-wider">Final</span>
@@ -2177,7 +2227,7 @@ function GameCard({
                         ? 'border-fiba-accent/50 bg-fiba-accent/10 text-fiba-accent font-semibold'
                         : 'border-fiba-border text-fiba-muted hover:text-ink-900 dark:hover:text-white'
                     } ${canEdit ? 'cursor-pointer' : 'cursor-default'}`}>
-                    {override && <span aria-hidden="true">✓</span>}
+                    {override && <Icon.Check className="w-3 h-3 flex-shrink-0" aria-hidden="true" />}
                     <span className="truncate max-w-[9rem]">{person.name}</span>
                     <span className="font-bold uppercase tracking-wider opacity-70">
                       {roleCode(person.role || m.role)}
@@ -2291,6 +2341,7 @@ function AssignmentSlot({ role, game, assignment, canEdit, onAssign, onUnassign,
   const [coords, setCoords] = useState(null)
   const [options, setOptions] = useState([])
   const [loadingOptions, setLoadingOptions] = useState(false)
+  const { lang } = useLanguage()
   const triggerRef = useRef(null)
   const dropdownRef = useRef(null)
   const personnelRole = SLOT_PERSONNEL_ROLE[role] || role
@@ -2406,8 +2457,9 @@ function AssignmentSlot({ role, game, assignment, canEdit, onAssign, onUnassign,
                 onClick={() => onUnassign(assignment.id)}
                 className="text-fiba-muted hover:text-red-400 text-xs leading-none"
                 title={t('games.unassign')}
+                aria-label={t('games.unassign')}
               >
-                ×
+                <Icon.X className="w-3.5 h-3.5" />
               </button>
             )}
           </div>
@@ -2443,8 +2495,8 @@ function AssignmentSlot({ role, game, assignment, canEdit, onAssign, onUnassign,
             ) : pool.length === 0 ? (
               <div className="px-3 py-3 text-xs text-fiba-muted">
                 {optionsOverride
-                  ? t('games.noCrewForRole', { role: personnelRole })
-                  : t('games.noPersonnelForRole', { role: personnelRole })}
+                  ? t('games.noCrewForRole', { role: ROLE_CODE[personnelRole] ? t(`rolesShort.${personnelRole}`) : personnelRole })
+                  : t('games.noPersonnelForRole', { role: ROLE_CODE[personnelRole] ? t(`rolesShort.${personnelRole}`) : personnelRole })}
               </div>
             ) : filtered.length === 0 ? (
               <div className="px-3 py-3 text-xs text-fiba-muted">{t('games.noResults')}</div>
@@ -2491,7 +2543,7 @@ function AssignmentSlot({ role, game, assignment, canEdit, onAssign, onUnassign,
           </div>
           <div className="border-t border-fiba-border px-3 py-1 text-[10px] text-fiba-muted/70 flex justify-between">
             <span>{t('games.optionsCount', { count: pool.length })}</span>
-            {search && <span>{filtered.length} match</span>}
+            {search && <span>{lang === 'en' ? `${filtered.length} matches` : `${filtered.length} coincidencias`}</span>}
           </div>
         </div>,
         document.body,

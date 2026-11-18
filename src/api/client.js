@@ -37,6 +37,8 @@ export const importPersonnel = (file) => {
 // Competitions
 export const getCompetitions = () => api.get('/competitions').then(r => r.data)
 export const createCompetition = (data) => api.post('/competitions', data).then(r => r.data)
+// Competencias de FIBA Americas (GDAP) que todavía no están vinculadas a ninguna nuestra.
+export const discoverFibaCompetitions = (params) => api.get('/competitions/fiba/discover', { params, timeout: 60000 }).then(r => r.data)
 export const updateCompetition = (id, data) => api.put(`/competitions/${id}`, data).then(r => r.data)
 export const deleteCompetition = (id, force = false) => api.delete(`/competitions/${id}`, { params: { force } }).then(r => r.data)
 
@@ -53,6 +55,74 @@ export const updateNominationConfirmation = (id, status, notes = null) =>
   api.patch(`/nominations/${id}/confirmation`, { status, notes }).then(r => r.data)
 export const updateNominationApproval = (id, approved) =>
   api.patch(`/nominations/${id}/approval`, { approved }).then(r => r.data)
+
+// Prefill: what the system already knows for a competition (and, if
+// `personnel_ids` is passed, per-person data) so the "New nomination" form
+// stops asking for things the backend can already answer — see
+// api/_lib/routers/nominations.py `/prefill`.
+export const getNominationPrefill = (competitionId, personnelIds = []) =>
+  api.get('/nominations/prefill', {
+    params: {
+      competition_id: competitionId,
+      ...(personnelIds.length ? { personnel_ids: personnelIds.join(',') } : {}),
+    },
+  }).then(r => r.data)
+
+// Partial update of a draft (or already-generated) nomination — any subset of
+// the editable fields. Regenerating the letter after a PATCH is a separate,
+// explicit `generateNomination()` call; this endpoint never renders a PDF.
+export const updateNomination = (id, data) => api.patch(`/nominations/${id}`, data).then(r => r.data)
+
+// Preview blob pattern, same shape as `previewTemplate`: PDF unless
+// LibreOffice is down, in which case the server falls back to the .docx and
+// flags it via the `X-Conversion-Error` header. `X-Missing-Fields` (optional)
+// lists the placeholders the letter renders blank because the nomination —or
+// the draft payload— doesn't have them yet.
+function _parseNominationPreview(resp) {
+  const type = resp.headers['content-type'] || ''
+  const missingHeader = resp.headers['x-missing-fields']
+  return {
+    blob: resp.data,
+    isPdf: type.includes('pdf'),
+    missing: missingHeader ? missingHeader.split(',').map(s => s.trim()).filter(Boolean) : [],
+    conversionError: resp.headers['x-conversion-error'] || null,
+  }
+}
+export const previewNomination = async (id) => {
+  const resp = await api.post(`/nominations/${id}/preview`, null, { responseType: 'blob' })
+  return _parseNominationPreview(resp)
+}
+// Same preview, but for a nomination that doesn't exist yet — the "Ver carta"
+// button inside the New Nomination form. `payload` is the same shape as
+// `createNomination` (single `personnel_id`, not the bulk `personnel_ids`).
+export const previewNominationDraft = async (payload) => {
+  const resp = await api.post('/nominations/preview', payload, { responseType: 'blob' })
+  return _parseNominationPreview(resp)
+}
+
+// Bulk download after generating several letters in one go — one save dialog
+// instead of N. `X-Skipped` counts requested ids the server left out (e.g. not
+// generated yet), surfaced back to the caller instead of silently dropped.
+export const downloadNominationsZip = async (ids) => {
+  const resp = await api.post('/nominations/download-zip', { nomination_ids: ids }, { responseType: 'blob' })
+  const skippedHeader = resp.headers['x-skipped']
+  return { blob: resp.data, skipped: skippedHeader ? (parseInt(skippedHeader, 10) || 0) : 0 }
+}
+
+// Guarda un Blob como archivo: object URL + <a download> efímero. Es la
+// segunda mitad del patrón de descarga de buckets privados (la primera es el
+// GET con `responseType: 'blob'` y el JWT del interceptor). Nunca un <a href>
+// a una URL pública.
+export const saveBlob = (blob, filename) => {
+  const objectUrl = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = objectUrl
+  link.download = filename || 'download'
+  document.body.appendChild(link)
+  link.click()
+  document.body.removeChild(link)
+  setTimeout(() => URL.revokeObjectURL(objectUrl), 1000)
+}
 
 // Authenticated file download — fetches with JWT, returns a Blob the caller
 // turns into an object URL to trigger the browser save dialog. Replaces the
@@ -92,6 +162,65 @@ export const downloadPaymentAttachment = async (attId, filename) => {
   const resp = await api.get(`/payments/attachments/${attId}/download${params}`, { responseType: 'blob' })
   return resp.data
 }
+// Pipeline de pagos (WP3). El estado de un pago NO se cambia con PUT: solo por
+// /transition (uno) o /bulk-status (lote), que aplican la máquina de estados.
+// Cola cross-evento: { items, total, totals: { amount, airfare, paid_amount } }.
+// Filtros: status, year, budget, missing_docs=1, stale=1, cm_pending=1, search, limit, offset.
+export const getPaymentsQueue = (params) => api.get('/payments/queue', { params }).then(r => r.data)
+// Un pago ya aplanado, como una fila de la cola (drawer abierto por `?open=`).
+export const getPayment = (id) => api.get(`/payments/${id}`).then(r => r.data)
+// { status, reason?, payment_date?, bank_confirmation? } →
+// { payment: <fila de la cola>, warnings: [] } (p. ej. 'tax_form_missing').
+// Completar no lleva `paid_amount`: el backend lo fija en el total.
+export const transitionPayment = (id, data) => api.post(`/payments/${id}/transition`, data).then(r => r.data)
+// Pago parcial de un pago `in_process`: { paid_amount, reason? }, con
+// 0 < paid_amount < total (si se pagó todo, se completa). `paid_amount` no se
+// edita por PUT. Mismo gating que completar (payments_approve, no lo propio).
+export const recordPartialPayment = (id, data) => api.post(`/payments/${id}/record-partial`, data).then(r => r.data)
+// { ids, status, reason?, payment_date?, bank_confirmation? } →
+// { ok: [{id, record_no, status, warnings}], failed: [{id, record_no, error, status_code}] }.
+// Nunca aborta el lote: cada pago se valida por separado.
+export const bulkPaymentStatus = (data) => api.post('/payments/bulk-status', data).then(r => r.data)
+// { competition_id, budget_code, nomination_ids? } → { created: [...], skipped: [{nomination_id, name, reason}] }
+export const bulkCreatePayments = (data) => api.post('/payments/bulk', data).then(r => r.data)
+// amount = nominations.total, solo en pagos new / in_process →
+// { updated: [{id, record_no, old_amount, new_amount}], skipped: [{id, record_no, reason}] }.
+export const syncPaymentAmounts = (ids) => api.post('/payments/sync-amount', { ids }).then(r => r.data)
+export const getPaymentHistory = (id) => api.get(`/payments/${id}/history`).then(r => r.data)
+// Export de la cola con los mismos filtros (+ `lang`). Blob + JWT, como el resto de las descargas.
+export const downloadPaymentsXlsx = async (params) => {
+  const resp = await api.get('/payments/export.xlsx', { params, responseType: 'blob' })
+  saveBlob(resp.data, `payments${params?.year ? `-${params.year}` : ''}.xlsx`)
+}
+// Ficha bancaria por persona (personnel_banking). Solo vive bajo /payments: el
+// router de personnel no la expone. GET devuelve la ficha enmascarada (con
+// `exists: false` si no hay); `reveal` es POST a propósito, para que quede en
+// activity_log.
+export const getPersonnelBanking = (personnelId) =>
+  api.get(`/payments/personnel/${personnelId}/banking`).then(r => r.data)
+export const revealPersonnelBanking = (personnelId) =>
+  api.post(`/payments/personnel/${personnelId}/banking/reveal`).then(r => r.data)
+export const updatePersonnelBanking = (personnelId, data) =>
+  api.put(`/payments/personnel/${personnelId}/banking`, data).then(r => r.data)
+// Sube o reemplaza el PDF firmado. `meta` = { kind, signed_at, expires_at }:
+// un documento nuevo trae sus fechas (sin mandarlas, quedan vacías). `exempt`
+// no se sube: se guarda con updatePersonnelBanking.
+export const uploadPersonnelTaxForm = (personnelId, file, meta = {}) => {
+  const fd = new FormData()
+  fd.append('file', file)
+  Object.entries(meta).forEach(([k, v]) => { if (v) fd.append(k, v) })
+  return api.post(`/payments/personnel/${personnelId}/banking/tax-form`, fd, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  }).then(r => r.data)
+}
+// Bucket privado: blob + JWT. El caller lo guarda con saveBlob. Es POST y exige
+// `payments:edit`: el W-8 es un dato fiscal, no alcanza con ver pagos.
+export const downloadPersonnelTaxForm = async (personnelId) => {
+  const resp = await api.post(`/payments/personnel/${personnelId}/banking/tax-form/download`, null, { responseType: 'blob' })
+  return resp.data
+}
+export const deletePersonnelTaxForm = (personnelId) =>
+  api.delete(`/payments/personnel/${personnelId}/banking/tax-form`).then(r => r.data)
 
 // Budget — gastos por departamento, con o sin evento (ver BUDGET_MODULE.md)
 export const getDepartments = () => api.get('/budget/departments').then(r => r.data)
@@ -132,6 +261,13 @@ export const downloadExpenseAttachment = async (attId, filename) => {
   const resp = await api.get(`/budget/attachments/${attId}/download${params}`, { responseType: 'blob' })
   return resp.data
 }
+// Aprobación de gastos (WP4). El cambio de estado va SIEMPRE por /transition:
+// el PATCH rechaza `status` y `payment_date`. payload = {status, reason?,
+// payment_date?, payment_method?, bank_confirmation?} → el gasto actualizado.
+// Errores: 400 falta dato, 403 no puede, 409 transición inválida (detail texto).
+export const transitionExpense = (id, payload) =>
+  api.post(`/budget/expenses/${id}/transition`, payload).then(r => r.data)
+export const getExpenseHistory = (id) => api.get(`/budget/expenses/${id}/history`).then(r => r.data)
 
 export const getRecurring = (params) => api.get('/budget/recurring', { params }).then(r => r.data)
 export const createRecurring = (data) => api.post('/budget/recurring', data).then(r => r.data)
@@ -178,18 +314,14 @@ export const commitBudgetImport = (file, options) => postBudgetImport('/budget/i
 // round-trip). Blob + JWT, como el resto de las descargas.
 export const downloadBudgetLinesXlsx = async (params) => {
   const resp = await api.get('/budget/lines/export.xlsx', { params, responseType: 'blob' })
-  const objectUrl = URL.createObjectURL(resp.data)
-  const link = document.createElement('a')
-  link.href = objectUrl
-  link.download = `budget-${params.year}.xlsx`
-  document.body.appendChild(link)
-  link.click()
-  document.body.removeChild(link)
-  setTimeout(() => URL.revokeObjectURL(objectUrl), 1000)
+  saveBlob(resp.data, `budget-${params.year}.xlsx`)
 }
 // Costo total del evento. NO está recortado por departamento a propósito: el
 // scoping rige cargar y editar, no leer la cifra de una competencia.
 export const getCompetitionCost = (id) => api.get(`/budget/competitions/${id}/cost`).then(r => r.data)
+// Hoteles de la competencia (id + nombre) para el selector del gasto. No exige
+// el permiso 'logistics'.
+export const getBudgetCompetitionHotels = (id) => api.get(`/budget/competitions/${id}/hotels`).then(r => r.data)
 // Tarifario: rellena competitions.{prefix}_window_fee/_incidentals, que es lo
 // que sync-nominations ya lee. No es una segunda fuente de verdad.
 export const getFeeSchedule = (params) => api.get('/budget/fee-schedule', { params }).then(r => r.data)
@@ -198,11 +330,41 @@ export const getHeadcount = (year) => api.get('/budget/headcount', { params: { y
 export const putHeadcount = (data) => api.put('/budget/headcount', data).then(r => r.data)
 export const getAssumptions = (year) => api.get(`/budget/assumptions/${year}`).then(r => r.data)
 export const putAssumptions = (year, data) => api.put(`/budget/assumptions/${year}`, data).then(r => r.data)
+// Headcount × costo de vuelo → líneas de travel. El endpoint lee `year`,
+// `department` y `replace_manual` como query params, no del body.
+export const generateTravelLines = ({ year, department = 'competitions', replace_manual = false }) =>
+  api.post('/budget/headcount/generate', null, { params: { year, department, replace_manual } }).then(r => r.data)
+// Renombrar una cuenta provisoria (COMP-*) a su código oficial. Las FK son
+// ON UPDATE CASCADE; si la cuenta está mapeada en budget_accounts.py el
+// backend responde 409 salvo `force`.
+export const remapAccount = (code, { new_code, force = false }) =>
+  api.post(`/budget/accounts/${encodeURIComponent(code)}/remap`, { new_code, force }).then(r => r.data)
 
 export const getRevenues = (params) => api.get('/budget/revenues', { params }).then(r => r.data)
 export const createRevenue = (data) => api.post('/budget/revenues', data).then(r => r.data)
 export const updateRevenue = (id, data) => api.patch(`/budget/revenues/${id}`, data).then(r => r.data)
 export const deleteRevenue = (id) => api.delete(`/budget/revenues/${id}`).then(r => r.data)
+
+// Exports del dashboard (WP7). Blob + JWT como downloadBudgetLinesXlsx; el
+// backend recorta por departamento con _scoped(), así que un designado de IT
+// exporta solo IT aunque pida otra cosa. `lang` elige el idioma de los
+// encabezados. Los filtros vacíos no se mandan: `department=''` no es "todos".
+const exportParams = (params) =>
+  Object.fromEntries(Object.entries(params || {}).filter(([, v]) => v !== '' && v != null))
+const exportSuffix = (params) =>
+  [params?.year, params?.department].filter(Boolean).map(v => `-${v}`).join('')
+
+// Acepta los mismos filtros que getExpenses (year, department, account, status…).
+export const downloadBudgetExpensesXlsx = async (params) => {
+  const resp = await api.get('/budget/expenses/export.xlsx', { params: exportParams(params), responseType: 'blob' })
+  saveBlob(resp.data, `expenses${exportSuffix(params)}.xlsx`)
+}
+
+// { year, department?, lang } → Totales / Por departamento / Por cuenta / Por competencia / Por mes.
+export const downloadBudgetSummaryXlsx = async (params) => {
+  const resp = await api.get('/budget/summary/export.xlsx', { params: exportParams(params), responseType: 'blob' })
+  saveBlob(resp.data, `budget-summary${exportSuffix(params)}.xlsx`)
+}
 
 // Competition reports
 export const getReportTypes = () => api.get('/reports/types').then(r => r.data)
@@ -243,6 +405,8 @@ export const getCalendarCompetitions = (params) => api.get('/calendar/competitio
 export const getCalendarCompetition = (id) => api.get(`/calendar/competitions/${id}`).then(r => r.data)
 export const createCalendarEvent = (data) => api.post('/calendar/competitions', data).then(r => r.data)
 export const updateCalendarEvent = (id, data) => api.put(`/calendar/competitions/${id}`, data).then(r => r.data)
+// Copia a start/end las fechas que FIBA le da al tramo (fiba_start/end_date).
+export const applyFibaDates = (id) => api.post(`/calendar/competitions/${id}/apply-fiba-dates`).then(r => r.data)
 export const deleteCalendarEvent = (id) => api.delete(`/calendar/competitions/${id}`).then(r => r.data)
 export const assignStaff = (compId, data) => api.post(`/calendar/competitions/${compId}/assign`, data).then(r => r.data)
 export const removeAssignment = (assignmentId) => api.delete(`/calendar/assignments/${assignmentId}`).then(r => r.data)
@@ -279,7 +443,11 @@ export const createTransportVenue = (data) => api.post('/transport/venues', data
 export const deleteTransportVenue = (id) => api.delete(`/transport/venues/${id}`).then(r => r.data)
 // Logística — padrón, manifest, hospedaje y comidas. Transporte (arriba) es la
 // otra mitad del mismo módulo y comparte el permiso 'logistics'.
-export const getLogisticsParticipants = (competitionId) => api.get('/logistics/participants', { params: { competition_id: competitionId } }).then(r => r.data)
+// `audience` (staff / delegation / vip) recorta el padrón por categoría; vacío = todo.
+const logisticsParams = (competitionId, audience) => (
+  audience ? { competition_id: competitionId, audience } : { competition_id: competitionId }
+)
+export const getLogisticsParticipants = (competitionId, audience) => api.get('/logistics/participants', { params: logisticsParams(competitionId, audience) }).then(r => r.data)
 export const createLogisticsParticipant = (data) => api.post('/logistics/participants', data).then(r => r.data)
 export const updateLogisticsParticipant = (id, data) => api.put(`/logistics/participants/${id}`, data).then(r => r.data)
 export const deleteLogisticsParticipant = (id) => api.delete(`/logistics/participants/${id}`).then(r => r.data)
@@ -289,14 +457,14 @@ export const getLogisticsTravelLegs = (competitionId) => api.get('/logistics/tra
 export const createLogisticsTravelLeg = (data) => api.post('/logistics/travel-legs', data).then(r => r.data)
 export const updateLogisticsTravelLeg = (id, data) => api.put(`/logistics/travel-legs/${id}`, data).then(r => r.data)
 export const deleteLogisticsTravelLeg = (id) => api.delete(`/logistics/travel-legs/${id}`).then(r => r.data)
-export const getLogisticsMovements = (competitionId) => api.get('/logistics/movements', { params: { competition_id: competitionId } }).then(r => r.data)
+export const getLogisticsMovements = (competitionId, audience) => api.get('/logistics/movements', { params: logisticsParams(competitionId, audience) }).then(r => r.data)
 
-export const getLogisticsHotels = (competitionId) => api.get('/logistics/hotels', { params: { competition_id: competitionId } }).then(r => r.data)
+export const getLogisticsHotels = (competitionId, audience) => api.get('/logistics/hotels', { params: logisticsParams(competitionId, audience) }).then(r => r.data)
 export const createLogisticsHotel = (data) => api.post('/logistics/hotels', data).then(r => r.data)
 export const updateLogisticsHotel = (id, data) => api.put(`/logistics/hotels/${id}`, data).then(r => r.data)
 export const deleteLogisticsHotel = (id) => api.delete(`/logistics/hotels/${id}`).then(r => r.data)
 
-export const getLogisticsRooming = (competitionId) => api.get('/logistics/rooming', { params: { competition_id: competitionId } }).then(r => r.data)
+export const getLogisticsRooming = (competitionId, audience) => api.get('/logistics/rooming', { params: logisticsParams(competitionId, audience) }).then(r => r.data)
 export const createLogisticsStay = (data) => api.post('/logistics/stays', data).then(r => r.data)
 export const updateLogisticsStay = (id, data) => api.put(`/logistics/stays/${id}`, data).then(r => r.data)
 export const deleteLogisticsStay = (id) => api.delete(`/logistics/stays/${id}`).then(r => r.data)
@@ -319,39 +487,124 @@ export const getLogisticsLinkQr = async (competitionId) => {
   return URL.createObjectURL(resp.data)
 }
 
-const uploadLogisticsSheet = (path, competitionId, file) => {
+const uploadLogisticsSheet = (path, params, file) => {
   const form = new FormData()
   form.append('file', file)
   return api.post(path, form, {
-    params: { competition_id: competitionId },
+    params,
     headers: { 'Content-Type': 'multipart/form-data' },
   }).then(r => r.data)
 }
-export const previewLogisticsManifest = (competitionId, file) => uploadLogisticsSheet('/logistics/import/manifest/preview', competitionId, file)
-export const commitLogisticsManifest = (competitionId, file) => uploadLogisticsSheet('/logistics/import/manifest/commit', competitionId, file)
-export const previewLogisticsRooming = (competitionId, file) => uploadLogisticsSheet('/logistics/import/rooming/preview', competitionId, file)
-export const commitLogisticsRooming = (competitionId, file) => uploadLogisticsSheet('/logistics/import/rooming/commit', competitionId, file)
+// Importando desde la pestaña de una audiencia, lo que la planilla no
+// clasifica entra con la categoría de esa pestaña.
+export const previewLogisticsManifest = (competitionId, file, audience) => uploadLogisticsSheet('/logistics/import/manifest/preview', logisticsParams(competitionId, audience), file)
+export const commitLogisticsManifest = (competitionId, file, audience) => uploadLogisticsSheet('/logistics/import/manifest/commit', logisticsParams(competitionId, audience), file)
+export const previewLogisticsRooming = (competitionId, file, audience) => uploadLogisticsSheet('/logistics/import/rooming/preview', logisticsParams(competitionId, audience), file)
+export const commitLogisticsRooming = (competitionId, file, audience) => uploadLogisticsSheet('/logistics/import/rooming/commit', logisticsParams(competitionId, audience), file)
 
-export const downloadLogisticsXlsx = async (kind, competitionId) => {
+export const downloadLogisticsXlsx = async (kind, competitionId, audience) => {
   const resp = await api.get(`/logistics/export/${kind}.xlsx`, {
-    params: { competition_id: competitionId },
+    params: logisticsParams(competitionId, audience),
     responseType: 'blob',
   })
-  const objectUrl = URL.createObjectURL(resp.data)
-  const link = document.createElement('a')
-  link.href = objectUrl
-  link.download = kind === 'manifest' ? 'flight-manifest.xlsx' : 'rooming-list.xlsx'
-  document.body.appendChild(link)
-  link.click()
-  document.body.removeChild(link)
-  setTimeout(() => URL.revokeObjectURL(objectUrl), 1000)
+  const base = kind === 'manifest' ? 'flight-manifest' : 'rooming-list'
+  saveBlob(resp.data, `${base}${audience ? `-${audience}` : ''}.xlsx`)
 }
+
+// Cronogramas (transporte con pick-up/return, y comidas). Un documento por
+// competencia + sección ('transport' | 'meals') + audiencia + etiqueta: una
+// misma audiencia puede tener varios ('' = el general, 'Árbitros', …).
+const scheduleParams = (competitionId, section, audience, label) => ({
+  competition_id: competitionId, section, audience, ...(label ? { label } : {}),
+})
+export const getLogisticsSchedules = (competitionId, section) => api.get('/logistics/schedules', { params: { competition_id: competitionId, section } }).then(r => r.data)
+export const previewLogisticsSchedule = (competitionId, section, audience, file, label) => uploadLogisticsSheet('/logistics/schedules/import/preview', scheduleParams(competitionId, section, audience, label), file)
+// Devuelve el documento importado (el de esa sección + audiencia + etiqueta).
+export const commitLogisticsSchedule = (competitionId, section, audience, file, label) => uploadLogisticsSheet('/logistics/schedules/import/commit', scheduleParams(competitionId, section, audience, label), file)
+export const createLogisticsSchedule = (data) => api.post('/logistics/schedules', data).then(r => r.data)
+export const updateLogisticsSchedule = (id, data) => api.patch(`/logistics/schedules/${id}`, data).then(r => r.data)
+export const deleteLogisticsSchedule = (id) => api.delete(`/logistics/schedules/${id}`).then(r => r.data)
+export const createLogisticsScheduleRow = (scheduleId, data) => api.post(`/logistics/schedules/${scheduleId}/rows`, data).then(r => r.data)
+export const updateLogisticsScheduleRow = (rowId, data) => api.put(`/logistics/schedules/rows/${rowId}`, data).then(r => r.data)
+export const deleteLogisticsScheduleRow = (rowId) => api.delete(`/logistics/schedules/rows/${rowId}`).then(r => r.data)
+// El Excel original vive en el bucket privado: baja como blob con el JWT.
+export const downloadLogisticsScheduleFile = async (schedule) => {
+  const resp = await api.get(`/logistics/schedules/${schedule.id}/file`, { responseType: 'blob' })
+  saveBlob(resp.data, schedule.file_name || 'cronograma.xlsx')
+}
+
+// Con responseType 'blob' el JSON de un error llega como Blob y el `detail` del
+// backend se pierde: se recupera acá y queda en `err.detail` (mismo patrón que
+// downloadTrainingScheduleXlsx).
+const blobRequest = async (config) => {
+  try {
+    return await api.request({ ...config, responseType: 'blob' })
+  } catch (err) {
+    const blob = err?.response?.data
+    if (blob instanceof Blob) {
+      try { err.detail = JSON.parse(await blob.text())?.detail } catch { /* keep generic message */ }
+    }
+    throw err
+  }
+}
+
+// Operación de logística: directorio de contactos y proveedores, salones,
+// adicionales/cotizaciones de hotel y documentos privados (menús, pasaportes,
+// cotizaciones). Mismo permiso 'logistics'. `audience` null = visible a todas;
+// con una audiencia el GET trae la suya más las compartidas.
+export const getLogisticsContacts = (competitionId, audience, kind) => api.get('/logistics/contacts', { params: { ...logisticsParams(competitionId, audience), ...(kind ? { kind } : {}) } }).then(r => r.data)
+export const createLogisticsContact = (data) => api.post('/logistics/contacts', data).then(r => r.data)
+export const updateLogisticsContact = (id, data) => api.put(`/logistics/contacts/${id}`, data).then(r => r.data)
+export const deleteLogisticsContact = (id) => api.delete(`/logistics/contacts/${id}`).then(r => r.data)
+
+export const getLogisticsRooms = (competitionId, audience) => api.get('/logistics/rooms', { params: logisticsParams(competitionId, audience) }).then(r => r.data)
+export const createLogisticsRoom = (data) => api.post('/logistics/rooms', data).then(r => r.data)
+export const updateLogisticsRoom = (id, data) => api.put(`/logistics/rooms/${id}`, data).then(r => r.data)
+export const deleteLogisticsRoom = (id) => api.delete(`/logistics/rooms/${id}`).then(r => r.data)
+
+// Adicionales y cotizaciones de un hotel. Informativo: NO es un gasto de Budget.
+export const getLogisticsHotelCharges = (competitionId, hotelId) => api.get('/logistics/hotel-charges', { params: { competition_id: competitionId, hotel_id: hotelId } }).then(r => r.data)
+export const createLogisticsHotelCharge = (data) => api.post('/logistics/hotel-charges', data).then(r => r.data)
+export const updateLogisticsHotelCharge = (id, data) => api.put(`/logistics/hotel-charges/${id}`, data).then(r => r.data)
+export const deleteLogisticsHotelCharge = (id) => api.delete(`/logistics/hotel-charges/${id}`).then(r => r.data)
+
+// Pagos de FIBA a un hotel: solo lectura, salen de los gastos de Budget que
+// apuntan a ese hotel → { rows, total_paid, total_approved }.
+export const getLogisticsHotelPayments = (hotelId) => api.get(`/logistics/hotels/${hotelId}/payments`).then(r => r.data)
+
+// Documentos privados (PDF, JPG o PNG hasta 10 MB). `filters` = { kind,
+// hotel_id, participant_id, charge_id }. La subida lleva el archivo en `file` y
+// el resto por query params, como las planillas; la descarga es POST a
+// propósito (queda en el activity log) y va por blob + JWT.
+const documentParams = (competitionId, filters = {}) => (
+  Object.fromEntries(Object.entries({ competition_id: competitionId, ...filters }).filter(([, v]) => v))
+)
+export const getLogisticsDocuments = (competitionId, filters) => api.get('/logistics/documents', { params: documentParams(competitionId, filters) }).then(r => r.data)
+export const uploadLogisticsDocument = (competitionId, file, filters) => uploadLogisticsSheet('/logistics/documents', documentParams(competitionId, filters), file)
+export const downloadLogisticsDocument = async (doc) => {
+  const resp = await blobRequest({ method: 'post', url: `/logistics/documents/${doc.id}/download` })
+  saveBlob(resp.data, doc.file_name || 'documento')
+}
+export const deleteLogisticsDocument = (id) => api.delete(`/logistics/documents/${id}`).then(r => r.data)
+
+// PDF operativo para delegaciones (uno por competencia, sin datos personales).
+// Si el servidor no pudo convertir a PDF manda el .docx: la extensión sale del
+// content-type de la respuesta.
+export const downloadLogisticsBriefing = async (competitionId, baseName = 'delegation-briefing') => {
+  const resp = await blobRequest({ method: 'get', url: '/logistics/export/delegation-briefing', params: { competition_id: competitionId } })
+  const isPdf = String(resp.headers?.['content-type'] || resp.data?.type || '').includes('pdf')
+  saveBlob(resp.data, `${baseName}.${isPdf ? 'pdf' : 'docx'}`)
+}
+
+// Un viaje por grupo de llegadas/salidas del manifest.
+export const createTransportTripsFromMovements = (data) => api.post('/transport/trips/from-movements', data).then(r => r.data)
 
 // Vista pública de logística (sin auth, el token es el credencial)
 export const getPublicLogistics = (token) => api.get(`/public/logistics/${token}`).then(r => r.data)
 export const getPublicLogisticsTransport = (token, date) => api.get(`/public/logistics/${token}/transport`, { params: date ? { date } : {} }).then(r => r.data)
-export const getPublicLogisticsManifest = (token) => api.get(`/public/logistics/${token}/manifest`).then(r => r.data)
-export const getPublicLogisticsRooming = (token) => api.get(`/public/logistics/${token}/rooming`).then(r => r.data)
+export const getPublicLogisticsManifest = (token, audience) => api.get(`/public/logistics/${token}/manifest`, { params: audience ? { audience } : {} }).then(r => r.data)
+export const getPublicLogisticsRooming = (token, audience) => api.get(`/public/logistics/${token}/rooming`, { params: audience ? { audience } : {} }).then(r => r.data)
+export const getPublicLogisticsSchedules = (token) => api.get(`/public/logistics/${token}/schedules`).then(r => r.data)
 
 // Permissions
 export const getUserPermissions = (userId) => api.get(`/permissions/${userId}`).then(r => r.data)
@@ -365,6 +618,16 @@ export const uploadMyAvatar = (file) => {
   return api.post('/me/avatar', fd, { headers: { 'Content-Type': 'multipart/form-data' } }).then(r => r.data)
 }
 export const deleteMyAvatar = () => api.delete('/me/avatar').then(r => r.data)
+
+// Google Calendar del usuario (api/_lib/routers/google_calendar.py, bajo /me).
+// El code/state del OAuth van en el body: el activity log guarda los query params.
+export const getGoogleCalendar = () => api.get('/me/google-calendar').then(r => r.data)
+export const connectGoogleCalendar = () => api.post('/me/google-calendar/connect').then(r => r.data)
+export const finishGoogleCalendar = (code, state) =>
+  api.post('/me/google-calendar/callback', { code, state }).then(r => r.data)
+export const syncGoogleCalendar = () => api.post('/me/google-calendar/sync').then(r => r.data)
+export const disconnectGoogleCalendar = (deleteCalendar = true) =>
+  api.delete('/me/google-calendar', { params: { delete_calendar: deleteCalendar } }).then(r => r.data)
 export const updateUserPermissions = (userId, permissions) => api.put(`/permissions/${userId}`, { permissions }).then(r => r.data)
 
 // Training
@@ -573,9 +836,15 @@ export const deleteLoan = (id) => api.delete(`/loans/${id}`).then(r => r.data)
 export const getTemplates = () => api.get('/templates').then(r => r.data)
 // Returns { blob, isPdf } — the server falls back to .docx if LibreOffice is down.
 // `staged` renders the pending upload instead of the active template.
-export const previewTemplate = async (key, staged = false) => {
+// `nominationId`, when given, renders that real nomination's data through
+// this template instead of the fictional sample (requires nominations:view
+// on top of templates:view — see preview_template() in templates.py).
+export const previewTemplate = async (key, staged = false, nominationId = null) => {
+  const params = {}
+  if (staged) params.staged = true
+  if (nominationId) params.nomination_id = nominationId
   const resp = await api.get(`/templates/${key}/preview`, {
-    params: staged ? { staged: true } : undefined,
+    params: Object.keys(params).length ? params : undefined,
     responseType: 'blob',
   })
   const type = resp.headers['content-type'] || ''
@@ -599,6 +868,10 @@ export const deleteTemplateType = (key) => api.delete(`/templates/${key}`).then(
 export const activateTemplate = (key) => api.post(`/templates/${key}/activate`).then(r => r.data)
 export const discardStagedTemplate = (key) => api.delete(`/templates/${key}/staged`).then(r => r.data)
 export const revertTemplate = (key) => api.delete(`/templates/${key}/custom`).then(r => r.data)
+// Creates a new template type by copying the origin's active .docx — active
+// immediately, no staging step (see duplicate_template() in templates.py).
+export const duplicateTemplate = (sourceKey, data) =>
+  api.post(`/templates/${sourceKey}/duplicate`, data).then(r => r.data)
 
 // Public asset (no auth)
 export const getPublicAsset = (id) => api.get(`/public/asset/${id}`).then(r => r.data)
@@ -683,3 +956,14 @@ export const addFeedComment = (id, body) => api.post(`/feed/posts/${id}/comments
 export const deleteFeedComment = (commentId) => api.delete(`/feed/comments/${commentId}`).then(r => r.data)
 export const voteFeedPoll = (id, option_index) => api.post(`/feed/posts/${id}/vote`, { option_index }).then(r => r.data)
 export const getFeedSidebar = () => api.get('/feed/sidebar').then(r => r.data)
+
+// ─── Notifications ───
+// Campana del topbar (api/_lib/routers/notifications.py, bajo /me: solo las
+// del usuario logueado). "pending" son contadores en vivo, no filas.
+export const getNotifications = ({ unread, limit = 20, offset = 0 } = {}) =>
+  api.get('/me/notifications', {
+    params: { ...(unread != null ? { unread: unread ? 1 : 0 } : {}), limit, offset },
+  }).then(r => r.data)
+export const getPendingInbox = () => api.get('/me/notifications/pending').then(r => r.data)
+export const markNotificationRead = (id) => api.post(`/me/notifications/${id}/read`).then(r => r.data)
+export const markAllNotificationsRead = () => api.post('/me/notifications/read-all').then(r => r.data)

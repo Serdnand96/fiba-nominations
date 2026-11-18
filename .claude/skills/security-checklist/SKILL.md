@@ -1,6 +1,6 @@
 ---
 name: security-checklist
-description: Checklist de seguridad de fiba-nominations — autorización a nivel de app (el service_role bypassa RLS), permisos por usuario con require_view/require_edit/require_superadmin, guards de frontend que son solo UX, storage privado, el estado real del módulo Logística (permisado, sin auth standalone) y la vista pública por token. Usar al revisar cambios que tocan auth, permisos, datos o storage.
+description: Checklist de seguridad de fiba-nominations — autorización a nivel de app (el service_role bypassa RLS), permisos por usuario con require_view/require_edit/require_superadmin, guards de frontend que son solo UX, storage privado, el estado real del módulo Logística (permisado, sin auth standalone), la vista pública por token, y finanzas (scope por departamento de Budget, aprobación con separación de funciones, datos bancarios por persona, notificaciones /me). Usar al revisar cambios que tocan auth, permisos, datos o storage.
 ---
 
 # Checklist de seguridad (fiba-nominations)
@@ -103,17 +103,61 @@ El contrato completo está en `BUDGET_MODULE.md`.
 ## 5. Módulo Logística (antes Transport) — corrección importante
 
 - Logística es un **módulo normal permisado**: todos sus endpoints usan
-  `require_view("logistics")` / `require_edit("logistics")`. Vive en **dos
+  `require_view("logistics")` / `require_edit("logistics")`. Vive en **cuatro
   routers** que comparten ese único permiso:
-  `api/_lib/routers/logistics.py` (padrón, manifest, hospedaje, comidas, links)
-  y `api/_lib/routers/transport.py` (vehículos, choferes, viajes; su prefijo de
-  URL sigue siendo `/transport`). En el frontend comparte el **mismo
+  `api/_lib/routers/logistics.py` (padrón, manifest, hospedaje, comidas, links),
+  `api/_lib/routers/logistics_schedules.py` (cronogramas de transporte y
+  comidas), `api/_lib/routers/logistics_ops.py` (contactos, salones, adicionales
+  de hotel, documentos privados, pagos por hotel y el PDF para delegaciones; mismo
+  prefijo `/logistics`) y `api/_lib/routers/transport.py` (vehículos, choferes,
+  viajes; su prefijo de URL sigue siendo `/transport`). En el frontend comparte el **mismo
   `AuthContext` y el mismo cliente de Supabase** (`src/lib/supabase.js`) que
   todo el resto.
 - **No existe** una "Supabase Auth standalone" ni un aislamiento especial.
   Revisalo con **el mismo** checklist de permisos que cualquier otro módulo: lo
   que hay que verificar es que cada endpoint lleve su dependency, no un supuesto
   sandbox separado.
+- La **audiencia** (`staff` / `delegation` / `vip`) es un filtro de vista, **no
+  un permiso**: quien tiene `logistics` ve las tres. No la uses para decidir
+  quién puede leer qué; un valor desconocido es 400 (`categories_for`).
+- El **Excel original de un cronograma** va al bucket privado `nominations`
+  bajo `logistics/schedules/` y se baja por `GET /logistics/schedules/{id}/file`
+  con JWT. La respuesta de la API nunca lleva `file_path` (`schedule_view`).
+- `POST /transport/trips/from-movements` valida que cada vehículo sea del evento
+  de esa competencia antes de crear nada.
+- **`logistics_ops.py`** lleva `require_view("logistics")` a nivel router y
+  `require_edit("logistics")` en cada POST/PUT/DELETE (un test recorre todas las
+  rutas: sin usuario 401, con otro permiso 403, y las escrituras piden `edit`).
+  Hay **una** ruta que es POST y solo pide `view`, a propósito: la descarga de
+  un documento (abajo). Cada vínculo se valida contra la `competition_id` (el
+  hotel de un contacto, un salón o un cargo; la persona o el cargo de un
+  documento): si no es de esa competencia, 400, así nada queda colgado de lo de
+  otra.
+- **Documentos privados** (`logistics_documents`: menús, pasaportes, PDF de una
+  cotización): bucket privado `nominations` bajo `logistics/docs/`.
+  - Solo PDF, JPEG o PNG **por magic bytes** (el `content-type` que declara el
+    cliente no cuenta; un SVG no pasa), ≤ 10 MB (413), vacío es 400. Si el
+    INSERT falla después del upload, se borra el objeto; si el upload falla, 502
+    y no queda fila.
+  - **`file_path` y `uploaded_by` nunca salen en la respuesta**
+    (`DOCUMENT_FIELDS` / `_doc_view`); el archivo solo baja por
+    `POST /logistics/documents/{id}/download`, que es **POST para que el
+    activity log lo audite** (un pasaporte tiene que dejar rastro de quién lo
+    bajó), igual que el W-8 (10d). Un GET de descarga ahí es un hallazgo.
+  - El `ON DELETE CASCADE` no borra el objeto de Storage: borrar hotel,
+    participante, cargo o competencia junta las rutas **antes**
+    (`document_paths`) y quita los objetos **después** (`remove_objects`). Un
+    borrado nuevo de esas entidades que no lo haga deja pasaportes huérfanos.
+  - **Los pasaportes escaneados viven solo dentro de la plataforma**: ni el link
+    público ni el PDF para delegaciones los leen. (El *número* de pasaporte sí
+    sale por el link público, por decisión del cliente; el *escaneo* no.)
+- **PDF para delegaciones** (`GET /logistics/export/delegation-briefing`) lo
+  reciben **todos** los equipos: `briefing_data()` solo lee competencias,
+  hoteles, cronogramas, salones y contactos, nunca participantes, estadías,
+  choferes, cargos ni documentos (un test lo afirma). Recorta a audiencia
+  `delegation` o compartida, cronograma de label vacío, salones sin PIC y
+  contactos que no son `vip` ni `other`. Un campo nuevo en esas tablas no debe
+  entrar al documento sin pensar quién lo recibe.
 - El permiso `transport` **ya no existe** (migración 025 lo renombró a
   `logistics` en `user_permissions`). Un `require_view("transport")` que
   sobreviva en el código es un endpoint al que nadie puede entrar.
@@ -129,7 +173,20 @@ El contrato completo está en `BUDGET_MODULE.md`.
 - **Por decisión explícita del cliente la vista publica los datos completos,
   número de pasaporte incluido.** El único punto para recortar eso es
   `_redact()`; si alguna vez hay que ocultar campos, se cambia ahí y no en los
-  cuatro endpoints.
+  cinco endpoints.
+- `/schedules` publica la **tabla** de los cronogramas, no el archivo: sin
+  `file_name`, `has_file` ni `uploaded_at` (`_REDACT_FIELDS["schedule"]`), y sin
+  endpoint público de descarga. Lo único que suma lo nuevo es el `label` de cada
+  cronograma (el título cuando hay más de uno por audiencia).
+- **Lo operativo no se publica**: contactos, salones, adicionales y cotizaciones
+  de hotel y documentos (menús, pasaportes) no tienen endpoint bajo
+  `/api/public/` y un test lo afirma (ningún path con `contacts`, `rooms`,
+  `charges` ni `documents`). Una vista pública nueva no puede leer
+  `logistics_contacts`, `logistics_rooms`, `logistics_hotel_charges` ni
+  `logistics_documents`.
+- Los hoteles pasan por `_redact(h, "hotel")` en **todos** los endpoints que los
+  devuelven, incluido `get_rooming` (`build_rooming` hace un `select("*")` y
+  antes salía el email del hotel). `contact_name` se quita igual que `email`.
 - Las respuestas bajo `/api/public/` llevan `X-Robots-Tag: noindex` (middleware
   en `api/index.py`). Si agregás una vista pública nueva, cae bajo esa regla
   sola — pero no la saques del prefijo `/api/public/`, porque ahí también viven
@@ -179,7 +236,140 @@ El contrato completo está en `BUDGET_MODULE.md`.
   se registran en el activity log vía middleware (background task). No
   deshabilites el auditing para escrituras autenticadas.
 
-## 10. Regla de dominio — neutralidad de árbitros
+## 10. Finanzas: Budget, Payments y la campana
+
+Budget es el **único** módulo con recorte por fila (`budget_access`), y el
+recorte vive en el código (el `service_role` bypassa RLS). Contrato completo en
+`BUDGET_MODULE.md` §4, §14-§16.
+
+### 10a. Scope por departamento
+
+- Toda lectura de `expenses | budget_lines | revenues | recurring_expenses |
+  payments` en `budget.py` va dentro de `_scoped(…)`. Las **dos** excepciones
+  documentadas son `GET /budget/competitions/{id}/cost` y
+  `GET /logistics/hotels/{hotel_id}/payments` (`logistics_ops.py`, permiso
+  `logistics`). Esta última lee `expenses` con `hotel_id` de ese hotel, solo
+  `approved`/`paid`, y devuelve una **proyección cerrada** (`record_no`,
+  `description`, `amount`, `status`, `expense_date`, `payment_date`,
+  `invoice_no`, `vendor_name`): si crece un campo (`comments`,
+  `bank_confirmation`, `payment_method`, `created_by`, adjuntos) o se le abre un
+  estado más, es un hallazgo. Una query sin `_scoped()` que no sea una de esas
+  dos es P0. (`GET /budget/competitions/{id}/hotels` tampoco usa `_scoped()`
+  pero lee `logistics_hotels`, que no es de ningún departamento, y solo da id y
+  nombre.)
+- `expenses.hotel_id` (migración 056) no es campo financiero: validar que el
+  hotel sea de la competencia del gasto es obligatorio (400), pero no sella
+  `last_financial_edit_by` ni escribe historial.
+- `_scoped()` aplica **un solo** `.eq`/`.in_` sobre `department_code`: el
+  builder guarda un filtro por columna y un segundo filtro encadenado pisa el
+  scope (bypass con `?department=finance`).
+- **Los exports pasan por `_scoped`**: `/budget/expenses/export.xlsx` y
+  `/budget/summary/export.xlsx` salen de las mismas funciones que la pantalla
+  (`_expense_rows` → `_fetch_expenses`, `_summary_data`). Un export nuevo que
+  arme su propia query es un hallazgo.
+- Escrituras: `_assert_can_edit(dept)` o `_row_or_403(…, "edit")`; mover una
+  fila a otro departamento exige permiso sobre el destino. Filas ajenas → 404.
+
+### 10b. Aprobación y separación de funciones
+
+- Aprobar/rechazar gastos es `budget_access.can_approve` del departamento
+  (migración 048), **no** `can_edit`. `can_approve` implica `can_view`.
+- **`created_by != aprobador` y `last_financial_edit_by != aprobador`**
+  (migración 050): nadie aprueba un gasto ni completa un pago que creó **o cuyo
+  último cambio de plata hizo** — si no, A edita a $10.000 el gasto de $100 que
+  cargó B y lo aprueba. El superadmin puede, **solo con `reason`**, y queda
+  `meta.override` en `finance_status_history`. Verificá que toda acción nueva
+  que "suelte plata" mantenga las dos reglas y el motivo obligatorio, y que todo
+  camino que edite montos selle `last_financial_edit_by/at`.
+- Completar un pago exige `payments:edit` **más** el permiso no-página
+  `payments_approve` (o superadmin), además de fecha, nominación no declinada,
+  CM aprobado, W-8 vigente, datos bancarios y `paid_amount == total`.
+- **`POST /payments/{id}/record-partial`** (pago parcial) suelta plata igual que
+  completar y lleva **el mismo gating**. `paid_amount` no se escribe por
+  ningún otro camino (el PUT ya no lo acepta): si aparece en otro update, es un
+  bypass.
+- Las ediciones de plata y los DELETE de gastos y pagos dejan fila en
+  `finance_status_history` (`meta.edit` / `to_status = 'deleted'`). Un camino
+  nuevo que cambie montos sin dejar traza es un hallazgo.
+- **Rutas sin `require_edit` en el decorador, a propósito** — no es un
+  hallazgo, pero sí hay que revisar que adentro se siga chequeando:
+  - `POST /budget/expenses/{id}/transition` y `POST /budget/expenses/{id}/approve`
+    (alias): el router exige `require_view("budget")` y
+    `check_expense_transition()` exige, por transición, `can_approve` del
+    departamento, o "editor" (= `has_edit("budget")` + `can_edit` del depto), o
+    superadmin. El aprobador puede no tener `budget:edit`; agregar
+    `require_edit` lo dejaría afuera.
+  - Ninguna otra escritura de budget/payments va sin `require_edit` (o
+    `require_superadmin`).
+- **`status` nunca por PATCH/PUT**: un `{"status": "paid"}` en un update se
+  saltearía todo lo anterior. Grep: ningún update de `expenses` / `payments`
+  fuera de las transiciones debe escribir `status`.
+
+### 10c. Admin general (lo que no se recorta por fila)
+
+`_assert_general_admin()` = superadmin o fila `'*'` con `can_edit`. Lo exigen:
+`POST`/`PATCH` de `/budget/accounts`, `/accounts/{code}/remap`,
+`DELETE /budget/vendors/{id}`, cambiar `name` / `active` de un proveedor, crear
+un gasto ya `paid`, y **todo** lo que toque `vendors.bank_info` /
+`vendors.tax_id`:
+
+- Un no-admin recibe `has_bank_info: bool`, nunca el dato: ni en el GET, ni en
+  la **respuesta** de un POST/PATCH (`_shape_vendor`), ni como oráculo de
+  búsqueda (`search` sobre `tax_id` solo corre para el admin).
+- Un POST/PATCH de un no-admin que traiga esos campos —aunque sea en `null`—
+  es 403. Cambiar el CBU de un proveedor es el fraude de manual.
+
+El headcount y los supuestos no son de admin general sino de Competitions:
+los GET exigen **ver** ese departamento y los PUT **editarlo**.
+
+### 10d. Datos bancarios de personas (`personnel_banking`)
+
+- **Solo** por `/api/payments/personnel/{id}/banking/*` (hereda
+  `require_view("payments")`). **Nunca** por `personnel.py`: quien tiene
+  `personnel` sin `payments` no tiene que ver ni la ficha enmascarada. Ídem en
+  el front (`BankingPanel` solo con `hasView('payments')`, que es UX).
+- El GET **enmascara** `account_number`, `routing_number`, `iban` y nunca
+  devuelve `tax_form_path`.
+- `POST …/banking/reveal` (con `require_edit("payments")`) es el único camino a
+  los números completos y es **POST para que el activity log lo audite** (el
+  middleware no registra GETs). Pasarlo a GET borra la auditoría.
+- La descarga del W-8 es **`POST …/banking/tax-form/download`** con
+  `require_edit("payments")`, auditada igual que `reveal`. Un GET de descarga
+  ahí es un hallazgo.
+- El export de pagos no lleva números de cuenta.
+- El W-8 va al bucket **privado** `nominations` bajo `banking/`, solo PDF
+  (magic bytes `%PDF`), ≤ 10 MB.
+- Los adjuntos de pagos y gastos aceptan PDF o imagen, **sin SVG** (es
+  `image/*` pero lleva scripts), ≤ 10 MB (413).
+
+### 10e. Notificaciones (`/api/me/notifications`)
+
+- Router con `require_user`, sin permiso de módulo (como `/me` de profile).
+- **Toda** query filtra por `user_id` del caller, en lecturas **y** escrituras:
+  el `UPDATE` de marcar leída lleva `id` y `user_id` en el mismo filtro, así una
+  ajena da 404 igual que una inexistente. Un endpoint nuevo ahí sin ese filtro
+  es P0 (lee o modifica la bandeja de otro).
+- `/pending` solo calcula un ítem si el caller tiene el permiso que lo habilita
+  (`has_view` / `has_edit`) y devuelve contadores + link, nunca filas.
+- `notify()` es best-effort: un fallo nunca puede tumbar la transición.
+- `budget_approvers_for()` solo devuelve usuarios que además pueden entrar al
+  módulo (`budget` con `can_view`, o superadmin): una fila suelta de `budget_access` no recibe títulos de gastos (con
+  monto y departamento) de un módulo que no puede abrir.
+
+### 10f. Google Calendar (`/api/me/google-calendar`)
+
+- Router con `require_user`; toda query por el `user_id` del caller. Conectar y
+  sincronizar piden además `has_view('calendar') or has_view('games')`; el cron
+  re-chequea el permiso por usuario en cada corrida (`user_can_sync`).
+- `refresh_token_enc` va cifrado con Fernet (`GOOGLE_TOKEN_KEY`). **Ninguna**
+  respuesta lo devuelve, ni `oauth_state_hash`: todo pasa por `_public()` del
+  router. Un campo nuevo en la respuesta se agrega ahí, no devolviendo la fila.
+- El `state` del OAuth se guarda hasheado, vence a los 10 minutos, se compara
+  con `hmac.compare_digest` y se consume aunque el callback falle.
+- Scope mínimo `calendar.app.created`. Ampliarlo es un cambio de seguridad, no
+  de comodidad.
+
+## 11. Regla de dominio — neutralidad de árbitros
 
 - No se nomina/asigna un árbitro a juegos que involucran su país. La lógica se
   apoya en `country_code`/`nationalities` (migraciones `014_referee_neutrality`,
@@ -206,8 +396,22 @@ de Supabase Auth). Tenelos presentes pero no son código de este repo.
 - [ ] ¿Uploads con cap de tamaño + extensión validada?
 - [ ] ¿Se preservan los headers/CSP/CORS y el activity log?
 - [ ] Si toca REFs: ¿neutralidad intacta?
-- [ ] Si toca Budget: ¿toda query nueva pasa por `_scoped()`, con un solo
-      filtro por columna?
-- [ ] Si toca el Muro: ¿`require_view` para participar y `_assert_can_manage()`
-      / `require_edit` para lo ajeno? (no le pongas `require_edit` a publicar)
-- [ ] Si agrega un permiso: ¿CHECK + `MODULES` backend + `MODULES` frontend?
+- [ ] Budget: ¿toda query nueva (incluidos exports) pasa por `_scoped()`, con
+      un solo filtro sobre `department_code`? (Las únicas dos lecturas sin
+      `_scoped` son `/cost` y `/logistics/hotels/{id}/payments`, con su
+      proyección angosta.)
+- [ ] Gastos/pagos: ¿el `status` cambia solo por `/transition`, con
+      `created_by` y `last_financial_edit_by` distintos del aprobador y `reason`
+      obligatorio en el override? ¿`paid_amount` solo por `/record-partial` y
+      `/transition`?
+- [ ] ¿Las rutas sin `require_edit` en el decorador (transición/aprobación de
+      gastos) siguen chequeando el derecho adentro?
+- [ ] ¿`bank_info` / `tax_id` de proveedores siguen solo para el admin general
+      (GET, respuesta de PATCH y búsqueda)?
+- [ ] ¿`personnel_banking` sigue fuera de `personnel.py`, enmascarado en el GET
+      y con `reveal` y la descarga del W-8 como POST auditados?
+- [ ] `/me/*`: ¿cada query filtra por el `user_id` del caller?
+- [ ] Logística: ¿lo nuevo (contactos, salones, cargos, documentos) sigue fuera
+      de `/api/public/*`? ¿Los documentos validan magic bytes + 10 MB, nunca
+      devuelven `file_path` y se bajan por POST? ¿Un borrado que cascadea a
+      `logistics_documents` quita también los objetos de Storage?

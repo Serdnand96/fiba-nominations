@@ -12,8 +12,19 @@
 > `012_payments.sql` + `013_payments_airfare.sql`), el catálogo de budgets
 > es la tabla `payment_budgets`, y **no existen** ni la tabla `payees` ni
 > `competitions.kind`. El estado real vive en
-> `api/_lib/routers/payments.py` y `src/pages/Payments.jsx`; este archivo
-> queda como registro del relevamiento del legacy.
+> `api/_lib/routers/payments.py` y `src/pages/Payments.jsx` (+
+> `src/pages/payments/`); este archivo queda como registro del relevamiento
+> del legacy.
+>
+> **Desde octubre 2026 (migración 047) difiere todavía más:** el estado
+> `split` **ya no existe** (el pago parcial es un `in_process` con
+> `paid_amount`) y aparece `cancelled`; el `status` se mueve con una **máquina
+> de estados** (`POST /payments/{id}/transition`, completar exige el permiso
+> `payments_approve`, que lo complete otro, fecha, CM aprobado y W-8 vigente);
+> hay una **cola** de pagos de todos los eventos, alta y cambio de estado **en
+> lote**, export a Excel, y los datos bancarios y el W-8 viven **por persona**
+> en `personnel_banking`, no adjuntos a cada pago. El contrato vigente está en
+> `BUDGET_MODULE.md` §14-§16.
 
 ---
 

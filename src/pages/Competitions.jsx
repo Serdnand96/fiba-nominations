@@ -1,12 +1,13 @@
 import { useState, useEffect, useMemo, Fragment } from 'react'
-import { getCompetitions, createCompetition, updateCompetition, deleteCompetition, getNominations, getTemplates } from '../api/client'
+import { getCompetitions, createCompetition, updateCompetition, deleteCompetition, getNominations, getTemplates, discoverFibaCompetitions } from '../api/client'
 import { useLanguage } from '../i18n/LanguageContext'
 import { useAuth } from '../contexts/AuthContext'
 import { useToast } from '../components/ui/Toast'
 import { readLastSearch, writeLastSearch } from '../lib/lastSearch'
 import {
-  competitionYear, competitionYears, competitionDateRange, groupCompetitionsByYear,
+  competitionYear, competitionYears, competitionDateRange, groupCompetitionsByYear, isFibaLinked,
 } from '../lib/competitions'
+import FibaDiscoverModal from './competitions/FibaDiscoverModal'
 
 const TEMPLATE_BADGES = {
   WCQ: 'bg-red-500/20 text-red-400',
@@ -16,6 +17,14 @@ const TEMPLATE_BADGES = {
   GENERIC: 'bg-fiba-surface text-fiba-muted',
 }
 
+// How the built-in template keys are shown. Custom types show their own key.
+const TEMPLATE_LABELS = {
+  BCLA_F4: { es: 'BCLA Final Four', en: 'BCLA Final Four' },
+  BCLA_RS: { es: 'BCLA Temporada regular', en: 'BCLA Regular season' },
+  GENERIC: { es: 'Genérica', en: 'Generic' },
+}
+const templateLabel = (key, lang) => TEMPLATE_LABELS[key]?.[lang === 'en' ? 'en' : 'es'] || key
+
 // Last search (text + template + year filter), persisted across visits — same
 // pattern as Games. Restored synchronously as the initial state; los filtros de
 // template y año se re-validan contra los datos una vez que cargan.
@@ -24,6 +33,14 @@ const LAST_SEARCH_KEY = 'fiba_competitions_last_search'
 // El filtro de año usa 'all' para "todos" y `null` para "todavía no se eligió",
 // que es lo que dispara el default al año en curso cuando cargan los datos.
 const ALL_YEARS = 'all'
+
+const EMPTY_FORM = {
+  name: '', template_key: 'WCQ', year: new Date().getFullYear(), fiba_games_url: '', fiba_window_code: '',
+  fiba_group_codes: '', fiba_segment_from: '', fiba_segment_to: '', fee_type: 'per_game', is_national_team: true,
+}
+
+// '2026-12-09' → '09/12', para el resumen del tramo en la lista.
+const dayMonth = iso => `${iso.slice(8, 10)}/${iso.slice(5, 7)}`
 
 function loadLastSearch() {
   const parsed = readLastSearch(LAST_SEARCH_KEY)
@@ -37,7 +54,8 @@ function loadLastSearch() {
 }
 
 export default function Competitions() {
-  const { t } = useLanguage()
+  const { t, lang } = useLanguage()
+  const tx = (es, en) => (lang === 'en' ? en : es)
   const MONTHS_SHORT = t('months.short')
   const { hasEdit } = useAuth()
   const { push } = useToast()
@@ -48,7 +66,8 @@ export default function Competitions() {
   const [showModal, setShowModal] = useState(false)
   const [saving, setSaving] = useState(false)
   const [editing, setEditing] = useState(null)
-  const [form, setForm] = useState({ name: '', template_key: 'WCQ', year: new Date().getFullYear(), fiba_games_url: '', fiba_window_code: '', fee_type: 'per_game', is_national_team: true })
+  const [showDiscover, setShowDiscover] = useState(false)
+  const [form, setForm] = useState(EMPTY_FORM)
 
   // Search & filter — restored from the persisted last search
   const [search, setSearch] = useState(() => loadLastSearch()?.search || '')
@@ -145,13 +164,34 @@ export default function Competitions() {
 
   function openCreate() {
     setEditing(null)
-    setForm({ name: '', template_key: 'WCQ', year: new Date().getFullYear(), fiba_games_url: '', fiba_window_code: '', fee_type: 'per_game', is_national_team: true })
+    setForm(EMPTY_FORM)
+    setShowModal(true)
+  }
+
+  // Alta desde "Nuevas en FIBA": nombre, año, ID, fechas y sede salen de FIBA;
+  // la plantilla, el fee y si se divide en ventanas o grupos los decide quien
+  // la da de alta.
+  function openCreateFromFiba(item) {
+    setEditing(null)
+    setForm({
+      ...EMPTY_FORM,
+      name: item.name || '',
+      year: item.season || (item.start ? Number(item.start.slice(0, 4)) : new Date().getFullYear()),
+      template_key: 'GENERIC',
+      is_national_team: false,
+      fiba_games_url: String(item.fiba_competition_id),
+      start_date: item.start || null,
+      end_date: item.end || null,
+      month: item.start ? Number(item.start.slice(5, 7)) : null,
+      location: [item.host_city, item.host_country].filter(Boolean).join(', ') || null,
+    })
+    setShowDiscover(false)
     setShowModal(true)
   }
 
   function openEdit(comp) {
     setEditing(comp)
-    setForm({ name: comp.name, template_key: comp.template_key, year: comp.year || new Date().getFullYear(), fiba_games_url: comp.fiba_games_url || '', fiba_window_code: comp.fiba_window_code || '', fee_type: comp.fee_type || 'per_game', is_national_team: !!comp.is_national_team })
+    setForm({ name: comp.name, template_key: comp.template_key, year: comp.year || new Date().getFullYear(), fiba_games_url: comp.fiba_games_url || (comp.fiba_competition_id ? String(comp.fiba_competition_id) : ''), fiba_window_code: comp.fiba_window_code || '', fiba_group_codes: comp.fiba_group_codes || '', fiba_segment_from: comp.fiba_segment_from || '', fiba_segment_to: comp.fiba_segment_to || '', fee_type: comp.fee_type || 'per_game', is_national_team: !!comp.is_national_team })
     setShowModal(true)
   }
 
@@ -161,7 +201,12 @@ export default function Competitions() {
     setSaving(true)
     try {
       if (editing) {
-        await updateCompetition(editing.id, { ...form, year: parseInt(form.year) })
+        const payload = { ...form, year: parseInt(form.year) }
+        // Vaciar el campo desvincula. Una competencia dada de alta desde FIBA
+        // tiene el ID y no la URL, así que el backend no ve el cambio de URL:
+        // 0 es el "desvincular" explícito.
+        if (!form.fiba_games_url.trim() && editing.fiba_competition_id) payload.fiba_competition_id = 0
+        await updateCompetition(editing.id, payload)
       } else {
         await createCompetition({ ...form, year: parseInt(form.year) })
       }
@@ -196,9 +241,14 @@ export default function Competitions() {
       <div className="flex items-center justify-between mb-6">
         <h2 className="text-2xl font-bold text-ink-900 dark:text-white">{t('competitions.title')}</h2>
         {canEdit && (
-          <button onClick={openCreate} className="btn-fiba">
-            {t('competitions.newCompetition')}
-          </button>
+          <div className="flex flex-wrap gap-2">
+            <button onClick={() => setShowDiscover(true)} className="btn-fiba-ghost">
+              {t('competitions.fibaDiscover')}
+            </button>
+            <button onClick={openCreate} className="btn-fiba">
+              {t('competitions.newCompetition')}
+            </button>
+          </div>
         )}
       </div>
 
@@ -244,6 +294,7 @@ export default function Competitions() {
           />
           {search && (
             <button onClick={() => setSearch('')}
+              aria-label={tx('Limpiar búsqueda', 'Clear search')}
               className="absolute right-2 top-1/2 -translate-y-1/2 text-fiba-muted hover:text-ink-900 dark:text-white">
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -257,7 +308,7 @@ export default function Competitions() {
           className="fiba-select !w-auto min-w-[160px] flex-shrink-0"
         >
           <option value="">{t('competitions.allTemplates')}</option>
-          {templateOptions.map(t => <option key={t} value={t}>{t}</option>)}
+          {templateOptions.map(t => <option key={t} value={t}>{templateLabel(t, lang)}</option>)}
         </select>
         {(search || filterTemplate || filterYear !== ALL_YEARS) && (
           <span className="text-xs text-fiba-muted/60 self-center">{filtered.length} / {competitions.length}</span>
@@ -295,18 +346,33 @@ export default function Competitions() {
               <tr key={c.id}>
                 <td className="px-4 py-3">
                   <div className="font-medium">{c.name}</div>
-                  {c.fiba_games_url && (
-                    <div className="text-[11px] text-emerald-400 mt-0.5 flex items-center gap-1">
+                  {isFibaLinked(c) && (
+                    <div className="text-[11px] text-emerald-400 mt-0.5 flex items-center gap-1"
+                      title={c.fiba_synced_at ? `${t('competitions.fibaLastSync')}: ${new Date(c.fiba_synced_at).toLocaleString()}` : undefined}>
                       <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                       </svg>
-                      FIBA linked
+                      {tx('Vinculada con FIBA', 'Linked to FIBA')}
+                      {c.fiba_competition_id && <span className="font-mono text-emerald-400/70">#{c.fiba_competition_id}</span>}
+                      {(c.fiba_window_code || c.fiba_group_codes || c.fiba_segment_from) && (
+                        <span className="text-emerald-400/70">· {[
+                          c.fiba_window_code,
+                          c.fiba_group_codes,
+                          c.fiba_segment_from && c.fiba_segment_to && `${dayMonth(c.fiba_segment_from)}-${dayMonth(c.fiba_segment_to)}`,
+                        ].filter(Boolean).join(' · ')}</span>
+                      )}
+                    </div>
+                  )}
+                  {/* El cron no tiene a quién mostrarle un error: queda acá. */}
+                  {c.fiba_sync_error && (
+                    <div className="text-[11px] text-red-400 mt-0.5 truncate max-w-xs" title={c.fiba_sync_error}>
+                      {t('competitions.fibaSyncError')}: {c.fiba_sync_error}
                     </div>
                   )}
                 </td>
                 <td className="px-4 py-3">
                   <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${TEMPLATE_BADGES[c.template_key] || ''}`}>
-                    {c.template_key}
+                    {templateLabel(c.template_key, lang)}
                   </span>
                 </td>
                 {/* Las fechas llevan el año adentro aunque el grupo ya lo diga:
@@ -315,7 +381,7 @@ export default function Competitions() {
                 <td className="px-4 py-3 whitespace-nowrap text-sm tabular-nums">
                   {competitionDateRange(c, MONTHS_SHORT, { year: true }) || (
                     <span className="text-xs bg-amber-100 text-amber-800 dark:bg-amber-500/20 dark:text-amber-400 px-1.5 py-0.5 rounded font-medium">
-                      {c.year ? `TBD ${c.year}` : 'TBD'}
+                      {c.year ? tx(`${c.year}, por confirmar`, `TBD ${c.year}`) : tx('Por confirmar', 'TBD')}
                     </span>
                   )}
                 </td>
@@ -342,6 +408,10 @@ export default function Competitions() {
         </div>
       </div>
 
+      {showDiscover && (
+        <FibaDiscoverModal onClose={() => setShowDiscover(false)} onPick={openCreateFromFiba} />
+      )}
+
       {showModal && (
         <div className="fiba-modal-overlay">
           <div className="fiba-modal max-w-md p-6">
@@ -352,10 +422,10 @@ export default function Competitions() {
                 onChange={e => setForm(f => ({ ...f, template_key: e.target.value, is_national_team: e.target.value === 'WCQ' }))}
                 className="fiba-select">
                 <option value="WCQ">WCQ</option>
-                <option value="BCLA_F4">BCLA Final 4</option>
-                <option value="BCLA_RS">BCLA Regular Season</option>
+                <option value="BCLA_F4">{templateLabel('BCLA_F4', lang)}</option>
+                <option value="BCLA_RS">{templateLabel('BCLA_RS', lang)}</option>
                 <option value="LSB">LSB</option>
-                <option value="GENERIC">GENERIC</option>
+                <option value="GENERIC">{templateLabel('GENERIC', lang)}</option>
                 {/* Types created on the Templates page, so a new event can be
                     wired to its own letter without a code change. */}
                 {customTemplates.map(tmpl => (
@@ -382,11 +452,42 @@ export default function Competitions() {
                 </select>
                 <p className="text-xs text-fiba-muted/60 mt-1">{t('competitions.fibaWindowHint')}</p>
               </div>
+              {/* Grupos: la LSB es UNA competencia en FIBA y acá son siete
+                  (grupos, QFs, Finals). Mismo problema que la ventana, otra
+                  columna (migración 051). */}
               <div>
-                <label className="text-xs text-fiba-muted block mb-1">Fee type</label>
+                <label className="text-xs text-fiba-muted block mb-1">{t('competitions.fibaGroups')}</label>
+                <input placeholder={tx('Ej.: A o 37,38,39,40', 'e.g. A or 37,38,39,40')} value={form.fiba_group_codes}
+                  onChange={e => setForm(f => ({ ...f, fiba_group_codes: e.target.value }))}
+                  className="fiba-input" />
+                <p className="text-xs text-fiba-muted/60 mt-1">{t('competitions.fibaGroupsHint')}</p>
+              </div>
+              {/* Tramo por fechas: la BCLA no trae ventanas en el feed y B, C y D
+                  juegan en las tres, así que lo único que separa W1/W2/W3 es la
+                  fecha de los partidos (migración 053). No son start/end_date. */}
+              <div>
+                <label className="text-xs text-fiba-muted block mb-1">{t('competitions.fibaSegment')}</label>
+                <div className="grid grid-cols-2 gap-2">
+                  <input type="date" aria-label={t('competitions.fibaSegmentFrom')} value={form.fiba_segment_from}
+                    onChange={e => setForm(f => ({ ...f, fiba_segment_from: e.target.value }))}
+                    className="fiba-input" />
+                  <input type="date" aria-label={t('competitions.fibaSegmentTo')} value={form.fiba_segment_to}
+                    min={form.fiba_segment_from || undefined}
+                    onChange={e => setForm(f => ({ ...f, fiba_segment_to: e.target.value }))}
+                    className="fiba-input" />
+                </div>
+                <p className="text-xs text-fiba-muted/60 mt-1">{t('competitions.fibaSegmentHint')}</p>
+              </div>
+              {!editing && form.start_date && (
+                <p className="text-xs text-fiba-muted">
+                  {t('competitions.fibaDatesPrefilled')}: {tx(`del ${form.start_date} al ${form.end_date}`, `${form.start_date} to ${form.end_date}`)}{form.location ? `, ${form.location}` : ''}
+                </p>
+              )}
+              <div>
+                <label className="text-xs text-fiba-muted block mb-1">{tx('Tipo de tarifa', 'Fee type')}</label>
                 <select value={form.fee_type} onChange={e => setForm(f => ({ ...f, fee_type: e.target.value }))} className="fiba-select">
-                  <option value="per_game">Per Game Fee</option>
-                  <option value="tournament">Tournament Fee</option>
+                  <option value="per_game">{tx('Tarifa por partido', 'Per game fee')}</option>
+                  <option value="tournament">{tx('Tarifa por torneo', 'Tournament fee')}</option>
                 </select>
                 <p className="text-xs text-fiba-muted/60 mt-1">{t('competitions.feeTypeHint')}</p>
               </div>

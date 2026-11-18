@@ -1,10 +1,11 @@
 import { lazy, Suspense, useState, useEffect } from 'react'
-import { Routes, Route, NavLink, Navigate } from 'react-router-dom'
+import { Routes, Route, NavLink, Navigate, useLocation, useSearchParams } from 'react-router-dom'
 import { useAuth } from './contexts/AuthContext'
 import { useLanguage } from './i18n/LanguageContext'
 import { Icon } from './lib/icons'
 import { Avatar } from './components/ui'
 import ProfileModal from './components/ProfileModal'
+import NotificationsBell from './components/NotificationsBell'
 
 // Eager-load Login (always shown when logged out) and PublicAsset (no-auth route)
 import Login from './pages/Login'
@@ -41,6 +42,7 @@ const Budget       = lazy(() => import('./pages/Budget'))
 const Reports      = lazy(() => import('./pages/Reports'))
 const Evaluations  = lazy(() => import('./pages/Evaluations'))
 const Activity     = lazy(() => import('./pages/Activity'))
+const GoogleCallback = lazy(() => import('./pages/GoogleCallback'))
 
 /* ── Module → icon map (uses Tabler-style icons from lib/icons) ──── */
 const moduleIcon = {
@@ -104,6 +106,9 @@ function PermissionGuard({ module, children }) {
   return children
 }
 
+// Rutas sin sesión: activo por QR, disponibilidad, logística y checklist.
+const PUBLIC_PATH = /^\/(asset\/[0-9a-f-]+|(availability|logistica|checklist)\/[A-Za-z0-9_-]{16,}$)/i
+
 export default function App() {
   const { user, loading, hasView, isSuperadmin } = useAuth()
   const { t } = useLanguage()
@@ -117,8 +122,13 @@ export default function App() {
     return stored === null ? true : stored === '1'
   })
 
-  // Sync dark mode with <html> class + localStorage
+  // Sync dark mode with <html> class + localStorage.
+  // Los enlaces públicos se muestran siempre en claro y no tocan la preferencia.
   useEffect(() => {
+    if (PUBLIC_PATH.test(window.location.pathname)) {
+      document.documentElement.classList.remove('dark')
+      return
+    }
     document.documentElement.classList.toggle('dark', dark)
     localStorage.setItem('fiba_dark', dark ? '1' : '0')
   }, [dark])
@@ -255,7 +265,7 @@ export default function App() {
           />
           <div className={`leading-tight min-w-0 ${sidebarCollapsed ? 'md:hidden' : ''}`}>
             <div className="text-[13px] font-semibold truncate">Americas</div>
-            <div className="text-2xs text-navy-300 font-medium tracking-wide truncate">{t('app.subtitle') || 'Nominations'}</div>
+            <div className="text-2xs text-navy-300 font-medium tracking-wide truncate">{t('app.subtitle')}</div>
           </div>
         </div>
 
@@ -336,6 +346,7 @@ export default function App() {
           </div>
 
           <div className="flex items-center gap-1">
+            <NotificationsBell />
             <button
               onClick={() => setDark(d => !d)}
               aria-label={t('common.toggleTheme')}
@@ -356,7 +367,9 @@ export default function App() {
               </div>
             }>
               <Routes>
-                <Route path="/" element={<Navigate to={defaultRoute} replace />} />
+                <Route path="/" element={<RootRedirect to={defaultRoute} />} />
+                {/* Vuelta del OAuth de Google. Sin PermissionGuard: el backend exige calendar o games. */}
+                <Route path="/google/callback" element={<GoogleCallback />} />
                 <Route path="/muro"            element={<PermissionGuard module="feed"><Feed /></PermissionGuard>} />
                 <Route path="/calendar"        element={<PermissionGuard module="calendar"><Calendar /></PermissionGuard>} />
                 <Route path="/nominations"     element={<PermissionGuard module="nominations"><Nominations /></PermissionGuard>} />
@@ -415,16 +428,34 @@ function LanguageSwitcher() {
   )
 }
 
+// `/` → la primera página visible, sin perder el query: `/?profile=google`
+// (la campana y la vuelta del OAuth de Google) tiene que llegar a UserCard.
+function RootRedirect({ to }) {
+  const { search } = useLocation()
+  return <Navigate to={{ pathname: to, search }} replace />
+}
+
 function UserCard({ collapsed, onOpen }) {
   const { signOut, user, isSuperadmin, profile } = useAuth()
   const { t } = useLanguage()
   const [open, setOpen] = useState(false)
+  const [initialTab, setInitialTab] = useState('photo')
+  const [searchParams, setSearchParams] = useSearchParams()
   const role = isSuperadmin ? t('common.superadmin') : t('common.user')
 
+  // `?profile=<pestaña>` abre Mi perfil en esa pestaña y se borra de la URL.
+  const profileParam = searchParams.get('profile')
+  useEffect(() => {
+    if (!profileParam) return
+    setInitialTab(profileParam)
+    setOpen(true)
+    setSearchParams(prev => { const next = new URLSearchParams(prev); next.delete('profile'); return next }, { replace: true })
+  }, [profileParam, setSearchParams])
+
   // Cierra el drawer móvil al abrir el perfil, si no queda abierto detrás.
-  const openProfile = () => { setOpen(true); onOpen?.() }
+  const openProfile = () => { setInitialTab('photo'); setOpen(true); onOpen?.() }
   const avatar = <Avatar name={user.email} src={profile?.avatar_url || null} size="md" tone="basketball" />
-  const modal = <ProfileModal open={open} onClose={() => setOpen(false)} />
+  const modal = <ProfileModal open={open} initialTab={initialTab} onClose={() => setOpen(false)} />
   const logoutBtn = (
     <button
       type="button"

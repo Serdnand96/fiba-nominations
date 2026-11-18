@@ -9,17 +9,21 @@
 // esos text-*-400 daban ~1.5-2.5:1, muy por debajo de AA. En claro se usa el
 // tono -700 sobre -100; en oscuro se conserva el look original.
 export const ROLES = [
-  { value: 'VGO',            label: 'VGO',                badge: 'bg-purple-100 text-purple-700 dark:bg-purple-500/20 dark:text-purple-400' },
-  { value: 'TD',             label: 'TD',                 badge: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-400' },
-  { value: 'REF',            label: 'Referee',            badge: 'bg-orange-100 text-orange-700 dark:bg-orange-500/20 dark:text-orange-400' },
-  { value: 'REF_INSTRUCTOR', label: 'Referee Instructor', badge: 'bg-sky-100 text-sky-700 dark:bg-sky-500/20 dark:text-sky-400' },
-  { value: 'VIDEO_OPERATOR', label: 'Video Operator',     badge: 'bg-rose-100 text-rose-700 dark:bg-rose-500/20 dark:text-rose-400' },
+  { value: 'VGO',            label: 'VGO',                i18nKey: null,                   badge: 'bg-purple-100 text-purple-700 dark:bg-purple-500/20 dark:text-purple-400' },
+  { value: 'TD',             label: 'TD',                 i18nKey: null,                   badge: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-400' },
+  { value: 'REF',            label: 'Referee',            i18nKey: 'roles.REF',            badge: 'bg-orange-100 text-orange-700 dark:bg-orange-500/20 dark:text-orange-400' },
+  { value: 'REF_INSTRUCTOR', label: 'Referee Instructor', i18nKey: 'roles.REF_INSTRUCTOR', badge: 'bg-sky-100 text-sky-700 dark:bg-sky-500/20 dark:text-sky-400' },
+  { value: 'VIDEO_OPERATOR', label: 'Video Operator',     i18nKey: 'roles.VIDEO_OPERATOR', badge: 'bg-rose-100 text-rose-700 dark:bg-rose-500/20 dark:text-rose-400' },
 ]
 
 const _BY_VALUE = Object.fromEntries(ROLES.map(r => [r.value, r]))
 
-export function roleLabel(role) {
-  return _BY_VALUE[role]?.label || role || '—'
+// Con `t` (de useLanguage) el rol sale en el idioma activo. TD y VGO se
+// muestran siempre como sigla.
+export function roleLabel(role, t) {
+  const entry = _BY_VALUE[role]
+  if (!entry) return role || '-'
+  return entry.i18nKey && t ? t(entry.i18nKey) : entry.label
 }
 
 export function roleBadgeClass(role) {

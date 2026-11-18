@@ -6,6 +6,7 @@ import re
 
 from api._lib.database import supabase
 from api._lib.auth import require_superadmin
+from api._lib.services import google_calendar
 # One module list for the whole backend: here it seeds the all-false rows on
 # user creation, there it builds the permission grid.
 from api._lib.routers.permissions import MODULES
@@ -155,6 +156,9 @@ def delete_user(user_id: str):
     try:
         client = _get_admin_client()
         client.auth.admin.delete_user(user_id)
+        # Su conexión con Google Calendar: revocar el token y borrar la fila
+        # (la tabla no tiene FK a auth.users). Best-effort.
+        google_calendar.forget_user(user_id)
         return {"ok": True}
     except Exception as e:
         raise _auth_error(e, "Failed to delete user")

@@ -38,6 +38,7 @@ from openpyxl import Workbook, load_workbook
 from openpyxl.styles import Alignment, Font, PatternFill
 
 from api._lib.database import supabase
+from api._lib.services.xlsx_utils import workbook_bytes
 
 # Claves especiales del mapeo de columnas/valores de competencia.
 GENERAL = "__general__"   # gasto sin evento (competition_id = NULL)
@@ -1197,6 +1198,4 @@ def export_lines_xlsx(lines: list, year: int, lang: str = "es") -> bytes:
         for cell in row:
             cell.number_format = "#,##0.00"
 
-    buf = io.BytesIO()
-    wb.save(buf)
-    return buf.getvalue()
+    return workbook_bytes(wb, f"Budget {year}")

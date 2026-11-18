@@ -6,6 +6,7 @@ import {
   submitGameChecklist, reopenGameChecklist, deleteGameChecklist,
 } from '../../api/client'
 import ChecklistRunner from './ChecklistRunner'
+import { Icon } from '../../lib/icons'
 
 // Los checklists de un partido, desde adentro del sistema.
 //
@@ -40,7 +41,7 @@ export default function GameChecklistModal({ game, templates, canEdit, onClose, 
 
   async function guard(fn) {
     try { await fn(); await reload() }
-    catch (err) { push({ type: 'error', title: err.response?.data?.detail || 'Error' }) }
+    catch (err) { push({ type: 'error', title: err.response?.data?.detail || t('No se pudo guardar el cambio.', 'Could not save the change.') }) }
   }
 
   const handleStart = tpl => guard(() => startGameChecklist(game.id, tpl.id))
@@ -48,8 +49,8 @@ export default function GameChecklistModal({ game, templates, canEdit, onClose, 
   const handleSubmit = run => guard(() => submitGameChecklist(run.id))
   const handleReopen = run => guard(() => reopenGameChecklist(run.id))
   const handleDelete = run => {
-    if (!confirm(t(`Borrar el checklist "${run.template_name}" de este partido. ¿Continuar?`,
-                   `Delete the "${run.template_name}" checklist from this game. Continue?`))) return
+    if (!confirm(t(`¿Eliminar el checklist "${run.template_name}" de este partido?`,
+                   `Delete the "${run.template_name}" checklist from this game?`))) return
     return guard(() => deleteGameChecklist(run.id))
   }
 
@@ -63,7 +64,10 @@ export default function GameChecklistModal({ game, templates, canEdit, onClose, 
           <h3 className="text-lg font-bold text-ink-900 dark:text-white">
             {t('Control de operación', 'Operations control')}
           </h3>
-          <button onClick={onClose} className="text-fiba-muted hover:text-ink-700 dark:hover:text-white text-xl leading-none">&times;</button>
+          <button onClick={onClose} aria-label={t('Cerrar', 'Close')} title={t('Cerrar', 'Close')}
+            className="text-fiba-muted hover:text-ink-700 dark:hover:text-white">
+            <Icon.X className="w-5 h-5" />
+          </button>
         </div>
         <p className="text-xs text-fiba-muted mb-5">
           {matchup}

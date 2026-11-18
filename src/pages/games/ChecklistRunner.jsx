@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Icon } from '../../lib/icons'
 
 // La corrida de un checklist, pintada igual adentro del sistema y afuera en el
 // link público. Es un componente tonto a propósito: recibe las corridas ya
@@ -11,9 +12,9 @@ import { useState } from 'react'
 // consulta.
 
 const STATUSES = [
-  { key: 'ok', es: 'OK', en: 'OK', cls: 'border-emerald-500/50 bg-emerald-500/15 text-emerald-400' },
-  { key: 'fail', es: 'Falla', en: 'Fail', cls: 'border-red-500/50 bg-red-500/15 text-red-400' },
-  { key: 'na', es: 'N/A', en: 'N/A', cls: 'border-fiba-border bg-fiba-surface text-fiba-muted' },
+  { key: 'ok', es: 'OK', en: 'OK', cls: 'border-success-600 bg-success-50 text-success-700 dark:border-success-500/50 dark:bg-success-500/15 dark:text-success-500' },
+  { key: 'fail', es: 'Falla', en: 'Fail', cls: 'border-danger-600 bg-danger-50 text-danger-700 dark:border-danger-500/50 dark:bg-danger-500/15 dark:text-danger-500' },
+  { key: 'na', es: 'No aplica', en: 'N/A', cls: 'border-fiba-border bg-fiba-surface text-fiba-muted' },
 ]
 
 export function runTone(run) {
@@ -48,8 +49,9 @@ export default function ChecklistRunner({
         <div className="flex flex-wrap items-center gap-2 pt-1">
           <span className="text-[11px] text-fiba-muted">{startLabel || t('Abrir checklist:', 'Open checklist:')}</span>
           {openable.map(tpl => (
-            <button key={tpl.id} onClick={() => onStart(tpl)} className="btn-fiba-ghost text-xs px-2.5 py-1">
-              + {tpl.name}
+            <button key={tpl.id} onClick={() => onStart(tpl)} className="btn-fiba-ghost text-xs px-2.5 py-1 inline-flex items-center gap-1">
+              <Icon.Plus className="w-3.5 h-3.5" />
+              {tpl.name}
             </button>
           ))}
         </div>
@@ -66,7 +68,7 @@ function RunBlock({ t, run, canEdit, onSetItem, onSubmit, onReopen, onDelete }) 
 
   return (
     <div className={`border rounded-lg overflow-hidden ${
-      tone === 'fail' ? 'border-red-500/40' : closed ? 'border-emerald-500/30' : 'border-fiba-border'
+      tone === 'fail' ? 'border-danger-500/50' : closed ? 'border-success-500/40' : 'border-fiba-border'
     }`}>
       <div className="flex items-start gap-3 px-3 py-2 bg-fiba-surface/60">
         <div className="min-w-0 flex-1">
@@ -74,10 +76,10 @@ function RunBlock({ t, run, canEdit, onSetItem, onSubmit, onReopen, onDelete }) 
           <div className="text-[11px] text-fiba-muted">
             {run.done}/{run.total}
             {run.failed > 0 && (
-              <span className="text-red-400 font-semibold"> · {run.failed} {t('con falla', 'failing')}</span>
+              <span className="text-danger-700 dark:text-danger-500 font-semibold"> · {run.failed} {t('con falla', 'failing')}</span>
             )}
             {closed && (
-              <span className="text-emerald-400"> · {t('cerrado por', 'closed by')} {run.signed_name || '—'}</span>
+              <span className="text-success-700 dark:text-success-500"> · {t('cerrado por', 'closed by')} {run.signed_name || '-'}</span>
             )}
           </div>
         </div>
@@ -97,7 +99,11 @@ function RunBlock({ t, run, canEdit, onSetItem, onSubmit, onReopen, onDelete }) 
             </button>
           )}
           {canEdit && onDelete && (
-            <button onClick={() => onDelete(run)} className="text-fiba-muted hover:text-red-400">×</button>
+            <button onClick={() => onDelete(run)}
+              aria-label={t('Eliminar checklist', 'Delete checklist')} title={t('Eliminar checklist', 'Delete checklist')}
+              className="text-fiba-muted hover:text-danger-600 dark:hover:text-danger-500">
+              <Icon.X className="w-4 h-4" />
+            </button>
           )}
         </div>
       </div>
@@ -170,7 +176,7 @@ function ItemRow({ t, item, editable, onSetItem }) {
             <input className="fiba-input text-xs" value={note} onChange={e => setNote(e.target.value)}
               onBlur={commitNote}
               placeholder={item.status === 'fail'
-                ? t('¿Qué falló? (queda en el registro)', 'What failed? (kept on the record)')
+                ? t('¿Qué falló?', 'What failed?')
                 : t('Nota', 'Note')} />
           ) : (
             item.notes && <p className="text-[11px] text-fiba-muted italic">{item.notes}</p>
@@ -178,8 +184,9 @@ function ItemRow({ t, item, editable, onSetItem }) {
         </div>
       )}
       {!noteOpen && editable && !item.notes && (
-        <button onClick={() => setNoteOpen(true)} className="mt-1 text-[10px] text-fiba-muted hover:text-fiba-accent">
-          + {t('nota', 'note')}
+        <button onClick={() => setNoteOpen(true)} className="mt-1 text-[10px] text-fiba-muted hover:text-fiba-accent inline-flex items-center gap-0.5">
+          <Icon.Plus className="w-3 h-3" />
+          {t('Agregar nota', 'Add note')}
         </button>
       )}
     </div>

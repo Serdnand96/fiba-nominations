@@ -210,6 +210,36 @@ sudo tail -f /var/log/nginx/error.log
 
 ---
 
+## Fuentes de las cartas (LibreOffice)
+
+Las cartas de nominación se convierten a PDF con `soffice --headless` en el
+droplet. Las plantillas declaran Univers, IBM Plex Sans, Cochocib Script y
+Titillium, y el droplet **no tiene ninguna**: sin más, fontconfig las reemplaza
+por DejaVu Sans y la carta sale con los títulos partidos y la firma rota.
+
+No hay nada que instalar en el sistema. `fonts/` viene en el repo con las
+fuentes libres (IBM Plex Sans, IBM Plex Sans Condensed, PT Sans Narrow, Alex
+Brush, Titillium Web) y un `fonts/fonts.conf` con los alias
+(`Univers → Nimbus Sans`, `Cochocib Script → Alex Brush`, …).
+`document_generator._convert_to_pdf_libreoffice()` lanza `soffice` con
+`FONTCONFIG_FILE=/opt/fiba-nominations/fonts/fonts.conf`, así que el `git
+reset --hard` del deploy alcanza para que la próxima conversión las use.
+
+Para verificar en el droplet qué resuelve cada familia:
+
+```bash
+FONTCONFIG_FILE=/opt/fiba-nominations/fonts/fonts.conf fc-match "Univers"
+FONTCONFIG_FILE=/opt/fiba-nominations/fonts/fonts.conf fc-match "Cochocib Script Latin Pro"
+```
+
+Si FIBA entrega las fuentes con licencia (Univers, Cochocib Script Latin Pro),
+van a `/opt/fiba-nominations/fonts/private/` (gitignoreado, sobrevive al
+deploy). Al estar presentes ganan sobre el sustituto sin tocar nada más. La
+pantalla de Templates muestra por plantilla qué familia sale como está, cuál
+sustituida y cuál falta.
+
+---
+
 ## Environment variables (`/opt/fiba-nominations/.env`)
 
 ```bash
@@ -230,8 +260,22 @@ CORS_ORIGINS=https://www.fibaapp.com,https://fibaapp.com
 # (sin la key ese export sirve .docx; las cartas no la necesitan)
 # CLOUDCONVERT_API_KEY=
 
-# API de FIBA (GDAP) — sin esto no funciona "Sincronizar resultados"
+# FIBA GDAP — sync de partidos/resultados/fechas y "Nuevas en FIBA".
+# Primary key de https://gdap-portal.fiba.basketball/profile
+GDAP_API_KEY=…
+# Feed de la web de FIBA: respaldo del sync de partidos si falta la de GDAP
 FIBA_API_KEY=…
+
+# Google Calendar — sync de partidos al calendario de cada usuario (ver abajo).
+# Sin las tres, la pestaña de Mi perfil dice "no configurado" y el cron no hace nada.
+GOOGLE_OAUTH_CLIENT_ID=….apps.googleusercontent.com
+GOOGLE_OAUTH_CLIENT_SECRET=…
+# Cifra los refresh tokens guardados. Generarla UNA vez con:
+#   ./venv/bin/python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+# Cambiarla desconecta a todos (tienen que volver a conectar): no la rotes sin avisar.
+GOOGLE_TOKEN_KEY=…
+# Opcional: por defecto es $PUBLIC_APP_URL/google/callback (https://www.fibaapp.com/google/callback)
+# GOOGLE_OAUTH_REDIRECT_URI=
 ```
 
 El archivo tiene que ser `600` y de `fiba:fiba`: contiene el
@@ -239,6 +283,32 @@ El archivo tiene que ser `600` y de `fiba:fiba`: contiene el
 
 Después de tocar `.env`, **reiniciar el servicio** (`sudo systemctl
 restart fiba-api`).
+
+### Google Calendar: setup en Google Cloud (una vez)
+
+1. En https://console.cloud.google.com crear un proyecto (p.ej. "FIBA Americas
+   App") y habilitar **Google Calendar API** (APIs & Services → Library).
+2. **OAuth consent screen**: tipo *External*, nombre "FIBA Americas", dominio
+   autorizado `fibaapp.com`, email de soporte. Scopes: `openid`, `email` y
+   `https://www.googleapis.com/auth/calendar.app.created` (la app solo ve los
+   calendarios que ella crea, no el principal de nadie).
+3. **Credentials → Create credentials → OAuth client ID → Web application**.
+   Authorized redirect URIs:
+   - `https://www.fibaapp.com/google/callback`
+   - `http://localhost:5173/google/callback` (dev)
+4. Pasar la app a **"In production"** (Publishing status). ⚠️ En *Testing*
+   Google vence los refresh tokens **a los 7 días** y solo entran los test
+   users: todos tendrían que reconectar cada semana. En producción sin
+   verificar, Google muestra el aviso de "app no verificada" (Avanzado →
+   continuar) y permite hasta 100 usuarios: alcanza para el equipo. La
+   verificación formal es opcional.
+5. **Antes del push** del código: aplicar a mano
+   `supabase/migrations/052_google_calendar.sql` en Supabase (como todas las
+   migraciones, CLAUDE.md punto 17).
+6. Copiar client ID y secret al `.env` (arriba), generar `GOOGLE_TOKEN_KEY` y
+   reiniciar `fiba-api`. Sin esas variables la pestaña dice "no configurado" y
+   no toca la tabla.
+7. Instalar el cron (cabecera de `scripts/google_calendar_sync.py`).
 
 ---
 
@@ -323,4 +393,14 @@ ssh fiba sudo systemctl is-active nginx
 - **Keepalive Supabase:** `/var/log/fiba-supabase-keepalive.log`
   (cron diario `/etc/cron.d/fiba-supabase-keepalive` — evita el
   auto-pause del plan Free)
+- **Sync con FIBA:** `/var/log/fiba-gdap-sync.log` (cron
+  `/etc/cron.d/fiba-gdap-sync`: `--live` cada 15 min para las competencias en
+  curso, `--all` a las 06:00 UTC). Instalación en la cabecera de
+  `scripts/fiba_sync.py`. El último error de cada competencia queda además en
+  `competitions.fiba_sync_error` y se ve en Competencias y en el Calendario.
+- **Sync con Google Calendar:** `/var/log/fiba-google-calendar.log` (cron
+  `/etc/cron.d/fiba-google-calendar`, minutos 5/20/35/50, después del `--live`
+  de FIBA). Instalación en la cabecera de `scripts/google_calendar_sync.py`. El
+  último error de cada usuario queda en `google_calendar_links.last_sync_error`
+  y lo ve en Mi perfil → Google Calendar.
 - **No hay alerting externo** (Sentry / Datadog) — pendiente

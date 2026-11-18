@@ -3,20 +3,22 @@ import { useParams } from 'react-router-dom'
 import { getPublicAsset } from '../api/client'
 import { useLanguage } from '../i18n/LanguageContext'
 import { camel } from '../lib/utils'
-import { LogoMonogram } from '../components/brand/Logo'
+import { Icon } from '../lib/icons'
+import { Badge } from '../components/ui/Badge'
+import { PublicShell, PublicUnavailable } from '../components/layout/PublicShell'
 
-// Tonos dark-aware: -700 sobre la card blanca (claro), -400 sobre navy (oscuro).
-// Los -400 sueltos daban ~1.5-2.5:1 sobre blanco.
-const STATUS_LABEL = {
-  available:   { color: 'text-success-700 dark:text-success-400', icon: '✓' },
-  in_use:      { color: 'text-info-700 dark:text-info-400', icon: '→' },
-  maintenance: { color: 'text-warning-700 dark:text-warning-400', icon: '⚙' },
-  retired:     { color: 'text-ink-500 dark:text-ink-400', icon: '✕' },
+// Estado del activo como Badge del design system: el tono ya trae su variante
+// dark y contraste AA sobre la card blanca.
+const STATUS_BADGE = {
+  available:   { tone: 'success', icon: <Icon.Check /> },
+  in_use:      { tone: 'info',    icon: <Icon.Chevron /> },
+  maintenance: { tone: 'warning', icon: <Icon.Tool /> },
+  retired:     { tone: 'ink',     icon: <Icon.X /> },
 }
 
 export default function PublicAsset() {
   const { id } = useParams()
-  const { t } = useLanguage()
+  const { t, lang } = useLanguage()
   const [asset, setAsset] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
@@ -29,31 +31,23 @@ export default function PublicAsset() {
     return () => { cancelled = true }
   }, [id])
 
+  const inventoryTitle = lang === 'es' ? 'Inventario FIBA Americas' : 'FIBA Americas Inventory'
+
   if (loading) return (
-    <div className="min-h-screen bg-fiba-dark flex items-center justify-center">
-      <div className="text-fiba-muted">{t('common.loading')}</div>
-    </div>
+    <PublicShell width="max-w-md" title={inventoryTitle}>
+      <div className="flex justify-center py-20 text-sm text-fiba-muted">{t('common.loading')}</div>
+    </PublicShell>
   )
 
   if (error || !asset) return (
-    <div className="min-h-screen bg-fiba-dark flex items-center justify-center p-6">
-      <div className="text-center">
-        <h1 className="text-xl font-bold text-ink-900 dark:text-white mb-2">{t('assets.notFound')}</h1>
-        <p className="text-fiba-muted text-sm">ID: {id}</p>
-      </div>
-    </div>
+    <PublicUnavailable title={t('assets.notFound')} message={`ID: ${id}`} />
   )
 
-  const statusStyle = STATUS_LABEL[asset.status] || {}
+  const status = STATUS_BADGE[asset.status] || { tone: 'ink' }
 
   return (
-    <div className="min-h-screen bg-fiba-dark p-6 flex items-center justify-center">
-      <div className="max-w-md w-full">
-        <div className="text-center mb-6">
-          <LogoMonogram size={48} className="mx-auto mb-3 rounded-xl" />
-          <p className="text-fiba-muted text-xs">FIBA Americas Inventory</p>
-        </div>
-
+    <PublicShell width="max-w-md" title={inventoryTitle}>
+      <div className="max-w-md mx-auto px-4 py-6">
         <div className="fiba-card p-6">
           {asset.photo_url && (
             <img src={asset.photo_url} alt={asset.name} className="w-full rounded-lg mb-4 aspect-square object-cover" />
@@ -62,8 +56,10 @@ export default function PublicAsset() {
           <h1 className="text-2xl font-bold text-ink-900 dark:text-white mb-1">{asset.name}</h1>
           {asset.brand && <p className="text-fiba-muted text-sm mb-3">{asset.brand} {asset.model}</p>}
 
-          <div className={`text-lg font-bold mb-4 ${statusStyle.color}`}>
-            {statusStyle.icon} {t(`assets.${camel(asset.status)}`)}
+          <div className="mb-4">
+            <Badge tone={status.tone} size="lg" icon={status.icon}>
+              {t(`assets.${camel(asset.status)}`)}
+            </Badge>
           </div>
 
           <dl className="space-y-2 text-sm">
@@ -80,7 +76,7 @@ export default function PublicAsset() {
           </dl>
         </div>
       </div>
-    </div>
+    </PublicShell>
   )
 }
 

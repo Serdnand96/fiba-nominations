@@ -1,7 +1,11 @@
-from fastapi import APIRouter, HTTPException, Depends
+import re
+from datetime import date
+
+from fastapi import APIRouter, HTTPException, Depends, Query
 from api._lib.database import supabase
 from api._lib.auth import require_view, require_edit
 from api._lib.schemas import CompetitionCreate, CompetitionUpdate
+from api._lib.services import fiba_sync
 
 router = APIRouter(prefix="/competitions", tags=["competitions"], dependencies=[Depends(require_view("competitions"))])
 
@@ -24,9 +28,80 @@ def list_competitions():
     return result.data
 
 
+def _link_fiba_id(raw: dict, out: dict, previous_url: str | None = None) -> None:
+    """El ID de FIBA sigue al campo "URL o ID" del formulario.
+
+    Un ID pelado se guarda directo; una URL deja el ID en NULL para que el
+    próximo sync lo resuelva desde la URL nueva. Sin esto, cambiar la URL de una
+    competencia la dejaba sincronizando contra la competencia de FIBA anterior.
+    Si el formulario manda un fiba_competition_id explícito, ese gana.
+    """
+    if "fiba_games_url" not in raw or raw.get("fiba_games_url") is None:
+        return
+    if raw.get("fiba_competition_id"):
+        return
+    url = (raw.get("fiba_games_url") or "").strip()
+    # Guardar el formulario sin tocar el campo no desvincula nada.
+    if url == (previous_url or "").strip():
+        return
+    out["fiba_competition_id"] = int(url) if fiba_sync.is_fiba_id(url) else None
+
+
+def _check_fiba_segment(date_from: str | None, date_to: str | None) -> None:
+    """Tramo de fechas de FIBA (migración 053): las dos o ninguna, y en orden.
+
+    400 acá en vez del 500 del CHECK de la base. Una sola fecha no es "sin
+    filtro" ni "desde tal día": es un formulario a medio cargar.
+    """
+    if not date_from and not date_to:
+        return
+    if not (date_from and date_to):
+        raise HTTPException(400, "El tramo de FIBA necesita las dos fechas (desde y hasta) o ninguna")
+    # fromisoformat también acepta "20261209" y "2026-W50-3"; el filtro compara
+    # strings YYYY-MM-DD, así que se exige esa forma exacta.
+    if not all(re.fullmatch(r"\d{4}-\d{2}-\d{2}", d) for d in (date_from, date_to)):
+        raise HTTPException(400, "Fechas del tramo de FIBA inválidas (YYYY-MM-DD)")
+    try:
+        start, end = date.fromisoformat(date_from), date.fromisoformat(date_to)
+    except ValueError:
+        raise HTTPException(400, "Fechas del tramo de FIBA inválidas (YYYY-MM-DD)")
+    if start > end:
+        raise HTTPException(400, "El tramo de FIBA termina antes de empezar")
+
+
+@router.get("/fiba/discover", dependencies=[Depends(require_edit("competitions"))])
+def discover_fiba_competitions(
+    from_season: int | None = Query(None, ge=2000, le=2100),
+    to_season: int | None = Query(None, ge=2000, le=2100),
+):
+    """Competencias de FIBA Americas que todavía no están vinculadas a ninguna nuestra.
+
+    Solo lista: el alta la hace una persona desde el formulario, que decide
+    nombre, plantilla y si la competencia se divide en ventanas o grupos. Lleva
+    `edit` porque existe para dar de alta, y cada llamada gasta cuota de GDAP.
+    """
+    this_year = date.today().year
+    from_season = from_season or this_year
+    to_season = to_season or this_year + 1
+    if to_season < from_season:
+        raise HTTPException(400, "to_season must be >= from_season")
+    try:
+        return fiba_sync.discover(fiba_sync.GdapClient(), from_season, to_season)
+    except fiba_sync.FibaSyncError as e:
+        raise HTTPException(502, str(e))
+
+
 @router.post("", dependencies=[Depends(require_edit("competitions"))])
 def create_competition(data: CompetitionCreate):
     record = data.model_dump()
+    # Un campo del formulario que quedó en blanco es NULL, no "": un
+    # fiba_group_codes "" se leería como "filtrar por ningún grupo".
+    for k in ("fiba_games_url", "fiba_window_code", "fiba_group_codes", "fiba_segment_from",
+              "fiba_segment_to", "start_date", "end_date", "location"):
+        if isinstance(record.get(k), str) and not record[k].strip():
+            record[k] = None
+    _check_fiba_segment(record.get("fiba_segment_from"), record.get("fiba_segment_to"))
+    _link_fiba_id(record, record)
     # Not sent explicitly → national-team flag follows the template (WCQ).
     if record.get("is_national_team") is None:
         record["is_national_team"] = (record.get("template_key") or "").upper() == "WCQ"
@@ -36,9 +111,11 @@ def create_competition(data: CompetitionCreate):
 
 _CLEARABLE_DATE_FIELDS = {
     "default_letter_date", "default_arrival_date", "default_departure_date",
-    "default_confirmation_deadline",
+    "default_confirmation_deadline", "fiba_segment_from", "fiba_segment_to",
 }
-_CLEARABLE_TEXT_FIELDS = {"fiba_games_url", "fiba_window_code", "default_location", "default_venue"}
+_CLEARABLE_TEXT_FIELDS = {
+    "fiba_games_url", "fiba_window_code", "fiba_group_codes", "default_location", "default_venue",
+}
 
 
 @router.put("/{competition_id}", dependencies=[Depends(require_edit("competitions"))])
@@ -57,6 +134,19 @@ def update_competition(competition_id: str, data: CompetitionUpdate):
     # by sending an empty string in the payload.
     if "fiba_games_url" in raw and raw["fiba_games_url"] == "":
         updates["fiba_games_url"] = None
+    # 0 = desvincular de FIBA (un int no puede llegar como "").
+    if raw.get("fiba_competition_id") == 0:
+        updates["fiba_competition_id"] = None
+    # Se valida lo que quedaría guardado: mandar solo "hasta" sobre una fila que
+    # ya tiene "desde" es válido.
+    if "fiba_segment_from" in updates or "fiba_segment_to" in updates:
+        current = (supabase.table("competitions").select("fiba_segment_from, fiba_segment_to")
+                   .eq("id", competition_id).execute().data or [{}])[0]
+        merged = {**current, **{k: updates[k] for k in ("fiba_segment_from", "fiba_segment_to") if k in updates}}
+        _check_fiba_segment(merged.get("fiba_segment_from"), merged.get("fiba_segment_to"))
+    if raw.get("fiba_games_url") is not None:
+        prev = supabase.table("competitions").select("fiba_games_url").eq("id", competition_id).execute().data
+        _link_fiba_id(raw, updates, (prev[0].get("fiba_games_url") if prev else None))
     result = supabase.table("competitions").update(updates).eq("id", competition_id).execute()
     if not result.data:
         raise HTTPException(status_code=404, detail="Competition not found")
@@ -103,6 +193,22 @@ def delete_competition(competition_id: str, force: bool = False):
             ),
         )
 
+    # Los archivos privados de logística (menús, pasaportes, cotizaciones y el
+    # Excel original de cada cronograma) caen en cascada como FILAS, pero el
+    # objeto del bucket no: hay que juntar las rutas antes de borrar la
+    # competencia y quitarlas después. Si no, quedan pasaportes huérfanos.
+    from api._lib.routers.logistics import document_paths, remove_objects
+
+    logistics_files = document_paths("competition_id", competition_id)
+    schedule_files = (
+        supabase.table("logistics_schedules")
+        .select("file_path")
+        .eq("competition_id", competition_id)
+        .execute()
+        .data
+    ) or []
+    logistics_files += [s["file_path"] for s in schedule_files if s.get("file_path")]
+
     for n in noms:
         supabase.table("nominations").delete().eq("id", n["id"]).execute()
         _delete_pdf_from_storage(n.get("pdf_path"))
@@ -110,4 +216,5 @@ def delete_competition(competition_id: str, force: bool = False):
     result = supabase.table("competitions").delete().eq("id", competition_id).execute()
     if not result.data:
         raise HTTPException(status_code=404, detail="Competition not found")
+    remove_objects(logistics_files)
     return {"ok": True, "nominations_deleted": len(noms)}

@@ -8,3 +8,5 @@ dist/
 .DS_Store
 .claude/settings.local.json
 venv/
+fonts/private/*
+!fonts/private/.gitkeep

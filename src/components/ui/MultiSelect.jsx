@@ -1,8 +1,10 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Icon } from '../../lib/icons';
 import { Input } from './Input';
+import { useLanguage } from '../../i18n/LanguageContext';
 
 export function MultiSelect({ label, options, value=[], onChange, icon }) {
+  const { lang } = useLanguage();
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState('');
   const ref = useRef();
@@ -30,7 +32,7 @@ export function MultiSelect({ label, options, value=[], onChange, icon }) {
       {open && (
         <div className="absolute z-30 mt-1.5 w-64 bg-white dark:bg-navy-800 rounded-lg shadow-pop border border-ink-200 dark:border-navy-700 overflow-hidden">
           <div className="p-2 border-b border-ink-100 dark:border-navy-700">
-            <Input icon={<Icon.Search/>} placeholder={`Filtrar ${label.toLowerCase()}...`}
+            <Input icon={<Icon.Search/>} placeholder={`${lang === 'es' ? 'Filtrar' : 'Filter'} ${label.toLowerCase()}...`}
               value={search} onChange={e=>setSearch(e.target.value)} />
           </div>
           <div className="max-h-64 overflow-y-auto py-1">
@@ -48,7 +50,7 @@ export function MultiSelect({ label, options, value=[], onChange, icon }) {
           </div>
           {value.length>0 && (
             <div className="border-t border-ink-100 dark:border-navy-700 p-1.5">
-              <button onClick={()=>onChange([])} className="w-full text-xs py-1.5 text-ink-600 hover:bg-ink-50 dark:text-ink-300 dark:hover:bg-navy-700 rounded">Limpiar selección</button>
+              <button onClick={()=>onChange([])} className="w-full text-xs py-1.5 text-ink-600 hover:bg-ink-50 dark:text-ink-300 dark:hover:bg-navy-700 rounded">{lang === 'es' ? 'Limpiar selección' : 'Clear selection'}</button>
             </div>
           )}
         </div>

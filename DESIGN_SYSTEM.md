@@ -74,6 +74,11 @@ en `src/App.jsx`:
 Toggle en el topbar (icono ☀/🌙). Mobile theme-color en `index.html`
 está hardcodeado a navy-900.
 
+**Las rutas públicas van siempre en claro.** `/logistica/<token>`,
+`/checklist/<token>`, `/availability/<token>` y `/asset/<id>` las abre gente
+de afuera (hoteles, delegaciones, oficiales) y se imprimen: `App.jsx` les
+quita la clase `dark` (`PUBLIC_PATH`) y no toca la preferencia guardada.
+
 ---
 
 ## 🪄 Aliases legacy (`fiba-*`) — dark-aware vía CSS vars
@@ -118,6 +123,66 @@ Los aliases viven en el componente `@layer components` de
 
 ---
 
+## Redacción
+
+Vale para todo texto que ve una persona: `translations.js`, cadenas en JSX,
+toasts, `confirm()`, `aria-label` y documentos generados.
+
+**Registro (español).** Tuteo neutro en todo el sitio ("Elige", "Guarda",
+"puedes"). Sin voseo y sin usted. Botones y rótulos en infinitivo o sustantivo.
+Léxico neutro: aquí, omitir, reemplazar, monto, ahora. El sistema no habla en
+primera persona: "No se pudo...", "No se encontró...".
+
+**Glosario.** Un concepto, un nombre:
+
+| Concepto | Se dice | No se dice |
+|---|---|---|
+| game | partido, Partidos (también el módulo) | juego, Juegos |
+| crew del torneo (TD, VGO, árbitros) | oficiales del torneo | crew, equipo |
+| staffing plan (empleados FIBA en un evento) | Personal FIBA | staffing plan, staff |
+| training slot | turno de entrenamiento | slot |
+| lo que cobra la persona | honorarios | fee |
+| monto configurado por cargo o tipo | tarifa (por torneo, por partido, por ventana) | fee |
+| incidentals / airfare / travel | viáticos / pasajes / viajes | |
+| headcount | dotación | |
+| template / link / sync | plantilla / enlace / sincronizar | |
+| delete | eliminar | borrar, remover |
+| reason / required | motivo / obligatorio | razón / requerido |
+| TBD | por confirmar | |
+| pick-up / return / transfer | recogida / regreso / traslado | pick up, retorno |
+| travel manifest / flight manifest | Manifiesto de viaje / Manifiesto de vuelos | |
+| meals | comidas | alimentación |
+| módulos nombrados en un texto | Presupuesto, Pagos, Partidos, Calendario, Plantillas | Budget, Payments, Games |
+
+"Rooming list" y la audiencia "Staff" de Logística se mantienen: son términos
+del oficio. En inglés, crew, fee y slot quedan como están.
+
+**Tipografía (los dos idiomas).**
+
+- Sin raya larga ni raya media. Se reescribe con punto, coma, dos puntos o
+  paréntesis.
+- Rangos con guion ("08:00-10:00") o con "al" en fechas ("13 al 15 de noviembre").
+- Sin flechas en frases ni botones. Rutas de menú: "Partidos > Datos comunes".
+- Puntos suspensivos de tres puntos ("..."). Comillas rectas.
+- Sin mayúsculas enfáticas. Celda vacía: "-".
+- "·" solo como separador de metadatos en celdas densas.
+
+**Forma.**
+
+- Mayúscula solo en la primera palabra y en nombres propios, en los dos idiomas.
+- Errores: "No se pudo guardar el evento" / "Could not save the event". Nunca
+  "Error guardando...".
+- Sin plurales con paréntesis: "Nominaciones elegibles: {count}".
+- Sin "exitosamente" ni "correctamente": "TD asignado", "Guardado".
+- Contraseña: el mínimo es 8 caracteres (lo exige el backend).
+
+**Textos de ayuda.** Dicen qué hacer o qué va a pasar, en una oración. No
+explican cómo está hecho el sistema ni muestran rutas de archivo, endpoints,
+nombres de campo, permisos (`budget:view`) ni valores internos (`in_process`).
+El porqué va al manual.
+
+---
+
 ## 🧩 Componentes
 
 Bajo `src/components/`:
@@ -139,15 +204,38 @@ Bajo `src/components/`:
 | `Toast`            | `ToastProvider`, `useToast`         | wrapper alrededor de `<App/>`                 |
 | `Stat`             | `Stat`                              | tarjeta de KPI                                |
 | `Empty`            | `Empty`, `Kbd`                      | estados vacíos + tecla helper                 |
+| `Tabs`             | `Tabs`, `useTabParam`               | barra subrayada (activa con `border-orange-500`); `useTabParam` la guarda en `?tab=` |
+| `Drawer`           | `Drawer`, `useOpenParam`            | panel lateral derecho, portal en `<body>` (`z-40` overlay / `z-50` panel); `useOpenParam` guarda el id en `?open=` |
 
 Barrel: `import { Button, Badge } from '@/components/ui'`.
 
-### `layout/`
+### Finanzas — compartidos fuera de `ui/`
 
-- `Sidebar` — navy-900 con accent basketball-500 en el item activo
-- `Topbar` — título + dark toggle + iconos auxiliares
-- `AppShell` — wrapper completo (no se usa en este proyecto;
-  `App.jsx` tiene su propia versión integrada al router)
+Nacieron en Budget y Pagos (octubre 2026) pero no son de un módulo:
+
+- **`Tabs` / `Drawer`** (arriba) — el patrón de página es "shell con pestañas
+  + detalle en drawer", con las dos cosas en la URL para que un link caiga en
+  el registro. Cambiar de pestaña borra `?open=`.
+- **`AttachmentList`** (`components/AttachmentList.jsx`) — adjuntos de un pago
+  o un gasto: lista, etiqueta (cerrada o libre), subir, bajar, borrar. Recibe
+  los handlers; la descarga es blob + JWT, nunca un `<a href>` público.
+- **`StatusHistory`** (`components/StatusHistory.jsx`) — timeline vertical del
+  historial de estados: punto de color + `Badge` por estado (gris
+  `new`/`draft`, warning `in_process`, info `approved`, success
+  `completed`/`paid`, danger `rejected`, outline `cancelled`), usuario, fecha y
+  motivo. No usa `StatusPill`.
+- **`NotificationsBell`** (`components/NotificationsBell.jsx`) — campana del
+  topbar con badge (`99+` de tope) y popover en dos bloques: "Pendientes"
+  (chips con contador que llevan a la vista filtrada) y "Novedades" (punto de
+  color por `kind`, marcar leída / todas).
+- **Gráficos** (`components/charts/BudgetCharts.jsx`, `recharts`) — se cargan
+  **siempre con `React.lazy`** (chunk `charts`), así ninguna otra página paga
+  la librería. Como recharts pinta atributos SVG y no clases, el tema se
+  resuelve en JS: grilla y texto leen `--c-fiba-border` / `--c-fiba-muted`, las
+  series usan los hex de los tokens (`success-500` ejecutado, `info-500`
+  comprometido, `danger-500` sobregiro, `ink-300` / `navy-500` presupuesto) y
+  un `MutationObserver` sobre la clase `.dark` de `<html>` repinta al cambiar
+  de tema. Mismo código de color que la `RollupTable` del dashboard.
 
 ### `brand/` (`src/components/brand/Logo.jsx`)
 
@@ -176,7 +264,12 @@ Iconos disponibles: Dashboard, Trophy, Users, Calendar, Whistle, Truck,
 Shield, Plus, Search, Download, Upload, Doc, Check, X, Chevron,
 ChevronDown, ArrowUp, ArrowDown, Alert, Info, Bell, Clock, Globe, Pin,
 Pushpin, PushpinFilled, Plane, Moon, Sun, Cog, Logout, Eye, History,
-Report, Star, StarFilled.
+Report, Wallet, Star, StarFilled, Feed, Message, Photo, Refresh, Link, Poll,
+Dots, Trash, Pencil, Send, Megaphone, Bus, Ship, Car, Lock, Tool,
+ChevronLeft, Menu.
+
+No se usan emojis ni glifos (✓ ✕ ⚠) como íconos: siempre `Icon.*`. La única
+excepción son las reacciones del Muro, donde el emoji es el contenido.
 
 Si necesitás otro: agregalo a `lib/icons.jsx` con la sintaxis
 `I(<><path d="…"/></>)` o instalá `@tabler/icons-react`.
@@ -245,7 +338,6 @@ src/App.jsx                      ← shell (sidebar navy + topbar + dark toggle)
 src/pages/Login.jsx              ← entry rediseñado
 src/lib/icons.jsx                ← Tabler icons
 src/components/ui/               ← primitivos (Button, Input, Table, …)
-src/components/layout/           ← Sidebar, Topbar, AppShell
 src/components/brand/Logo.jsx    ← LogoMonogram, Roundel, Wordmark, Shield, …
 public/favicon.png               ← monograma F + basketball seam
 index.html                       ← favicon link + theme-color navy

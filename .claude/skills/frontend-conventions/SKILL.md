@@ -16,16 +16,14 @@ src/
 ├── App.jsx              ← shell: sidebar + topbar + router + guards
 ├── main.jsx            ← monta App, envuelve en AuthProvider + LanguageProvider
 ├── pages/              ← una página por ruta (Nominations.jsx, Training.jsx, …)
-│   ├── games/          ← paneles de Games: ChecklistPanel, ChecklistRunner, SyncReport…
-│   ├── budget/         ← BudgetImport
-│   └── logistics/      ← TransportTab, HousingTab, ManifestTab, SharePanel, SheetImport
+│   ├── budget/         ← pestañas de Budget (*Tab.jsx), editors/, scope.jsx, shared.jsx
+│   └── payments/       ← QueueTab, EventTab, PaymentDrawer, BulkStatusModal, shared.js
 ├── components/
-│   ├── ui/             ← primitivos del DS (Button, Card, Input, Table, Modal, Tooltip…)
+│   ├── ui/             ← primitivos del DS (Button, Card, Input, Table, Modal, Tabs, Drawer…)
+│   ├── charts/         ← BudgetCharts (recharts) — solo con React.lazy
 │   ├── brand/          ← Logo (Monogram, Wordmark)
-│   ├── ProfileModal.jsx        ← "Mi perfil": foto o avatar (se abre desde el sidebar)
-│   ├── PersonProfilePanel.jsx  ← panel lateral de una persona (personnel)
-│   ├── CompetitionSearch.jsx   ← buscador de competencias reutilizable
-│   └── NominationsMatrix.jsx
+│   └── *.jsx           ← compartidos: AttachmentList, StatusHistory, BankingPanel,
+│                          NotificationsBell, PersonProfilePanel, …
 ├── contexts/AuthContext.jsx
 ├── i18n/               ← LanguageContext.jsx + translations.js (ES/EN)
 ├── lib/                ← icons.jsx, supabase.js, utils, countries, roles, lastSearch,
@@ -96,6 +94,12 @@ const { t, lang, setLang } = useLanguage()
 - **Todo** string visible pasa por `t('clave')`. ES es el default; el switch
   ES/EN está en el sidebar.
 - Agregá las claves nuevas en **ambos** idiomas en `src/i18n/translations.js`.
+- El texto sigue la sección **Redacción** de `DESIGN_SYSTEM.md`: tuteo neutro,
+  glosario único (partido, oficiales del torneo, honorarios, enlace, eliminar...),
+  sin raya larga ni flechas, y hints que dicen qué hacer sin explicar el diseño.
+- Las cuatro páginas públicas comparten encabezado, enlace de idioma y bloque de
+  "enlace no disponible": `components/layout/PublicShell.jsx` (`PublicShell`,
+  `LanguageLink`, `PublicUnavailable`). Se muestran siempre en modo claro.
 
 ## Llamadas al API (`src/api/client.js`)
 
@@ -122,8 +126,10 @@ export const downloadNominationBlob = async (id, filename) => {
 Ejemplos existentes: `downloadNominationBlob`, `downloadPaymentAttachment`,
 `downloadTrainingPdf`.
 
-Las fotos (personnel, Muro, avatares) van al bucket **público** `inventory` y
-sí se muestran por URL directa. Solo imágenes; un documento nunca va ahí.
+La segunda mitad es **`saveBlob(blob, filename)`** (exportado de
+`api/client.js`): object URL + `<a download>` efímero + `revokeObjectURL`. No
+la reimplementes en cada página. Los exports a Excel (`downloadPaymentsXlsx`,
+`downloadBudgetLinesXlsx`, los de gastos y resumen de budget) ya la llaman.
 
 ## Estilos — Tailwind + design system
 
@@ -140,14 +146,100 @@ sí se muestran por URL directa. Solo imágenes; un documento nunca va ahí.
 
 - Importá de `src/components/ui/` (hay un `index.js` barrel): `Button`,
   `IconButton`, `Card`, `Input`, `Table`, `Modal`, `Badge`, `Toast`, `Stat`,
-  `MultiSelect`, `Avatar`, `Empty`, `Tooltip`. Reutilizalos antes de inventar
-  markup.
-- `Modal` renderiza en un portal sobre `document.body`: un modal abierto desde
-  el sidebar (como Mi perfil) no puede quedar atrapado en su `overflow`.
+  `MultiSelect`, `Avatar`, `Empty`, `Tooltip`, `Tabs` (+ `useTabParam`),
+  `Drawer` (+ `useOpenParam`). Reutilizalos antes de inventar markup.
   - `Button` tiene `variant` (`primary|secondary|ghost|navy|danger|link`) y
     `size` (`xs|sm|md|lg`), más props `icon`/`iconRight`.
 - Iconos: `import { Icon } from '../lib/icons'` → `<Icon.Trophy className="w-4 h-4" />`
   (Tabler-style).
+
+## Páginas con pestañas y detalle por URL
+
+Budget y Pagos son **shells** (`pages/Budget.jsx`, `pages/Payments.jsx`) que
+cargan lo compartido y dibujan la pestaña activa; cada pestaña es un archivo en
+`pages/budget/` o `pages/payments/`. La pestaña y el registro abierto viven en
+la URL, para que un link (por ejemplo, de la campana) caiga directo en el
+detalle:
+
+```jsx
+import { Tabs, useTabParam, Drawer, useOpenParam } from '../components/ui'
+
+const [tab, setTab] = useTabParam(['queue', 'event'], 'queue')   // ?tab=
+<Tabs value={tab} onChange={setTab}
+  items={[{ key: 'queue', label: t('payments.tabQueue') }, …]} />
+
+const [openId, setOpenId] = useOpenParam()                        // ?open=<id>
+{openId && <Drawer title={…} onClose={() => setOpenId(null)}>…</Drawer>}
+```
+
+- `useTabParam(keys, fallback)`: un valor desconocido cae en `fallback`;
+  cambiar de pestaña **borra `?open=`** y reemplaza la entrada del historial.
+- `useOpenParam()`: `setOpenId(null)` lo saca de la URL; abrir/cerrar no apila
+  historial. `Drawer` se monta con portal en `<body>` (como `Modal`).
+- Los filtros que un link tiene que poder fijar también van en la URL (la cola
+  de pagos: `?status=&year=&budget=&missing_docs=1&stale=1&q=&page=`).
+- Links de la campana: `/budget?tab=expenses&open=<id>`,
+  `/payments?tab=queue&open=<id>`, `/budget?tab=recurring`.
+
+## Piezas compartidas de finanzas
+
+- **`AttachmentList`** (`components/AttachmentList.jsx`): lista, subida con
+  etiqueta, descarga y borrado de adjuntos de un pago o un gasto. No sabe de
+  buckets: el caller pasa `onUpload(file, kind)` / `onDownload` / `onDelete`
+  (la descarga va por blob + `saveBlob`). `kinds` array = etiquetas cerradas
+  (las de la migración 047 en pagos), si no, texto libre. `canEdit` esconde
+  subir/borrar.
+- **`StatusHistory`** (`components/StatusHistory.jsx`): timeline de
+  `finance_status_history`. Recibe `items` tal cual los devuelve
+  `GET …/history`; no pide nada solo (el caller decide cuándo refrescar). No usa
+  `StatusPill` (su mapa no cubre estos estados): `Badge` con tono por estado.
+- **`BankingPanel`** / `BankingSummary` / `TaxFormBadge`
+  (`components/BankingPanel.jsx`): ficha bancaria enmascarada, "Mostrar" →
+  `POST …/reveal`, edición solo con `hasEdit('payments')`, upload del W-8. Se
+  monta **solo con `hasView('payments')`** (en `PersonProfilePanel` y el drawer
+  de pagos).
+- **`NotificationsBell`** (`components/NotificationsBell.jsx`, en el topbar de
+  `App.jsx`): novedades + pendientes, poll cada 60 s y al volver a la pestaña
+  (`visibilitychange`). Sin websockets.
+- **Transiciones de estado:** el estado de un gasto o un pago **nunca** es un
+  campo del formulario. Los botones salen de una tabla en el front
+  (`validTransitions` en `pages/payments/shared.js`, `expenseActions` en
+  `pages/budget/ExpenseActionModals.jsx`), pero es solo UX: el backend vuelve a
+  validar y su `detail` (400/403/409) se muestra tal cual.
+
+### `BudgetScopeContext` (`pages/budget/scope.jsx`)
+
+`<BudgetScopeProvider>` envuelve Budget y carga `GET /budget/access/me/scope`.
+`useBudgetScope()` devuelve:
+
+```js
+{ ready, isSuperadmin, view, edit, approve,   // null = todos, [] = ninguno
+  isGeneralAdmin,                              // superadmin o edit === null
+  canEditDept(code), canApproveDept(code) }
+```
+
+Los botones de Budget se deciden **por fila** con eso (más `hasEdit('budget')`
+para editar; aprobar no exige `budget:edit`). La pestaña Cuentas y los datos
+bancarios de proveedores solo con `isGeneralAdmin`. Si el endpoint falla, cae
+cerrado (sin departamentos). Es UX: el recorte real es `_scoped()` en el
+backend.
+
+### Gráficos: chunk `charts`
+
+`recharts` vive en su propio chunk (`manualChunks.charts` en `vite.config.js`)
+y **solo** se importa desde `components/charts/`. Se carga siempre con
+`React.lazy` + `Suspense`:
+
+```jsx
+const BudgetCharts = lazy(() => import('../../components/charts'))
+<Suspense fallback={<ChartsFallback t={t} />}><BudgetCharts summary={summary} t={t} /></Suspense>
+```
+
+Un `import` estático metería recharts en la página que lo use. Los colores no
+salen de clases (recharts pinta atributos SVG): grilla y texto leen las CSS
+variables `--c-fiba-*` y las series usan los hex de los tokens de
+`tailwind.config.js`; un `MutationObserver` sobre la clase de `<html>` repinta al
+cambiar de tema.
 
 ## Patrón de componente
 
@@ -157,9 +249,10 @@ sí se muestran por URL directa. Solo imágenes; un documento nunca va ahí.
   `lib/lastSearch.js` (`readLastSearch`/`writeLastSearch`) — ver `Training.jsx`,
   `Games.jsx`.
 - Vendor chunking configurado en `vite.config.js` (`react-vendor`, `supabase`,
-  `qrcode-scan`, `http`).
+  `qrcode-scan`, `http`, `charts`).
 
 ## Verificación
 
-No hay tests automatizados. Después de un cambio corré `npm run build` para
-confirmar que compila, y revisá el diff.
+No hay tests automatizados de frontend (los de `tests/` son de backend). Después
+de un cambio corré `npm run build` para confirmar que compila —y que `charts-*.js`
+sigue saliendo como chunk aparte—, y revisá el diff.

@@ -1,4 +1,4 @@
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, Field, field_validator
 from typing import Literal, Optional
 
 # fee_type gobierna todo el dispatch per-game vs. tournament. Un str libre dejaba
@@ -55,6 +55,19 @@ class CompetitionCreate(BaseModel):
     # W1..W6 — acota el sync a una ventana del clasificatorio. FIBA devuelve el
     # clasificatorio entero por la misma URL (migración 040). None = sin filtro.
     fiba_window_code: Optional[str] = None
+    # ID de GDAP (migración 051). Si llega solo la URL, el primer sync lo resuelve.
+    fiba_competition_id: Optional[int] = None
+    # "A" o "37,38,39,40": acota el sync a esos groupPairingCode (LSB, Final Four).
+    fiba_group_codes: Optional[str] = None
+    # Fechas de los PARTIDOS del tramo (migración 053), no las del viaje: para
+    # feeds sin windowCode que solo se separan por fecha (BCLA). Las dos o ninguna.
+    fiba_segment_from: Optional[str] = None
+    fiba_segment_to: Optional[str] = None
+    # Alta desde "Nuevas en FIBA": las fechas y la sede que publica FIBA.
+    start_date: Optional[str] = None
+    end_date: Optional[str] = None
+    month: Optional[int] = Field(default=None, ge=1, le=12)
+    location: Optional[str] = None
     fee_type: Optional[FeeType] = "per_game"
     # National-team event → referee neutrality restriction applies.
     # None → derived from template_key (WCQ) at creation.
@@ -67,6 +80,10 @@ class CompetitionUpdate(BaseModel):
     year: Optional[int] = None
     fiba_games_url: Optional[str] = None
     fiba_window_code: Optional[str] = None
+    fiba_competition_id: Optional[int] = None
+    fiba_group_codes: Optional[str] = None
+    fiba_segment_from: Optional[str] = None
+    fiba_segment_to: Optional[str] = None
     fee_type: Optional[FeeType] = None
     is_national_team: Optional[bool] = None
     # Nomination defaults used by the per-game assignment workflow
@@ -142,6 +159,20 @@ class BulkNominationCreate(BaseModel):
     _blank_dates = field_validator(*_DATE_FIELDS, mode="before")(_blank_date_is_none)
 
 
+class NominationUpdate(BaseModel):
+    letter_date: Optional[str] = None
+    location: Optional[str] = None
+    venue: Optional[str] = None
+    arrival_date: Optional[str] = None
+    departure_date: Optional[str] = None
+    game_dates: Optional[list[GameDate]] = None
+    window_fee: Optional[float] = None
+    incidentals: Optional[float] = None
+    confirmation_deadline: Optional[str] = None
+
+    _blank_dates = field_validator(*_DATE_FIELDS, mode="before")(_blank_date_is_none)
+
+
 # ─── INVENTORY ─────────────────────────────────────────────────────────────
 
 class AssetCreate(BaseModel):
@@ -200,27 +231,121 @@ class EmployeeUpdate(BaseModel):
 
 # ─── PAYMENTS ─────────────────────────────────────────────────────────────
 
+# Un str libre dejaba pasar cualquier cosa hasta el CHECK de Postgres (500
+# genérico); el Literal lo rechaza con 422 antes de llegar a la base.
+# `split` dejó de existir en la migración 047: lo reemplaza `paid_amount` sobre
+# un pago `in_process` (pago parcial explícito en vez de un estado opaco).
+PaymentStatus = Literal["new", "in_process", "completed", "cancelled"]
+
+# Clases de adjunto de un pago (CHECK de payment_attachments.kind, migración
+# 047). El upload normaliza lo que mande un cliente viejo ("BANK INFO", "w-8").
+PaymentAttachmentKind = Literal["EXPENSES", "W8", "BANK_INFO", "INVOICE", "RECEIPT", "OTHER"]
+
+# Formulario fiscal de la persona (personnel_banking.tax_form_kind). `exempt`
+# = no corresponde formulario (lo decide Finance, no el sistema).
+TaxFormKind = Literal["W-8BEN", "W-8BEN-E", "W-9", "exempt"]
+
+
 class PaymentCreate(BaseModel):
     nomination_id: str
     budget_code: str
-    amount: Optional[float] = None  # None → prefilled from nomination.total
-    extra: Optional[float] = 0
-    airfare: Optional[float] = 0    # flight cost — tracked apart, not in total
+    # ge=0: un monto negativo no es un pago, es un error de tipeo que restaría
+    # del ejecutado del presupuesto sin que nada lo marque.
+    amount: Optional[float] = Field(None, ge=0)   # None → prefilled from nomination.total
+    extra: Optional[float] = Field(0, ge=0)
+    airfare: Optional[float] = Field(0, ge=0)     # flight cost — tracked apart, not in total
     comments: Optional[str] = None
-    status: Optional[str] = "new"
+    # Un pago nace SIEMPRE `new`. El campo queda para no romper a un cliente que
+    # lo mande, pero cualquier otro valor es 400: el estado se mueve solo por
+    # POST /payments/{id}/transition.
+    status: Optional[PaymentStatus] = "new"
     payment_date: Optional[str] = None
     bank_confirmation: Optional[str] = None
 
 
 class PaymentUpdate(BaseModel):
+    """Update parcial. El router usa model_dump(exclude_unset=True): un campo
+    ausente no se toca y uno mandado en null se limpia (comments, payment_date,
+    bank_confirmation). Los montos y el budget no admiten null — ver
+    _PAYMENT_NOT_NULL en payments.py.
+
+    `status` y `paid_amount` siguen declarados SOLO para poder rechazarlos con
+    un 400 legible ("use /transition", "use /record-partial"): si se sacaran
+    del schema, Pydantic los ignoraría en silencio y el cliente creería que los
+    cambió. Registrar plata pagada es soltar plata: pide los mismos sellos que
+    completar, y eso solo lo valida POST /payments/{id}/record-partial."""
     budget_code: Optional[str] = None
-    amount: Optional[float] = None
-    extra: Optional[float] = None
-    airfare: Optional[float] = None
+    amount: Optional[float] = Field(None, ge=0)
+    extra: Optional[float] = Field(None, ge=0)
+    airfare: Optional[float] = Field(None, ge=0)
+    paid_amount: Optional[float] = Field(None, ge=0)
     comments: Optional[str] = None
     status: Optional[str] = None
     payment_date: Optional[str] = None
     bank_confirmation: Optional[str] = None
+
+
+class PaymentTransition(BaseModel):
+    """Cuerpo de POST /payments/{id}/transition. Qué campos hacen falta depende
+    de la transición (ver check_payment_transition en payments.py)."""
+    status: PaymentStatus
+    reason: Optional[str] = Field(None, max_length=2000)
+    payment_date: Optional[str] = None
+    bank_confirmation: Optional[str] = Field(None, max_length=120)
+    # Solo para `completed`, y tiene que ser el total (o no venir): un pago
+    # completado está pagado entero. El parcial va por /record-partial.
+    paid_amount: Optional[float] = Field(None, ge=0)
+
+
+class PaymentRecordPartial(BaseModel):
+    """Cuerpo de POST /payments/{id}/record-partial: cuánto se lleva pagado de
+    un pago `in_process`. 0 < paid_amount < total (el total se completa por
+    /transition). `reason` solo hace falta para el override del superadmin."""
+    paid_amount: float = Field(..., ge=0)
+    reason: Optional[str] = Field(None, max_length=2000)
+
+
+class PaymentBulkStatus(BaseModel):
+    """Cambio de estado en lote. Sin `paid_amount`: cada pago tiene su total, y
+    al completar en lote se asume el total de cada uno."""
+    ids: list[str] = Field(..., min_length=1, max_length=500)
+    status: PaymentStatus
+    reason: Optional[str] = Field(None, max_length=2000)
+    payment_date: Optional[str] = None
+    bank_confirmation: Optional[str] = Field(None, max_length=120)
+
+
+class PaymentBulkCreate(BaseModel):
+    """Alta masiva desde una competencia. Sin `nomination_ids` → todas las
+    nominaciones elegibles del evento."""
+    competition_id: str
+    budget_code: str
+    nomination_ids: Optional[list[str]] = Field(None, max_length=500)
+
+
+class PaymentSyncAmount(BaseModel):
+    ids: list[str] = Field(..., min_length=1, max_length=500)
+
+
+class PersonnelBankingPut(BaseModel):
+    """Upsert parcial de la ficha bancaria (exclude_unset: null limpia).
+
+    Los números enmascarados que devuelve el GET (`****1234`) se ignoran si
+    vuelven en el body: el formulario puede reenviar la ficha entera sin pisar
+    el número real con la máscara."""
+    payment_method: Optional[Literal["wire", "ach", "other"]] = None
+    bank_name: Optional[str] = Field(None, max_length=200)
+    bank_address: Optional[str] = Field(None, max_length=500)
+    account_holder: Optional[str] = Field(None, max_length=200)
+    account_number: Optional[str] = Field(None, max_length=64)
+    routing_number: Optional[str] = Field(None, max_length=64)
+    swift: Optional[str] = Field(None, max_length=32)
+    iban: Optional[str] = Field(None, max_length=64)
+    currency: Optional[str] = Field(None, max_length=8)
+    notes: Optional[str] = Field(None, max_length=2000)
+    tax_form_kind: Optional[TaxFormKind] = None
+    tax_form_signed_at: Optional[str] = None
+    tax_form_expires_at: Optional[str] = None
 
 
 # ─── COMPETITION REPORTS ──────────────────────────────────────────────────
@@ -269,6 +394,16 @@ class AccountUpdate(BaseModel):
     notes: Optional[str] = None
 
 
+class AccountRemap(BaseModel):
+    """Asignar el código oficial a una cuenta provisoria (`COMP-*`).
+
+    `force` saltea el 409 que protege a las cuentas que `budget_accounts.py`
+    usa para imputar pagos por rol: ver POST /budget/accounts/{code}/remap.
+    """
+    new_code: str
+    force: bool = False
+
+
 class VendorCreate(BaseModel):
     name: str
     tax_id: Optional[str] = None
@@ -297,6 +432,9 @@ class ExpenseCreate(BaseModel):
     department_code: str
     account_code: str
     competition_id: Optional[str] = None     # None → gasto general, sin evento
+    # Hotel de logística al que corresponde el gasto (migración 056). Exige
+    # competition_id y que el hotel sea de esa competencia. No es campo financiero.
+    hotel_id: Optional[str] = None
     payee_type: Optional[str] = "vendor"     # vendor | employee | other
     vendor_id: Optional[str] = None
     employee_id: Optional[str] = None
@@ -304,18 +442,24 @@ class ExpenseCreate(BaseModel):
     description: str
     amount: float
     expense_date: str
+    # Solo para la carga histórica directa en `paid` (admin general). Fuera de
+    # eso un gasto nace `draft` y la fecha de pago la pone /transition.
     payment_date: Optional[str] = None
-    status: Optional[str] = "draft"
+    status: Optional[str] = "draft"           # draft | paid (paid: solo admin general)
     payment_method: Optional[str] = None
     bank_confirmation: Optional[str] = None
     invoice_no: Optional[str] = None
     comments: Optional[str] = None
+    # Línea del presupuesto contra la que se ejecuta (columna de la 035). Tiene
+    # que ser del mismo departamento, la misma cuenta y el año de expense_date.
+    budget_line_id: Optional[str] = None
 
 
 class ExpenseUpdate(BaseModel):
     department_code: Optional[str] = None
     account_code: Optional[str] = None
     competition_id: Optional[str] = None
+    hotel_id: Optional[str] = None           # null explícito = desvincular
     payee_type: Optional[str] = None
     vendor_id: Optional[str] = None
     employee_id: Optional[str] = None
@@ -323,12 +467,37 @@ class ExpenseUpdate(BaseModel):
     description: Optional[str] = None
     amount: Optional[float] = None
     expense_date: Optional[str] = None
+    # `status` y `payment_date` siguen declarados SOLO para poder rechazarlos
+    # con un 400 explícito ("usá /transition"): si se sacaran del modelo,
+    # Pydantic los descartaría en silencio y el cliente creería que el cambio
+    # de estado se aplicó.
     payment_date: Optional[str] = None
     status: Optional[str] = None
     payment_method: Optional[str] = None
     bank_confirmation: Optional[str] = None
     invoice_no: Optional[str] = None
     comments: Optional[str] = None
+    budget_line_id: Optional[str] = None     # null explícito = desvincular
+
+
+class ExpenseTransition(BaseModel):
+    """Cuerpo de POST /budget/expenses/{id}/transition.
+
+    `status` es el estado DESTINO. Qué campos hacen falta depende de la
+    transición (ver check_expense_transition en budget.py): `reason` para
+    rechazar, cancelar, revertir un pago o aprobar lo propio siendo
+    superadmin; `payment_date` para pagar.
+    """
+    status: str
+    reason: Optional[str] = Field(None, max_length=2000)
+    payment_date: Optional[str] = None
+    payment_method: Optional[str] = Field(None, max_length=40)
+    bank_confirmation: Optional[str] = Field(None, max_length=120)
+
+
+class ExpenseApprove(BaseModel):
+    """Cuerpo opcional del alias POST /budget/expenses/{id}/approve."""
+    reason: Optional[str] = Field(None, max_length=2000)
 
 
 # ─── BUDGET: recurrentes ──────────────────────────────────────────────────
@@ -446,6 +615,10 @@ class BudgetAccessItem(BaseModel):
     department_code: str          # '*' = todos los departamentos
     can_view: bool = True
     can_edit: bool = False
+    # Aprobar gastos del departamento (migración 048). Implica can_view. Es
+    # independiente de can_edit: el que carga y el que aprueba son roles
+    # distintos a propósito (separación de funciones).
+    can_approve: bool = False
 
 
 class BudgetAccessPut(BaseModel):

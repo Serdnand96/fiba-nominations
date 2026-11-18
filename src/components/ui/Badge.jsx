@@ -1,4 +1,5 @@
 import React from 'react';
+import { useLanguage } from '../../i18n/LanguageContext';
 
 const tones = {
   ink:       'bg-ink-100 text-ink-700 dark:bg-navy-800 dark:text-ink-200',
@@ -31,24 +32,26 @@ export function Badge({ tone='ink', size='md', icon, children, dot=false }) {
 }
 
 const statusMap = {
-  active:    { tone:'success',    label:'Activa',     dot:true },
-  completed: { tone:'ink',        label:'Finalizada', dot:true },
-  planning:  { tone:'info',       label:'Planificación', dot:true },
-  draft:     { tone:'ink',        label:'Borrador' },
-  pending:   { tone:'warning',    label:'Pendiente',  dot:true },
-  approved:  { tone:'info',       label:'Aprobada' },
-  sent:      { tone:'navy',       label:'Enviada' },
-  accepted:  { tone:'success',    label:'Aceptada',   dot:true },
-  online:    { tone:'success',    label:'Online',     dot:true },
-  offline:   { tone:'ink',        label:'Offline',    dot:true },
-  inactive:  { tone:'ink',        label:'Inactivo' },
-  scheduled: { tone:'info',       label:'Programado' },
-  'in-progress':{ tone:'basketball', label:'En curso', dot:true },
-  onsite:    { tone:'navy',       label:'Presencial' },
-  online_mode:{tone:'info',       label:'Online' },
+  active:    { tone:'success',    es:'Activa',        en:'Active',      dot:true },
+  completed: { tone:'ink',        es:'Finalizada',    en:'Completed',   dot:true },
+  planning:  { tone:'info',       es:'Planificación', en:'Planning',    dot:true },
+  draft:     { tone:'ink',        es:'Borrador',      en:'Draft' },
+  pending:   { tone:'warning',    es:'Pendiente',     en:'Pending',     dot:true },
+  approved:  { tone:'info',       es:'Aprobada',      en:'Approved' },
+  sent:      { tone:'navy',       es:'Enviada',       en:'Sent' },
+  accepted:  { tone:'success',    es:'Aceptada',      en:'Accepted',    dot:true },
+  online:    { tone:'success',    es:'En línea',      en:'Online',      dot:true },
+  offline:   { tone:'ink',        es:'Sin conexión',  en:'Offline',     dot:true },
+  inactive:  { tone:'ink',        es:'Inactivo',      en:'Inactive' },
+  scheduled: { tone:'info',       es:'Programado',    en:'Scheduled' },
+  'in-progress':{ tone:'basketball', es:'En curso',   en:'In progress', dot:true },
+  onsite:    { tone:'navy',       es:'Presencial',    en:'On site' },
+  online_mode:{tone:'info',       es:'Virtual',       en:'Online' },
 };
 
 export function StatusPill({ status, label }) {
-  const cfg = statusMap[status] || { tone:'ink', label: label || status };
-  return <Badge tone={cfg.tone} dot={cfg.dot}>{cfg.label}</Badge>;
+  const { lang } = useLanguage();
+  const cfg = statusMap[status];
+  if (!cfg) return <Badge tone="ink">{label || status}</Badge>;
+  return <Badge tone={cfg.tone} dot={cfg.dot}>{lang === 'es' ? cfg.es : cfg.en}</Badge>;
 }

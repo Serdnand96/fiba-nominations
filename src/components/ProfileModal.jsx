@@ -4,13 +4,16 @@ import { useLanguage } from '../i18n/LanguageContext'
 import { Icon } from '../lib/icons'
 import { Avatar, Button, Modal, useToast } from './ui'
 import { uploadMyAvatar, deleteMyAvatar } from '../api/client'
+import GoogleCalendarPanel from './GoogleCalendarPanel'
 
 const ACCEPT = 'image/jpeg,image/png,image/webp,image/gif'
 const ALLOWED = ACCEPT.split(',')
 const MAX_BYTES = 2 * 1024 * 1024
 const SIDE = 512
 const CANDIDATES = 12
-const TABS = ['photo', 'avatar']
+// 'google' solo para quien ve partidos (calendar o games): es lo mismo que
+// exige el backend para conectar.
+const BASE_TABS = ['photo', 'avatar']
 
 // Recorta al centro en cuadrado y baja a 512px antes de subir: el avatar se ve
 // siempre redondo y el archivo queda chico sin importar la foto original.
@@ -41,8 +44,9 @@ async function toSquare(file) {
   }
 }
 
-export default function ProfileModal({ open, onClose }) {
-  const { user, profile, updateProfile, isSuperadmin } = useAuth()
+export default function ProfileModal({ open, onClose, initialTab = 'photo' }) {
+  const { user, profile, updateProfile, isSuperadmin, hasView } = useAuth()
+  const TABS = hasView('calendar') || hasView('games') ? [...BASE_TABS, 'google'] : BASE_TABS
   const { t } = useLanguage()
   const { push } = useToast()
   const inputRef = useRef(null)
@@ -68,8 +72,10 @@ export default function ProfileModal({ open, onClose }) {
     if (!open) {
       setPending(null); setChosen(null); setBusy(false); setTab('photo')
       setConfirmRemove(false); setLibError(false); setLibAttempts(0)
+    } else if (initialTab !== 'photo' && TABS.includes(initialTab)) {
+      setTab(initialTab)
     }
-  }, [open])
+  }, [open, initialTab]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // El footer se reemplaza entero al confirmar: el botón con foco se desmonta y
   // el foco caería en <body>, fuera de la trampa del modal. Se lo reubica.
@@ -115,8 +121,8 @@ export default function ProfileModal({ open, onClose }) {
     setTab(next)
     setConfirmRemove(false)
     // Cada pestaña tiene su propia selección: al cambiar se descarta la otra.
-    if (next === 'photo') setChosen(null)
-    else setPending(null)
+    if (next !== 'avatar') setChosen(null)
+    if (next !== 'photo') setPending(null)
     if (focus) tabRefs.current[next]?.focus()
   }
 
@@ -194,7 +200,9 @@ export default function ProfileModal({ open, onClose }) {
   const tabId = (k) => `${ids}-tab-${k}`
   const panelId = (k) => `${ids}-panel-${k}`
 
-  const footer = confirmRemove ? (
+  const footer = tab === 'google' ? (
+    <Button variant="secondary" onClick={onClose}>{t('common.close')}</Button>
+  ) : confirmRemove ? (
     <>
       <span className="text-[13px] text-ink-700 dark:text-ink-200 mr-auto">{t('myProfile.confirmRemove')}</span>
       <Button variant="secondary" onClick={() => setConfirmRemove(false)} disabled={busy}>{t('common.cancel')}</Button>
@@ -253,8 +261,8 @@ export default function ProfileModal({ open, onClose }) {
                   : 'text-ink-600 hover:text-ink-900 dark:text-ink-300 dark:hover:text-white'
               }`}
             >
-              {k === 'photo' ? <Icon.Photo className="w-4 h-4" /> : <Icon.Star className="w-4 h-4" />}
-              <span className="truncate">{k === 'photo' ? t('myProfile.tabPhoto') : t('myProfile.tabAvatar')}</span>
+              {k === 'photo' ? <Icon.Photo className="w-4 h-4" /> : k === 'avatar' ? <Icon.Star className="w-4 h-4" /> : <Icon.Calendar className="w-4 h-4" />}
+              <span className="truncate">{t(`myProfile.tab${k[0].toUpperCase()}${k.slice(1)}`)}</span>
             </button>
           ))}
         </div>
@@ -333,6 +341,12 @@ export default function ProfileModal({ open, onClose }) {
               </>
             )}
         </div>
+
+        {TABS.includes('google') && (
+          <div role="tabpanel" id={panelId('google')} aria-labelledby={tabId('google')} hidden={tab !== 'google'} className="w-full">
+            <GoogleCalendarPanel active={open && tab === 'google'} />
+          </div>
+        )}
       </div>
     </Modal>
   )

@@ -35,7 +35,10 @@ legacy `fibaamericascloud.com`).
    deshabilitado. **Ojo:** el export de training schedule
    (`api/_lib/routers/training.py`) es un camino aparte — arma la tabla con
    python-docx y todavía convierte vía CloudConvert únicamente (si no hay
-   API key, sirve el `.docx`).
+   API key, sirve el `.docx`). Hay un **tercer camino**: el PDF operativo para
+   delegaciones de Logística (`services/logistics_briefing.py`, punto 7) arma
+   el `.docx` con python-docx en código y lo convierte con el LibreOffice local,
+   como las cartas. Las fuentes de la conversión salen de `fonts/` (punto 20).
 
 3. **Hay dos tablas distintas para personas:**
    - `personnel` → TDs / VGOs (oficiales que se nominan)
@@ -60,14 +63,19 @@ legacy `fibaamericascloud.com`).
 
 7. **Transport ya no es un módulo: es una sección de Logística.** Desde la
    migración 025 el permiso se llama `logistics` (`transport` no existe más
-   en `user_permissions`) y el módulo tiene tres secciones:
+   en `user_permissions`) y el módulo tiene cuatro secciones:
    - **Transporte** — vehículos, choferes, viajes. Sigue viviendo en
      `api/_lib/routers/transport.py` con prefijo `/api/transport/*`: la URL
      quedó igual porque es interna, solo cambió el permiso que exige.
    - **Hospedaje** — hoteles, rooming list y comidas.
    - **Travel Manifest** — llegadas y salidas de cada persona.
+   - **Servicios** — directorio de contactos y proveedores (transporte, hotel,
+     hielo, lavandería, hidratación, VIP) y salones (Media Day, charla técnica,
+     PIC). Vive en `api/_lib/routers/logistics_ops.py`, que además tiene los
+     adicionales de hotel y los documentos privados (más abajo).
 
-   Las dos últimas viven en `api/_lib/routers/logistics.py`. Todo cuelga de
+   Hospedaje y Travel Manifest viven en `api/_lib/routers/logistics.py`; los
+   cronogramas (más abajo) en `api/_lib/routers/logistics_schedules.py`. Todo cuelga de
    `logistics_participants`, el padrón de quién viene a la competencia
    (oficiales de `personnel`, staff de `employees`, VIPs y delegaciones sin
    vínculo). **No hay "Supabase Auth standalone"** ni sandbox separado:
@@ -82,14 +90,114 @@ legacy `fibaamericascloud.com`).
      pasos** (preview → commit) y nunca adivinan: un nombre dudoso se importa
      sin vincular y se reporta como warning. Las planillas vienen con typos
      reales (`Guyo`/`Juyo`, `BUELVAS`/`Vuelvas`) y con `Names`/`Last Name`
-     invertidos en varias filas.
+     invertidos en varias filas. La rooming de equipos trae filas "cama libre
+     (fisioterapia)": ocupan la habitación pero no son nadie, así que se
+     saltean y se reportan (`skipped` + warning) en vez de inventar una persona.
+
+   **Las secciones se dividen por audiencia** (noviembre 2026):
+   `staff` (oficiales y staff FIBA), `delegation` (equipos) y `vip` (VIPs e
+   invitados). Para las personas no es un dato nuevo: sale de
+   `logistics_participants.category` vía `AUDIENCES` en
+   `api/_lib/logistics_audiences.py`. `audience` es un parámetro **opcional** en
+   participantes, movimientos, rooming, imports y exports; sin él no hay recorte,
+   como antes. Es un **filtro de vista, no un permiso**: quien tiene `logistics`
+   ve las tres. La flota de Transporte no se divide (un vehículo sirve a staff y
+   a delegaciones).
+   - **Hoteles, contactos y salones sí guardan su `audience`** (migración 055),
+     y `NULL` significa **compartido**: un filtro por audiencia devuelve los de
+     esa audiencia **más** los compartidos, no solo los exactos. Es lo que hace
+     que una competencia con un solo hotel (todas las filas viejas) siga viéndose
+     igual en las tres pestañas. Se filtra en Python (`for_audience` en
+     `logistics_audiences.py`), no con `.or_()`.
+   - `logistics_participants.team` es el club de la persona de una delegación
+     (texto libre, como viene en la rooming). La **fila agregada** de una
+     delegación ("Barbados", pax 18) sigue existiendo y es válida: `team` no la
+     reemplaza, solo permite cargar a las personas una por una.
+
+   **Los cronogramas son documentos, no una vista derivada** (migración 054,
+   `logistics_schedules` + `logistics_schedule_rows`). Son las dos planillas que
+   logística manda afuera: transporte (`PICK UP HOTEL` / `RETURN HOTEL`) y
+   comidas (`ALMUERZO` / `MERIENDA` / `CENA`). Un documento por competencia +
+   sección + audiencia + **`label`** (migración 055); transporte y comidas son
+   dos documentos aunque repitan la base de entrenamientos. El `label` vacío es
+   el cronograma general; "Árbitros" y "Comunicaciones" son cronogramas propios
+   dentro de staff, con sus horarios y su Excel.
+   - No salen de `training_slots` ni de `game_schedule` y el import **no los
+     toca**: cada fila guarda su texto y sus horas, porque el pick-up no sigue
+     ninguna regla y la planilla se vuelve a subir cuando cambia.
+   - Reimportar **reemplaza** el documento (el Excel es la autoridad; el preview
+     avisa cuántas filas pisa) y guarda el original en el bucket privado
+     `nominations` bajo `logistics/schedules/`. Reemplaza **solo el de ese
+     `label`**: reimportar el general no toca el de Árbitros, y un `label` nuevo
+     crea otro documento. Por eso el commit devuelve el documento por id y no
+     `load_schedules(...)[0]`.
+   - El parser (`services/logistics_schedule_import.py`) **ignora las columnas
+     ocultas** — las planillas de equipos traen B:C ocultas con los mismos
+     rótulos y horarios viejos — y **no importa las filas tachadas en negro**
+     (el equipo local, que no usa transporte ni hotel): las lista en el preview.
+     Una sección que no encuentra sus columnas visibles es un 400, no una
+     adivinanza. Reconoce **dos layouts explícitos** (`team` y `referee`, el de
+     árbitros: solo partidos, con pick-up y regreso visibles en la fila `FECHA`)
+     y cualquier otra forma es 400; el de rooming también tiene dos (la grilla de
+     noches del staff y la "Team Rooming List" por club). Los detalles de los
+     cuatro están en el skill `fiba-excel-format`.
+   - Las comidas son **texto**, no hora: el hotel recibe `TAKE AWAY` y
+     `15:30 al IN`.
+   - En Transporte, "Cronograma" es este documento y "Viajes por vehículo" es
+     el despacho de flota de siempre (`transport_trips`). No son lo mismo.
+
+   **Traslados desde el manifiesto:** `POST /transport/trips/from-movements`
+   crea un viaje `transfer` por grupo de llegadas/salidas (fecha + aeropuerto)
+   y deja los tramos apuntando a su traslado (`logistics_travel_legs.trip_id`).
+   La persona elige vehículo y hora en un modal; un grupo ya cubierto
+   (`covered`) se saltea en vez de duplicarse.
+
+   **Adicionales de hotel, documentos y el PDF para equipos** (migración 055,
+   `logistics_ops.py`):
+   - **Adicionales y cotizaciones** (`logistics_hotel_charges`) son un
+     **registro operativo**: el monto es lo que informó el hotel y es
+     **informativo, no suma en Budget** (punto 14: la plata real es un
+     `expense`). Lo pagado se ve en el detalle del hotel en solo lectura, leído
+     de `expenses` con `GET /logistics/hotels/{id}/payments` (excepción del
+     punto 16). No copies esos montos a ninguna tabla de Budget.
+   - **Documentos privados** (`logistics_documents`: menús de hotel, pasaportes
+     de delegaciones, PDF de una cotización) van al bucket privado `nominations`
+     bajo `logistics/docs/`: PDF/JPEG/PNG por magic bytes, 10 MB (413). La
+     descarga es **POST a propósito** (`POST /logistics/documents/{id}/download`):
+     el activity log no audita los GET y un pasaporte escaneado tiene que dejar
+     rastro de quién lo bajó, mismo criterio que el W-8 (punto 25). La respuesta
+     de la lista nunca lleva `file_path`.
+   - El `ON DELETE CASCADE` borra la **fila** del documento pero no el objeto de
+     Storage. Por eso borrar un hotel, un participante, un cargo o una
+     competencia **junta las rutas antes** (`document_paths`; en la competencia,
+     también el Excel original de cada cronograma) y **quita los objetos
+     después** (`remove_objects`): con la fila ya borrada no habría de dónde
+     sacar la ruta.
+   - **PDF operativo para delegaciones** (`services/logistics_briefing.py`,
+     `GET /logistics/export/delegation-briefing`): **un** documento general por
+     competencia que logística le manda a todos los equipos. Por eso no lee
+     participantes, pasaportes, VIPs ni staff; solo hoteles, cronogramas de
+     delegación (label vacío), salones (sin PIC) y contactos operativos
+     (transporte, hotel, hielo, lavandería, hidratación). Se arma con
+     python-docx y se convierte con LibreOffice; si no hay `soffice` sirve el
+     `.docx`. Los contactos y salones llegan a los equipos **por este PDF**, no
+     por el link público (punto 8).
 
 8. **Hay una vista pública de logística, sin auth.** `/logistica/<token>`
    (frontend) → `/api/public/logistics/<token>` (backend). Un link secreto por
    competencia, rotable y desactivable desde el panel "Compartir".
    **Publica los datos completos, número de pasaporte incluido** — fue una
    decisión explícita del cliente. Si alguna vez hay que recortar, el único
-   lugar es `_redact()` en `public_logistics.py`.
+   lugar es `_redact()` en `public_logistics.py`. Los cronogramas (punto 7)
+   también se publican ahí (`/schedules`), pero solo la tabla: el Excel
+   original no se sirve por el link. Lo operativo del punto 7 **no se publica**:
+   contactos, salones, adicionales de hotel y documentos (los escaneos de
+   pasaporte incluidos; el *número* sí sale, como siempre) no tienen endpoint
+   público. Lo único nuevo que sale es el `label` de cada
+   cronograma, que la página usa de título cuando hay más de uno por audiencia.
+   `get_rooming` también pasa los hoteles por `_redact()` (antes salía el email
+   del hotel porque `build_rooming` hace un `select("*")`), y `contact_name` del
+   hotel se quita igual que el email.
 
 9. **Hay dos formas de asignar personal, y las decide `competitions.fee_type`:**
    - `per_game` → asignación **por partido** en `game_assignments` (un cargo
@@ -124,14 +232,20 @@ legacy `fibaamericascloud.com`).
     feriados y varía por país de la persona).
 
     Los días compensatorios llevan **permiso propio `comp_days`** (migración
-    030). Es el único permiso que **no** corresponde a una página: no tiene
-    ruta ni entrada de sidebar, gobierna una columna dentro de Employees y solo
-    usa `can_view`. El backend recorta `weekend_days` de la respuesta con
-    `has_view()` (la variante de `auth.py` que devuelve bool en vez de tirar
-    403, para permisos que recortan datos en lugar de cerrar un endpoint).
+    030). No corresponde a una página: no tiene ruta ni entrada de sidebar,
+    gobierna una columna dentro de Employees y solo usa `can_view`. El backend
+    recorta `weekend_days` de la respuesta con `has_view()` (la variante de
+    `auth.py` que devuelve bool en vez de tirar 403, para permisos que recortan
+    datos en lugar de cerrar un endpoint).
+
+    Hay un **segundo** permiso no-página: **`payments_approve`** (migración
+    047). Tampoco tiene ruta; solo usa `can_view` y habilita pasar un pago a
+    `completed` (punto 14). Los dos están en `VIEW_ONLY_MODULES` de `Users.jsx`,
+    que les deshabilita la casilla de edición.
+
     Al agregar un permiso hay que tocar **tres** lugares: el CHECK de
-    `user_permissions.module`, `MODULES` en `api/_lib/routers/permissions.py`
-    y `MODULES` en `src/pages/Users.jsx`.
+    `user_permissions.module`, `MODULES` en `permissions.py` y `MODULES` en
+    `src/pages/Users.jsx` (y `VIEW_ONLY_MODULES` si no es una página).
 
 11. **Los checklists de sede son datos, no código** (migración 038,
     `checklists.py` + `public_checklists.py`). "El VGO llega a la sede y prueba
@@ -173,28 +287,69 @@ legacy `fibaamericascloud.com`).
     - La hora del war room (Miami) vive en `src/lib/warRoom.js`, con la zona en
       una sola constante `WAR_ROOM_TZ`.
 
-13. **La API de FIBA no devuelve una ventana: devuelve el clasificatorio
-    entero.** `getgdapgamesbycompetitionid` para el WC 2027 Americas Qualifiers
-    trae los **84 partidos de las seis ventanas**, de noviembre 2025 a marzo
-    2027, por la misma URL. Acá, en cambio, cada ventana es una **competencia
-    aparte** con su crew, sus nominaciones y sus fees.
+13. **FIBA no devuelve un tramo: devuelve la competencia entera.** El sync de
+    calendario, partidos y resultados sale de **GDAP**
+    (`gdap.fiba.basketball`, `GDAP_API_KEY`), en `services/fiba_sync.py`. Lo
+    usan el botón Sync de Games (`POST /games/sync-results`) y el cron
+    `scripts/fiba_sync.py` (`--live` cada 15 min, `--all` diario). Las
+    **nominaciones no se sincronizan**: las hace este sistema.
 
-    Por eso existe `competitions.fiba_window_code` (W1..W6, migración 040): si
-    está seteado, `sync-results` importa solo los partidos con ese `windowCode`.
-    `NULL` = sin filtro, que es lo correcto para una competencia no dividida en
-    ventanas (AmeriCup, CentroBasket) — la mayoría.
+    `GET /v1/competitions/{id}/games` del WC 2027 Americas Qualifiers trae los
+    **84 partidos de las seis ventanas**; el de la LSB 2026 trae los 40 de
+    grupos, QFs y Finals. Acá cada ventana o grupo es una **competencia
+    aparte** con su crew, sus nominaciones y sus fees. Por eso, en
+    `competitions` (migraciones 040, 051 y 053):
+    - `fiba_competition_id` → el ID de GDAP. Varias competencias nuestras lo
+      comparten. `fiba_games_url` (URL o ID) sigue valiendo: el sync lo resuelve
+      y lo guarda.
+    - `fiba_window_code` (W1..W6) filtra por `windowCode`; `fiba_group_codes`
+      (`A`, o `37,38,39,40` para un Final Four) filtra por `groupPairingCode`.
+      `NULL` = sin filtro, que es lo correcto para una AmeriCup o un
+      CentroBasket — la mayoría.
+    - `fiba_segment_from` / `fiba_segment_to` (053) → tercer filtro: la fecha
+      **local** de los partidos tiene que caer en ese rango. Es para la **BCLA**:
+      la temporada entera es un solo ID (S8 = 209060), el feed no trae
+      `windowCode`, `/windows` viene vacío y B, C y D juegan en las tres
+      ventanas, así que lo único que separa W1/W2/W3 es la fecha. Van las dos
+      o ninguna (400). Un partido que ya es de la competencia se sigue
+      sincronizando aunque FIBA lo saque del rango, y uno que ya está en otra
+      competencia no se duplica (`claimed_elsewhere` en el reporte).
+    - `fiba_start_date` / `fiba_end_date` → las fechas que FIBA le da al tramo.
+      **No pisan** `start_date`/`end_date`: el Calendario muestra la diferencia
+      y una persona la aplica (`POST /calendar/competitions/{id}/apply-fiba-dates`).
+    - `fiba_synced_at` / `fiba_sync_error` → la salud del cron, visible en
+      Competencias y Calendario.
 
-    - **No filtres por el rango de fechas de la competencia.** Window 3 de FIBA
-      termina el 2026-07-08 y la competencia declara hasta el 07-07: ese filtro
-      se come un partido, y en el caso real ese partido tenía TD y VGO
-      asignados. Los bordes de una ventana no coinciden con las fechas que
-      carga el equipo, que incluyen viaje.
-    - El filtro **falla del lado seguro**: si la competencia declara ventana
-      pero ningún partido del feed trae `windowCode`, no filtra nada. Un feed
-      sin ventanas tiene que devolver sus partidos, no cero.
-    - Sin esto (hasta agosto 2026) W3 y W4 tenían 84 filas cada una, de las
-      cuales 17 y 12 eran suyas; los partidos de agosto se veían dentro de la
-      ventana de julio. Se limpiaron 139 filas.
+    Reglas que se ven raras y son correctas:
+    - **Usá la v1 de `/games`, no la v2.** La v2 no trae `windowCode` ni
+      `groupPairingCode`.
+    - **No filtres por `start_date`/`end_date` de la competencia.** Window 3 de
+      FIBA termina el 2026-07-08 y la competencia declara hasta el 07-07: ese
+      filtro se come un partido, y en el caso real ese partido tenía TD y VGO
+      asignados. Los bordes de un tramo no coinciden con las fechas que carga
+      el equipo, que incluyen viaje. El tramo de `fiba_segment_*` es otra cosa:
+      son las fechas de los partidos, se declaran a propósito y solo cuando el
+      feed no separa las ventanas.
+    - Ventana y grupos **fallan del lado seguro**: si la competencia declara
+      ventana (o grupos) pero ningún partido del feed trae ese campo, no
+      filtran. Un feed sin ventanas tiene que devolver sus partidos, no cero.
+      Por eso vincular las ventanas de la BCLA solo con `fiba_window_code`
+      metía los 36 partidos en cada una. El filtro de fechas no tiene ese
+      fallback porque todo partido definido tiene fecha.
+    - Los cruces que FIBA publica **sin fecha (`0001-01-01`) o sin equipos**
+      (un QF o una final todavía no definidos) no se importan: el reporte los
+      cuenta en `pending_in_fiba` y entran solos cuando FIBA los complete.
+    - Los equipos invertidos se reportan (`mismatches`), no se aplican: quién es
+      local define la sede y el texto de las cartas.
+    - "Nuevas en FIBA" (`GET /competitions/fiba/discover`) lista lo que GDAP
+      tiene en Americas (`zoneId=10`) y ninguna competencia nuestra vincula.
+      Solo lista; el alta la decide una persona.
+    - Sin `GDAP_API_KEY`, los partidos salen del feed de la web
+      (`digital-api…/hapi`, `FIBA_API_KEY`), que tiene la misma forma; ventanas,
+      fechas y discover necesitan GDAP.
+    - Sin el filtro de ventana (hasta agosto 2026) W3 y W4 tenían 84 filas cada
+      una, de las cuales 17 y 12 eran suyas; se limpiaron 139 filas. La LSB 2026
+      se cargó a mano en octubre 2026 por el mismo problema, por grupo.
 
 14. **Hay DOS tablas de gasto y el reporte suma las dos.** No son alternativas
     ni una reemplaza a la otra:
@@ -205,13 +360,31 @@ legacy `fibaamericascloud.com`).
       evento (licencias, internet, leasing) y gasto de evento sin persona
       (shipping, branding, seguros).
 
-    `/budget/summary` suma las dos fuentes. Un pago cuenta como ejecutado con
-    `status = 'completed'`; un gasto, con `paid`. Lo aprobado-sin-pagar se
-    reporta como *comprometido* y no descuenta del restante.
+    `/budget/summary` suma las dos fuentes. Un gasto cuenta como ejecutado con
+    `paid` y como comprometido con `approved`. Un pago (`new` / `in_process` /
+    `completed` / `cancelled` desde la migración 047 — **`split` ya no
+    existe**) es ejecutado en `completed` y comprometido en `new`; el pago
+    parcial es un `in_process` con `paid_amount`, que cuenta lo pagado como
+    ejecutado y el resto (`total − paid_amount`) como comprometido
+    (`_payment_buckets`). `cancelled` no cuenta. Lo comprometido no descuenta
+    del restante.
+
+    El **año** de un pago no es el de cualquier fecha: `completed` → año de
+    `payment_date` (o de la competencia si no tiene); abierto → año de la
+    competencia (`_payment_fiscal_year`). Un ingreso, por `received_date` o
+    `expected_date` según su estado (`_revenue_year`). Ver BUDGET_MODULE.md §8.
 
     **No metas un `nomination_id` nullable en `payments`** para unificarlas: eso
     volvería condicional el prefill desde `nominations.total`, la lógica de
     W8/bank info y el bloqueo de borrado de la migración 028.
+
+    `expenses.hotel_id` (migración 056) es un vínculo **opcional** a
+    `logistics_hotels`: exige `competition_id` y que el hotel sea de esa
+    competencia (400 si no), y **no es campo financiero** — no toca
+    `last_financial_edit_by` ni escribe historial, y se puede cambiar incluso en
+    `paid` (el hotel suele facturar después de pagado). Es solo la etiqueta que
+    deja a Logística ver qué pagó FIBA por hotel; los montos de
+    `logistics_hotel_charges` no entran acá (punto 7).
 
     El contrato completo del módulo está en `BUDGET_MODULE.md` y se actualiza en
     el mismo PR que el código.
@@ -229,7 +402,9 @@ legacy `fibaamericascloud.com`).
 
     - **Nunca imputes el pasaje a la cuenta del fee.** Infla una línea y deja la
       otra en cero, y encima parece correcto. El plan de cuentas viene apareado:
-      TD 11/12, VGO 13/14, REF 10/07, REF_INSTRUCTOR 08/09.
+      TD 11/12, VGO 13/14, REF 10/07, REF_INSTRUCTOR 08/09, VIDEO_OPERATOR
+      29/30 (las dos últimas las crea la migración 045; antes sus pagos nacían
+      sin imputar).
     - El departamento es **dato, no código**: agregar un `payment_budgets` sin
       mapear manda esos pagos a `unallocated_payments` (el ámbar del dashboard).
       El backend loguea un warning cuando pasa, pero es lo único que avisa.
@@ -252,24 +427,71 @@ legacy `fibaamericascloud.com`).
       encadenar dos pisa el scope en silencio. Eso sería el bypass.
     - `/budget/access/{user_id}` es **solo superadmin**: quién ve qué plata no lo
       decide alguien que ya tiene el módulo.
+    - Son **tres** acciones, no dos: `_departments_for(request, action)` acepta
+      `'view'` / `'edit'` / `'approve'` (columnas `can_view` / `can_edit` /
+      `can_approve` de `budget_access`, la última de la migración 048).
+      `can_approve` **no** se deduce de `can_edit` (el que carga y el que aprueba
+      son roles distintos) y sí implica `can_view`. Nadie aprueba un gasto que
+      cargó (`created_by`) ni uno cuyo último cambio de plata hizo él
+      (`last_financial_edit_by`, migración 050); el superadmin puede, con
+      motivo, y queda como override en el historial. Por eso `POST /budget/expenses/{id}/transition`
+      y `/approve` no llevan `require_edit` en el decorador: el permiso lo decide
+      la transición (punto 23).
+    - Lo que no es de ningún departamento no se puede recortar por fila y queda
+      para el **admin general** (superadmin o fila `'*'` con `can_edit`,
+      `_assert_general_admin()`): el plan de cuentas (`POST`/`PATCH` y `remap`
+      de `/budget/accounts`), borrar proveedores o cambiarles `name` / `active`,
+      y leer o escribir `bank_info` / `tax_id` de un proveedor (el resto ve
+      `has_bank_info`). El headcount y los supuestos exigen en cambio el
+      departamento **Competitions**, que es lo que alimentan: verlo para los
+      GET, editarlo para los PUT.
+    - **Hay dos lecturas de tablas de Budget que NO pasan por `_scoped()`, a
+      propósito**: `GET /budget/competitions/{id}/cost` (BUDGET_MODULE.md §9) y
+      `GET /logistics/hotels/{hotel_id}/payments` (`logistics_ops.py`, permiso
+      `logistics`). La segunda lee solo gastos `approved`/`paid` con `hotel_id`
+      de ese hotel y devuelve una **proyección cerrada**: `record_no`,
+      `description`, `amount`, `status`, `expense_date`, `payment_date`,
+      `invoice_no` y el nombre del proveedor (más los totales). Nada de
+      `bank_confirmation`, `payment_method`, `comments`, emails ni adjuntos.
+      Logística necesita ver qué pagó FIBA por hotel sin tener acceso al
+      departamento que lo imputó. Cualquier otra lectura de `expenses`,
+      `payments` o `budget_*` sin `_scoped()` sigue siendo P0: no ensanches la
+      proyección ni copies este patrón "porque ya hay uno".
 
-17. **Las migraciones de Budget (033-041) NO van en el deploy automático.** Se
-    aplican a mano contra Supabase **antes** de pushear el código que las usa —
-    si no, el deploy encuentra una columna que no existe. Cada archivo lo dice en
-    su cabecera. El resto del schema sigue la misma convención, pero acá es
-    especialmente fácil olvidarlo porque son nueve migraciones seguidas.
+17. **Las migraciones de Budget NO van en el deploy automático.** Son la
+    **033-037**, la **041**, la **045-050** y la **056** (`expenses.hotel_id`)
+    (las 038-040 son de otros módulos: checklists, hora UTC de los partidos,
+    ventanas FIBA; la **055** es de Logística y sigue la misma regla: hoteles con
+    audiencia, contactos, salones, adicionales, documentos y `label` de los
+    cronogramas). Se aplican a mano
+    contra Supabase **antes** de pushear el código que las usa — si no, el
+    deploy encuentra una columna que no existe. Cada archivo lo dice en su
+    cabecera. El resto del schema sigue la misma convención, pero acá es
+    especialmente fácil olvidarlo porque son muchas y van en orden: la 045-050
+    (flujo de finanzas, octubre 2026) son cuentas del Video Operator, historial
+    de estados, pipeline de pagos + `personnel_banking` + `payments_approve`,
+    aprobación de gastos, notificaciones y `last_financial_edit_by/at` (quién
+    tocó la plata por última vez).
 
-    **Estado hoy (agosto 2026):** el presupuesto está cargado ($1.627.431 para
-    2027, entre IT, Competitions y Comms) pero el **ejecutado está casi vacío**
-    — 1 pago, 0 gastos, 0 proveedores. Si el dashboard te da todo en cero, es el
-    dato y no un bug.
+    **Estado hoy (octubre 2026):** el presupuesto está cargado ($1.627.431
+    para 2027, entre IT, Competitions y Comms; $280.111 para 2026, solo IT). El
+    **ejecutado** tiene los 129 gastos de IT de enero a julio 2026
+    (`scripts/import_it_2026.py`, $41.667) y 1 pago; sigue sin gastos de
+    Competitions ni Comms y sin proveedores. Si el dashboard 2027 te da el
+    ejecutado en cero, es el dato y no un bug. `personnel_banking` arranca
+    vacía, nadie tiene `payments_approve` por defecto y `can_approve` solo lo
+    recibe la fila `'*'` con `can_edit` (backfill de la 048): hasta que un
+    superadmin los asigne en Usuarios, completar pagos y aprobar gastos queda en
+    manos del superadmin.
 
 18. **El Muro (`feed`) es el único permiso donde `can_view` ESCRIBE.** Es el
     feed interno a lo Facebook (`api/_lib/routers/feed.py`, página
     `src/pages/Feed.jsx`, ruta `/muro`, migración 043): novedades de los
     compañeros, eventos, avisos de RRHH, encuestas, reacciones y comentarios.
     Es deliberadamente el módulo menos formal del sistema, y por eso el permiso
-    no sigue la regla "toda escritura lleva `require_edit`":
+    no sigue la regla "toda escritura lleva `require_edit`" (la otra excepción
+    a esa regla es aprobar un gasto, que pide `budget:view` más `can_approve`
+    del departamento en vez de `budget:edit` — punto 16):
 
     | Permiso | Qué habilita |
     |---|---|
@@ -318,19 +540,170 @@ legacy `fibaamericascloud.com`).
       no sabe si fue foto o avatar, y el bucket sigue sin SVG. Los estilos son
       MIT o "free for commercial use"; no agregar uno que exija atribución.
 
-20. **Los tipos de competencia tienen un registro único:
-    `src/lib/competitions.js`.** `COMPETITION_TYPES` tiene que coincidir con
-    el CHECK de `competitions.competition_type` (migración 042, que agregó
-    `Zonal` y `WC` y sacó de `Other` lo que estaba mal clasificado). Antes la
-    lista estaba duplicada en Calendar y Availability y las dos quedaron
-    viejas: un tipo que existe en la base y no está acá no se puede filtrar y
-    se pinta gris. `WC` es el Mundial en sí; `WCQ` es el clasificatorio.
+20. **Las cartas se convierten a PDF con las fuentes de `fonts/`, no con las
+    del sistema.** El droplet no tiene Univers, IBM Plex Sans, Cochocib Script ni
+    Titillium, y hasta septiembre 2026 LibreOffice las reemplazaba por DejaVu
+    Sans: títulos partidos, firma de WCQ en cuatro líneas, "Gino Rullo" en texto
+    plano gigante, footer de GENERIC cortado a mitad de palabra. Ahora
+    `_convert_to_pdf_libreoffice()` lanza `soffice` con
+    `FONTCONFIG_FILE=<repo>/fonts/fonts.conf`: las fuentes libres viven en el
+    repo y los alias (`Univers → Nimbus Sans`, `Cochocib Script → Alex Brush`,
+    `Calibri → Carlito`, …) viven en ese archivo. No hay nada que instalar en
+    el sistema ni depende del HOME del servicio.
 
-    El mismo archivo resuelve el **nombre para mostrar**: hay seis pares de
-    competencias con `name` idéntico que solo difieren por el año (LSB Group
-    A 2026 y 2027, etc.). Todo `<select>` de competencias tiene que usar
-    `competitionLabel()` y no `c.name` pelado, o en Budget se imputa la plata al año
-    equivocado sin que nada avise.
+    - Las fuentes con licencia van a `fonts/private/` (gitignoreado) si FIBA
+      las entrega; al estar presentes ganan sobre el sustituto porque los alias
+      usan `<accept>`, no `<prefer>`.
+    - `fonts_report()` compara las familias de un `.docx` contra `fc-match` y
+      Templates lo muestra por plantilla (ok / sustituida / falta). Es el único
+      aviso: la conversión "termina bien" aunque falte la fuente.
+    - Las cajas de texto del footer de GENERIC ("@FIBA", "FIBA.basketball")
+      llevan `Calibri` explícito en el `.docx` fuente porque LibreOffice no les
+      aplica la fuente del tema de Word y con cualquier otra se parten. Si se
+      reemplaza el membrete, hay que repetir ese parche.
+    - Firma de BCLA y LSB: sigue siendo texto en una script (Alex Brush como
+      sustituto). Una imagen escaneada sería mejor; pedirla al cliente.
+
+21. **Generar una nominación: el sistema rellena, el usuario corrige.** Desde
+    septiembre 2026 el formulario de Nominaciones prellena desde
+    `GET /nominations/prefill`: defaults de la competencia, tarifa por cargo,
+    fechas de partido de la competencia o de la persona (misma derivación que
+    `sync-nominations`, importada de `games.py`, no duplicada). Si `window_fee`
+    llega `null` al crear, el backend aplica la tarifa del cargo de cada persona.
+
+    - **La carta no se genera con huecos.** `required_fields_for(competition)`
+      exige `letter_date` y `window_fee` siempre, `confirmation_deadline` en
+      cartas de nominación (WCQ/GENERIC/custom `nomination`) y al menos un
+      `game_dates` en `per_game`. `POST /{id}/generate` responde **422** con
+      `detail = {code: "missing_fields", missing: [...]}` (un dict, a
+      propósito); bulk y `generate-pdfs` lo reportan por ítem. La vista previa
+      sí renderiza igual, con header `X-Missing-Fields`, para ver qué falta.
+    - Existe `PATCH /nominations/{id}` (editar) y dos previews sin persistir:
+      `POST /nominations/{id}/preview` y `POST /nominations/preview` (payload
+      del formulario). Ninguno toca Storage ni `status`.
+    - `letter_data_for(nom)` es la única forma de armar el dict que consume
+      `generate_nomination()`; lo usan nominations.py, games.py y el preview de
+      Templates con nominación real. No lo vuelvas a copiar a mano.
+    - Descarga en lote: `POST /nominations/download-zip`.
+
+22. **Las plantillas subidas usan tags simples.** El usuario escribe siempre
+    `{{ campo }}`: `LetterTemplate.patch_xml()` en `document_generator.py` le
+    pone la `r` a los valores `RichText` antes de que docxtpl los procese, y
+    resuelve alias en español (`{{ saludo }}`, `{{ partidos }}`,
+    `{{ honorarios }}`, en `FRIENDLY_ALIASES`). Las listas llegan armadas en un
+    solo valor multilínea (`game_list`, `fees_block`, `details_block`); los
+    bucles `{%p for %}` siguen funcionando pero la UI los marca como avanzados.
+    Un tipo creado desde la UI recibe el contexto **unificado** (nomination ∪
+    confirmation): `kind` solo elige el starter, ya no limita los campos.
+    Se puede duplicar una plantilla (`POST /templates/{key}/duplicate`) y
+    previsualizar con una nominación real (`?nomination_id=`).
+
+23. **En gastos y pagos el `status` no se edita por PATCH/PUT.** Solo cambia por
+    `POST /budget/expenses/{id}/transition` y `POST /payments/{id}/transition`
+    (más `/payments/bulk-status`, que aplica la misma regla ítem por ítem). Un
+    PATCH/PUT con `status` es 400, y un alta nace `draft` / `new`.
+
+    - Cada máquina es una **función pura** (`check_expense_transition` en
+      `budget.py`, `check_payment_transition` en `payments.py`): recibe la fila,
+      el destino, el body y los derechos del caller ya resueltos, y devuelve qué
+      escribir o levanta 400 (falta un dato) / 403 (no te toca) / 409 (no existe
+      esa transición). Las tablas están en BUDGET_MODULE.md §14 y en un test
+      (`test_transition_table_is_the_documented_one`) que falla si cambian sin
+      actualizarlo.
+    - El endpoint escribe con `.eq("status", <el validado>)` (lock optimista:
+      si alguien lo movió en el medio, 409), deja traza con
+      `record_transition()` (`services/finance_history.py`, tabla
+      `finance_status_history`, migración 046) y avisa con `notify()`.
+    - Separación de funciones: nadie aprueba un gasto ni completa un pago que
+      **creó o cuyo último cambio de plata hizo** (`created_by` y
+      `last_financial_edit_by`, migración 050); el superadmin sí, **con
+      motivo**, y queda `meta.override`. Completar un pago exige
+      `payments:edit` **más** `payments_approve`, fecha, nominación no
+      declinada, el CM aprobado, W-8 vigente y datos bancarios, y paga **el
+      total** (`paid_amount` distinto del total → 400).
+    - El pago parcial no es un estado ni un campo del PUT: es
+      `POST /payments/{id}/record-partial {paid_amount, reason?}`, con el mismo
+      gating que completar. El PUT ya no acepta `paid_amount`.
+    - Las **ediciones de plata** (PUT de un pago con `amount` / `extra` /
+      `airfare` / `budget_code`, PATCH de un gasto con campos financieros,
+      `sync-amount`) y los **DELETE** también quedan en el historial: con el
+      mismo status y `meta.edit`, o con `to_status = 'deleted'`.
+    - No hay `approved → cancelled` en gastos ni `completed → cancelled` en
+      pagos: primero se reabre. Un pago con `paid_amount > 0` no vuelve a `new`
+      ni se cancela (desaparecería del ejecutado).
+
+24. **Las notificaciones son in-app y no tienen cron ni email.** La campana
+    (`src/components/NotificationsBell.jsx`) lee de `/api/me/notifications`
+    (router `notifications.py`), que como `/me` va bajo **`require_user`** y sin
+    permiso de módulo: **toda** query filtra por `user_id = caller`, incluido el
+    UPDATE de marcar leída (una ajena da 404). Dos cosas distintas:
+    - **Novedades** → tabla `notifications` (migración 049). Las escribe
+      `notify()` (`services/notify.py`) en el mismo handler que produce el
+      evento; es best-effort y nunca rompe el request.
+    - **Pendientes** → `GET /me/notifications/pending`, **calculados en vivo**
+      según los permisos del caller (gastos por aprobar, pagos sin W-8 o sin
+      banco, pagos esperando al CM, recurrentes del mes). No se guardan; no
+      agregues una tabla para eso.
+    El front hace poll cada 60 s y al volver a la pestaña. Quién recibe qué:
+    BUDGET_MODULE.md §15.
+
+25. **`personnel_banking` vive SOLO en el router `payments`.** Es la ficha
+    bancaria y el W-8/W-9 de cada persona (migración 047), bajo
+    `/api/payments/personnel/{id}/banking`: hereda `require_view("payments")`,
+    así que quien tiene `personnel` sin `payments` no la ve. **Nunca** la
+    expongas por `personnel.py`.
+    - El GET devuelve los números **enmascarados** (`****1234`) y, si la persona
+      no tiene ficha, `exists: false` (no 404).
+    - `POST …/banking/reveal` muestra los números completos y es **POST a
+      propósito**: el middleware del `activity_log` audita POST/PUT/PATCH/DELETE,
+      no los GET. No lo pases a GET.
+    - Bajar el PDF del W-8 también es **POST** (`…/tax-form/download`, con
+      `payments:edit`), por la misma razón.
+    - El W-8 **bloquea** `completed` y `record-partial` (tiene que estar `ok` o
+      `exempt`), igual que no tener datos bancarios; en `new → in_process` solo
+      **advierte**. Un W-8 sin fecha de vencimiento vence el 31/12 del tercer
+      año posterior a la firma; uno sin PDF cuenta como faltante. El PDF va al
+      bucket privado `nominations` bajo `banking/`.
+    - El export de pagos no lleva números de cuenta.
+
+26. **Los partidos van al Google Calendar de cada usuario, no a uno
+    compartido.** Migración 052, `services/google_calendar.py`, router
+    `google_calendar.py` (`/api/me/google-calendar`), cron
+    `scripts/google_calendar_sync.py` (cada 15 min, después del `--live` de
+    FIBA). Quien tiene `calendar` o `games` conecta su cuenta desde Mi perfil →
+    Google Calendar y la app le crea un calendario **secundario** propio,
+    "FIBA Americas — Partidos", con los partidos de las competencias activas
+    (`end_date >= hoy - 3 días`: la gracia es para que llegue el resultado del
+    último partido, que en América termina cuando en UTC ya es mañana).
+
+    - Scope `calendar.app.created`: la app solo ve los calendarios que creó.
+      No pidas `calendar` ni `calendar.events` "para simplificar": eso es leer y
+      escribir el calendario principal de la persona.
+    - **No hay tabla de mapeo partido ↔ evento.** El ID del evento es
+      `"g" + game_id sin guiones` (hex ⊂ base32hex) y el hash del contenido va en
+      `extendedProperties.private.fiba_hash`: solo se escribe lo que cambió.
+    - Cuando una competencia termina, sus eventos **se quedan** como historial.
+      Solo se borra un evento si su partido ya no existe en `game_schedule`.
+    - La hora sale de `datetime_utc` (punto 12). Sin `datetime_utc` o con el
+      `'00:00'` de relleno, el partido va como evento de día completo.
+    - Es lo propio del usuario: `require_user` y toda query por su `user_id`.
+      Conectar y sincronizar piden además `calendar` o `games`; ver el estado y
+      desconectar no (quien perdió el permiso tiene que poder cortar). El cron
+      **vuelve a chequear** el permiso en cada corrida (`user_can_sync`).
+    - **Una sync por usuario a la vez** (`sync_started_at`, claim atómico con
+      lease de 10 min) y el `calendar_id` se guarda apenas se crea el
+      calendario. Sacar cualquiera de las dos le deja calendarios duplicados a
+      la persona cuando una sync se corta o el cron pisa al botón.
+    - Un evento que Google rechaza no corta la sync de los demás (`failed`);
+      un token revocado sí, y además borra el token guardado y avisa por la
+      campana. Borrar un usuario revoca su token (`forget_user`).
+    - El refresh token se guarda **cifrado** con Fernet (`GOOGLE_TOKEN_KEY`) y
+      nunca vuelve al frontend. Cambiar la clave desconecta a todos.
+    - El OAuth vuelve a la ruta del **frontend** `/google/callback`, que le pasa
+      `code` y `state` al backend por POST con el JWT: no hay endpoint público.
+      Van en el body porque el activity log guarda los query params.
+    - El setup de Google Cloud y el aviso de los tokens de 7 días en modo
+      *Testing* están en DEPLOYMENT.md.
 
 ---
 
@@ -360,41 +733,47 @@ fiba-nominations/
 ├── api/                       ← FastAPI backend
 │   ├── index.py               ← entry, middleware, mounting routers
 │   └── _lib/
-│       ├── auth.py            ← require_view / require_edit / require_superadmin /
-│       │                         require_user + has_view / has_edit (bool)
+│       ├── auth.py            ← require_view, require_edit, require_user, has_view/has_edit
 │       ├── database.py        ← lightweight supabase client (httpx)
 │       ├── crew.py            ← crew del torneo (competition_assignments)
 │       ├── travel.py          ← sede y fechas de viaje derivadas de los partidos
 │       ├── budget_accounts.py ← rol → cuenta de fees / de travel (payments ↔ budget)
-│       ├── routers/           ← uno por módulo (nominations, training, feed, …)
+│       ├── logistics_audiences.py ← staff / delegation / vip → categorías del padrón; for_audience (punto 7)
+│       ├── finance_years.py   ← a qué año cae un pago (budget y la cola de payments)
+│       ├── routers/           ← uno por módulo (nominations, training, …) + notifications (/me)
 │       └── services/
 │           ├── document_generator.py  ← docx (docxtpl) → pdf (LibreOffice)
-│           ├── template_store.py      ← templates .docx subidos por el usuario
-│           ├── schedule_workbook.py   ← export Excel Game & Practice
-│           ├── bulk_import.py         ← import de personnel
-│           ├── logistics_import.py    ← flight manifest / rooming list (2 pasos)
-│           ├── budget_import.py       ← import del presupuesto desde Excel
-│           └── activity_log.py        ← auditoría (middleware)
+│           ├── fiba_sync.py           ← sync con FIBA GDAP: partidos, resultados, fechas (punto 13)
+│           ├── finance_history.py     ← record_transition / history_for (punto 23)
+│           ├── google_calendar.py     ← OAuth + sync de partidos al Google Calendar de cada usuario (punto 26)
+│           ├── logistics_briefing.py  ← PDF operativo para delegaciones: python-docx → LibreOffice (punto 7)
+│           ├── logistics_schedule_import.py ← lee los cronogramas de transporte y comidas (punto 7)
+│           ├── notify.py              ← notify(), budget_approvers_for, module_editors (punto 24)
+│           └── xlsx_utils.py          ← helpers de los exports .xlsx nuevos
 │
 ├── src/                       ← React frontend
 │   ├── App.jsx                ← shell (sidebar + topbar + router)
-│   ├── pages/                 ← una por ruta (+ subcarpetas games/, budget/, logistics/)
+│   ├── pages/                 ← una por ruta
+│   │   ├── budget/            ← pestañas de Budget, editores, scope.jsx (BudgetScopeContext)
+│   │   └── payments/          ← Cola, Por evento, PaymentDrawer, BulkStatusModal
 │   ├── components/
-│   │   ├── ui/                ← Button, Input, Table, … (DS primitivos)
-│   │   ├── brand/             ← Logo.jsx (Monogram, Wordmark, …)
-│   │   ├── ProfileModal.jsx   ← "Mi perfil": foto o avatar ilustrado
-│   │   └── PersonProfilePanel.jsx, CompetitionSearch.jsx, NominationsMatrix.jsx
-│   ├── lib/                   ← icons.jsx, competitions.js (tipos + nombre con año),
-│   │                             warRoom.js, avatars.js, refereeNeutrality.js
-│   ├── contexts/              ← Auth
-│   └── i18n/                  ← LanguageContext + translations (ES + EN)
+│   │   ├── ui/                ← Button, Input, Table, Tabs, Drawer, … (DS primitivos)
+│   │   ├── charts/            ← BudgetCharts (recharts, chunk `charts`, solo con React.lazy)
+│   │   └── brand/             ← Logo.jsx (Monogram, Wordmark, …)
+│   ├── lib/icons.jsx          ← Tabler icons
+│   ├── contexts/              ← Auth, Language
+│   └── i18n/                  ← ES + EN
 │
 ├── public/favicon.png         ← monograma F + basketball seam
+├── fonts/                     ← fuentes libres + fonts.conf para LibreOffice (punto 20)
 ├── scripts/
 │   ├── build_letter_templates.py  ← regenera los *_TPL.docx (correr si cambia el membrete)
+│   ├── fiba_sync.py               ← cron del sync con FIBA (corre en droplet, punto 13)
+│   ├── google_calendar_sync.py    ← cron del sync a Google Calendar (corre en droplet, punto 26)
 │   ├── fiba-security-scan.sh      ← scanner horario de nginx logs (corre en droplet)
 │   └── fiba-supabase-keepalive.sh ← ping diario a Supabase (evita el auto-pause del Free)
 ├── supabase/migrations/       ← schema SQL
+├── tests/                     ← pytest sin red ni base (ver DEVELOPMENT.md → Tests)
 ├── verify_security.sh         ← smoke test post-deploy
 ├── .github/workflows/deploy.yml  ← CI/CD
 └── tailwind.config.js         ← tokens del DS
@@ -509,7 +888,17 @@ npm run dev                 # vite
 
 - **Modo oscuro** vía `.dark` en `<html>`, persistido en
   `localStorage.fiba_dark`. Default actual: dark (ver
-  `DESIGN_SYSTEM.md` para por qué).
+  `DESIGN_SYSTEM.md` para por qué). Las rutas públicas (`/logistica`,
+  `/checklist`, `/availability` con token y `/asset`) van siempre en claro.
+
+- **Texto visible**: sigue la sección "Redacción" de `DESIGN_SYSTEM.md`
+  (tuteo neutro, glosario único, sin raya larga). Vale también para toasts,
+  `confirm()` y documentos generados.
+
+### Plan mode
+
+- **Entrar en plan mode antes de** cada feature nueva, cada tradeoff de
+  diseño y cada bug que sobrevivió al primer fix.
 
 ### Git / commits
 
@@ -572,8 +961,8 @@ explicación del truco de CSS variables para los aliases legacy
   Plan y Control de operación comparten el permiso `games`; la hora del
   partido es local de la sede y se convierte desde `datetime_utc`.
 
-- **"Tocá tipos o selectores de competencia"** → `src/lib/competitions.js`
-  (punto 20), no una lista local en la página.
+- **"Tocá tipos o selectores de competencia"** → `src/lib/competitions.js`,
+  no una lista local en la página.
 
 - **"Tocá el Muro"** (feed) → punto 18: `can_view` publica, `can_edit`
   modera. No le pongas `require_edit` a publicar/comentar/reaccionar.
@@ -582,7 +971,19 @@ explicación del truco de CSS variables para los aliases legacy
   primero: es el contrato del módulo y se actualiza en el mismo PR. Checklist
   corto: `_scoped()` en toda query nueva de budget, la migración aplicada a mano
   ANTES del push, y si tocás la imputación de un pago acordate de que son dos
-  (fee y pasaje, puntos 15 a 17).
+  (fee y pasaje, puntos 15 a 17). Además:
+  - Un cambio de estado nuevo es una **fila en la tabla de transiciones** de la
+    función pura (`check_expense_transition` / `check_payment_transition`), con
+    su test y su fila en BUDGET_MODULE.md §14 — nunca un `status` en un
+    PATCH/PUT (punto 23).
+  - Si el evento le importa a alguien, `notify()` en el mismo handler
+    (best-effort, con el autor en `exclude`); si es "algo que espera una
+    acción", va como pendiente calculado en `notifications.py`, no como fila
+    (punto 24).
+  - Todo export de budget sale de la misma función que la pantalla y pasa por
+    `_scoped()`: el Excel no puede traer nada que la tabla no muestre. Los
+    `.xlsx` nuevos usan `services/xlsx_utils.py` (`safe_text` contra fórmulas,
+    `no-store`).
 
 - **"Cambiá el deploy"** → modificá `.github/workflows/deploy.yml`. Hay
   un user en el droplet llamado `fiba` con clave SSH agregada via
@@ -615,5 +1016,19 @@ explicación del truco de CSS variables para los aliases legacy
 - ❌ Imputar el pasaje de un pago a la cuenta de fees (punto 15).
 - ❌ Pushear código que usa una migración de Budget sin haberla aplicado antes
   a mano en Supabase (punto 17).
-- ❌ Sumar un offset a la hora local de un partido para "convertirla" (punto 12).
-- ❌ Hardcodear la lista de tipos de competencia en una página (punto 20).
+- ❌ Cambiar el `status` de un gasto o de un pago por PATCH/PUT, o aceptar un
+  alta que no nazca `draft` / `new`: solo por `/transition` (punto 23).
+- ❌ "Corregir" `/budget/expenses/{id}/transition` o `/approve` agregándoles
+  `require_edit`: el aprobador puede no tener `can_edit`, y el permiso lo
+  decide la transición (punto 16).
+- ❌ Exponer `personnel_banking` por `personnel.py`, o pasar `/reveal` o la
+  descarga del W-8 a GET (dejarían de quedar en el activity log) (punto 25).
+- ❌ Mandarle `bank_info` / `tax_id` de un proveedor a alguien que no es admin
+  general de budget, ni en un GET ni en la respuesta de un PATCH (punto 16).
+- ❌ Publicar contactos, salones, adicionales de hotel o documentos de logística
+  por el link público `/logistica/<token>`: llegan a los equipos por el PDF de
+  delegaciones, y los pasaportes solo los ve quien tiene `logistics` (puntos 7 y 8).
+- ❌ Sumar `logistics_hotel_charges` en `/budget/summary` o en cualquier reporte
+  de Budget (su monto es informativo; el pago real es un `expense` con
+  `hotel_id`), ni pasar la descarga de documentos de logística a GET (dejaría
+  de quedar en el activity log) (puntos 7 y 14).

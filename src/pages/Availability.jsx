@@ -9,16 +9,16 @@ import { Card } from '../components/ui/Card'
 import { Avatar } from '../components/ui/Avatar'
 import { Button } from '../components/ui/Button'
 import { InfoHint } from '../components/ui/Tooltip'
-import { SELECTABLE_COMPETITION_TYPES } from '../lib/competitions'
+import { SELECTABLE_COMPETITION_TYPES, competitionTypeLabel } from '../lib/competitions'
 
 // Personnel roles with a self-service availability roster (all of them).
 const ROLES = ['TD', 'VGO', 'REF', 'REF_INSTRUCTOR', 'VIDEO_OPERATOR']
 
 // Raw availability cell treatment — colored blocks, no dots.
 const STATUS_STYLES = {
-  available:   { cell: 'bg-success-100 dark:bg-success-500/20 hover:bg-success-200/70 dark:hover:bg-success-500/30', dot: 'bg-success-500' },
-  unavailable: { cell: 'bg-danger-100 dark:bg-danger-500/20 hover:bg-danger-200/70 dark:hover:bg-danger-500/30',     dot: 'bg-danger-500' },
-  restricted:  { cell: 'bg-warning-100 dark:bg-warning-500/20 hover:bg-warning-200/70 dark:hover:bg-warning-500/30', dot: 'bg-warning-500' },
+  available:   { cell: 'bg-success-100 dark:bg-success-500/20 hover:bg-success-500/25 dark:hover:bg-success-500/30', dot: 'bg-success-500' },
+  unavailable: { cell: 'bg-danger-100 dark:bg-danger-500/20 hover:bg-danger-500/25 dark:hover:bg-danger-500/30',     dot: 'bg-danger-500' },
+  restricted:  { cell: 'bg-warning-100 dark:bg-warning-500/20 hover:bg-warning-500/25 dark:hover:bg-warning-500/30', dot: 'bg-warning-500' },
   no_data:     { cell: 'bg-ink-50 dark:bg-navy-950/40 hover:bg-ink-100 dark:hover:bg-navy-900/60',                   dot: 'bg-ink-300 dark:bg-navy-700' },
 }
 
@@ -27,7 +27,7 @@ const STATUS_STYLES = {
 const NOMINATION_STYLES = {
   nominated: { cell: 'bg-basketball-100 dark:bg-basketball-500/25 hover:bg-basketball-200 dark:hover:bg-basketball-500/35', dot: 'bg-basketball-500' },
   confirmed: { cell: 'bg-navy-200 dark:bg-navy-700 hover:bg-navy-300 dark:hover:bg-navy-600',                              dot: 'bg-navy-700 dark:bg-navy-300' },
-  declined:  { cell: 'bg-danger-100 dark:bg-danger-500/30 hover:bg-danger-200 dark:hover:bg-danger-500/40 ring-1 ring-danger-500/40', dot: 'bg-danger-600' },
+  declined:  { cell: 'bg-danger-100 dark:bg-danger-500/30 hover:bg-danger-500/25 dark:hover:bg-danger-500/40 ring-1 ring-danger-500/40', dot: 'bg-danger-600' },
   pending:   { cell: 'bg-basketball-50 dark:bg-basketball-500/10 hover:bg-basketball-100 dark:hover:bg-basketball-500/20 ring-1 ring-basketball-500/40', dot: 'bg-basketball-300' },
 }
 
@@ -184,7 +184,7 @@ export default function Availability() {
   }
 
   function formatCompDate(comp) {
-    if (!comp.start_date) return 'TBD'
+    if (!comp.start_date) return lang === 'es' ? 'Por confirmar' : 'TBD'
     const d = new Date(comp.start_date + 'T00:00:00')
     const locale = lang === 'es' ? 'es' : 'en-US'
     return d.toLocaleDateString(locale, { month: 'short', day: 'numeric' })
@@ -227,7 +227,9 @@ export default function Availability() {
         <div>
           <h1 className="text-[22px] font-semibold text-navy-900 dark:text-white tracking-tight">{t('availability.title')}</h1>
           <p className="text-sm text-ink-500 dark:text-ink-400 mt-0.5">
-            <span className="num font-medium text-ink-700 dark:text-ink-200">{filteredTds.length}</span> {t(`rolesShort.${role}`)} · <span className="num font-medium text-ink-700 dark:text-ink-200">{filteredComps.length}</span> {filteredComps.length === 1 ? 'competencia' : 'competencias'}
+            <span className="num font-medium text-ink-700 dark:text-ink-200">{filteredTds.length}</span> {t(`rolesShort.${role}`)} · <span className="num font-medium text-ink-700 dark:text-ink-200">{filteredComps.length}</span> {lang === 'es'
+              ? (filteredComps.length === 1 ? 'competencia' : 'competencias')
+              : (filteredComps.length === 1 ? 'competition' : 'competitions')}
           </p>
         </div>
         {canEdit && (
@@ -263,7 +265,7 @@ export default function Availability() {
                   {s.hint && <InfoHint label={s.hint} />}
                 </div>
                 <div className="num text-[22px] font-semibold text-navy-900 dark:text-white leading-tight">
-                  {s.count} <span className="text-xs font-normal text-ink-400 dark:text-ink-500">slots</span>
+                  {s.count} <span className="text-xs font-normal text-ink-400 dark:text-ink-500">{lang === 'es' ? 'casillas' : 'cells'}</span>
                 </div>
               </div>
             </div>
@@ -283,7 +285,7 @@ export default function Availability() {
                     ? 'bg-navy-900 text-white border-navy-900 dark:bg-navy-700 dark:border-navy-700'
                     : 'bg-white dark:bg-navy-900 text-ink-600 dark:text-ink-300 border-ink-200 dark:border-navy-700 hover:bg-ink-50 dark:hover:bg-navy-800'
                 }`}>
-                {type}
+                {competitionTypeLabel(type, lang)}
               </button>
             )
           })}
@@ -426,7 +428,7 @@ export default function Availability() {
               {modal.existing ? t('availability.editAvailability') : t('availability.newAvailability')}
             </h3>
             <p className="text-xs text-ink-500 dark:text-ink-400 mb-4">
-              {modal.td.name} — {modal.competition.short_name || modal.competition.name}
+              {modal.td.name} · {modal.competition.short_name || modal.competition.name}
             </p>
             <form onSubmit={handleModalSubmit} className="space-y-3">
               <div>
@@ -465,6 +467,7 @@ export default function Availability() {
 
 /* ── Self-service links: one shared URL per role, copy + rotate ──── */
 function LinksModal({ t, onClose }) {
+  const { push } = useToast()
   const [links, setLinks] = useState(null)
   const [error, setError] = useState(false)
   const [copiedRole, setCopiedRole] = useState(null)

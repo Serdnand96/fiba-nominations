@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
 import { Icon } from '../../lib/icons';
+import { useLanguage } from '../../i18n/LanguageContext';
 
 const ToastCtx = createContext({ push: () => {} });
 
@@ -15,6 +16,7 @@ const TONES = {
 // o el foco están encima (WCAG 2.2.1 — el usuario tiene que poder alcanzarlo) y
 // trae un botón de cierre manual.
 function ToastItem({ toast, onDismiss }) {
+  const { t } = useLanguage();
   const timer = useRef(null);
   const start = useCallback(() => {
     clearTimeout(timer.current);
@@ -45,7 +47,7 @@ function ToastItem({ toast, onDismiss }) {
       <button
         type="button"
         onClick={() => onDismiss(toast.id)}
-        aria-label={toast.closeLabel || 'Cerrar'}
+        aria-label={toast.closeLabel || t('common.close')}
         className="flex-shrink-0 self-start p-1.5 rounded-md text-ink-400 hover:text-ink-700 dark:hover:text-ink-100 hover:bg-ink-100 dark:hover:bg-navy-800"
       >
         <Icon.X className="w-4 h-4" />

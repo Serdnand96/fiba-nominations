@@ -5,7 +5,8 @@ import {
   updatePublicChecklistItem, submitPublicChecklist,
 } from '../api/client'
 import { useLanguage } from '../i18n/LanguageContext'
-import { LogoMonogram } from '../components/brand/Logo'
+import { Icon } from '../lib/icons'
+import { PublicShell, PublicUnavailable } from '../components/layout/PublicShell'
 import ChecklistRunner, { runTone } from './games/ChecklistRunner'
 
 // El checklist de sede, tal como lo abre el oficial: link secreto, sin cuenta,
@@ -21,7 +22,7 @@ import ChecklistRunner, { runTone } from './games/ChecklistRunner'
 const card = 'rounded-xl border border-ink-200 dark:border-navy-800 bg-white dark:bg-navy-900'
 
 function shortDate(iso, lang) {
-  if (!iso) return '—'
+  if (!iso) return '-'
   return new Date(iso + 'T12:00:00').toLocaleDateString(lang === 'es' ? 'es' : 'en-US',
     { weekday: 'short', day: 'numeric', month: 'short' })
 }
@@ -30,7 +31,7 @@ const todayISO = () => new Date().toISOString().slice(0, 10)
 
 export default function PublicChecklist() {
   const { token } = useParams()
-  const { lang, setLang } = useLanguage()
+  const { lang } = useLanguage()
   const t = (es, en) => (lang === 'es' ? es : en)
 
   const [overview, setOverview] = useState(null)
@@ -106,7 +107,7 @@ export default function PublicChecklist() {
   async function confirmStart() {
     const name = who.signed_name.trim()
     if (!who.personnel_id && !name) {
-      setError(t('Decinos quién está haciendo el control.', 'Tell us who is running the check.'))
+      setError(t('Indica quién hace el control.', 'Enter the name of the person running the check.'))
       return
     }
     const tpl = signing
@@ -128,53 +129,32 @@ export default function PublicChecklist() {
 
   if (invalid) {
     return (
-      <div className="min-h-screen bg-ink-50 dark:bg-navy-950 flex items-center justify-center px-4">
-        <div className="text-center">
-          <div className="flex justify-center mb-4"><LogoMonogram size={48} /></div>
-          <h1 className="text-lg font-semibold text-ink-900 dark:text-white mb-1">
-            {t('Este link no está disponible', 'This link is not available')}
-          </h1>
-          <p className="text-sm text-ink-500 dark:text-ink-400">
-            {t('Puede haber vencido o haber sido reemplazado. Pedile uno nuevo a la organización.',
-               'It may have expired or been replaced. Ask the organisers for a new one.')}
-          </p>
-        </div>
-      </div>
+      <PublicUnavailable
+        title={t('Este enlace no está disponible', 'This link is not available')}
+        message={t('El enlace venció o fue reemplazado. Pide uno nuevo a FIBA Americas.',
+                   'The link expired or was replaced. Ask FIBA Americas for a new one.')} />
     )
   }
 
   const comp = overview.competition
 
   return (
-    <div className="min-h-screen bg-ink-50 dark:bg-navy-950 text-ink-900 dark:text-white">
-      <header className="border-b border-ink-200 dark:border-navy-800 bg-white dark:bg-navy-900">
-        <div className="max-w-3xl mx-auto px-4 py-4 flex items-start justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <div className="shrink-0"><LogoMonogram size={36} /></div>
-            <div className="leading-tight">
-              <h1 className="text-base sm:text-lg font-semibold">{comp.name}</h1>
-              <p className="text-xs text-ink-500 dark:text-ink-400">
-                {t('Control de sede', 'Venue check')}{comp.location ? ` · ${comp.location}` : ''}
-              </p>
-            </div>
-          </div>
-          <button onClick={() => setLang(lang === 'es' ? 'en' : 'es')}
-            className="text-xs text-ink-500 dark:text-ink-400 hover:text-ink-900 dark:hover:text-white border border-ink-200 dark:border-navy-700 rounded-md px-2 py-1 shrink-0">
-            {lang === 'es' ? 'EN' : 'ES'}
-          </button>
-        </div>
-      </header>
+    <PublicShell
+      width="max-w-3xl"
+      title={comp.name}
+      context={`${t('Control de sede', 'Venue check')}${comp.location ? ` · ${comp.location}` : ''}`}>
 
       <main className="max-w-3xl mx-auto px-4 py-5">
         {error && (
-          <div className="mb-4 rounded-lg bg-red-500/10 border border-red-500/20 px-3 py-2 text-xs text-red-500">{error}</div>
+          <div role="alert" className="mb-4 rounded-lg bg-danger-50 border border-danger-100 px-3 py-2 text-xs text-danger-700 dark:bg-danger-500/10 dark:border-danger-500/30 dark:text-danger-500">{error}</div>
         )}
 
         {openGame ? (
           <>
             <button onClick={() => { setOpenGame(null); setSigning(null) }}
-              className="text-xs text-ink-500 dark:text-ink-400 hover:underline mb-3">
-              ← {t('Volver a los partidos', 'Back to games')}
+              className="inline-flex items-center gap-1 text-xs text-ink-600 dark:text-ink-400 hover:underline mb-3">
+              <Icon.ChevronLeft className="w-3.5 h-3.5" />
+              {t('Volver a los partidos', 'Back to games')}
             </button>
 
             <div className={`${card} p-4 mb-4`}>
@@ -193,21 +173,21 @@ export default function PublicChecklist() {
                 <h2 className="text-sm font-semibold mb-1">{signing.name}</h2>
                 <p className="text-xs text-ink-500 dark:text-ink-400 mb-3">
                   {t('¿Quién hace el control? Queda firmado en el registro del partido.',
-                     'Who is running the check? It is signed onto the game record.')}
+                     'Who is running the check? Your name goes on the game record.')}
                 </p>
                 {signingRoster.length > 0 && (
                   <select className="fiba-input mb-2" value={who.personnel_id}
                     onChange={e => setWho({ personnel_id: e.target.value, signed_name: '' })}>
-                    <option value="">{t('Elegí tu nombre...', 'Pick your name...')}</option>
+                    <option value="">{t('Elige tu nombre...', 'Pick your name...')}</option>
                     {signingRoster.map(p => (
-                      <option key={p.id} value={p.id}>{p.name}{p.role ? ` — ${p.role}` : ''}</option>
+                      <option key={p.id} value={p.id}>{p.name}{p.role ? ` (${p.role})` : ''}</option>
                     ))}
                   </select>
                 )}
                 {!who.personnel_id && (
                   <input className="fiba-input mb-2" value={who.signed_name}
                     onChange={e => setWho({ personnel_id: '', signed_name: e.target.value })}
-                    placeholder={t('...o escribí tu nombre', '...or type your name')} />
+                    placeholder={t('O escribe tu nombre', 'Or type your name')} />
                 )}
                 <div className="flex justify-end gap-2">
                   <button onClick={() => setSigning(null)} className="btn-fiba-ghost text-xs">{t('Cancelar', 'Cancel')}</button>
@@ -235,7 +215,7 @@ export default function PublicChecklist() {
                   <button key={d} onClick={() => setDate(d)}
                     className={`shrink-0 px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
                       date === d
-                        ? 'border-basketball-500 bg-basketball-500/10 text-basketball-500'
+                        ? 'border-basketball-500 bg-basketball-500/10 text-basketball-700 dark:text-basketball-500'
                         : 'border-ink-200 dark:border-navy-800 text-ink-500 dark:text-ink-400'
                     }`}>
                     {shortDate(d, lang)}
@@ -269,7 +249,7 @@ export default function PublicChecklist() {
           </>
         )}
       </main>
-    </div>
+    </PublicShell>
   )
 }
 
@@ -277,8 +257,8 @@ export default function PublicChecklist() {
 function ChecklistBadges({ t, checklists }) {
   if (!checklists?.length) {
     return (
-      <span className="shrink-0 text-[10px] uppercase tracking-wider text-ink-400 dark:text-ink-500">
-        {t('sin control', 'no check')}
+      <span className="shrink-0 text-[11px] text-ink-500 dark:text-ink-400">
+        {t('Sin control', 'No check')}
       </span>
     )
   }
@@ -287,10 +267,10 @@ function ChecklistBadges({ t, checklists }) {
       {checklists.map(c => {
         const tone = runTone(c)
         const cls = tone === 'fail'
-          ? 'border-red-500/50 text-red-500'
+          ? 'border-danger-100 bg-danger-50 text-danger-700 dark:border-danger-500/30 dark:bg-danger-500/15 dark:text-danger-500'
           : tone === 'done'
-            ? 'border-emerald-500/50 text-emerald-500'
-            : 'border-ink-300 dark:border-navy-700 text-ink-500 dark:text-ink-400'
+            ? 'border-success-100 bg-success-50 text-success-700 dark:border-success-500/30 dark:bg-success-500/15 dark:text-success-500'
+            : 'border-ink-300 dark:border-navy-700 text-ink-600 dark:text-ink-400'
         return (
           <span key={c.id} className={`px-1.5 py-0.5 rounded border text-[10px] font-semibold ${cls}`}>
             {c.done}/{c.total}

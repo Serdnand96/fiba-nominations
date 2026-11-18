@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
 import { useLanguage } from '../../i18n/LanguageContext'
 import { useToast } from '../../components/ui/Toast'
+import { Icon } from '../../lib/icons'
+import { roleLabel } from '../../lib/roles'
 import {
   getChecklistTemplates, createChecklistTemplate, updateChecklistTemplate,
   deleteChecklistTemplate, getChecklistLink, rotateChecklistLink,
@@ -25,8 +27,9 @@ function emptyDraft() {
 }
 
 export default function ChecklistPanel({ competitionId, competitionName, canEdit, onClose, onTemplatesChange }) {
-  const { lang } = useLanguage()
+  const { lang, t: tKey } = useLanguage()
   const t = (es, en) => (lang === 'es' ? es : en)
+  const roleName = (r) => roleLabel(r, tKey)
   const { push } = useToast()
 
   const [tab, setTab] = useState('templates')
@@ -85,11 +88,11 @@ export default function ChecklistPanel({ competitionId, competitionName, canEdit
       .map(i => ({ label: (i.label || '').trim(), hint: (i.hint || '').trim() || null, required: !!i.required }))
       .filter(i => i.label)
     if (!draft.name.trim()) {
-      push({ type: 'error', title: t('Poné un nombre a la plantilla.', 'Give the template a name.') })
+      push({ type: 'error', title: t('Escribe un nombre para la plantilla.', 'Enter a name for the template.') })
       return
     }
     if (items.length === 0) {
-      push({ type: 'error', title: t('Una plantilla sin ítems no controla nada.', 'A template with no items checks nothing.') })
+      push({ type: 'error', title: t('Agrega al menos un ítem.', 'Add at least one item.') })
       return
     }
     setSaving(true)
@@ -106,7 +109,7 @@ export default function ChecklistPanel({ competitionId, competitionName, canEdit
       await reload()
       push({ type: 'success', title: t('Plantilla guardada.', 'Template saved.') })
     } catch (err) {
-      push({ type: 'error', title: err.response?.data?.detail || t('No se pudo guardar.', 'Could not save.') })
+      push({ type: 'error', title: err.response?.data?.detail || t('No se pudo guardar la plantilla.', 'Could not save the template.') })
     } finally {
       setSaving(false)
     }
@@ -117,20 +120,20 @@ export default function ChecklistPanel({ competitionId, competitionName, canEdit
       await updateChecklistTemplate(tpl.id, { active: !tpl.active })
       await reload()
     } catch (err) {
-      push({ type: 'error', title: err.response?.data?.detail || 'Error' })
+      push({ type: 'error', title: err.response?.data?.detail || t('No se pudo guardar el cambio.', 'Could not save the change.') })
     }
   }
 
   async function handleDelete(tpl) {
     if (!confirm(t(
-      `Borrar "${tpl.name}". Los checklists ya cargados en partidos NO se pierden: conservan su copia de los ítems. ¿Continuar?`,
-      `Delete "${tpl.name}". Checklists already filled on games are NOT lost — they keep their own copy of the items. Continue?`,
+      `¿Eliminar la plantilla "${tpl.name}"? Los checklists ya completados no cambian.`,
+      `Delete template "${tpl.name}"? Completed checklists stay as they are.`,
     ))) return
     try {
       await deleteChecklistTemplate(tpl.id)
       await reload()
     } catch (err) {
-      push({ type: 'error', title: err.response?.data?.detail || 'Error' })
+      push({ type: 'error', title: err.response?.data?.detail || t('No se pudo eliminar la plantilla.', 'Could not delete the template.') })
     }
   }
 
@@ -141,14 +144,17 @@ export default function ChecklistPanel({ competitionId, competitionName, canEdit
           <h3 className="text-lg font-bold text-ink-900 dark:text-white">
             {t('Control de operación', 'Operations control')}
           </h3>
-          <button onClick={onClose} className="text-fiba-muted hover:text-ink-700 dark:hover:text-white text-xl leading-none">&times;</button>
+          <button onClick={onClose} aria-label={t('Cerrar', 'Close')} title={t('Cerrar', 'Close')}
+            className="text-fiba-muted hover:text-ink-700 dark:hover:text-white">
+            <Icon.X className="w-5 h-5" />
+          </button>
         </div>
         <p className="text-xs text-fiba-muted mb-4">{competitionName}</p>
 
         <div className="flex gap-1 mb-5 border-b border-fiba-border">
           {[
             ['templates', t('Plantillas', 'Templates')],
-            ['share', t('Link para la sede', 'Venue link')],
+            ['share', t('Enlace para oficiales', 'Officials link')],
           ].map(([key, label]) => (
             <button key={key} onClick={() => setTab(key)}
               className={`px-3 py-2 text-xs font-semibold border-b-2 -mb-px transition-colors ${
@@ -163,7 +169,7 @@ export default function ChecklistPanel({ competitionId, competitionName, canEdit
 
         {tab === 'templates' ? (
           <TemplatesTab
-            t={t} loading={loading} templates={templates} canEdit={canEdit}
+            t={t} roleName={roleName} loading={loading} templates={templates} canEdit={canEdit}
             editingId={editingId} draft={draft} setDraft={setDraft} saving={saving}
             onStartNew={startNew} onStartEdit={startEdit} onCancel={() => setEditingId(null)}
             onSave={handleSave} onToggleActive={handleToggleActive} onDelete={handleDelete}
@@ -179,7 +185,7 @@ export default function ChecklistPanel({ competitionId, competitionName, canEdit
 
 
 function TemplatesTab({
-  t, loading, templates, canEdit, editingId, draft, setDraft, saving,
+  t, roleName, loading, templates, canEdit, editingId, draft, setDraft, saving,
   onStartNew, onStartEdit, onCancel, onSave, onToggleActive, onDelete, patchItem, moveItem,
 }) {
   if (loading) return <div className="py-8 text-center text-sm text-fiba-muted">{t('Cargando...', 'Loading...')}</div>
@@ -192,14 +198,14 @@ function TemplatesTab({
             <label className="fiba-label">{t('Nombre', 'Name')}</label>
             <input className="fiba-input" value={draft.name}
               onChange={e => setDraft(d => ({ ...d, name: e.target.value }))}
-              placeholder={t('VGO — Control de sede', 'VGO — Venue check')} />
+              placeholder={t('Ej.: Control de sede VGO', 'e.g. VGO venue check')} />
           </div>
           <div>
-            <label className="fiba-label">{t('Rol', 'Role')}</label>
+            <label className="fiba-label">{t('Cargo', 'Role')}</label>
             <select className="fiba-input" value={draft.role}
               onChange={e => setDraft(d => ({ ...d, role: e.target.value }))}>
               <option value="">{t('Cualquiera', 'Anyone')}</option>
-              {ROLES.map(r => <option key={r} value={r}>{r}</option>)}
+              {ROLES.map(r => <option key={r} value={r}>{roleName(r)}</option>)}
             </select>
           </div>
         </div>
@@ -217,9 +223,15 @@ function TemplatesTab({
               <div key={idx} className="flex items-start gap-2">
                 <div className="flex flex-col pt-1.5">
                   <button type="button" onClick={() => moveItem(idx, -1)} disabled={idx === 0}
-                    className="text-fiba-muted hover:text-ink-900 dark:hover:text-white disabled:opacity-25 text-[10px] leading-none">▲</button>
+                    aria-label={t('Subir', 'Move up')} title={t('Subir', 'Move up')}
+                    className="text-fiba-muted hover:text-ink-900 dark:hover:text-white disabled:opacity-25">
+                    <Icon.ArrowUp className="w-3 h-3" />
+                  </button>
                   <button type="button" onClick={() => moveItem(idx, 1)} disabled={idx === draft.items.length - 1}
-                    className="text-fiba-muted hover:text-ink-900 dark:hover:text-white disabled:opacity-25 text-[10px] leading-none">▼</button>
+                    aria-label={t('Bajar', 'Move down')} title={t('Bajar', 'Move down')}
+                    className="text-fiba-muted hover:text-ink-900 dark:hover:text-white disabled:opacity-25">
+                    <Icon.ArrowDown className="w-3 h-3" />
+                  </button>
                 </div>
                 <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 gap-2">
                   <input className="fiba-input text-sm" value={item.label}
@@ -236,19 +248,22 @@ function TemplatesTab({
                   {t('Obligatorio', 'Required')}
                 </label>
                 <button type="button" onClick={() => setDraft(d => ({ ...d, items: d.items.filter((_, n) => n !== idx) }))}
-                  className="pt-1.5 text-fiba-muted hover:text-red-400 text-sm">×</button>
+                  aria-label={t('Eliminar ítem', 'Delete item')} title={t('Eliminar ítem', 'Delete item')}
+                  className="pt-2 text-fiba-muted hover:text-danger-600 dark:hover:text-danger-500">
+                  <Icon.X className="w-4 h-4" />
+                </button>
               </div>
             ))}
           </div>
           <button type="button" onClick={() => setDraft(d => ({ ...d, items: [...d.items, { label: '', hint: '', required: true }] }))}
-            className="btn-fiba-ghost text-xs mt-2">
-            {t('+ Ítem', '+ Item')}
+            className="btn-fiba-ghost text-xs mt-2 inline-flex items-center gap-1">
+            <Icon.Plus className="w-3.5 h-3.5" />
+            {t('Agregar ítem', 'Add item')}
           </button>
         </div>
 
         <p className="text-[11px] text-fiba-muted">
-          {t('Los checklists ya cargados en partidos no cambian: cada uno se llevó su copia de los ítems al abrirse.',
-             'Checklists already filled on games do not change: each took its own copy of the items when it was opened.')}
+          {t('Los cambios se aplican solo a los checklists nuevos.', 'Changes apply only to new checklists.')}
         </p>
 
         <div className="flex justify-end gap-2 pt-1">
@@ -278,7 +293,7 @@ function TemplatesTab({
                   </span>
                   {tpl.role && (
                     <span className="text-[10px] font-bold uppercase tracking-wider text-fiba-muted/70 border border-fiba-border rounded px-1">
-                      {tpl.role}
+                      {roleName(tpl.role)}
                     </span>
                   )}
                 </div>
@@ -290,9 +305,9 @@ function TemplatesTab({
                 <div className="flex items-center gap-2 shrink-0 text-xs">
                   <button onClick={() => onStartEdit(tpl)} className="text-fiba-accent hover:underline">{t('Editar', 'Edit')}</button>
                   <button onClick={() => onToggleActive(tpl)} className="text-fiba-muted hover:underline">
-                    {tpl.active ? t('Apagar', 'Disable') : t('Prender', 'Enable')}
+                    {tpl.active ? t('Desactivar', 'Disable') : t('Activar', 'Enable')}
                   </button>
-                  <button onClick={() => onDelete(tpl)} className="text-red-400 hover:underline">{t('Borrar', 'Delete')}</button>
+                  <button onClick={() => onDelete(tpl)} className="text-danger-600 dark:text-danger-500 hover:underline">{t('Eliminar', 'Delete')}</button>
                 </div>
               )}
             </div>
@@ -300,7 +315,10 @@ function TemplatesTab({
         </div>
       )}
       {canEdit && (
-        <button onClick={onStartNew} className="btn-fiba">{t('+ Nueva plantilla', '+ New template')}</button>
+        <button onClick={onStartNew} className="btn-fiba inline-flex items-center gap-1.5">
+          <Icon.Plus className="w-4 h-4" />
+          {t('Nueva plantilla', 'New template')}
+        </button>
       )}
     </div>
   )
@@ -328,7 +346,7 @@ function ShareTab({ t, lang, competitionId, canEdit }) {
           else URL.revokeObjectURL(createdUrl)
         } catch { /* el QR es un extra: sin él el link sigue sirviendo */ }
       })
-      .catch(err => { if (!cancelled) setError(err.response?.data?.detail || t('No se pudo obtener el link.', 'Could not load the link.')) })
+      .catch(err => { if (!cancelled) setError(err.response?.data?.detail || t('No se pudo cargar el enlace.', 'Could not load the link.')) })
       .finally(() => { if (!cancelled) setLoading(false) })
     return () => { cancelled = true; if (createdUrl) URL.revokeObjectURL(createdUrl) }
   }, [competitionId])
@@ -347,34 +365,34 @@ function ShareTab({ t, lang, competitionId, canEdit }) {
       setCopied(true)
       setTimeout(() => setCopied(false), 2000)
     } catch {
-      setError(t('El navegador bloqueó el portapapeles. Copiá el link a mano.',
-                 'The browser blocked the clipboard. Copy the link manually.'))
+      setError(t('No se pudo copiar. Copia el enlace manualmente.',
+                 'Could not copy. Copy the link manually.'))
     }
   }
 
   async function handleRotate() {
-    if (!confirm(t('Al rotar el link, el que ya compartiste deja de funcionar. ¿Continuar?',
-                   'Rotating the link stops the one you already shared from working. Continue?'))) return
+    if (!confirm(t('¿Generar un enlace nuevo? El anterior dejará de funcionar.',
+                   'Create a new link? The current one will stop working.'))) return
     try {
       setLink(await rotateChecklistLink(competitionId))
       await refreshQr()
-    } catch (err) { setError(err.response?.data?.detail || 'Error') }
+    } catch (err) { setError(err.response?.data?.detail || t('No se pudo generar el enlace nuevo.', 'Could not create the new link.')) }
   }
 
   async function handleToggle() {
     try {
       setLink(await toggleChecklistLink(competitionId, !link.enabled))
-    } catch (err) { setError(err.response?.data?.detail || 'Error') }
+    } catch (err) { setError(err.response?.data?.detail || t('No se pudo cambiar el estado del enlace.', 'Could not change the link status.')) }
   }
 
   if (loading) return <div className="py-8 text-center text-sm text-fiba-muted">{t('Cargando...', 'Loading...')}</div>
-  if (error) return <div className="rounded-lg bg-red-500/10 border border-red-500/20 px-3 py-2 text-xs text-red-400">{error}</div>
+  if (error) return <div className="rounded-lg bg-danger-50 dark:bg-danger-500/10 border border-danger-100 dark:border-danger-500/20 px-3 py-2 text-xs text-danger-700 dark:text-danger-500">{error}</div>
   if (!link) return null
 
   return (
     <div className="space-y-4">
       <div>
-        <label className="fiba-label">{t('Link para el oficial', 'Link for the official')}</label>
+        <label className="fiba-label">{t('Enlace para oficiales', 'Officials link')}</label>
         <div className="flex gap-2">
           <input readOnly value={link.url} onFocus={e => e.target.select()} className="fiba-input font-mono text-xs" />
           <button onClick={handleCopy} className="btn-fiba whitespace-nowrap text-xs px-3">
@@ -387,16 +405,16 @@ function ShareTab({ t, lang, competitionId, canEdit }) {
         {qrUrl && <img src={qrUrl} alt="QR" className="w-32 h-32 rounded-lg bg-white p-2 shrink-0" />}
         <div className="text-xs text-fiba-muted space-y-2">
           <p>
-            {t('Quien tenga este link puede abrir el checklist de cualquier partido de esta competencia y completarlo desde el celular, sin cuenta.',
-               'Anyone with this link can open the checklist of any game in this competition and fill it in from their phone, with no account.')}
+            {t('Con este enlace se completa el checklist de cualquier partido desde el celular, sin iniciar sesión.',
+               'With this link, officials fill in the checklist of any game from their phone, without signing in.')}
           </p>
-          <p className="text-amber-500">
-            {t('A diferencia del link de logística, este ESCRIBE: no lo publiques más allá del grupo de oficiales. Si se filtra, rotalo.',
-               'Unlike the logistics link, this one WRITES: do not share it beyond the officials’ group. If it leaks, rotate it.')}
+          <p className="text-warning-700 dark:text-warning-500">
+            {t('Este enlace permite editar. Compártelo solo con los oficiales y genera uno nuevo si se filtra.',
+               'This link allows editing. Share it only with officials and create a new one if it leaks.')}
           </p>
           <p>
-            {t('Un checklist cerrado queda de solo lectura desde el link; reabrirlo exige entrar al sistema.',
-               'A closed checklist is read-only from the link; reopening it requires signing in.')}
+            {t('Los checklists cerrados solo se reabren desde el sistema.',
+               'Closed checklists can only be reopened from the system.')}
           </p>
           {qrUrl && (
             <a href={qrUrl} download="checklist-qr.png" className="text-fiba-accent hover:underline inline-block">
@@ -409,12 +427,12 @@ function ShareTab({ t, lang, competitionId, canEdit }) {
       <div className="flex items-center justify-between rounded-lg border border-fiba-border px-3 py-2">
         <div>
           <div className="text-sm font-medium text-ink-900 dark:text-white">
-            {link.enabled ? t('Link activo', 'Link active') : t('Link desactivado', 'Link disabled')}
+            {link.enabled ? t('Enlace activo', 'Link active') : t('Enlace desactivado', 'Link disabled')}
           </div>
           <div className="text-[11px] text-fiba-muted">
             {link.enabled
-              ? t('Los oficiales pueden cargar ahora.', 'Officials can fill it in right now.')
-              : t('Quien lo abra recibe un 404.', 'Anyone opening it gets a 404.')}
+              ? t('Los oficiales pueden completarlo ahora.', 'Officials can fill it in now.')
+              : t('El enlace no funciona mientras esté desactivado.', 'The link does not work while disabled.')}
           </div>
         </div>
         {canEdit && (
@@ -426,13 +444,13 @@ function ShareTab({ t, lang, competitionId, canEdit }) {
 
       {link.rotated_at && (
         <p className="text-[11px] text-fiba-muted">
-          {t('Última rotación', 'Last rotated')}: {new Date(link.rotated_at).toLocaleString(lang === 'es' ? 'es' : 'en-US')}
+          {t('Enlace generado el', 'Link created on')} {new Date(link.rotated_at).toLocaleString(lang === 'es' ? 'es' : 'en-US')}
         </p>
       )}
 
       {canEdit && (
-        <button onClick={handleRotate} className="text-xs text-red-400 hover:underline">
-          {t('Rotar link', 'Rotate link')}
+        <button onClick={handleRotate} className="text-xs text-danger-600 dark:text-danger-500 hover:underline">
+          {t('Generar enlace nuevo', 'Create new link')}
         </button>
       )}
     </div>

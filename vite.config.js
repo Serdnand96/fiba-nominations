@@ -24,6 +24,9 @@ export default defineConfig({
           'supabase': ['@supabase/supabase-js'],
           'qrcode-scan': ['html5-qrcode'],
           'http': ['axios'],
+          // Gráficos del dashboard de Budget: chunk propio para que ninguna
+          // otra página pague recharts (se importa con React.lazy).
+          'charts': ['recharts'],
         },
       },
     },
