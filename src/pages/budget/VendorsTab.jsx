@@ -68,9 +68,9 @@ export default function VendorsTab({ t, push, canEdit, vendors, reloadVendors })
               ) : rows.map(v => (
                 <tr key={v.id} className="hover:bg-fiba-surface/50 transition-colors">
                   <td className="px-4 py-3 text-ink-900 dark:text-white">{v.name}</td>
-                  {isGeneralAdmin && <td className="px-4 py-3 text-fiba-muted">{v.tax_id || '—'}</td>}
-                  <td className="px-4 py-3 text-fiba-muted">{v.country || '—'}</td>
-                  <td className="px-4 py-3 text-fiba-muted">{v.email || '—'}</td>
+                  {isGeneralAdmin && <td className="px-4 py-3 text-fiba-muted">{v.tax_id || '-'}</td>}
+                  <td className="px-4 py-3 text-fiba-muted">{v.country || '-'}</td>
+                  <td className="px-4 py-3 text-fiba-muted">{v.email || '-'}</td>
                   <td className="px-4 py-3 whitespace-nowrap">
                     {v.has_bank_info
                       ? <Badge tone="success" size="sm" dot>{t('budget.vendorBankInfoLoaded')}</Badge>

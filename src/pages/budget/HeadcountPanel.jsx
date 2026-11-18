@@ -290,12 +290,12 @@ export default function HeadcountPanel({ t, push, year, competitions, expenseAcc
                           <td className="px-3 py-1.5">
                             <select value={r.account_code} onChange={e => setCell(r.uid, 'account_code', e.target.value)}
                               className={`fiba-select !h-8 text-sm ${!r.account_code && Number(r.headcount || 0) > 0 ? '!border-amber-500/60' : ''}`}>
-                              <option value="">—</option>
+                              <option value="">-</option>
                               <AccountOptions accounts={expenseAccounts} department={DEPARTMENT} t={t} />
                             </select>
                           </td>
                           <td className="px-3 py-1.5 text-right tabular-nums text-fiba-muted whitespace-nowrap">
-                            {r.account_code ? `$${money(Number(r.headcount || 0) * flightCost)}` : '—'}
+                            {r.account_code ? `$${money(Number(r.headcount || 0) * flightCost)}` : '-'}
                           </td>
                           <td className="px-2 py-1.5 text-right">
                             <button onClick={() => removeRow(r.uid)} aria-label={t('budget.headcountRemoveRow')}

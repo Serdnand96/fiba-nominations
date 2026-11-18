@@ -66,8 +66,8 @@ function ChargeModal({ initial, onClose, onSave }) {
             { value: 'extra', label: t('Adicional', 'Extra') },
             { value: 'quote', label: t('Cotización', 'Quote') },
           ]} />
-        <Input label={`${t('Concepto', 'Concept')} *`} required value={form.concept} onChange={set('concept')}
-          placeholder={t('Ej: Sala de reuniones extra, cena de gala', 'e.g. Extra meeting room, gala dinner')} />
+        <Input label={`${t('Concepto', 'Item')} *`} required value={form.concept} onChange={set('concept')}
+          placeholder={t('Ej.: sala de reuniones extra, cena de gala', 'e.g. Extra meeting room, gala dinner')} />
         <div className="grid grid-cols-3 gap-3">
           <Input wrapperClass="col-span-2" label={t('Monto', 'Amount')} type="number" step="0.01" min="0"
             value={form.amount} onChange={set('amount')} />
@@ -77,8 +77,7 @@ function ChargeModal({ initial, onClose, onSave }) {
         <Input label={t('Fecha', 'Date')} type="date" value={form.date} onChange={set('date')} />
         <TextArea label={t('Notas', 'Notes')} value={form.notes} onChange={set('notes')} />
         <p className="text-xs text-fiba-muted">
-          {t('El monto es informativo: no es un gasto de Budget y no suma en ningún reporte.',
-             'The amount is informational: it is not a Budget expense and is not summed in any report.')}
+          {t('Solo de referencia. No cuenta en Presupuesto.', 'For reference only. Not counted in Budget.')}
         </p>
       </form>
     </Modal>
@@ -133,16 +132,16 @@ export default function HotelDetail({ hotel, competitionId, canEdit, onClose }) 
       if (chargeTarget.id) await updateLogisticsHotelCharge(chargeTarget.id, payload)
       else await createLogisticsHotelCharge({ ...payload, competition_id: competitionId, hotel_id: hotel.id })
       setChargeTarget(null); await loadCharges()
-    } catch (err) { push({ type: 'error', title: errorMessage(err) }) }
+    } catch (err) { push({ type: 'error', title: errorMessage(err, t('No se pudo guardar el adicional.', 'Could not save the extra.')) }) }
   }
 
   async function removeCharge(c) {
-    if (!confirm(t(`¿Eliminar "${c.concept}"? También se borran sus archivos.`, `Delete "${c.concept}"? Its files are removed too.`))) return
+    if (!confirm(t(`¿Eliminar "${c.concept}"? También se eliminan sus archivos.`, `Delete "${c.concept}"? Its files are deleted too.`))) return
     try {
       await deleteLogisticsHotelCharge(c.id)
       if (filesChargeId === c.id) setFilesChargeId(null)
       await loadCharges()
-    } catch (err) { push({ type: 'error', title: errorMessage(err) }) }
+    } catch (err) { push({ type: 'error', title: errorMessage(err, t('No se pudo eliminar el adicional.', 'Could not delete the extra.')) }) }
   }
 
   const filesCharge = charges.find(c => c.id === filesChargeId) || null
@@ -152,15 +151,15 @@ export default function HotelDetail({ hotel, competitionId, canEdit, onClose }) 
       key: 'kind', label: t('Tipo', 'Type'),
       render: c => <Badge tone={c.kind === 'quote' ? 'info' : 'navy'} size="sm">{c.kind === 'quote' ? t('Cotización', 'Quote') : t('Adicional', 'Extra')}</Badge>,
     },
-    { key: 'concept', label: t('Concepto', 'Concept'), render: c => <span className="font-medium text-ink-900 dark:text-white">{c.concept}</span> },
+    { key: 'concept', label: t('Concepto', 'Item'), render: c => <span className="font-medium text-ink-900 dark:text-white">{c.concept}</span> },
     {
       key: 'amount', label: t('Monto', 'Amount'), align: 'right',
       render: c => (c.amount == null
-        ? <span className="text-fiba-muted">—</span>
+        ? <span className="text-fiba-muted">-</span>
         : <span className="tabular-nums whitespace-nowrap">{money(c.amount)} <span className="text-xs text-fiba-muted">{c.currency}</span></span>),
     },
-    { key: 'date', label: t('Fecha', 'Date'), render: c => <span className="text-xs whitespace-nowrap">{shortDate(c.date, lang) || '—'}</span> },
-    { key: 'notes', label: t('Notas', 'Notes'), render: c => <span className="text-xs text-fiba-muted">{c.notes || '—'}</span> },
+    { key: 'date', label: t('Fecha', 'Date'), render: c => <span className="text-xs whitespace-nowrap">{shortDate(c.date, lang) || '-'}</span> },
+    { key: 'notes', label: t('Notas', 'Notes'), render: c => <span className="text-xs text-fiba-muted">{c.notes || '-'}</span> },
     {
       key: 'actions', label: '', className: 'w-28',
       render: c => (
@@ -185,17 +184,17 @@ export default function HotelDetail({ hotel, competitionId, canEdit, onClose }) 
   ]
 
   const paymentColumns = [
-    { key: 'record_no', label: t('N° registro', 'Record #'), render: p => <span className="font-mono text-xs whitespace-nowrap">{p.record_no || '—'}</span> },
+    { key: 'record_no', label: t('N.º de registro', 'Record #'), render: p => <span className="font-mono text-xs whitespace-nowrap">{p.record_no || '-'}</span> },
     {
       key: 'description', label: t('Descripción', 'Description'),
       render: p => (
         <div>
-          <div className="text-ink-900 dark:text-white">{p.description || '—'}</div>
+          <div className="text-ink-900 dark:text-white">{p.description || '-'}</div>
           {p.invoice_no && <div className="text-xs text-fiba-muted">{t('Factura', 'Invoice')} {p.invoice_no}</div>}
         </div>
       ),
     },
-    { key: 'vendor_name', label: t('Proveedor', 'Vendor'), render: p => <span className="text-xs">{p.vendor_name || '—'}</span> },
+    { key: 'vendor_name', label: t('Proveedor', 'Vendor'), render: p => <span className="text-xs">{p.vendor_name || '-'}</span> },
     { key: 'amount', label: t('Monto', 'Amount'), align: 'right', render: p => <span className="tabular-nums whitespace-nowrap">${money(p.amount)}</span> },
     {
       key: 'status', label: t('Estado', 'Status'),
@@ -210,7 +209,7 @@ export default function HotelDetail({ hotel, competitionId, canEdit, onClose }) 
         <div className="text-xs whitespace-nowrap">
           {p.expense_date && <div><span className="text-fiba-muted">{t('Gasto', 'Expense')}:</span> {shortDate(p.expense_date, lang)}</div>}
           {p.payment_date && <div><span className="text-fiba-muted">{t('Pago', 'Paid')}:</span> {shortDate(p.payment_date, lang)}</div>}
-          {!p.expense_date && !p.payment_date && '—'}
+          {!p.expense_date && !p.payment_date && '-'}
         </div>
       ),
     },
@@ -227,10 +226,7 @@ export default function HotelDetail({ hotel, competitionId, canEdit, onClose }) 
         <div className="space-y-8">
           {/* ── Menús ─────────────────────────────────────────── */}
           <section>
-            <h4 className="text-sm font-semibold text-ink-900 dark:text-white mb-1">{t('Menús', 'Menus')}</h4>
-            <p className="text-xs text-fiba-muted mb-2">
-              {t('Los menús que mandó el hotel, para tenerlos a mano.', 'The menus the hotel sent, kept at hand.')}
-            </p>
+            <h4 className="text-sm font-semibold text-ink-900 dark:text-white mb-2">{t('Menús', 'Menus')}</h4>
             <DocumentsPanel competitionId={competitionId} filters={{ kind: 'menu', hotel_id: hotel.id }} canEdit={canEdit}
               labels={{ empty: t('Todavía no hay menús cargados.', 'No menus uploaded yet.'), upload: t('Subir menú', 'Upload menu') }} />
           </section>
@@ -243,8 +239,8 @@ export default function HotelDetail({ hotel, competitionId, canEdit, onClose }) 
             </div>
             <div className="flex gap-2 rounded-lg border border-ink-200 bg-ink-50 text-ink-700 dark:border-navy-700 dark:bg-navy-950/40 dark:text-ink-300 px-3 py-2 text-xs mb-3">
               <Icon.Info className="w-4 h-4 flex-shrink-0" />
-              <p>{t('Registro informativo: estos montos no son un gasto de Budget y no suman en ningún reporte. Lo que FIBA efectivamente paga se carga en Budget y aparece abajo.',
-                    'Informational record: these amounts are not a Budget expense and are not summed in any report. What FIBA actually pays is entered in Budget and shows below.')}</p>
+              <p>{t('Montos de referencia. Lo que FIBA paga se carga en Presupuesto y aparece abajo.',
+                    'Reference amounts. What FIBA pays is entered in Budget and shows below.')}</p>
             </div>
 
             {chargesFailed ? (
@@ -264,7 +260,7 @@ export default function HotelDetail({ hotel, competitionId, canEdit, onClose }) 
               <div className="mt-3 rounded-lg border border-fiba-border p-3">
                 <div className="flex items-center justify-between gap-2 mb-2">
                   <p className="text-[13px] font-medium text-ink-700 dark:text-ink-200 truncate">
-                    {t('Archivos de', 'Files for')}: {filesCharge.concept}
+                    {t('Archivos de', 'Files for')} {filesCharge.concept}
                   </p>
                   <IconButton size="xs" icon={<Icon.X />} label={t('Cerrar', 'Close')} onClick={() => setFilesChargeId(null)} />
                 </div>
@@ -279,8 +275,8 @@ export default function HotelDetail({ hotel, competitionId, canEdit, onClose }) 
           <section>
             <h4 className="text-sm font-semibold text-ink-900 dark:text-white mb-1">{t('Pagos de FIBA', 'FIBA payments')}</h4>
             <p className="text-xs text-fiba-muted mb-3">
-              {t('Solo lectura: son los gastos aprobados y pagados de Budget vinculados a este hotel.',
-                 'Read-only: the approved and paid Budget expenses linked to this hotel.')}
+              {t('Gastos aprobados y pagados en Presupuesto para este hotel.',
+                 'Approved and paid Budget expenses for this hotel.')}
             </p>
 
             {payments === null ? (
@@ -293,11 +289,11 @@ export default function HotelDetail({ hotel, competitionId, canEdit, onClose }) 
             ) : payments.rows.length === 0 ? (
               <div className="rounded-lg border border-dashed border-fiba-border px-4 py-5 text-center">
                 <p className="text-sm text-ink-700 dark:text-ink-200">
-                  {t('Todavía no hay gastos de Budget vinculados a este hotel.', 'There are no Budget expenses linked to this hotel yet.')}
+                  {t('Todavía no hay pagos.', 'No payments yet.')}
                 </p>
                 <p className="text-xs text-fiba-muted mt-1">
-                  {t('Se vinculan al cargar un gasto en Budget con la competencia y el hotel.',
-                     'They are linked when entering an expense in Budget with the competition and the hotel.')}
+                  {t('Aparecen al cargar en Presupuesto un gasto con este hotel.',
+                     'They appear when a Budget expense is entered with this hotel.')}
                 </p>
               </div>
             ) : (

@@ -71,7 +71,7 @@ export default function AttachmentList({
         <div className="flex items-center gap-2 mt-3">
           {!showKind ? <span className="flex-1" /> : Array.isArray(kinds) ? (
             <select value={kind} onChange={e => setKind(e.target.value)} className="fiba-select flex-1 text-sm">
-              <option value="">{labels.kindPlaceholder || '—'}</option>
+              <option value="">{labels.kindPlaceholder || '-'}</option>
               {kinds.map(k => (
                 <option key={typeof k === 'string' ? k : k.value} value={typeof k === 'string' ? k : k.value}>
                   {typeof k === 'string' ? k : k.label}

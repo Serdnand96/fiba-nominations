@@ -289,8 +289,8 @@ function AccountEditor({ account, accounts, t, push, onClose, onSaved, onRemap }
       </Field>
       <Field label={t('budget.accountsParent')}>
         <select className="fiba-select" value={form.parent_code} onChange={e => set('parent_code', e.target.value)}>
-          <option value="">—</option>
-          {parents.map(a => <option key={a.code} value={a.code}>{a.code} — {a.label}</option>)}
+          <option value="">-</option>
+          {parents.map(a => <option key={a.code} value={a.code}>{a.code} · {a.label}</option>)}
         </select>
       </Field>
       <div className="grid grid-cols-2 gap-3">
@@ -304,12 +304,14 @@ function AccountEditor({ account, accounts, t, push, onClose, onSaved, onRemap }
         </Field>
       </div>
       <div className="flex flex-col gap-2">
-        <label className="flex items-center gap-2 text-sm text-ink-700 dark:text-ink-200 cursor-pointer">
-          <input type="checkbox" checked={form.pending_mapping} onChange={() => set('pending_mapping', !form.pending_mapping)}
-            className="rounded border-fiba-border" />
-          {t('budget.accountsPending')}
-          <span className="text-xs text-fiba-muted">— {t('budget.accountsPendingHint')}</span>
-        </label>
+        <div>
+          <label className="flex items-center gap-2 text-sm text-ink-700 dark:text-ink-200 cursor-pointer">
+            <input type="checkbox" checked={form.pending_mapping} onChange={() => set('pending_mapping', !form.pending_mapping)}
+              className="rounded border-fiba-border" />
+            {t('budget.accountsPending')}
+          </label>
+          <p className="text-xs text-fiba-muted mt-0.5 ml-6">{t('budget.accountsPendingHint')}</p>
+        </div>
         <label className="flex items-center gap-2 text-sm text-ink-700 dark:text-ink-200 cursor-pointer">
           <input type="checkbox" checked={form.active} onChange={() => set('active', !form.active)}
             className="rounded border-fiba-border" />
@@ -353,7 +355,7 @@ function RemapModal({ account, t, push, onClose, onDone }) {
       closeDisabled={busy}
       closeLabel={t('budget.cancel')}
       title={mapped ? t('budget.accountsRemapMappedTitle') : t('budget.accountsRemap')}
-      subtitle={`${account.code} — ${account.label}`}
+      subtitle={`${account.code} · ${account.label}`}
       footer={
         <>
           <button onClick={onClose} disabled={busy} className="btn-fiba-ghost">{t('budget.cancel')}</button>

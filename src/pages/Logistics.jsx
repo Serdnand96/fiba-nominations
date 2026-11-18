@@ -97,8 +97,8 @@ export default function Logistics() {
 
   const TAB_LABELS = {
     transport: t('Transporte', 'Transport'),
-    housing: t('Hoteles y alimentación', 'Hotels & meals'),
-    manifest: t('Travel Manifest', 'Travel Manifest'),
+    housing: t('Hospedaje', 'Hotels'),
+    manifest: t('Manifiesto de viaje', 'Travel manifest'),
     services: t('Servicios', 'Services'),
   }
 
@@ -108,7 +108,7 @@ export default function Logistics() {
         <h2 className="text-2xl font-bold text-ink-900 dark:text-white mb-6">{t('Logística', 'Logistics')}</h2>
         <div className="text-center py-16 text-fiba-muted">
           <p className="text-sm">{t('No hay competencias disponibles.', 'No competitions available.')}</p>
-          <p className="text-xs mt-1">{t('Crea una competencia en el Calendario primero.', 'Create a competition in Calendar first.')}</p>
+          <p className="text-xs mt-1">{t('Primero crea una competencia en Calendario.', 'Create a competition in Calendar first.')}</p>
         </div>
       </div>
     )
@@ -129,8 +129,8 @@ export default function Logistics() {
         {competitionId && (
           <div className="flex flex-wrap items-center gap-2">
             <Button variant="secondary" icon={<Icon.Download />} onClick={handleBriefing} disabled={briefingBusy}
-              title={t('Un PDF general para los equipos: hoteles, cronogramas, salones y contactos. Sin datos personales.',
-                       'One general PDF for the teams: hotels, schedules, rooms and contacts. No personal data.')}>
+              title={t('PDF para los equipos con hoteles, horarios, salones y contactos.',
+                       'PDF for the teams with hotels, schedules, rooms and contacts.')}>
               {briefingBusy ? t('Generando...', 'Generating...') : t('PDF delegaciones', 'Delegations PDF')}
             </Button>
             {canEdit && (

@@ -15,6 +15,8 @@ from docx.shared import Pt, RGBColor
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.oxml.ns import qn
 
+from api._lib.services.doc_metadata import set_docx_metadata
+
 OUTPUT_DIR = Path(tempfile.gettempdir()) / "fiba_generated"
 TEMPLATES_DIR = Path(__file__).resolve().parent.parent.parent.parent / "templates"
 # Free TTFs + fontconfig aliases for the letters' brand fonts (Univers, IBM
@@ -109,8 +111,35 @@ def _build_doc(nomination_data: dict):
         if not path:
             raise ValueError(f"Unknown template_key: {template_key}")
         doc = _render_template(path, spec["context"](nomination_data))
+        return set_docx_metadata(doc, _letter_title(nomination_data, spec))
 
-    return doc
+    return set_docx_metadata(doc, _letter_title(nomination_data))
+
+
+# Built-ins that are confirmation letters; everything else built-in is a
+# nomination. A custom type says it itself (`kind`).
+_CONFIRMATION_KEYS = {"BCLA", "BCLA_F4", "BCLA_RS", "LSB"}
+
+
+def _letter_title(data: dict, spec: dict | None = None) -> str:
+    """Title for the letter's file properties: "Nomination letter: John Doe (Comp)".
+
+    `spec` is the custom type's spec when the caller already has it, so the
+    kind comes from it instead of a second letter_templates query.
+    """
+    key = data.get("template_key") or ""
+    if key in _CONFIRMATION_KEYS:
+        kind = "confirmation"
+    else:
+        kind = (((spec or {}).get("custom_type") or {}).get("kind") or "nomination")
+    nominee = str(data.get("nominee_name") or "").strip()
+    competition = str(data.get("competition_name") or "").strip()
+    title = f"{kind.capitalize()} letter"
+    if nominee:
+        title += f": {nominee}"
+    if competition:
+        title += f" ({competition})"
+    return title
 
 
 def generate_nomination(nomination_data: dict) -> tuple[str, str | None, str | None]:
@@ -261,7 +290,8 @@ def generate_preview_from_bytes(template_key: str, data: bytes) -> tuple[str, st
     src = Path(temp_dir) / "candidate.docx"
     src.write_bytes(data)
 
-    doc = _render_template(src, spec["context"](sample))
+    doc = set_docx_metadata(_render_template(src, spec["context"](sample)),
+                            _letter_title(sample, spec))
     docx_path = Path(temp_dir) / f"{template_key}_preview.docx"
     doc.save(str(docx_path))
 

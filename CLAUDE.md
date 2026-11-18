@@ -882,7 +882,12 @@ npm run dev                 # vite
 
 - **Modo oscuro** vía `.dark` en `<html>`, persistido en
   `localStorage.fiba_dark`. Default actual: dark (ver
-  `DESIGN_SYSTEM.md` para por qué).
+  `DESIGN_SYSTEM.md` para por qué). Las rutas públicas (`/logistica`,
+  `/checklist`, `/availability` con token y `/asset`) van siempre en claro.
+
+- **Texto visible**: sigue la sección "Redacción" de `DESIGN_SYSTEM.md`
+  (tuteo neutro, glosario único, sin raya larga). Vale también para toasts,
+  `confirm()` y documentos generados.
 
 ### Plan mode
 

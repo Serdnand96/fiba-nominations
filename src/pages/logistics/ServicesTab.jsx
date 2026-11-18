@@ -87,7 +87,7 @@ function ContactModal({ initial, hotels, onClose, onSave }) {
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <Select label={t('Tipo', 'Type')} value={form.kind} onChange={setVal('kind')}
             options={CONTACT_KINDS.map(k => ({ value: k, label: CONTACT_LABELS[lang][k] }))} />
-          <Select label={t('Audiencia', 'Audience')} value={form.audience} onChange={setVal('audience')}
+          <Select label={t('Grupo', 'Group')} value={form.audience} onChange={setVal('audience')}
             options={audienceOptions(lang)} />
         </div>
         <Input label={`${t('Nombre', 'Name')} *`} required value={form.name} onChange={set('name')} />
@@ -100,13 +100,13 @@ function ContactModal({ initial, hotels, onClose, onSave }) {
           <Input label="Email" type="email" value={form.email} onChange={set('email')} />
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <Input label={t('Horario de retiro', 'Pick-up hours')} placeholder="08:00 – 10:00"
+          <Input label={t('Horario de recogida', 'Pick-up hours')} placeholder="08:00-10:00"
             value={form.pickup_hours} onChange={set('pickup_hours')} />
-          <Input label={t('Horario de entrega', 'Delivery hours')} placeholder="18:00 – 20:00"
+          <Input label={t('Horario de entrega', 'Delivery hours')} placeholder="18:00-20:00"
             value={form.delivery_hours} onChange={set('delivery_hours')} />
         </div>
         <Select label={t('Hotel (opcional)', 'Hotel (optional)')} value={form.hotel_id} onChange={setVal('hotel_id')}
-          options={[{ value: '', label: '—' }, ...hotels.map(h => ({ value: h.id, label: h.name }))]} />
+          options={[{ value: '', label: '-' }, ...hotels.map(h => ({ value: h.id, label: h.name }))]} />
         <TextArea label={t('Notas', 'Notes')} value={form.notes} onChange={set('notes')} />
       </form>
     </Modal>
@@ -144,16 +144,16 @@ function RoomModal({ initial, hotels, onClose, onSave }) {
       )}>
       <form id={formId} onSubmit={submit} className="space-y-3">
         <Input label={`${t('Nombre', 'Name')} *`} required value={form.name} onChange={set('name')}
-          placeholder={t('Ej: Salón Colombia', 'e.g. Colombia Hall')} />
+          placeholder={t('Ej.: Salón Colombia', 'e.g. Colombia Hall')} />
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <Select label={t('Para', 'Purpose')} value={form.purpose} onChange={setVal('purpose')}
             options={ROOM_PURPOSES.map(k => ({ value: k, label: ROOM_LABELS[lang][k] }))} />
-          <Select label={t('Audiencia', 'Audience')} value={form.audience} onChange={setVal('audience')}
+          <Select label={t('Grupo', 'Group')} value={form.audience} onChange={setVal('audience')}
             options={audienceOptions(lang)} />
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <Select label="Hotel" value={form.hotel_id} onChange={setVal('hotel_id')}
-            options={[{ value: '', label: '—' }, ...hotels.map(h => ({ value: h.id, label: h.name }))]} />
+            options={[{ value: '', label: '-' }, ...hotels.map(h => ({ value: h.id, label: h.name }))]} />
           <Input label={t('Lugar (si no es un hotel)', 'Location (if not a hotel)')} value={form.location} onChange={set('location')} />
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -232,13 +232,13 @@ export default function ServicesTab({ competitionId, canEdit, audience }) {
       if (contactTarget.id) await updateLogisticsContact(contactTarget.id, payload)
       else await createLogisticsContact({ ...payload, competition_id: competitionId })
       setContactTarget(null); await refresh()
-    } catch (err) { push({ type: 'error', title: errorMessage(err) }) }
+    } catch (err) { push({ type: 'error', title: errorMessage(err, t('No se pudo guardar el contacto.', 'Could not save the contact.')) }) }
   }
 
   async function removeContact(c) {
     if (!confirm(t(`¿Eliminar a ${c.name}?`, `Delete ${c.name}?`))) return
     try { await deleteLogisticsContact(c.id); await refresh() }
-    catch (err) { push({ type: 'error', title: errorMessage(err) }) }
+    catch (err) { push({ type: 'error', title: errorMessage(err, t('No se pudo eliminar el contacto.', 'Could not delete the contact.')) }) }
   }
 
   async function saveRoom(payload) {
@@ -246,13 +246,13 @@ export default function ServicesTab({ competitionId, canEdit, audience }) {
       if (roomTarget.id) await updateLogisticsRoom(roomTarget.id, payload)
       else await createLogisticsRoom({ ...payload, competition_id: competitionId })
       setRoomTarget(null); await refresh()
-    } catch (err) { push({ type: 'error', title: errorMessage(err) }) }
+    } catch (err) { push({ type: 'error', title: errorMessage(err, t('No se pudo guardar el salón.', 'Could not save the room.')) }) }
   }
 
   async function removeRoom(r) {
     if (!confirm(t(`¿Eliminar ${r.name}?`, `Delete ${r.name}?`))) return
     try { await deleteLogisticsRoom(r.id); await refresh() }
-    catch (err) { push({ type: 'error', title: errorMessage(err) }) }
+    catch (err) { push({ type: 'error', title: errorMessage(err, t('No se pudo eliminar el salón.', 'Could not delete the room.')) }) }
   }
 
   const newContact = () => setContactTarget({ ...EMPTY_CONTACT, audience: audience || '' })
@@ -279,7 +279,7 @@ export default function ServicesTab({ competitionId, canEdit, audience }) {
         <div className="text-xs space-y-0.5">
           {c.phone ? <a href={telHref(c.phone)} className="block text-navy-700 dark:text-navy-300 hover:underline whitespace-nowrap">{c.phone}</a> : null}
           {c.email ? <a href={`mailto:${c.email}`} className="block text-navy-700 dark:text-navy-300 hover:underline break-all">{c.email}</a> : null}
-          {!c.phone && !c.email && <span className="text-fiba-muted">—</span>}
+          {!c.phone && !c.email && <span className="text-fiba-muted">-</span>}
         </div>
       ),
     },
@@ -287,15 +287,15 @@ export default function ServicesTab({ competitionId, canEdit, audience }) {
       key: 'hours', label: t('Horarios', 'Hours'),
       render: c => (c.pickup_hours || c.delivery_hours ? (
         <div className="text-xs space-y-0.5 whitespace-nowrap">
-          {c.pickup_hours && <div><span className="text-fiba-muted">{t('Retiro', 'Pick-up')}:</span> {c.pickup_hours}</div>}
+          {c.pickup_hours && <div><span className="text-fiba-muted">{t('Recogida', 'Pick-up')}:</span> {c.pickup_hours}</div>}
           {c.delivery_hours && <div><span className="text-fiba-muted">{t('Entrega', 'Delivery')}:</span> {c.delivery_hours}</div>}
         </div>
-      ) : <span className="text-fiba-muted text-xs">—</span>),
+      ) : <span className="text-fiba-muted text-xs">-</span>),
     },
-    { key: 'audience', label: t('Audiencia', 'Audience'), render: c => <AudienceBadge audience={c.audience} /> },
+    { key: 'audience', label: t('Grupo', 'Group'), render: c => <AudienceBadge audience={c.audience} /> },
     {
       key: 'notes', label: t('Notas', 'Notes'),
-      render: c => <span className="text-xs text-fiba-muted">{c.notes || '—'}</span>,
+      render: c => <span className="text-xs text-fiba-muted">{c.notes || '-'}</span>,
     },
     ...(canEdit ? [{
       key: 'actions', label: '', className: 'w-20',
@@ -321,14 +321,14 @@ export default function ServicesTab({ competitionId, canEdit, audience }) {
       key: 'place', label: t('Lugar', 'Place'),
       render: r => {
         const place = [hotelName(r.hotel_id), r.location].filter(Boolean).join(' · ')
-        return <span className="text-xs">{place || '—'}</span>
+        return <span className="text-xs">{place || '-'}</span>
       },
     },
     {
       key: 'when', label: t('Fecha y horario', 'Date & time'),
       render: r => {
-        const hours = [hhmm(r.start_time), hhmm(r.end_time)].filter(Boolean).join(' – ')
-        if (!r.date && !hours) return <span className="text-fiba-muted text-xs">—</span>
+        const hours = [hhmm(r.start_time), hhmm(r.end_time)].filter(Boolean).join('-')
+        if (!r.date && !hours) return <span className="text-fiba-muted text-xs">-</span>
         return (
           <div className="text-xs whitespace-nowrap">
             {r.date && <div>{shortDate(r.date, lang)}</div>}
@@ -339,9 +339,9 @@ export default function ServicesTab({ competitionId, canEdit, audience }) {
     },
     {
       key: 'capacity', label: t('Capacidad', 'Capacity'),
-      render: r => <span className="text-xs">{r.capacity ?? '—'}</span>,
+      render: r => <span className="text-xs">{r.capacity ?? '-'}</span>,
     },
-    { key: 'audience', label: t('Audiencia', 'Audience'), render: r => <AudienceBadge audience={r.audience} /> },
+    { key: 'audience', label: t('Grupo', 'Group'), render: r => <AudienceBadge audience={r.audience} /> },
     ...(canEdit ? [{
       key: 'actions', label: '', className: 'w-20',
       render: r => <RowActions onEdit={() => setRoomTarget({ ...toForm(EMPTY_ROOM, r), id: r.id })} onDelete={() => removeRoom(r)} />,
@@ -365,16 +365,15 @@ export default function ServicesTab({ competitionId, canEdit, audience }) {
           {canEdit && <Button size="sm" icon={<Icon.Plus />} onClick={newContact}>{t('Contacto', 'Contact')}</Button>}
         </div>
         <p className="text-xs text-fiba-muted mb-3">
-          {t('Con una audiencia elegida se ven los suyos más los compartidos. No se publican en el link público.',
-             'With an audience selected you see its own plus the shared ones. Not published on the public link.')}
+          {t('No se muestran en el enlace público.', 'Not shown on the public link.')}
         </p>
 
         {grouped.length === 0 ? (
           <Card padding="p-0">
             <Empty icon={<Icon.Users />}
               title={t('Todavía no hay contactos cargados', 'No contacts loaded yet')}
-              body={t('Agrega los choferes, el hotel, el proveedor de hielo, la lavandería o los VIP que hay que tener a mano.',
-                      'Add the drivers, hotel, ice supplier, laundry or VIPs you need at hand.')}
+              body={t('Agrega proveedores y contactos de la competencia.',
+                      "Add the competition's vendors and contacts.")}
               action={canEdit ? <Button size="sm" icon={<Icon.Plus />} onClick={newContact}>{t('Agregar contacto', 'Add contact')}</Button> : null} />
           </Card>
         ) : (
@@ -400,16 +399,15 @@ export default function ServicesTab({ competitionId, canEdit, audience }) {
           {canEdit && <Button size="sm" icon={<Icon.Plus />} onClick={newRoom}>{t('Salón', 'Room')}</Button>}
         </div>
         <p className="text-xs text-fiba-muted mb-3">
-          {t('Media Day, charla técnica, PIC y reuniones: dónde y a qué hora.',
-             'Media Day, technical meeting, PIC and meetings: where and when.')}
+          {t('Salones reservados para Media Day, charla técnica, PIC y reuniones.',
+             'Rooms booked for Media Day, technical meeting, PIC and meetings.')}
         </p>
 
         {sortedRooms.length === 0 ? (
           <Card padding="p-0">
             <Empty icon={<Icon.Calendar />}
               title={t('Todavía no hay salones cargados', 'No rooms loaded yet')}
-              body={t('Carga los salones reservados con su fecha, horario y capacidad.',
-                      'Add the reserved rooms with their date, time and capacity.')}
+              body={t('Carga los salones reservados.', 'Add the booked rooms.')}
               action={canEdit ? <Button size="sm" icon={<Icon.Plus />} onClick={newRoom}>{t('Agregar salón', 'Add room')}</Button> : null} />
           </Card>
         ) : (

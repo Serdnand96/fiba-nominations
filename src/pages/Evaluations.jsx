@@ -32,7 +32,7 @@ function avgClass(avg) {
 }
 
 function fmtAvg(avg) {
-  return avg == null ? '—' : Number(avg).toFixed(2)
+  return avg == null ? '-' : Number(avg).toFixed(2)
 }
 
 /** 1-5 selector. Clicking the star already selected clears the rating. */
@@ -56,7 +56,7 @@ function StarRating({ value, max, disabled, onChange }) {
           </button>
         )
       })}
-      <span className="ml-2 text-xs text-fiba-muted tabular-nums w-6">{value || '—'}</span>
+      <span className="ml-2 text-xs text-fiba-muted tabular-nums w-6">{value || '-'}</span>
     </div>
   )
 }
@@ -257,10 +257,10 @@ export default function Evaluations() {
                         <td className="px-4 py-3 font-medium">{n.personnel_name}</td>
                         <td className="px-4 py-3">
                           <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${roleBadgeClass(n.personnel_role)}`}>
-                            {roleLabel(n.personnel_role)}
+                            {roleLabel(n.personnel_role, t)}
                           </span>
                         </td>
-                        <td className="px-4 py-3">{n.personnel_country || '—'}</td>
+                        <td className="px-4 py-3">{n.personnel_country || '-'}</td>
                         <td className="px-4 py-3 text-right tabular-nums">{evals.length}</td>
                         <td className={`px-4 py-3 text-right tabular-nums font-semibold ${avgClass(avg)}`}>{fmtAvg(avg)}</td>
                         <td className="px-4 py-3">
@@ -298,7 +298,9 @@ export default function Evaluations() {
                 <h3 className="text-lg font-bold text-ink-900 dark:text-white">{target.personnel_name}</h3>
                 <p className="text-sm text-fiba-muted">{selectedComp?.name}</p>
               </div>
-              <button onClick={closeEditor} className="text-fiba-muted hover:text-ink-900 dark:hover:text-white text-xl leading-none">×</button>
+              <button onClick={closeEditor} aria-label={t('common.close')} title={t('common.close')} className="text-fiba-muted hover:text-ink-900 dark:hover:text-white">
+                <Icon.X className="w-5 h-5" />
+              </button>
             </div>
 
             <div className="flex-1 overflow-y-auto p-6 space-y-5">
@@ -397,7 +399,7 @@ export default function Evaluations() {
                     <div key={ev.id} className="rounded-lg border border-fiba-border p-3">
                       <div className="flex items-baseline justify-between gap-2">
                         <span className="text-sm font-medium text-ink-900 dark:text-white truncate">
-                          {ev.competition_name || '—'}
+                          {ev.competition_name || '-'}
                         </span>
                         <span className={`text-sm font-bold tabular-nums ${avgClass(ev.average)}`}>{fmtAvg(ev.average)}</span>
                       </div>

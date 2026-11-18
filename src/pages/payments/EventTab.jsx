@@ -268,24 +268,24 @@ export default function EventTab() {
                   )}
                   {!loading && visibleNominees.map(n => {
                     const p = n.payment
-                    const budgetLabel = p ? (budgets.find(b => b.code === p.budget_code)?.label || p.budget_code) : '—'
+                    const budgetLabel = p ? (budgets.find(b => b.code === p.budget_code)?.label || p.budget_code) : '-'
                     return (
                       <tr key={n.nomination_id}>
                         <td className="px-4 py-3 font-medium">{n.nominee_name}</td>
                         <td className="px-4 py-3">
-                          <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${roleBadgeClass(n.nominee_role)}`}>{roleLabel(n.nominee_role)}</span>
+                          <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${roleBadgeClass(n.nominee_role)}`}>{roleLabel(n.nominee_role, t)}</span>
                         </td>
                         <td className="px-4 py-3 text-right tabular-nums">{fmt(n.nomination_total)}</td>
                         <td className="px-4 py-3">{budgetLabel}</td>
-                        <td className="px-4 py-3 text-right tabular-nums">{p ? fmt(p.amount) : '—'}</td>
-                        <td className="px-4 py-3 text-right tabular-nums">{p ? fmt(p.extra) : '—'}</td>
-                        <td className="px-4 py-3 text-right tabular-nums">{p ? fmt(p.airfare) : '—'}</td>
+                        <td className="px-4 py-3 text-right tabular-nums">{p ? fmt(p.amount) : '-'}</td>
+                        <td className="px-4 py-3 text-right tabular-nums">{p ? fmt(p.extra) : '-'}</td>
+                        <td className="px-4 py-3 text-right tabular-nums">{p ? fmt(p.airfare) : '-'}</td>
                         <td className="px-4 py-3">
                           {p
                             ? <Badge tone={STATUS_TONE[p.status] || 'ink'} size="sm">{t(`payments.statusLabel.${p.status}`)}</Badge>
                             : <span className="text-xs text-fiba-muted/60">{t('payments.noPayment')}</span>}
                         </td>
-                        <td className="px-4 py-3 text-xs text-fiba-muted">{p?.record_no || '—'}</td>
+                        <td className="px-4 py-3 text-xs text-fiba-muted">{p?.record_no || '-'}</td>
                         <td className="px-4 py-3 text-right">
                           <button onClick={() => openEditor(n)} className="text-fiba-accent hover:underline text-sm">
                             {p ? t('payments.manage') : (canEdit ? t('payments.addPayment') : t('profile.view'))}

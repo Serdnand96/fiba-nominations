@@ -48,8 +48,8 @@ function emptyForm(initialCompetitionId = '') {
  * Create/edit modal for a nomination. Talks to `/nominations/prefill` so the
  * form starts with what the system already knows (competition defaults +,
  * once exactly one person is picked, that person's own crew dates) instead of
- * asking for everything by hand. See CLAUDE.md point 9 for tournament vs
- * per-game crew, and the fee_type note below for the Total calculation.
+ * asking for everything by hand. Tournament competitions use one crew for every
+ * game, per-game ones assign by game; the fee_type note below covers the Total.
  */
 export default function NominationFormModal({
   mode, nomination, initialCompetitionId, competitions, personnel,
@@ -241,8 +241,8 @@ export default function NominationFormModal({
   function clearSelection() { setForm(f => ({ ...f, personnel_ids: [] })) }
 
   // Fees — placeholder + hint come from the competition's fee schedule by
-  // role; the Total honors fee_type (point 9/CLAUDE.md: per_game multiplies
-  // by the game dates, tournament doesn't).
+  // role; the Total honors fee_type (per_game multiplies by the game dates,
+  // tournament doesn't).
   const selectedPeople = form.personnel_ids.map(id => personnel.find(p => p.id === id)).filter(Boolean)
   const uniqueRoles = [...new Set(selectedPeople.map(p => p.role))]
   const singleRole = uniqueRoles.length === 1 ? uniqueRoles[0] : null
@@ -256,8 +256,8 @@ export default function NominationFormModal({
   const feesHint = useMemo(() => {
     const entries = Object.entries(prefill?.fees_by_role || {})
     if (entries.length === 0) return null
-    return entries.map(([role, fee]) => `${roleLabel(role)} $${fee.window_fee}`).join(' · ')
-  }, [prefill])
+    return entries.map(([role, fee]) => `${roleLabel(role, t)} $${fee.window_fee}`).join(' · ')
+  }, [prefill, t])
 
   const gameCount = form.game_dates.length
   const effectiveFee = form.window_fee !== '' ? (parseFloat(form.window_fee) || 0) : (roleFee ? roleFee.window_fee : null)
@@ -373,7 +373,9 @@ export default function NominationFormModal({
           <h3 className="text-lg font-bold text-ink-900 dark:text-white">
             {isEdit ? t('nominations.editNominationTitle') : t('nominations.newNominationTitle')}
           </h3>
-          <button onClick={onClose} className="text-fiba-muted hover:text-ink-900 dark:hover:text-white text-xl">&times;</button>
+          <button onClick={onClose} aria-label={t('common.close')} title={t('common.close')} className="text-fiba-muted hover:text-ink-900 dark:hover:text-white">
+            <Icon.X className="w-5 h-5" />
+          </button>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
@@ -404,7 +406,7 @@ export default function NominationFormModal({
               <div className="flex items-center gap-2">
                 <span className="text-sm font-medium text-ink-900 dark:text-white">{nomination.personnel?.name}</span>
                 <span className={`text-xs px-1.5 py-0.5 rounded ${roleBadgeClass(nomination.personnel?.role)}`}>
-                  {roleLabel(nomination.personnel?.role)}
+                  {roleLabel(nomination.personnel?.role, t)}
                 </span>
               </div>
             ) : (
@@ -417,7 +419,7 @@ export default function NominationFormModal({
                   {ROLES.map(r => (
                     <button key={r.value} type="button" onClick={() => setRoleFilter(r.value)}
                       className={`px-2 py-1 rounded text-xs font-medium ${roleFilter === r.value ? 'bg-fiba-accent/20 text-fiba-accent' : 'text-fiba-muted hover:text-ink-900 dark:hover:text-white'}`}>
-                      {roleLabel(r.value)}
+                      {roleLabel(r.value, t)}
                     </button>
                   ))}
                 </div>
@@ -443,7 +445,7 @@ export default function NominationFormModal({
                       className={`flex items-center gap-2 px-3 py-2 hover:bg-fiba-surface cursor-pointer text-sm ${form.personnel_ids.includes(p.id) ? 'bg-fiba-accent/10' : ''}`}>
                       <input type="checkbox" checked={form.personnel_ids.includes(p.id)} onChange={() => togglePerson(p.id)} className="rounded" />
                       <span>{p.name}</span>
-                      <span className={`ml-auto text-xs px-1.5 py-0.5 rounded ${roleBadgeClass(p.role)}`}>{roleLabel(p.role)}</span>
+                      <span className={`ml-auto text-xs px-1.5 py-0.5 rounded ${roleBadgeClass(p.role)}`}>{roleLabel(p.role, t)}</span>
                     </label>
                   ))}
                   {filteredPersonnel.length === 0 && (
@@ -547,7 +549,9 @@ export default function NominationFormModal({
                   )}
                   <input type="date" value={gd.date} onChange={e => updateGameDate(idx, 'date', e.target.value)} className="fiba-input flex-1" />
                   {templateKey !== 'BCLA' && templateKey !== 'BCLA_F4' && (
-                    <button type="button" onClick={() => removeGameDate(idx)} className="text-red-400 hover:text-red-300 text-lg">&times;</button>
+                    <button type="button" onClick={() => removeGameDate(idx)} aria-label={t('common.delete')} title={t('common.delete')} className="text-red-400 hover:text-red-300">
+                      <Icon.X className="w-4 h-4" />
+                    </button>
                   )}
                 </div>
               ))}

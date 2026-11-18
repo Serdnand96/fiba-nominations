@@ -139,7 +139,7 @@ export default function RevenuesTab({ t, push, canEdit, departments, revenueAcco
                         <Icon.Alert className="w-3.5 h-3.5" /> {t('budget.revenueNoDate')}
                       </span>
                     ) : (
-                      <span className="text-fiba-muted">{r.received_date || r.expected_date || '—'}</span>
+                      <span className="text-fiba-muted">{r.received_date || r.expected_date || '-'}</span>
                     )}
                   </td>
                   <td className="px-4 py-3 text-right font-medium text-ink-900 dark:text-white">${money(r.amount)}</td>

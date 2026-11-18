@@ -10,6 +10,7 @@ import { ROLES, roleLabel, roleBadgeClass } from '../lib/roles'
 import { COUNTRIES, countryName, countryNameToCode } from '../lib/countries'
 import { InfoHint } from './ui/Tooltip'
 import BankingPanel from './BankingPanel'
+import { Icon } from '../lib/icons'
 
 const STATUS_STYLES = {
   available: 'bg-emerald-500/20 text-emerald-400',
@@ -234,7 +235,7 @@ export default function PersonProfilePanel({ person: initialPerson, onClose, onU
                     title={person.photo_url ? t('profile.changePhoto') : t('profile.uploadPhoto')}
                     className="absolute -bottom-1 -right-1 w-6 h-6 rounded-full bg-basketball-700 text-white flex items-center justify-center text-xs shadow hover:opacity-90 disabled:opacity-50">
                     {uploading
-                      ? <span className="animate-pulse">…</span>
+                      ? <span className="animate-pulse">...</span>
                       : <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" /></svg>}
                   </button>
                   <input ref={fileRef} type="file" accept="image/*" className="hidden"
@@ -244,7 +245,7 @@ export default function PersonProfilePanel({ person: initialPerson, onClose, onU
             </div>
             <div className="min-w-0">
               <div className="flex items-center gap-2 mb-1">
-                <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${roleStyle}`}>{roleLabel(person.role)}</span>
+                <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${roleStyle}`}>{roleLabel(person.role, t)}</span>
                 {person.country && <span className="text-xs text-fiba-muted/60">{person.country}</span>}
               </div>
               <h3 className="text-lg font-bold text-ink-900 dark:text-white truncate">{person.name}</h3>
@@ -343,11 +344,11 @@ export default function PersonProfilePanel({ person: initialPerson, onClose, onU
                               {c.competition_name} {c.year ? <span className="text-fiba-muted/60 font-normal">({c.year})</span> : null}
                             </p>
                             <p className="text-xs text-fiba-muted">
-                              {c.first_date}{c.last_date && c.last_date !== c.first_date ? ` — ${c.last_date}` : ''}
+                              {c.first_date}{c.last_date && c.last_date !== c.first_date ? (lang === 'es' ? ` al ${c.last_date}` : ` to ${c.last_date}`) : ''}
                             </p>
                           </div>
                           <span className="shrink-0 text-sm font-semibold text-fiba-accent">
-                            {c.game_days > 0 ? t('profile.daysCount', { count: c.game_days }) : '—'}
+                            {c.game_days > 0 ? t('profile.daysCount', { count: c.game_days }) : '-'}
                           </span>
                         </div>
                         {c.confirmation_status && (
@@ -401,7 +402,7 @@ export default function PersonProfilePanel({ person: initialPerson, onClose, onU
                       {rec.type === 'event_specific' ? (
                         <span>{rec.competition?.name || rec.competition_id}</span>
                       ) : (
-                        <span>{rec.start_date} — {rec.end_date}</span>
+                        <span>{rec.start_date} {lang === 'es' ? 'al' : 'to'} {rec.end_date}</span>
                       )}
                     </div>
                     {rec.notes && <p className="text-xs text-fiba-muted mt-1">{rec.notes}</p>}
@@ -455,7 +456,10 @@ export default function PersonProfilePanel({ person: initialPerson, onClose, onU
                           {countryName(code, lang)} ({code})
                           <button type="button"
                             onClick={() => setForm(f => ({ ...f, nationalities: f.nationalities.filter(c => c !== code) }))}
-                            className="text-fiba-muted hover:text-red-400 leading-none">×</button>
+                            aria-label={lang === 'es' ? `Quitar ${countryName(code, lang)}` : `Remove ${countryName(code, lang)}`}
+                            className="text-fiba-muted hover:text-red-400 leading-none">
+                            <Icon.X className="w-3 h-3" />
+                          </button>
                         </span>
                       ))}
                     </div>
@@ -477,7 +481,7 @@ export default function PersonProfilePanel({ person: initialPerson, onClose, onU
               <input placeholder={t('personnel.phone')} value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))} className="fiba-input" />
               <input placeholder={t('personnel.passport')} value={form.passport} onChange={e => setForm(f => ({ ...f, passport: e.target.value }))} className="fiba-input" />
               <select value={form.role} onChange={e => setForm(f => ({ ...f, role: e.target.value }))} className="fiba-select">
-                {ROLES.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
+                {ROLES.map(r => <option key={r.value} value={r.value}>{roleLabel(r.value, t)}</option>)}
               </select>
 
               {/* Languages */}
@@ -498,7 +502,9 @@ export default function PersonProfilePanel({ person: initialPerson, onClose, onU
                         onChange={e => updateVisa(idx, 'country', e.target.value)} className="fiba-input flex-1" />
                       <input type="date" value={v.expires || ''}
                         onChange={e => updateVisa(idx, 'expires', e.target.value)} className="fiba-input flex-1" />
-                      <button type="button" onClick={() => removeVisa(idx)} className="text-red-400 hover:text-red-300 text-lg shrink-0">&times;</button>
+                      <button type="button" onClick={() => removeVisa(idx)} aria-label={t('common.delete')} title={t('common.delete')} className="text-red-400 hover:text-red-300 shrink-0">
+                        <Icon.X className="w-4 h-4" />
+                      </button>
                     </div>
                   ))}
                 </div>

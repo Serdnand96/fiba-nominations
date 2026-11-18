@@ -4,7 +4,7 @@ import { Html5Qrcode } from 'html5-qrcode'
 import { useLanguage } from '../i18n/LanguageContext'
 
 export default function Scan() {
-  const { t } = useLanguage()
+  const { t, lang } = useLanguage()
   const navigate = useNavigate()
   const containerId = 'qr-scanner-container'
   const scannerRef = useRef(null)
@@ -40,7 +40,10 @@ export default function Scan() {
         )
       } catch (err) {
         console.error('Scanner error:', err)
-        setError(err?.message || String(err))
+        // El error de html5-qrcode llega en inglés y en jerga del navegador.
+        setError(lang === 'es'
+          ? 'No se pudo abrir la cámara. Revisa los permisos del navegador.'
+          : 'Could not open the camera. Check the browser permissions.')
       }
     }
 
@@ -70,7 +73,7 @@ export default function Scan() {
       <div id={containerId} style={{ maxWidth: 500 }} className="bg-fiba-surface rounded-xl overflow-hidden" />
 
       {error && (
-        <div className="mt-4 px-3 py-2 rounded-lg bg-red-500/20 text-red-400 text-sm">{error}</div>
+        <div role="alert" className="mt-4 px-3 py-2 rounded-lg bg-danger-50 text-danger-700 dark:bg-danger-500/15 dark:text-danger-500 text-sm">{error}</div>
       )}
     </div>
   )

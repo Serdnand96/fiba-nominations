@@ -106,6 +106,9 @@ function PermissionGuard({ module, children }) {
   return children
 }
 
+// Rutas sin sesión: activo por QR, disponibilidad, logística y checklist.
+const PUBLIC_PATH = /^\/(asset\/[0-9a-f-]+|(availability|logistica|checklist)\/[A-Za-z0-9_-]{16,}$)/i
+
 export default function App() {
   const { user, loading, hasView, isSuperadmin } = useAuth()
   const { t } = useLanguage()
@@ -119,8 +122,13 @@ export default function App() {
     return stored === null ? true : stored === '1'
   })
 
-  // Sync dark mode with <html> class + localStorage
+  // Sync dark mode with <html> class + localStorage.
+  // Los enlaces públicos se muestran siempre en claro y no tocan la preferencia.
   useEffect(() => {
+    if (PUBLIC_PATH.test(window.location.pathname)) {
+      document.documentElement.classList.remove('dark')
+      return
+    }
     document.documentElement.classList.toggle('dark', dark)
     localStorage.setItem('fiba_dark', dark ? '1' : '0')
   }, [dark])
@@ -257,7 +265,7 @@ export default function App() {
           />
           <div className={`leading-tight min-w-0 ${sidebarCollapsed ? 'md:hidden' : ''}`}>
             <div className="text-[13px] font-semibold truncate">Americas</div>
-            <div className="text-2xs text-navy-300 font-medium tracking-wide truncate">{t('app.subtitle') || 'Nominations'}</div>
+            <div className="text-2xs text-navy-300 font-medium tracking-wide truncate">{t('app.subtitle')}</div>
           </div>
         </div>
 

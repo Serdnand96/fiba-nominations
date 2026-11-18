@@ -237,7 +237,7 @@ export default function QueueTab() {
     setWorking(false)
   }
 
-  const budgetLabel = (code) => budgets.find(b => b.code === code)?.label || code || '—'
+  const budgetLabel = (code) => budgets.find(b => b.code === code)?.label || code || '-'
   const hasFilters = !!(params.status || params.year || params.budget || params.missing_docs || params.stale || params.cm_pending || params.search)
   const from = data.total === 0 ? 0 : offset + 1
   const to = Math.min(offset + items.length, data.total)
@@ -359,27 +359,27 @@ export default function QueueTab() {
                           aria-label={t('payments.selectRow', { name: item.nominee_name || item.record_no || '' })}
                           className="rounded border-ink-300 dark:border-navy-600" />
                       </td>
-                      <td className="font-mono text-xs whitespace-nowrap">{item.record_no || '—'}</td>
+                      <td className="font-mono text-xs whitespace-nowrap">{item.record_no || '-'}</td>
                       <td>
                         <button type="button" onClick={e => { e.stopPropagation(); setOpenId(item.id) }}
                           className="font-medium text-ink-900 dark:text-white hover:underline text-left">
-                          {item.nominee_name || '—'}
+                          {item.nominee_name || '-'}
                         </button>
                         <div className="flex items-center gap-1.5 mt-0.5">
                           {item.nominee_role && (
-                            <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-medium ${roleBadgeClass(item.nominee_role)}`}>{roleLabel(item.nominee_role)}</span>
+                            <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-medium ${roleBadgeClass(item.nominee_role)}`}>{roleLabel(item.nominee_role, t)}</span>
                           )}
                           {item.nominee_country && <span className="text-xs text-fiba-muted">{item.nominee_country}</span>}
                         </div>
                       </td>
                       <td>
-                        <span className="text-ink-900 dark:text-white">{item.competition_name || '—'}</span>
+                        <span className="text-ink-900 dark:text-white">{item.competition_name || '-'}</span>
                         {item.competition_year && <span className="text-xs text-fiba-muted ml-1">({item.competition_year})</span>}
                       </td>
                       <td className="whitespace-nowrap">{budgetLabel(item.budget_code)}</td>
                       <td className="text-right tabular-nums whitespace-nowrap">{fmt(item.total)}</td>
                       <td className="text-right tabular-nums whitespace-nowrap">{fmt(item.airfare)}</td>
-                      <td className="text-right tabular-nums whitespace-nowrap">{item.paid_amount != null ? fmt(item.paid_amount) : '—'}</td>
+                      <td className="text-right tabular-nums whitespace-nowrap">{item.paid_amount != null ? fmt(item.paid_amount) : '-'}</td>
                       <td>
                         <div className="flex flex-wrap gap-1">
                           <Badge tone={STATUS_TONE[item.status] || 'ink'} size="sm">{t(`payments.statusLabel.${item.status}`)}</Badge>
@@ -387,7 +387,7 @@ export default function QueueTab() {
                         </div>
                       </td>
                       <td><RowAlerts item={item} /></td>
-                      <td className="tabular-nums whitespace-nowrap text-xs">{item.payment_date || '—'}</td>
+                      <td className="tabular-nums whitespace-nowrap text-xs">{item.payment_date || '-'}</td>
                     </tr>
                   )
                 })}

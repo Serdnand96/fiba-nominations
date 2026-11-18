@@ -76,13 +76,13 @@ export default function RecurringEditor({ recurring, onClose, onSaved, t, push, 
       </div>
       <Field label={t('budget.account')}>
         <select className="fiba-select" value={form.account_code} onChange={e => set('account_code', e.target.value)}>
-          <option value="">—</option>
+          <option value="">-</option>
           <AccountOptions accounts={expenseAccounts} department={form.department_code} t={t} />
         </select>
       </Field>
       <Field label={t('budget.payeeVendor')}>
         <select className="fiba-select" value={form.vendor_id} onChange={e => set('vendor_id', e.target.value)}>
-          <option value="">—</option>
+          <option value="">-</option>
           {vendors.map(v => <option key={v.id} value={v.id}>{v.name}</option>)}
         </select>
       </Field>

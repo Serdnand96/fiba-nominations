@@ -17,7 +17,7 @@ import {
 const hhmm = (t) => (t ? String(t).slice(0, 5) : '')
 
 function shortDate(iso, lang) {
-  if (!iso) return '—'
+  if (!iso) return '-'
   return new Date(iso + 'T12:00:00').toLocaleDateString(lang === 'es' ? 'es' : 'en-US', { day: 'numeric', month: 'short' })
 }
 
@@ -68,7 +68,7 @@ export default function MovementTrips({ competitionId, audience, movements, onCl
           destination: g.direction === 'arrival' ? hotel : (g.airport || ''),
         })))
       } catch (err) {
-        if (!cancelled) { setVehicles([]); push({ type: 'error', title: err.response?.data?.detail || 'Error' }) }
+        if (!cancelled) { setVehicles([]); push({ type: 'error', title: err.response?.data?.detail || t('No se pudieron cargar los vehículos.', 'Could not load the vehicles.') }) }
       }
     })()
     return () => { cancelled = true }
@@ -89,11 +89,13 @@ export default function MovementTrips({ competitionId, audience, movements, onCl
           { direction, date, airport, vehicle_id, departure_time, origin, destination }
         )),
       })
-      push({ type: 'success', title: t(`${res.created.length} traslado(s) creados en Transporte.`,
-                                       `${res.created.length} transfer(s) created in Transport.`) })
+      const n = res.created.length
+      push({ type: 'success', title: n === 1
+        ? t('Se creó 1 traslado.', '1 transfer created.')
+        : t(`Se crearon ${n} traslados.`, `${n} transfers created.`) })
       onDone?.()
     } catch (err) {
-      push({ type: 'error', title: err.response?.data?.detail || 'Error' })
+      push({ type: 'error', title: err.response?.data?.detail || t('No se pudieron crear los traslados.', 'Could not create the transfers.') })
     } finally { setSaving(false) }
   }
 
@@ -102,16 +104,16 @@ export default function MovementTrips({ competitionId, audience, movements, onCl
       <div className="fiba-modal max-w-5xl p-6">
         <h3 className="text-lg font-bold text-ink-900 dark:text-white mb-1">{t('Generar traslados', 'Generate transfers')}</h3>
         <p className="text-xs text-fiba-muted mb-4">
-          {t('Un viaje por grupo de llegadas o salidas. Revisa la hora y el vehículo antes de crear: quedan en Transporte → Viajes por vehículo.',
-             'One trip per arrivals or departures group. Check the time and the vehicle before creating: they land in Transport → Trips by vehicle.')}
+          {t('Se crea un traslado por grupo de llegadas o salidas. Revisa la hora y el vehículo. Los verás en Transporte > Viajes por vehículo.',
+             'One transfer is created per arrivals or departures group. Check the time and the vehicle. You will find them in Transport > Trips by vehicle.')}
         </p>
 
         {vehicles === null ? (
           <div className="py-8 text-center text-sm text-fiba-muted">{t('Cargando...', 'Loading...')}</div>
         ) : vehicles.length === 0 ? (
           <div className="fiba-card p-6 text-center text-fiba-muted text-sm">
-            {t('No hay vehículos cargados para esta competencia. Agrégalos en Transporte → Vehículos, choferes y venues.',
-               'No vehicles loaded for this competition. Add them in Transport → Vehicles, drivers & venues.')}
+            {t('No hay vehículos para esta competencia. Agrégalos en Transporte > Vehículos, choferes y sedes.',
+               'No vehicles for this competition. Add them in Transport > Vehicles, drivers & venues.')}
           </div>
         ) : items.length === 0 ? (
           <div className="fiba-card p-6 text-center text-fiba-muted text-sm">
@@ -141,7 +143,7 @@ export default function MovementTrips({ competitionId, audience, movements, onCl
                       <td className="px-3 py-1.5 text-xs whitespace-nowrap">
                         <span className="font-medium">{i.direction === 'arrival' ? t('Llegada', 'Arrival') : t('Salida', 'Departure')}</span>
                         {' · '}{shortDate(i.date, lang)} · {i.airport || t('sin aeropuerto', 'no airport')}
-                        <span className="block text-[11px] text-fiba-muted">{i.people} {t('tramo(s)', 'leg(s)')} · {i.pax} pax</span>
+                        <span className="block text-[11px] text-fiba-muted">{i.people} {i.people === 1 ? t('persona', 'person') : t('personas', 'people')} · {i.pax} pax</span>
                       </td>
                       <td className="px-3 py-1.5">
                         <input type="time" value={i.departure_time} disabled={!i.checked}
@@ -175,7 +177,9 @@ export default function MovementTrips({ competitionId, audience, movements, onCl
             <div className="flex justify-end gap-3 pt-4">
               <button type="button" onClick={onClose} className="px-4 py-2 text-sm text-fiba-muted">{t('Cancelar', 'Cancel')}</button>
               <button type="submit" disabled={saving || chosen.length === 0 || incomplete} className="btn-fiba disabled:opacity-50">
-                {t(`Crear ${chosen.length} traslado(s)`, `Create ${chosen.length} transfer(s)`)}
+                {chosen.length === 1
+                  ? t('Crear 1 traslado', 'Create 1 transfer')
+                  : t(`Crear ${chosen.length} traslados`, `Create ${chosen.length} transfers`)}
               </button>
             </div>
           </form>

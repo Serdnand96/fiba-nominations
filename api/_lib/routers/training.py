@@ -10,6 +10,7 @@ import os
 from api._lib.database import supabase
 from api._lib.auth import require_view, require_edit
 from api._lib.crew import get_competition, is_tournament_mode, list_crew
+from api._lib.services.doc_metadata import set_docx_metadata
 
 router = APIRouter(prefix="/training", tags=["training"], dependencies=[Depends(require_view("training"))])
 
@@ -758,7 +759,7 @@ def _generate_schedule_pdf(title: str, subtitle: str, slots: list):
     from docx.enum.table import WD_TABLE_ALIGNMENT
     from fastapi.responses import FileResponse
 
-    doc = Document()
+    doc = set_docx_metadata(Document(), title)
 
     # Page margins
     for section in doc.sections:
@@ -782,10 +783,11 @@ def _generate_schedule_pdf(title: str, subtitle: str, slots: list):
     run.font.size = Pt(11)
     run.font.color.rgb = RGBColor(100, 100, 100)
 
-    # Generation date
+    # Date the schedule was exported, long form ("Updated: 18 November 2026")
+    today = datetime.utcnow()
     p = doc.add_paragraph()
     p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    run = p.add_run(f"Generated: {datetime.utcnow().strftime('%Y-%m-%d %H:%M UTC')}")
+    run = p.add_run(f"Updated: {today.day} {today.strftime('%B %Y')}")
     run.font.size = Pt(9)
     run.font.color.rgb = RGBColor(150, 150, 150)
 
@@ -794,7 +796,7 @@ def _generate_schedule_pdf(title: str, subtitle: str, slots: list):
     if not slots:
         p = doc.add_paragraph()
         p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        run = p.add_run("No training slots found.")
+        run = p.add_run("No practices scheduled.")
         run.font.size = Pt(11)
         run.font.color.rgb = RGBColor(150, 150, 150)
     else:

@@ -132,7 +132,7 @@ export default function RecurringTab({ t, push, canEdit, departments, expenseAcc
                   <td className="px-4 py-3 text-ink-900 dark:text-white">{r.description}</td>
                   <td className="px-4 py-3 text-fiba-muted">{r.department_label || r.department_code}</td>
                   <td className="px-4 py-3 text-fiba-muted text-xs">{r.account_code}</td>
-                  <td className="px-4 py-3 text-fiba-muted">{r.vendor_name || '—'}</td>
+                  <td className="px-4 py-3 text-fiba-muted">{r.vendor_name || '-'}</td>
                   <td className="px-4 py-3 text-fiba-muted">{t(`budget.fq_${r.frequency}`)}</td>
                   <td className="px-4 py-3 text-right font-medium text-ink-900 dark:text-white">${money(r.amount)}</td>
                   <td className="px-4 py-3 text-right whitespace-nowrap">

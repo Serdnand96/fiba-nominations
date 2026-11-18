@@ -47,7 +47,7 @@ export default function Budget() {
 }
 
 function BudgetShell() {
-  const { t } = useLanguage()
+  const { t, lang } = useLanguage()
   const { push } = useToast()
   const { hasEdit } = useAuth()
   const canEdit = hasEdit('budget')
@@ -84,7 +84,10 @@ function BudgetShell() {
       setEmployees(emps)
     }).catch(e => {
       console.error(e)
-      push({ type: 'error', title: t('common.error') })
+      push({
+        type: 'error',
+        title: lang === 'en' ? 'Could not load the budget data.' : 'No se pudieron cargar los datos del presupuesto.',
+      })
     }).finally(() => setCatalogsReady(true))
   }, [])
 

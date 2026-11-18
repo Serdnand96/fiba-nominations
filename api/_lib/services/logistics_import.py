@@ -32,6 +32,7 @@ from openpyxl import Workbook, load_workbook
 
 from api._lib.database import supabase
 from api._lib.logistics_audiences import apply_default_category, categories_for
+from api._lib.services.xlsx_utils import workbook_bytes
 
 # ── Normalización y parseo de celdas ─────────────────────────────────────────
 
@@ -1351,10 +1352,8 @@ def _autosize(ws) -> None:
         ws.column_dimensions[column[0].column_letter].width = min(max(width + 2, 10), 40)
 
 
-def _save(wb: Workbook) -> bytes:
-    buf = io.BytesIO()
-    wb.save(buf)
-    return buf.getvalue()
+def _save(wb: Workbook, title: Optional[str] = None) -> bytes:
+    return workbook_bytes(wb, title)
 
 
 def export_manifest_xlsx(competition_id: str, audience: Optional[str] = None) -> bytes:
@@ -1404,7 +1403,7 @@ def export_manifest_xlsx(competition_id: str, audience: Optional[str] = None) ->
             departure.get("flight_number"), departure.get("airport"), departure.get("comments"),
         ])
     _autosize(ws)
-    return _save(wb)
+    return _save(wb, "Flight manifest")
 
 
 def export_rooming_xlsx(competition_id: str, audience: Optional[str] = None) -> bytes:
@@ -1431,4 +1430,4 @@ def export_rooming_xlsx(competition_id: str, audience: Optional[str] = None) -> 
 
     ws.append([""] * (len(header) - 2) + [data["total_nights"], ""])
     _autosize(ws)
-    return _save(wb)
+    return _save(wb, "Rooming list")

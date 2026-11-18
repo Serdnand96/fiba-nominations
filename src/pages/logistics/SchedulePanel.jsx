@@ -56,8 +56,8 @@ function printableHtml(schedule, section, lang, competitionName, audienceText) {
   let body = ''
   for (const day of groupByDay(schedule)) {
     body += `<table><thead>
-      <tr class="day"><th colspan="${span}">${esc(longDate(day.date, lang))}${day.label ? ` — ${esc(day.label)}` : ''}</th></tr>
-      <tr class="cols">${head}<th>${t('Comienzo', 'Start')}</th><th>${t('Final', 'End')}</th><th>${t('Equipo', 'Team')}</th></tr>
+      <tr class="day"><th colspan="${span}">${esc(longDate(day.date, lang))}${day.label ? ` · ${esc(day.label)}` : ''}</th></tr>
+      <tr class="cols">${head}<th>${t('Inicio', 'Start')}</th><th>${t('Fin', 'End')}</th><th>${t('Equipo', 'Team')}</th></tr>
     </thead><tbody>`
     for (const row of day.trainings) {
       body += `<tr>${own(row)}<td>${esc(hhmm(row.start_time))}</td><td>${esc(hhmm(row.end_time))}</td><td>${esc(row.team)}</td></tr>`
@@ -70,8 +70,8 @@ function printableHtml(schedule, section, lang, competitionName, audienceText) {
     if (day.notes) body += `<p class="notes">${esc(day.notes)}</p>`
   }
 
-  const baseTitle = section === 'transport' ? t('Cronograma de transporte', 'Transport schedule') : t('Cronograma de comidas', 'Meals schedule')
-  const sectionTitle = schedule.label ? `${baseTitle} — ${schedule.label}` : baseTitle
+  const baseTitle = section === 'transport' ? t('Cronograma de transporte', 'Transport schedule') : t('Cronograma de comidas', 'Meal schedule')
+  const sectionTitle = schedule.label ? `${baseTitle}: ${schedule.label}` : baseTitle
   return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${esc(sectionTitle)} - ${esc(competitionName || '')}</title><style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body { font-family: Arial, sans-serif; font-size: 11px; color: #111; padding: 18px; }
@@ -117,7 +117,7 @@ function ScheduleDoc({ competitionId, competitionName, section, audience, schedu
   const [saving, setSaving] = useState(false)        // evita el doble envío de los modales
 
   const days = useMemo(() => (schedule ? groupByDay(schedule) : []), [schedule])
-  const fail = (err, fallback) => push({ type: 'error', title: err.response?.data?.detail || fallback || 'Error' })
+  const fail = (err, fallback) => push({ type: 'error', title: err.response?.data?.detail || fallback || t('No se pudo completar la acción.', 'Could not complete the action.') })
 
   function resetImport() {
     setFile(null); setPreview(null); setError(null)
@@ -155,15 +155,15 @@ function ScheduleDoc({ competitionId, competitionName, section, audience, schedu
       const created = await createLogisticsSchedule({ competition_id: competitionId, section, audience, label: '' })
       await reload(); onSelect?.(created?.id)
     } catch (err) {
-      if (isConflict(err)) push({ type: 'error', title: t('Ya existe un cronograma con esa etiqueta.', 'A schedule with that label already exists.') })
-      else fail(err)
+      if (isConflict(err)) push({ type: 'error', title: t('Ya hay un cronograma con ese nombre.', 'A schedule with that name already exists.') })
+      else fail(err, t('No se pudo crear el cronograma.', 'Could not create the schedule.'))
     }
   }
 
   async function handleDeleteDoc() {
-    if (!confirm(t(`¿Eliminar el cronograma «${labelText}»? Se borran sus filas y el Excel guardado.`,
-                   `Delete the "${labelText}" schedule? Its rows and the stored Excel file are removed.`))) return
-    try { await deleteLogisticsSchedule(schedule.id); await reload() } catch (err) { fail(err) }
+    if (!confirm(t(`¿Eliminar el cronograma "${labelText}"? También se eliminan sus filas y el Excel guardado.`,
+                   `Delete the "${labelText}" schedule? Its rows and the stored Excel file are deleted too.`))) return
+    try { await deleteLogisticsSchedule(schedule.id); await reload() } catch (err) { fail(err, t('No se pudo eliminar el cronograma.', 'Could not delete the schedule.')) }
   }
 
   function openRow(row) {
@@ -190,14 +190,14 @@ function ScheduleDoc({ competitionId, competitionName, section, audience, schedu
       if (rowTarget.row) await updateLogisticsScheduleRow(rowTarget.row.id, payload)
       else await createLogisticsScheduleRow(schedule.id, payload)
       setRowTarget(null); await reload()
-    } catch (err) { fail(err) }
+    } catch (err) { fail(err, t('No se pudo guardar la fila.', 'Could not save the row.')) }
     finally { setSaving(false) }
   }
 
   async function handleDeleteRow(row) {
     const what = row.kind === 'game' ? `${row.team || '?'} vs ${row.team_b || '?'}` : (row.team || t('la fila', 'the row'))
     if (!confirm(t(`¿Quitar ${what} del cronograma?`, `Remove ${what} from the schedule?`))) return
-    try { await deleteLogisticsScheduleRow(row.id); await reload() } catch (err) { fail(err) }
+    try { await deleteLogisticsScheduleRow(row.id); await reload() } catch (err) { fail(err, t('No se pudo quitar la fila.', 'Could not remove the row.')) }
   }
 
   function openHead() {
@@ -218,8 +218,8 @@ function ScheduleDoc({ competitionId, competitionName, section, audience, schedu
     const body = newLabel === (schedule.label || '') ? rest : { ...rest, label: newLabel }
     try { await updateLogisticsSchedule(schedule.id, body); setHeadForm(null); await reload() }
     catch (err) {
-      if (isConflict(err)) push({ type: 'error', title: t('Ya existe un cronograma con esa etiqueta.', 'A schedule with that label already exists.') })
-      else fail(err)
+      if (isConflict(err)) push({ type: 'error', title: t('Ya hay un cronograma con ese nombre.', 'A schedule with that name already exists.') })
+      else fail(err, t('No se pudo guardar el encabezado.', 'Could not save the heading.'))
     }
     finally { setSaving(false) }
   }
@@ -230,8 +230,8 @@ function ScheduleDoc({ competitionId, competitionName, section, audience, schedu
     const win = window.open(url, '_blank')
     if (!win) {
       URL.revokeObjectURL(url)
-      push({ type: 'error', title: t('El navegador bloqueó la ventana emergente. Habilita los popups para imprimir.',
-                                     'The browser blocked the popup window. Enable popups to print.') })
+      push({ type: 'error', title: t('El navegador bloqueó la ventana. Permite ventanas emergentes para este sitio y vuelve a intentar.',
+                                     'The browser blocked the window. Allow pop-ups for this site and try again.') })
       return
     }
     setTimeout(() => { win.print(); URL.revokeObjectURL(url) }, 600)
@@ -249,7 +249,7 @@ function ScheduleDoc({ competitionId, competitionName, section, audience, schedu
         </div>
         <div className="flex flex-wrap items-center gap-2">
           {schedule?.has_file && (
-            <button onClick={() => downloadLogisticsScheduleFile(schedule).catch(err => fail(err, t('No se pudo bajar el archivo.', 'Could not download the file.')))}
+            <button onClick={() => downloadLogisticsScheduleFile(schedule).catch(err => fail(err, t('No se pudo descargar el archivo.', 'Could not download the file.')))}
               className="btn-fiba-ghost text-xs px-3 py-1.5" title={schedule.file_name || ''}>
               {t('Excel original', 'Original Excel')}
             </button>
@@ -271,10 +271,10 @@ function ScheduleDoc({ competitionId, competitionName, section, audience, schedu
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="text-xs text-fiba-muted">
               {schedule
-                ? t(`Subir una versión nueva reemplaza el cronograma «${labelText}», incluidas las ediciones hechas a mano.`,
-                    `Uploading a new version replaces the "${labelText}" schedule, manual edits included.`)
-                : t('Sube el Excel del cronograma. Se muestra un resumen antes de guardar nada.',
-                    'Upload the schedule Excel. You get a summary before anything is saved.')}
+                ? t(`Si subes otro Excel, se reemplaza el cronograma "${labelText}" y se pierden los cambios hechos a mano.`,
+                    `Uploading another Excel file replaces the "${labelText}" schedule and discards manual edits.`)
+                : t('Sube el Excel. Antes de guardar verás un resumen.',
+                    'Upload the Excel file. You will see a summary before saving.')}
             </div>
             <div className="flex items-center gap-2">
               <input ref={inputRef} type="file" accept=".xlsx,.xlsm" onChange={handleFile} disabled={busy}
@@ -299,7 +299,7 @@ function ScheduleDoc({ competitionId, competitionName, section, audience, schedu
                 <span>{t('Partidos', 'Games')}: <strong className="text-ink-700 dark:text-ink-200">{preview.games}</strong></span>
                 {preview.replaces > 0 && (
                   <span className="px-2 py-0.5 rounded bg-amber-100 text-amber-800 dark:bg-amber-500/15 dark:text-amber-500">
-                    {t(`Reemplaza las ${preview.replaces} filas actuales del cronograma «${labelText}»`,
+                    {t(`Reemplaza las ${preview.replaces} filas actuales del cronograma "${labelText}"`,
                        `Replaces the current ${preview.replaces} rows of the "${labelText}" schedule`)}
                   </span>
                 )}
@@ -308,12 +308,14 @@ function ScheduleDoc({ competitionId, competitionName, section, audience, schedu
               {preview.skipped?.length > 0 && (
                 <div className="rounded-lg bg-fiba-surface border border-fiba-border px-3 py-2">
                   <div className="text-xs font-medium text-ink-700 dark:text-ink-200 mb-1">
-                    {t(`${preview.skipped.length} fila(s) tachadas u ocultas en la planilla — no se importan`,
-                       `${preview.skipped.length} row(s) blacked out or hidden in the sheet — not imported`)}
+                    {preview.skipped.length === 1
+                      ? t('1 fila tachada u oculta no se importa:', '1 blacked-out or hidden row is not imported:')
+                      : t(`${preview.skipped.length} filas tachadas u ocultas no se importan:`,
+                          `${preview.skipped.length} blacked-out or hidden rows are not imported:`)}
                   </div>
                   <ul className="space-y-0.5 text-[11px] text-fiba-muted">
                     {preview.skipped.map((s, i) => (
-                      <li key={i}>{t('Fila', 'Row')} {s.row}: {s.label || '—'} ({s.date})</li>
+                      <li key={i}>{t('Fila', 'Row')} {s.row}: {s.label || '-'} ({s.date})</li>
                     ))}
                   </ul>
                 </div>
@@ -322,7 +324,9 @@ function ScheduleDoc({ competitionId, competitionName, section, audience, schedu
               {preview.warnings?.length > 0 && (
                 <div className="rounded-lg bg-amber-500/10 border border-amber-500/20 px-3 py-2">
                   <div className="text-xs font-medium text-amber-500 mb-1">
-                    {t(`${preview.warnings.length} cosa(s) que conviene mirar`, `${preview.warnings.length} thing(s) worth checking`)}
+                    {preview.warnings.length === 1
+                      ? t('1 aviso', '1 warning')
+                      : t(`${preview.warnings.length} avisos`, `${preview.warnings.length} warnings`)}
                   </div>
                   <ul className="space-y-0.5 text-[11px] text-amber-500/90">
                     {preview.warnings.map((w, i) => (
@@ -399,9 +403,9 @@ function ScheduleDoc({ competitionId, competitionName, section, audience, schedu
                 <div className="grid grid-cols-3 gap-3">
                   <div><label className="fiba-label">{t('Equipo', 'Team')}</label>
                     <input value={rowForm.team} onChange={setRow('team')} className="fiba-input" /></div>
-                  <div><label className="fiba-label">{t('Comienzo', 'Start')}</label>
+                  <div><label className="fiba-label">{t('Inicio', 'Start')}</label>
                     <input type="time" value={rowForm.start_time} onChange={setRow('start_time')} className="fiba-input" /></div>
-                  <div><label className="fiba-label">{t('Final', 'End')}</label>
+                  <div><label className="fiba-label">{t('Fin', 'End')}</label>
                     <input type="time" value={rowForm.end_time} onChange={setRow('end_time')} className="fiba-input" /></div>
                 </div>
               ) : (
@@ -419,7 +423,7 @@ function ScheduleDoc({ competitionId, competitionName, section, audience, schedu
                   <div key={c.key}><label className="fiba-label">{t(c.es, c.en)}</label>
                     {c.time
                       ? <input type="time" value={rowForm[c.key]} onChange={setRow(c.key)} className="fiba-input" />
-                      : <input value={rowForm[c.key]} onChange={setRow(c.key)} placeholder="12:00 · TAKE AWAY" className="fiba-input" />}
+                      : <input value={rowForm[c.key]} onChange={setRow(c.key)} placeholder="12:00, TAKE AWAY" className="fiba-input" />}
                   </div>
                 ))}
               </div>
@@ -440,7 +444,7 @@ function ScheduleDoc({ competitionId, competitionName, section, audience, schedu
           <div className="fiba-modal max-w-2xl p-6">
             <h3 className="text-lg font-bold text-ink-900 dark:text-white mb-4">{t('Encabezado y notas', 'Heading & notes')}</h3>
             <form onSubmit={handleHeadSubmit} className="space-y-3">
-              <div><label className="fiba-label">{t('Etiqueta del cronograma (vacía = general)', 'Schedule label (blank = general)')}</label>
+              <div><label className="fiba-label">{t('Nombre del cronograma (vacío para el general)', 'Schedule name (leave blank for the general one)')}</label>
                 <input value={headForm.label} placeholder={t('Árbitros', 'Referees')} maxLength={60}
                   onChange={e => setHeadForm(f => ({ ...f, label: e.target.value }))} className="fiba-input" /></div>
               <div className="grid grid-cols-2 gap-3">
@@ -448,7 +452,7 @@ function ScheduleDoc({ competitionId, competitionName, section, audience, schedu
                   <input value={headForm.title} placeholder="GRUPO F (QF)"
                     onChange={e => setHeadForm(f => ({ ...f, title: e.target.value }))} className="fiba-input" /></div>
                 <div><label className="fiba-label">{t('Sede y fechas', 'Venue & dates')}</label>
-                  <input value={headForm.subtitle} placeholder="Medellin, COL · 13 - 15 de noviembre"
+                  <input value={headForm.subtitle} placeholder="Medellín, COL · 13 al 15 de noviembre"
                     onChange={e => setHeadForm(f => ({ ...f, subtitle: e.target.value }))} className="fiba-input" /></div>
               </div>
               {headForm.days.map((d, i) => (
@@ -458,7 +462,7 @@ function ScheduleDoc({ competitionId, competitionName, section, audience, schedu
                     <input value={d.label || ''} placeholder="DÍA DE PARTIDO 1"
                       onChange={e => setHeadForm(f => ({ ...f, days: f.days.map((x, j) => (j === i ? { ...x, label: e.target.value } : x)) }))}
                       className="fiba-input" /></div>
-                  <div><label className="fiba-label">{t('Comentarios / notas', 'Comments / notes')}</label>
+                  <div><label className="fiba-label">{t('Notas', 'Notes')}</label>
                     <input value={d.notes || ''}
                       onChange={e => setHeadForm(f => ({ ...f, days: f.days.map((x, j) => (j === i ? { ...x, notes: e.target.value } : x)) }))}
                       className="fiba-input" /></div>
@@ -513,14 +517,14 @@ function NewScheduleModal({ audience, takenLabels, hasGeneral, onClose, onCreate
         </>
       )}>
       <form id={formId} onSubmit={submit} className="space-y-3">
-        <Input label={`${t('Etiqueta', 'Label')} *`} required maxLength={60} value={label}
+        <Input label={`${t('Nombre', 'Name')} *`} required maxLength={60} value={label}
           onChange={e => setLabel(e.target.value)}
-          error={taken ? t('Ya existe un cronograma con esa etiqueta.', 'A schedule with that label already exists.') : undefined}
+          error={taken ? t('Ya hay un cronograma con ese nombre.', 'A schedule with that name already exists.') : undefined}
           hint={wantsGeneral && !taken
-            ? t('"General" es el cronograma sin etiqueta: se crea ese.', '"General" is the schedule with no label: that one is created.')
-            : t('Distingue este cronograma de los otros de la misma audiencia.', 'Tells this schedule apart from the others of the same audience.')} />
+            ? t('Se va a crear el cronograma general.', 'This creates the general schedule.')
+            : t('Para diferenciarlo de los otros cronogramas del grupo.', "Tells it apart from the group's other schedules.")} />
         <div className="flex flex-wrap items-center gap-2">
-          <span className="text-xs text-fiba-muted">{t('Sugeridas', 'Suggested')}:</span>
+          <span className="text-xs text-fiba-muted">{t('Sugerencias', 'Suggestions')}:</span>
           {LABEL_SUGGESTIONS[lang === 'es' ? 'es' : 'en'].map(s => (
             <Button key={s} type="button" variant="secondary" size="xs" onClick={() => setLabel(s)}>{s}</Button>
           ))}
@@ -565,7 +569,7 @@ function AudienceSchedules({ competitionId, competitionName, section, audience, 
       if (created?.id) setSelectedId(created.id)
     } catch (err) {
       push({ type: 'error', title: isConflict(err)
-        ? t('Ya existe un cronograma con esa etiqueta.', 'A schedule with that label already exists.')
+        ? t('Ya hay un cronograma con ese nombre.', 'A schedule with that name already exists.')
         : (err.response?.data?.detail || t('No se pudo crear el cronograma.', 'Could not create the schedule.')) })
     }
   }

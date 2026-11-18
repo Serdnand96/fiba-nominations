@@ -20,7 +20,7 @@ export const DEFAULT_CATEGORY = { '': 'official', staff: 'official', delegation:
 export default function AudienceSwitch({ value, onChange, lang, keys = ['', ...AUDIENCE_KEYS] }) {
   return (
     <div className="inline-flex rounded-lg border border-fiba-border overflow-hidden" role="group"
-      aria-label={lang === 'es' ? 'Audiencia' : 'Audience'}>
+      aria-label={lang === 'es' ? 'Grupo' : 'Group'}>
       {keys.map(key => (
         <button key={key || 'all'} type="button" onClick={() => onChange(key)} aria-pressed={value === key}
           className={`px-3 py-1.5 text-xs font-medium transition-colors whitespace-nowrap ${

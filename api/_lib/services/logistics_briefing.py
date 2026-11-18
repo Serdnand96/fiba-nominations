@@ -44,6 +44,7 @@ from fastapi import HTTPException
 from api._lib.database import supabase
 from api._lib.routers.logistics_schedules import load_schedules
 from api._lib.services import document_generator
+from api._lib.services.doc_metadata import set_docx_metadata
 
 logger = logging.getLogger(__name__)
 
@@ -250,7 +251,7 @@ def _hhmm(value) -> str:
 
 
 def _dash(value) -> str:
-    return value if value else "—"
+    return value if value else "-"
 
 
 # ── Estilos y bajo nivel ─────────────────────────────────────────────────────
@@ -328,7 +329,7 @@ def _add_footer(doc: Document, competition_name: str) -> None:
     footer = doc.sections[0].footer
     p = footer.paragraphs[0]
     p.paragraph_format.tab_stops.add_tab_stop(Cm(USABLE_CM), WD_TAB_ALIGNMENT.RIGHT)
-    run = p.add_run(f"FIBA Americas · Información operativa{' · ' + competition_name if competition_name else ''}\tPágina ")
+    run = p.add_run(f"FIBA Americas - Información operativa{' - ' + competition_name if competition_name else ''}\tPágina ")
     run.font.size = Pt(8)
     run.font.color.rgb = MUTED
     _add_field(p, "PAGE")
@@ -564,18 +565,19 @@ def _add_header_block(doc: Document, competition: dict) -> None:
     r.font.color.rgb = RGBColor.from_string(ORANGE)
     r.bold = True
 
-    detail = " · ".join(
-        part for part in (
-            (competition.get("location") or "").strip(),
-            _date_range(competition.get("start_date"), competition.get("end_date")),
-        ) if part
+    # "Asunción, Paraguay, del 3 al 9 de agosto de 2027"; un solo día va sin "del".
+    span = _date_range(competition.get("start_date"), competition.get("end_date"))
+    if " al " in span:
+        span = f"del {span}"
+    detail = ", ".join(
+        part for part in ((competition.get("location") or "").strip(), span) if part
     )
     if detail:
         p = doc.add_paragraph()
         p.paragraph_format.space_before = Pt(2)
         run = p.add_run(detail)
         run.font.size = Pt(11)
-    _muted_paragraph(doc, f"Generado el {_long_date(date.today(), weekday=False)}")
+    _muted_paragraph(doc, f"Actualizado al {_long_date(date.today(), weekday=False)}")
 
 
 # ── Secciones ────────────────────────────────────────────────────────────────
@@ -584,7 +586,7 @@ def _hotels_section(doc: Document, hotels: list) -> None:
     _heading(doc, "Hotel" if len(hotels) == 1 else "Hoteles")
     rows = []
     for h in hotels:
-        name_cell: list = [((h.get("name") or "").strip() or "—", "bold")]
+        name_cell: list = [((h.get("name") or "").strip() or "-", "bold")]
         if _safe_url(h.get("map_url")):
             name_cell.append(("Ver mapa", "link", h["map_url"].strip()))
         contact = [ln for ln in (h.get("contact_name"), h.get("phone"), h.get("email")) if ln]
@@ -622,23 +624,24 @@ def _day_groups(schedule: dict) -> list:
 
 
 def _day_title(doc: Document, day: dict) -> None:
-    text = _long_date(day["date"]) + (f" · {day['label']}" if day["label"] else "")
+    text = _long_date(day["date"]) + (f" ({day['label']})" if day["label"] else "")
     _heading(doc, text, level=2)
     if day["notes"]:
         _muted_paragraph(doc, day["notes"], keep_next=True, italic=True)
 
 
 def _schedule_intro(doc: Document, schedule: dict) -> None:
-    text = " · ".join(p.strip() for p in (schedule.get("title"), schedule.get("subtitle")) if p and p.strip())
-    if text:
-        _muted_paragraph(doc, text, keep_next=True)
+    # Título y subtítulo de la planilla, uno por línea.
+    for part in (schedule.get("title"), schedule.get("subtitle")):
+        if part and part.strip():
+            _muted_paragraph(doc, part.strip(), keep_next=True)
 
 
 def _team_cell(row: dict, versus: bool) -> list:
     if versus:
-        text = f"{row.get('team') or '?'} vs {row.get('team_b') or '?'}"
+        text = f"{row.get('team') or 'Por confirmar'} vs {row.get('team_b') or 'por confirmar'}"
     else:
-        text = row.get("team") or "—"
+        text = row.get("team") or "-"
     cell: list = [(text, "bold" if versus else "main")]
     if row.get("notes"):
         cell.append((row["notes"], "muted"))
@@ -658,7 +661,7 @@ def _transport_section(doc: Document, schedule: dict) -> None:
             if both:
                 _muted_paragraph(doc, "Entrenamientos", keep_next=True)
             _add_table(
-                doc, ["Pick up hotel", "Regreso hotel", "Comienzo", "Final", "Equipo"],
+                doc, ["Recogida hotel", "Regreso hotel", "Comienzo", "Final", "Equipo"],
                 [3.4, 3.4, 3.0, 3.0, 13.9],
                 [[_dash(_hhmm(r.get("pickup_time"))), _dash(_hhmm(r.get("return_time"))),
                   _dash(_hhmm(r.get("start_time"))), _dash(_hhmm(r.get("end_time"))),
@@ -668,7 +671,7 @@ def _transport_section(doc: Document, schedule: dict) -> None:
             if both:
                 _muted_paragraph(doc, "Partidos", keep_next=True)
             _add_table(
-                doc, ["Pick up hotel", "Regreso hotel", "Hora", "Equipos"],
+                doc, ["Recogida hotel", "Regreso hotel", "Hora", "Equipos"],
                 [3.4, 3.4, 3.0, 16.9],
                 [[_dash(_hhmm(r.get("pickup_time"))), _dash(_hhmm(r.get("return_time"))),
                   _dash(_hhmm(r.get("start_time"))), _team_cell(r, versus=True)] for r in day["games"]],
@@ -698,9 +701,9 @@ def _rooms_section(doc: Document, rooms: list) -> None:
     for r in rooms:
         start, end = _hhmm(r.get("start_time")), _hhmm(r.get("end_time"))
         schedule = f"{start} a {end}" if start and end else start or end
-        place = " · ".join(p for p in (r.get("hotel_name"), r.get("location")) if p)
+        place = ", ".join(p for p in (r.get("hotel_name"), r.get("location")) if p)
         rows.append([
-            [((r.get("name") or "").strip() or "—", "bold")],
+            [((r.get("name") or "").strip() or "-", "bold")],
             ROOM_PURPOSE_LABELS.get(r.get("purpose"), ""),
             _long_date(r["date"]) if r.get("date") else "",
             schedule,
@@ -723,7 +726,7 @@ def _contacts_section(doc: Document, contacts: list) -> None:
             doc,
             ["Nombre", "Empresa", "Cargo", "Teléfono", "Email", "Horario de retiro", "Horario de entrega"],
             [4.3, 4.0, 3.2, 3.2, 5.0, 3.5, 3.5],
-            [[[((c.get("name") or "").strip() or "—", "bold")], c.get("company") or "", c.get("role") or "",
+            [[[((c.get("name") or "").strip() or "-", "bold")], c.get("company") or "", c.get("role") or "",
               c.get("phone") or "", c.get("email") or "", c.get("pickup_hours") or "",
               c.get("delivery_hours") or ""] for c in group],
             drop_empty=True,
@@ -735,7 +738,9 @@ def build_briefing_docx(data: dict) -> Document:
     data = data or {}
     competition = data.get("competition") or {}
     doc = _setup_document()
-    _add_footer(doc, (competition.get("name") or "").strip())
+    name = (competition.get("name") or "").strip()
+    set_docx_metadata(doc, "Información operativa para delegaciones" + (f": {name}" if name else ""))
+    _add_footer(doc, name)
     _add_header_block(doc, competition)
 
     wrote = False

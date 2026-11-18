@@ -1,6 +1,8 @@
 import { useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { useSearchParams } from 'react-router-dom';
+import { Icon } from '../../lib/icons';
+import { useLanguage } from '../../i18n/LanguageContext';
 
 const sizes = { md: 'max-w-md', lg: 'max-w-lg', xl: 'max-w-xl' };
 
@@ -12,7 +14,9 @@ const sizes = { md: 'max-w-md', lg: 'max-w-lg', xl: 'max-w-xl' };
  * `position: fixed` dentro de un ancestro con `transform` mide el ancestro,
  * no la pantalla.
  */
-export function Drawer({ title, subtitle, onClose, children, footer, size = 'lg', closeLabel = 'Cerrar' }) {
+export function Drawer({ title, subtitle, onClose, children, footer, size = 'lg', closeLabel }) {
+  const { t } = useLanguage();
+  const label = closeLabel || t('common.close');
   return createPortal(
     <>
       <div className="fixed inset-0 bg-black/40 z-40" onClick={onClose} />
@@ -23,8 +27,10 @@ export function Drawer({ title, subtitle, onClose, children, footer, size = 'lg'
             <h3 className="text-lg font-bold text-ink-900 dark:text-white truncate">{title}</h3>
             {subtitle && <p className="text-xs text-fiba-muted mt-0.5 truncate">{subtitle}</p>}
           </div>
-          <button type="button" onClick={onClose} aria-label={closeLabel}
-            className="p-1.5 rounded hover:bg-fiba-surface text-fiba-muted hover:text-ink-900 dark:hover:text-white">×</button>
+          <button type="button" onClick={onClose} aria-label={label} title={label}
+            className="p-1.5 rounded hover:bg-fiba-surface text-fiba-muted hover:text-ink-900 dark:hover:text-white">
+            <Icon.X className="w-5 h-5" />
+          </button>
         </div>
         <div className="flex-1 overflow-auto p-6 space-y-4">{children}</div>
         {footer && <div className="p-6 border-t border-fiba-border flex gap-3 justify-end">{footer}</div>}
