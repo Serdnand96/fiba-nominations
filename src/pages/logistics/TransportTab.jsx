@@ -10,6 +10,7 @@ import {
   getTransportVenues, createTransportVenue, deleteTransportVenue,
   getTransportEventByCompetition, createTransportEvent,
 } from '../../api/client'
+import SchedulePanel from './SchedulePanel'
 
 // Sección Transporte del módulo Logística. La competencia la elige el shell
 // (Logistics.jsx) y baja por props, porque las tres secciones miran siempre la
@@ -39,14 +40,14 @@ const EMPTY_TRIPS = { vehicles: [], trips: [], vehicle_drivers: [], games: [] }
 // Una fila de la planilla de logística ("PICK UP … RETURN HOTEL") son dos
 // tramos del mismo partido: la ida y la vuelta.
 const TRIP_TYPE_LABELS = {
-  es: { pickup: 'Pick up', return: 'Retorno', transfer: 'Viaje' },
-  en: { pickup: 'Pick up', return: 'Return', transfer: 'Trip' },
+  es: { pickup: 'Recogida', return: 'Regreso', transfer: 'Traslado' },
+  en: { pickup: 'Pick-up', return: 'Return', transfer: 'Transfer' },
 }
 
-export default function TransportTab({ competitionId, selectedComp, canEdit, savedDate, onDateChange }) {
+export default function TransportTab({ competitionId, selectedComp, canEdit, audience, savedDate, onDateChange }) {
   const { lang } = useLanguage()
   const { push } = useToast()
-  const [tab, setTab] = useState('schedule')
+  const [tab, setTab] = useState('cronograma')
 
   const [eventId, setEventId] = useState(null)
   const [eventLoading, setEventLoading] = useState(false)
@@ -78,7 +79,7 @@ export default function TransportTab({ competitionId, selectedComp, canEdit, sav
 
   const [showDriverModal, setShowDriverModal] = useState(false)
   const [editingDriver, setEditingDriver] = useState(null)
-  const [driverForm, setDriverForm] = useState({ name: '', phone: '' })
+  const [driverForm, setDriverForm] = useState({ name: '', phone: '', assigned_to: '' })
 
   const [showVenueModal, setShowVenueModal] = useState(false)
   const [venueForm, setVenueForm] = useState({ name: '', type: 'venue' })
@@ -218,7 +219,7 @@ export default function TransportTab({ competitionId, selectedComp, canEdit, sav
       if (editingTrip) { const { vehicle_id, ...updates } = payload; await updateTransportTrip(editingTrip.id, updates) }
       else { await createTransportTrip(payload) }
       setShowTripModal(false); await loadTrips(); await refreshTripDates()
-    } catch (err) { push({ type: 'error', title: err.response?.data?.detail || 'Error' }) }
+    } catch (err) { push({ type: 'error', title: err.response?.data?.detail || (lang === 'es' ? 'No se pudo guardar el viaje.' : 'Could not save the trip.') }) }
   }
 
   // Picking the game pre-fills the leg: pickup leaves the hotel for the venue,
@@ -263,13 +264,14 @@ export default function TransportTab({ competitionId, selectedComp, canEdit, sav
     await deleteTransportVehicle(v.id); await loadAll()
   }
 
-  function openCreateDriver() { setEditingDriver(null); setDriverForm({ name: '', phone: '' }); setShowDriverModal(true) }
-  function openEditDriver(d) { setEditingDriver(d); setDriverForm({ name: d.name, phone: d.phone || '' }); setShowDriverModal(true) }
+  function openCreateDriver() { setEditingDriver(null); setDriverForm({ name: '', phone: '', assigned_to: '' }); setShowDriverModal(true) }
+  function openEditDriver(d) { setEditingDriver(d); setDriverForm({ name: d.name, phone: d.phone || '', assigned_to: d.assigned_to || '' }); setShowDriverModal(true) }
 
   async function handleDriverSubmit(e) {
     e.preventDefault()
-    if (editingDriver) await updateTransportDriver(editingDriver.id, driverForm)
-    else await createTransportDriver({ ...driverForm, event_id: eventId })
+    const payload = { ...driverForm, assigned_to: driverForm.assigned_to.trim() || null }
+    if (editingDriver) await updateTransportDriver(editingDriver.id, payload)
+    else await createTransportDriver({ ...payload, event_id: eventId })
     setShowDriverModal(false); await loadAll()
   }
 
@@ -298,13 +300,14 @@ export default function TransportTab({ competitionId, selectedComp, canEdit, sav
       { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
     ))
     const dateLabel = new Date(date + 'T12:00:00').toLocaleDateString(lang === 'es' ? 'es' : 'en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })
-    const eventTitle = selectedComp?.name || 'Transport'
-    let html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Transporte - ${esc(eventTitle)} - ${dateLabel}</title><style>* { margin: 0; padding: 0; box-sizing: border-box; } body { font-family: Arial, sans-serif; font-size: 10px; padding: 15px; } .header { text-align: center; margin-bottom: 12px; } .header h1 { font-size: 16px; } .header h2 { font-size: 12px; font-weight: normal; color: #555; } .vehicle-block { margin-bottom: 10px; } .vehicle-header { background: #1e3a5f; color: white; padding: 4px 8px; font-weight: bold; font-size: 11px; } .trip-table { width: 100%; border-collapse: collapse; } .trip-table th { background: #e5e7eb; padding: 3px 6px; text-align: left; font-size: 9px; border: 1px solid #ccc; } .trip-table td { padding: 3px 6px; border: 1px solid #ccc; font-size: 9px; } .conflict { background: #fee2e2 !important; } @media print { body { padding: 5px; } }</style></head><body><div class="header"><h1>TRANSPORTE - ${esc(eventTitle.toUpperCase())}</h1><h2>${dateLabel}</h2></div>`
+    const eventTitle = selectedComp?.name || (lang === 'es' ? 'Transporte' : 'Transport')
+    const docTitle = lang === 'es' ? 'Transporte' : 'Transport'
+    let html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${docTitle}: ${esc(eventTitle)}, ${dateLabel}</title><style>* { margin: 0; padding: 0; box-sizing: border-box; } body { font-family: Arial, sans-serif; font-size: 10px; padding: 15px; } .header { text-align: center; margin-bottom: 12px; } .header h1 { font-size: 16px; } .header h2 { font-size: 12px; font-weight: normal; color: #555; } .vehicle-block { margin-bottom: 10px; } .vehicle-header { background: #1e3a5f; color: white; padding: 4px 8px; font-weight: bold; font-size: 11px; } .trip-table { width: 100%; border-collapse: collapse; } .trip-table th { background: #e5e7eb; padding: 3px 6px; text-align: left; font-size: 9px; border: 1px solid #ccc; } .trip-table td { padding: 3px 6px; border: 1px solid #ccc; font-size: 9px; } .conflict { background: #fee2e2 !important; } @media print { body { padding: 5px; } }</style></head><body><div class="header"><h1>${docTitle}: ${esc(eventTitle)}</h1><h2>${dateLabel}</h2></div>`
     const orderedVehicles = Object.values(tripsByVehicle)
     for (const group of orderedVehicles) {
       const { vehicle, trips, driver } = group
       const driverName = driver?.name || ''
-      html += `<div class="vehicle-block"><div class="vehicle-header">${esc(vehicle.name)}${driverName ? ` — ${esc(driverName)}` : ''}</div><table class="trip-table"><thead><tr><th>${lang === 'es' ? 'Viaje' : 'Trip'}</th><th>${lang === 'es' ? 'Hora' : 'Time'}</th><th>${lang === 'es' ? 'Partida' : 'Origin'}</th><th>${lang === 'es' ? 'Destino' : 'Destination'}</th><th>${lang === 'es' ? 'Partido' : 'Game'}</th><th>${lang === 'es' ? 'Equipo' : 'Equipment'}</th><th>${lang === 'es' ? 'Contacto' : 'Contact'}</th><th>${lang === 'es' ? 'Comentarios' : 'Comments'}</th></tr></thead><tbody>`
+      html += `<div class="vehicle-block"><div class="vehicle-header">${esc(vehicle.name)}${driverName ? ` (${esc(driverName)})` : ''}</div><table class="trip-table"><thead><tr><th>${lang === 'es' ? 'Viaje' : 'Trip'}</th><th>${lang === 'es' ? 'Hora' : 'Time'}</th><th>${lang === 'es' ? 'Origen' : 'Origin'}</th><th>${lang === 'es' ? 'Destino' : 'Destination'}</th><th>${lang === 'es' ? 'Partido' : 'Game'}</th><th>${lang === 'es' ? 'Equipamiento' : 'Equipment'}</th><th>${lang === 'es' ? 'Contacto' : 'Contact'}</th><th>${lang === 'es' ? 'Comentarios' : 'Comments'}</th></tr></thead><tbody>`
       if (trips.length === 0) html += `<tr><td colspan="8" style="text-align:center;color:#999;">${lang === 'es' ? 'Sin viajes' : 'No trips'}</td></tr>`
       for (const trip of trips) {
         const cls = conflictTripIds.has(trip.id) ? ' class="conflict"' : ''
@@ -323,16 +326,21 @@ export default function TransportTab({ competitionId, selectedComp, canEdit, sav
     if (!win) {
       URL.revokeObjectURL(url)
       push({ type: 'error', title: lang === 'es'
-        ? 'El navegador bloqueó la ventana emergente. Habilita los popups para exportar el PDF.'
-        : 'The browser blocked the popup window. Enable popups to export the PDF.' })
+        ? 'El navegador bloqueó la ventana. Permite ventanas emergentes para este sitio y vuelve a intentar.'
+        : 'The browser blocked the window. Allow pop-ups for this site and try again.' })
       return
     }
     setTimeout(() => { win.print(); URL.revokeObjectURL(url) }, 600)
   }
 
+  // Dos cosas distintas que antes compartían nombre: el cronograma es el
+  // documento que se manda (pick-up / return por equipo o por partido); los
+  // viajes por vehículo son el despacho de la flota, que no se divide por
+  // audiencia porque un vehículo sirve a staff y a delegaciones.
   const TAB_LABELS = {
-    schedule: lang === 'es' ? 'Cronograma' : 'Schedule',
-    config: lang === 'es' ? 'Vehículos, choferes y venues' : 'Vehicles, drivers & venues',
+    cronograma: lang === 'es' ? 'Cronograma' : 'Schedule',
+    schedule: lang === 'es' ? 'Viajes por vehículo' : 'Trips by vehicle',
+    config: lang === 'es' ? 'Vehículos, choferes y sedes' : 'Vehicles, drivers & venues',
   }
 
   if (eventLoading) {
@@ -360,6 +368,11 @@ export default function TransportTab({ competitionId, selectedComp, canEdit, sav
         )}
       </div>
 
+      {tab === 'cronograma' && (
+        <SchedulePanel competitionId={competitionId} competitionName={selectedComp?.name}
+          section="transport" audience={audience} canEdit={canEdit} />
+      )}
+
       {/* SCHEDULE */}
       {tab === 'schedule' && (
         <div>
@@ -379,7 +392,7 @@ export default function TransportTab({ competitionId, selectedComp, canEdit, sav
             </span>
             {conflicts.length > 0 && (
               <span className="bg-red-500/20 text-red-400 px-3 py-1 rounded-full text-xs font-medium">
-                {conflicts.length} {lang === 'es' ? 'conflicto(s)' : 'conflict(s)'}
+                {conflicts.length} {lang === 'es' ? (conflicts.length === 1 ? 'conflicto' : 'conflictos') : (conflicts.length === 1 ? 'conflict' : 'conflicts')}
               </span>
             )}
           </div>
@@ -410,7 +423,9 @@ export default function TransportTab({ competitionId, selectedComp, canEdit, sav
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.072 16.5c-.77.833.192 2.5 1.732 2.5z" />
                 </svg>
                 <span className="font-bold text-red-400 text-sm">
-                  {lang === 'es' ? `${conflicts.length} conflicto(s) de desplazamiento detectado(s)` : `${conflicts.length} schedule conflict(s) detected`}
+                  {lang === 'es'
+                    ? (conflicts.length === 1 ? '1 superposición de horarios' : `${conflicts.length} superposiciones de horarios`)
+                    : (conflicts.length === 1 ? '1 schedule overlap' : `${conflicts.length} schedule overlaps`)}
                 </span>
               </div>
               <ul className="space-y-1 text-xs text-red-400">
@@ -426,12 +441,12 @@ export default function TransportTab({ competitionId, selectedComp, canEdit, sav
                       <span>
                         {c.type === 'vehicle_overlap' ? (
                           lang === 'es'
-                            ? <><strong>{vehicleA?.name}</strong>: Viaje {tripA?.trip_number} ({formatTime(tripA?.departure_time)}) se solapa con Viaje {tripB?.trip_number} ({formatTime(tripB?.departure_time)}){driverObj ? `. Chofer: ${driverObj.name}` : ''}</>
-                            : <><strong>{vehicleA?.name}</strong>: Trip {tripA?.trip_number} ({formatTime(tripA?.departure_time)}) overlaps with Trip {tripB?.trip_number} ({formatTime(tripB?.departure_time)}){driverObj ? `. Driver: ${driverObj.name}` : ''}</>
+                            ? <><strong>{vehicleA?.name}</strong>: el viaje {tripA?.trip_number} ({formatTime(tripA?.departure_time)}) se superpone con el viaje {tripB?.trip_number} ({formatTime(tripB?.departure_time)}){driverObj ? `. Chofer: ${driverObj.name}` : ''}.</>
+                            : <><strong>{vehicleA?.name}</strong>: trip {tripA?.trip_number} ({formatTime(tripA?.departure_time)}) overlaps with trip {tripB?.trip_number} ({formatTime(tripB?.departure_time)}){driverObj ? `. Driver: ${driverObj.name}` : ''}.</>
                         ) : (
                           lang === 'es'
-                            ? <>Chofer <strong>{driverObj?.name || '?'}</strong>: Viaje en {vehicleA?.name} ({formatTime(tripA?.departure_time)}) se solapa con viaje en {vehicleB?.name} ({formatTime(tripB?.departure_time)})</>
-                            : <>Driver <strong>{driverObj?.name || '?'}</strong>: Trip on {vehicleA?.name} ({formatTime(tripA?.departure_time)}) overlaps with trip on {vehicleB?.name} ({formatTime(tripB?.departure_time)})</>
+                            ? <>Chofer <strong>{driverObj?.name || '?'}</strong>: el viaje en {vehicleA?.name} ({formatTime(tripA?.departure_time)}) se superpone con el viaje en {vehicleB?.name} ({formatTime(tripB?.departure_time)}).</>
+                            : <>Driver <strong>{driverObj?.name || '?'}</strong>: the trip on {vehicleA?.name} ({formatTime(tripA?.departure_time)}) overlaps with the trip on {vehicleB?.name} ({formatTime(tripB?.departure_time)}).</>
                         )}
                       </span>
                     </li>
@@ -482,10 +497,10 @@ export default function TransportTab({ competitionId, selectedComp, canEdit, sav
                       <tr>
                         <th className="w-24">{lang === 'es' ? 'Viaje' : 'Trip'}</th>
                         <th className="w-16">{lang === 'es' ? 'Hora' : 'Time'}</th>
-                        <th>{lang === 'es' ? 'Partida' : 'Origin'}</th>
+                        <th>{lang === 'es' ? 'Origen' : 'Origin'}</th>
                         <th>{lang === 'es' ? 'Destino' : 'Dest.'}</th>
                         <th>{lang === 'es' ? 'Partido' : 'Game'}</th>
-                        <th>{lang === 'es' ? 'Equipo' : 'Equip.'}</th>
+                        <th>{lang === 'es' ? 'Equipamiento' : 'Equip.'}</th>
                         <th>{lang === 'es' ? 'Contacto' : 'Contact'}</th>
                         <th>{lang === 'es' ? 'Comentarios' : 'Comments'}</th>
                         <th className="w-20"></th>
@@ -514,7 +529,7 @@ export default function TransportTab({ competitionId, selectedComp, canEdit, sav
                                   {[formatTime(trip.game.time), gamePhase(trip.game)].filter(Boolean).join(' · ')}
                                 </div>
                               </div>
-                            ) : <span className="text-fiba-muted text-xs">—</span>}
+                            ) : <span className="text-fiba-muted text-xs">-</span>}
                           </td>
                           <td className="px-4 py-2">
                             {trip.equipment && <span className="bg-fiba-surface text-fiba-muted px-1.5 py-0.5 rounded text-xs">{trip.equipment}</span>}
@@ -540,7 +555,7 @@ export default function TransportTab({ competitionId, selectedComp, canEdit, sav
             {Object.keys(tripsByVehicle).length === 0 && (
               <div className="text-center py-12 text-fiba-muted">
                 <p className="text-sm">{lang === 'es' ? 'No hay vehículos configurados para esta competencia.' : 'No vehicles configured for this competition.'}</p>
-                <p className="text-xs mt-1">{lang === 'es' ? 'Ve a la pestaña "Vehículos, choferes y venues" para agregar.' : 'Go to the "Vehicles, drivers & venues" tab to add.'}</p>
+                <p className="text-xs mt-1">{lang === 'es' ? 'Agrégalos en Vehículos, choferes y sedes.' : 'Add them in Vehicles, drivers & venues.'}</p>
               </div>
             )}
           </div>
@@ -562,7 +577,7 @@ export default function TransportTab({ competitionId, selectedComp, canEdit, sav
                   {vehicles.map(v => (
                     <tr key={v.id}>
                       <td className="px-4 py-2 font-medium">{v.name}</td>
-                      <td className="px-4 py-2 text-fiba-muted">{v.vehicle_type || '—'}</td>
+                      <td className="px-4 py-2 text-fiba-muted">{v.vehicle_type || '-'}</td>
                       {canEdit && <td className="px-4 py-2"><div className="flex gap-2"><button onClick={() => openEditVehicle(v)} className="text-fiba-accent hover:underline text-xs">{lang === 'es' ? 'Editar' : 'Edit'}</button><button onClick={() => handleDeleteVehicle(v)} className="text-red-400 hover:underline text-xs">{lang === 'es' ? 'Eliminar' : 'Delete'}</button></div></td>}
                     </tr>
                   ))}
@@ -578,23 +593,24 @@ export default function TransportTab({ competitionId, selectedComp, canEdit, sav
             </div>
             <div className="rounded-xl border border-fiba-border overflow-x-auto">
               <table className="fiba-table">
-                <thead><tr><th>{lang === 'es' ? 'Nombre' : 'Name'}</th><th>{lang === 'es' ? 'Teléfono' : 'Phone'}</th>{canEdit && <th className="w-20"></th>}</tr></thead>
+                <thead><tr><th>{lang === 'es' ? 'Nombre' : 'Name'}</th><th>{lang === 'es' ? 'Teléfono' : 'Phone'}</th><th>{lang === 'es' ? 'A disposición de' : 'Assigned to'}</th>{canEdit && <th className="w-20"></th>}</tr></thead>
                 <tbody>
                   {drivers.map(d => (
                     <tr key={d.id}>
                       <td className="px-4 py-2 font-medium">{d.name}</td>
-                      <td className="px-4 py-2 text-fiba-muted">{d.phone || '—'}</td>
+                      <td className="px-4 py-2 text-fiba-muted">{d.phone || '-'}</td>
+                      <td className="px-4 py-2 text-fiba-muted">{d.assigned_to || '-'}</td>
                       {canEdit && <td className="px-4 py-2"><div className="flex gap-2"><button onClick={() => openEditDriver(d)} className="text-fiba-accent hover:underline text-xs">{lang === 'es' ? 'Editar' : 'Edit'}</button><button onClick={() => handleDeleteDriver(d)} className="text-red-400 hover:underline text-xs">{lang === 'es' ? 'Eliminar' : 'Delete'}</button></div></td>}
                     </tr>
                   ))}
-                  {drivers.length === 0 && <tr><td colSpan={canEdit ? 3 : 2} className="px-4 py-6 text-center text-fiba-muted/60 text-xs">{lang === 'es' ? 'Sin choferes' : 'No drivers'}</td></tr>}
+                  {drivers.length === 0 && <tr><td colSpan={canEdit ? 4 : 3} className="px-4 py-6 text-center text-fiba-muted/60 text-xs">{lang === 'es' ? 'Sin choferes' : 'No drivers'}</td></tr>}
                 </tbody>
               </table>
             </div>
           </div>
           <div>
             <div className="flex items-center justify-between mb-3">
-              <h3 className="text-lg font-semibold text-ink-900 dark:text-white">Venues</h3>
+              <h3 className="text-lg font-semibold text-ink-900 dark:text-white">{lang === 'es' ? 'Sedes' : 'Venues'}</h3>
               {canEdit && <button onClick={() => setShowVenueModal(true)} className="btn-fiba text-xs px-3 py-1.5">+ {lang === 'es' ? 'Agregar' : 'Add'}</button>}
             </div>
             <div className="rounded-xl border border-fiba-border overflow-x-auto">
@@ -605,12 +621,12 @@ export default function TransportTab({ competitionId, selectedComp, canEdit, sav
                     <tr key={v.id}>
                       <td className="px-4 py-2 font-medium">{v.name}</td>
                       <td className="px-4 py-2">
-                        <span className={`px-2 py-0.5 rounded text-xs font-medium ${v.type === 'hotel' ? 'bg-purple-500/20 text-purple-400' : 'bg-emerald-500/20 text-emerald-400'}`}>{v.type}</span>
+                        <span className={`px-2 py-0.5 rounded text-xs font-medium ${v.type === 'hotel' ? 'bg-purple-500/20 text-purple-400' : 'bg-emerald-500/20 text-emerald-400'}`}>{v.type === 'hotel' ? 'Hotel' : (lang === 'es' ? 'Sede' : 'Venue')}</span>
                       </td>
                       {canEdit && <td className="px-4 py-2"><button onClick={() => handleDeleteVenue(v)} className="text-red-400 hover:underline text-xs">{lang === 'es' ? 'Eliminar' : 'Delete'}</button></td>}
                     </tr>
                   ))}
-                  {venues.length === 0 && <tr><td colSpan={canEdit ? 3 : 2} className="px-4 py-6 text-center text-fiba-muted/60 text-xs">{lang === 'es' ? 'Sin venues' : 'No venues'}</td></tr>}
+                  {venues.length === 0 && <tr><td colSpan={canEdit ? 3 : 2} className="px-4 py-6 text-center text-fiba-muted/60 text-xs">{lang === 'es' ? 'Sin sedes' : 'No venues'}</td></tr>}
                 </tbody>
               </table>
             </div>
@@ -622,18 +638,18 @@ export default function TransportTab({ competitionId, selectedComp, canEdit, sav
       {showTripModal && (
         <div className="fiba-modal-overlay">
           <div className="fiba-modal max-w-lg p-6">
-            <h3 className="text-lg font-bold text-ink-900 dark:text-white mb-4">{editingTrip ? (lang === 'es' ? 'Editar Viaje' : 'Edit Trip') : (lang === 'es' ? 'Nuevo Viaje' : 'New Trip')}</h3>
+            <h3 className="text-lg font-bold text-ink-900 dark:text-white mb-4">{editingTrip ? (lang === 'es' ? 'Editar viaje' : 'Edit trip') : (lang === 'es' ? 'Nuevo viaje' : 'New trip')}</h3>
             <form onSubmit={handleTripSubmit} className="space-y-3">
               <div className="grid grid-cols-3 gap-3">
                 <div><label className="fiba-label">{lang === 'es' ? 'Tipo' : 'Type'}</label>
                   <select value={tripForm.trip_type} onChange={e => setTripForm(f => ({ ...f, trip_type: e.target.value }))} className="fiba-select">
-                    <option value="pickup">{TRIP_TYPE_LABELS[lang]?.pickup || 'Pick up'}</option>
+                    <option value="pickup">{TRIP_TYPE_LABELS[lang]?.pickup || 'Pick-up'}</option>
                     <option value="return">{TRIP_TYPE_LABELS[lang]?.return || 'Return'}</option>
                     <option value="transfer">{TRIP_TYPE_LABELS[lang]?.transfer || 'Transfer'}</option>
                   </select>
                 </div>
-                <div><label className="fiba-label">{lang === 'es' ? 'N° Viaje' : 'Trip #'}</label><input type="number" min={1} value={tripForm.trip_number} onChange={e => setTripForm(f => ({ ...f, trip_number: parseInt(e.target.value) || 1 }))} className="fiba-input" /></div>
-                <div><label className="fiba-label">{lang === 'es' ? 'Hora salida' : 'Departure time'}</label><input type="time" required value={tripForm.departure_time} onChange={e => setTripForm(f => ({ ...f, departure_time: e.target.value }))} className="fiba-input" /></div>
+                <div><label className="fiba-label">{lang === 'es' ? 'N.º de viaje' : 'Trip #'}</label><input type="number" min={1} value={tripForm.trip_number} onChange={e => setTripForm(f => ({ ...f, trip_number: parseInt(e.target.value) || 1 }))} className="fiba-input" /></div>
+                <div><label className="fiba-label">{lang === 'es' ? 'Hora de salida' : 'Departure time'}</label><input type="time" required value={tripForm.departure_time} onChange={e => setTripForm(f => ({ ...f, departure_time: e.target.value }))} className="fiba-input" /></div>
               </div>
               <div>
                 <label className="fiba-label">{lang === 'es' ? 'Partido' : 'Game'}</label>
@@ -650,14 +666,14 @@ export default function TransportTab({ competitionId, selectedComp, canEdit, sav
                 )}
               </div>
               <div className="grid grid-cols-2 gap-3">
-                <div><label className="fiba-label">{lang === 'es' ? 'Partida' : 'Origin'}</label><input required list="venue-list" value={tripForm.origin} onChange={e => setTripForm(f => ({ ...f, origin: e.target.value }))} className="fiba-input" /></div>
+                <div><label className="fiba-label">{lang === 'es' ? 'Origen' : 'Origin'}</label><input required list="venue-list" value={tripForm.origin} onChange={e => setTripForm(f => ({ ...f, origin: e.target.value }))} className="fiba-input" /></div>
                 <div><label className="fiba-label">{lang === 'es' ? 'Destino' : 'Destination'}</label><input required list="venue-list" value={tripForm.destination} onChange={e => setTripForm(f => ({ ...f, destination: e.target.value }))} className="fiba-input" /></div>
               </div>
               <datalist id="venue-list">{venueNames.map(n => <option key={n} value={n} />)}</datalist>
-              <div><label className="fiba-label">{lang === 'es' ? 'Equipo' : 'Equipment'}</label><input placeholder="REM1 + IBC2" value={tripForm.equipment} onChange={e => setTripForm(f => ({ ...f, equipment: e.target.value }))} className="fiba-input" /></div>
+              <div><label className="fiba-label">{lang === 'es' ? 'Equipamiento' : 'Equipment'}</label><input placeholder="REM1 + IBC2" value={tripForm.equipment} onChange={e => setTripForm(f => ({ ...f, equipment: e.target.value }))} className="fiba-input" /></div>
               <div className="grid grid-cols-2 gap-3">
                 <div><label className="fiba-label">{lang === 'es' ? 'Contacto' : 'Contact'}</label><input value={tripForm.contact} onChange={e => setTripForm(f => ({ ...f, contact: e.target.value }))} className="fiba-input" /></div>
-                <div><label className="fiba-label">{lang === 'es' ? 'Hora llegada (est.)' : 'Arrival time (est.)'}</label><input type="time" value={tripForm.arrival_time} onChange={e => setTripForm(f => ({ ...f, arrival_time: e.target.value }))} className="fiba-input" /></div>
+                <div><label className="fiba-label">{lang === 'es' ? 'Hora de llegada (est.)' : 'Arrival time (est.)'}</label><input type="time" value={tripForm.arrival_time} onChange={e => setTripForm(f => ({ ...f, arrival_time: e.target.value }))} className="fiba-input" /></div>
               </div>
               <div><label className="fiba-label">{lang === 'es' ? 'Comentarios' : 'Comments'}</label><textarea rows={2} value={tripForm.notes} onChange={e => setTripForm(f => ({ ...f, notes: e.target.value }))} className="fiba-input" /></div>
               <div className="flex justify-end gap-3 pt-2">
@@ -672,10 +688,10 @@ export default function TransportTab({ competitionId, selectedComp, canEdit, sav
       {showVehicleModal && (
         <div className="fiba-modal-overlay">
           <div className="fiba-modal max-w-sm p-6">
-            <h3 className="text-lg font-bold text-ink-900 dark:text-white mb-4">{editingVehicle ? (lang === 'es' ? 'Editar Vehículo' : 'Edit Vehicle') : (lang === 'es' ? 'Nuevo Vehículo' : 'New Vehicle')}</h3>
+            <h3 className="text-lg font-bold text-ink-900 dark:text-white mb-4">{editingVehicle ? (lang === 'es' ? 'Editar vehículo' : 'Edit vehicle') : (lang === 'es' ? 'Nuevo vehículo' : 'New vehicle')}</h3>
             <form onSubmit={handleVehicleSubmit} className="space-y-3">
-              <input required placeholder={lang === 'es' ? 'Nombre (ej: Movilidad 1)' : 'Name (e.g. Mobility 1)'} value={vehicleForm.name} onChange={e => setVehicleForm(f => ({ ...f, name: e.target.value }))} className="fiba-input" />
-              <input placeholder={lang === 'es' ? 'Tipo (ej: Van, SUV)' : 'Type (e.g. Van, SUV)'} value={vehicleForm.vehicle_type} onChange={e => setVehicleForm(f => ({ ...f, vehicle_type: e.target.value }))} className="fiba-input" />
+              <input required placeholder={lang === 'es' ? 'Nombre (Ej.: Van 1)' : 'Name (e.g. Van 1)'} value={vehicleForm.name} onChange={e => setVehicleForm(f => ({ ...f, name: e.target.value }))} className="fiba-input" />
+              <input placeholder={lang === 'es' ? 'Tipo (Ej.: van, SUV)' : 'Type (e.g. van, SUV)'} value={vehicleForm.vehicle_type} onChange={e => setVehicleForm(f => ({ ...f, vehicle_type: e.target.value }))} className="fiba-input" />
               <div className="flex justify-end gap-3 pt-2">
                 <button type="button" onClick={() => setShowVehicleModal(false)} className="px-4 py-2 text-sm text-fiba-muted">{lang === 'es' ? 'Cancelar' : 'Cancel'}</button>
                 <button type="submit" className="btn-fiba">{editingVehicle ? (lang === 'es' ? 'Guardar' : 'Save') : (lang === 'es' ? 'Crear' : 'Create')}</button>
@@ -688,10 +704,11 @@ export default function TransportTab({ competitionId, selectedComp, canEdit, sav
       {showDriverModal && (
         <div className="fiba-modal-overlay">
           <div className="fiba-modal max-w-sm p-6">
-            <h3 className="text-lg font-bold text-ink-900 dark:text-white mb-4">{editingDriver ? (lang === 'es' ? 'Editar Chofer' : 'Edit Driver') : (lang === 'es' ? 'Nuevo Chofer' : 'New Driver')}</h3>
+            <h3 className="text-lg font-bold text-ink-900 dark:text-white mb-4">{editingDriver ? (lang === 'es' ? 'Editar chofer' : 'Edit driver') : (lang === 'es' ? 'Nuevo chofer' : 'New driver')}</h3>
             <form onSubmit={handleDriverSubmit} className="space-y-3">
               <input required placeholder={lang === 'es' ? 'Nombre completo' : 'Full name'} value={driverForm.name} onChange={e => setDriverForm(f => ({ ...f, name: e.target.value }))} className="fiba-input" />
               <input placeholder={lang === 'es' ? 'Teléfono' : 'Phone'} value={driverForm.phone} onChange={e => setDriverForm(f => ({ ...f, phone: e.target.value }))} className="fiba-input" />
+              <input placeholder={lang === 'es' ? 'A disposición de (TD, VIP, equipo...)' : 'Assigned to (TD, VIP, team...)'} value={driverForm.assigned_to} onChange={e => setDriverForm(f => ({ ...f, assigned_to: e.target.value }))} className="fiba-input" />
               <div className="flex justify-end gap-3 pt-2">
                 <button type="button" onClick={() => setShowDriverModal(false)} className="px-4 py-2 text-sm text-fiba-muted">{lang === 'es' ? 'Cancelar' : 'Cancel'}</button>
                 <button type="submit" className="btn-fiba">{editingDriver ? (lang === 'es' ? 'Guardar' : 'Save') : (lang === 'es' ? 'Crear' : 'Create')}</button>
@@ -704,11 +721,11 @@ export default function TransportTab({ competitionId, selectedComp, canEdit, sav
       {showVenueModal && (
         <div className="fiba-modal-overlay">
           <div className="fiba-modal max-w-sm p-6">
-            <h3 className="text-lg font-bold text-ink-900 dark:text-white mb-4">{lang === 'es' ? 'Agregar Venue' : 'Add Venue'}</h3>
+            <h3 className="text-lg font-bold text-ink-900 dark:text-white mb-4">{lang === 'es' ? 'Agregar sede' : 'Add venue'}</h3>
             <form onSubmit={handleVenueSubmit} className="space-y-3">
               <input required placeholder={lang === 'es' ? 'Nombre' : 'Name'} value={venueForm.name} onChange={e => setVenueForm(f => ({ ...f, name: e.target.value }))} className="fiba-input" />
               <select value={venueForm.type} onChange={e => setVenueForm(f => ({ ...f, type: e.target.value }))} className="fiba-select">
-                <option value="venue">Venue</option>
+                <option value="venue">{lang === 'es' ? 'Sede' : 'Venue'}</option>
                 <option value="hotel">Hotel</option>
               </select>
               <div className="flex justify-end gap-3 pt-2">

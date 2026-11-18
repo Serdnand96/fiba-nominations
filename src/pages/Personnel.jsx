@@ -6,6 +6,7 @@ import { useToast } from '../components/ui/Toast'
 import PersonProfilePanel from '../components/PersonProfilePanel'
 import { ROLES, roleLabel, roleBadgeClass } from '../lib/roles'
 import { COUNTRIES, countryName, countryNameToCode } from '../lib/countries'
+import { Icon } from '../lib/icons'
 
 function compareValues(a, b, dir) {
   const av = (a ?? '').toString().toLowerCase()
@@ -88,11 +89,11 @@ export default function Personnel() {
     return (
       <th onClick={() => toggleSort(sortKey)}
         className="cursor-pointer select-none hover:text-ink-900 dark:hover:text-white"
-        title={t('common.sort') || 'Sort'}>
+        title={t('common.sort')}>
         <span className="inline-flex items-center gap-1">
           {label}
-          <span className={`text-fiba-accent transition-opacity ${active ? 'opacity-100' : 'opacity-0'}`}>
-            {sort.dir === 'asc' ? '▲' : '▼'}
+          <span className={`text-fiba-accent transition-opacity ${active ? 'opacity-100' : 'opacity-0'}`} aria-hidden="true">
+            {sort.dir === 'asc' ? <Icon.ArrowUp className="w-3 h-3" /> : <Icon.ArrowDown className="w-3 h-3" />}
           </span>
         </span>
       </th>
@@ -185,8 +186,8 @@ export default function Personnel() {
       <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
         {[
           { label: t('personnel.total'), value: stats.total },
-          { label: 'VGOs', value: stats.vgo },
-          { label: 'TDs', value: stats.td },
+          { label: 'VGO', value: stats.vgo },
+          { label: 'TD', value: stats.td },
           { label: t('personnel.referees'), value: stats.referees },
           { label: t('personnel.countries'), value: stats.countries },
         ].map(s => (
@@ -203,7 +204,7 @@ export default function Personnel() {
           className="fiba-input w-full sm:w-80" />
         <select value={roleFilter} onChange={e => setRoleFilter(e.target.value)} className="fiba-select">
           <option value="">{t('personnel.allRoles')}</option>
-          {ROLES.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
+          {ROLES.map(r => <option key={r.value} value={r.value}>{roleLabel(r.value, t)}</option>)}
         </select>
       </div>
 
@@ -231,11 +232,11 @@ export default function Personnel() {
                   </button>
                 </td>
                 <td className="px-4 py-3">
-                  <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${roleBadgeClass(p.role)}`}>{roleLabel(p.role)}</span>
+                  <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${roleBadgeClass(p.role)}`}>{roleLabel(p.role, t)}</span>
                 </td>
-                <td className="px-4 py-3">{p.country_code ? `${countryName(p.country_code, lang)} (${p.country_code})` : (p.country || '—')}</td>
+                <td className="px-4 py-3">{p.country_code ? `${countryName(p.country_code, lang)} (${p.country_code})` : (p.country || '-')}</td>
                 <td className="px-4 py-3">{p.email}</td>
-                <td className="px-4 py-3">{p.passport || '—'}</td>
+                <td className="px-4 py-3">{p.passport || '-'}</td>
                 <td className="px-4 py-3">
                   <div className="flex gap-3">
                     <button onClick={() => openProfile(p)} className="text-emerald-400 hover:underline text-sm">{t('profile.view')}</button>
@@ -290,7 +291,10 @@ export default function Personnel() {
                           {countryName(code, lang)} ({code})
                           <button type="button"
                             onClick={() => setForm(f => ({ ...f, nationalities: f.nationalities.filter(c => c !== code) }))}
-                            className="text-fiba-muted hover:text-red-400 leading-none">×</button>
+                            aria-label={lang === 'es' ? `Quitar ${countryName(code, lang)}` : `Remove ${countryName(code, lang)}`}
+                            className="text-fiba-muted hover:text-red-400 leading-none">
+                            <Icon.X className="w-3 h-3" />
+                          </button>
                         </span>
                       ))}
                     </div>
@@ -313,7 +317,7 @@ export default function Personnel() {
               <input placeholder={t('personnel.phone')} value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))} className="fiba-input" />
               <input placeholder={t('personnel.passport')} value={form.passport} onChange={e => setForm(f => ({ ...f, passport: e.target.value }))} className="fiba-input" />
               <select value={form.role} onChange={e => setForm(f => ({ ...f, role: e.target.value }))} className="fiba-select">
-                {ROLES.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
+                {ROLES.map(r => <option key={r.value} value={r.value}>{roleLabel(r.value, t)}</option>)}
               </select>
               <div className="flex justify-end gap-3 pt-2">
                 <button type="button" onClick={() => setShowModal(false)} className="px-4 py-2 text-sm text-fiba-muted">{t('personnel.cancel')}</button>
@@ -344,7 +348,7 @@ export default function Personnel() {
 }
 
 function ImportView({ onClose }) {
-  const { t } = useLanguage()
+  const { t, lang } = useLanguage()
   const [tab, setTab] = useState('upload')
   const [file, setFile] = useState(null)
   const [result, setResult] = useState(null)
@@ -378,11 +382,9 @@ function ImportView({ onClose }) {
       setResult(res)
       setTab('result')
     } catch (err) {
+      console.error('Import error:', err)
       const detail = err.response?.data?.detail
-      const status = err.response?.status
-      let msg = detail || err.message || 'Import failed'
-      if (status) msg = `[${status}] ${msg}`
-      setImportError(msg)
+      setImportError(detail || (lang === 'es' ? 'No se pudo importar el archivo.' : 'Could not import the file.'))
     } finally {
       setLoading(false)
     }
@@ -410,7 +412,9 @@ function ImportView({ onClose }) {
       <div className="fiba-modal max-w-2xl p-6">
         <div className="flex justify-between items-center mb-4">
           <h3 className="text-lg font-bold text-ink-900 dark:text-white">{t('personnel.importTitle')}</h3>
-          <button onClick={onClose} className="text-fiba-muted hover:text-ink-900 dark:text-white text-xl">&times;</button>
+          <button onClick={onClose} aria-label={t('common.close')} title={t('common.close')} className="text-fiba-muted hover:text-ink-900 dark:text-white">
+            <Icon.X className="w-5 h-5" />
+          </button>
         </div>
 
         <div className="flex border-b border-fiba-border mb-4">

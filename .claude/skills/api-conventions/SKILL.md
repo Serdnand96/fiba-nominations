@@ -109,6 +109,12 @@ Budget es el único módulo con filtrado por fila (`budget_access`). Además del
   con **`_assert_general_admin(request)`**: superadmin o fila `'*'` con
   `can_edit`. `require_edit("budget")` solo no alcanza: dejaría al designado de
   IT renombrar una cuenta de Competitions o cambiarle el CBU a un proveedor.
+- Hay **dos** lecturas de tablas de budget sin `_scoped()`, a propósito:
+  `GET /budget/competitions/{id}/cost` y
+  `GET /logistics/hotels/{hotel_id}/payments` (`logistics_ops.py`, permiso
+  `logistics`, solo `approved`/`paid`, proyección cerrada sin campos sensibles).
+  No son un modelo para copiar: cualquier otra lectura sin `_scoped()` es P0
+  (BUDGET_MODULE.md §9).
 
 ### Middleware de auth (en `api/index.py`)
 
@@ -145,6 +151,11 @@ Notas:
     `.eq`/`.in_`.
   - Lo mismo con `status`: si aceptás varios, armá un único `.in_` (ver
     `_queue` en `payments.py`).
+- Filtrar por un valor **o NULL** (p. ej. `audience`, donde NULL = "compartido
+  por todas") se hace **en Python**, no con `.or_()`: el supabase falso de los
+  tests no lo soporta y un `.or_` mal escapado es un filtro roto. Para eso están
+  `for_audience()` y `check_audience()` en `api/_lib/logistics_audiences.py`
+  (una audiencia desconocida es 400; `''` y `None` son lo mismo, NULL).
 - `.neq()` de PostgREST descarta también los `NULL`; si la columna puede venir
   vacía (p.ej. `created_by` de filas importadas), excluí en Python.
 - PostgREST no ordena por más de una columna: cuando necesitás orden secundario
@@ -273,8 +284,9 @@ return xlsx_response(workbook_bytes(wb), "pagos-2027.xlsx")
 ## Storage
 
 - Bucket privado único: `nominations` (los adjuntos de payments y reports
-  viven ahí bajo los prefijos `payments/…` y `reports/…`; **no existe** un
-  bucket "payments"). **Nunca** construyas ni devuelvas URLs públicas
+  viven ahí bajo los prefijos `payments/…` y `reports/…`, los de Logística bajo
+  `logistics/schedules/…` y `logistics/docs/…`; **no existe** un bucket
+  "payments"). **Nunca** construyas ni devuelvas URLs públicas
   (`get_public_url`) para él; serví los archivos por endpoints de descarga
   autenticados (`FileResponse` / blob).
 - Convención de paths: `storage://<bucket>/<key>`. En `nominations.py`,
@@ -283,6 +295,31 @@ return xlsx_response(workbook_bytes(wb), "pagos-2027.xlsx")
   `/storage/v1/object/nominations/X`).
 - Borrados que tocan storage van por la Storage API
   (`_delete_pdf_from_storage`), no por SQL directo.
+- **Upload de un documento privado: copiá el patrón de `logistics_ops.py`**
+  (`upload_document`), que es el de `payments.upload_tax_form` generalizado:
+  1. validar a mano el dueño que exige el CHECK de la tabla (400 claro, no el
+     error crudo de Postgres) y que cada dueño sea de la competencia;
+  2. leer el archivo, `413` si pasa de `_MAX_UPLOAD_BYTES` (10 MB), `400` si
+     está vacío;
+  3. tipo **por magic bytes** (`%PDF`, JPEG, PNG; sin SVG), nunca por el
+     `content-type` del cliente, y la extensión del nombre se corrige a la del
+     contenido real;
+  4. `storage.upload(... "upsert": "false")` con key `<prefijo>/<id>/<kind>-<uuid>.<ext>`
+     (502 si falla, sin fila);
+  5. INSERT; si falla, `_delete_from_storage(path)` antes de re-levantar, para
+     no dejar un objeto huérfano;
+  6. responder con una **lista cerrada de campos** (`DOCUMENT_FIELDS`):
+     `file_path` y `uploaded_by` no salen nunca.
+  La descarga es `POST …/download` → `payments._stream_private(path, filename)`
+  (POST para que quede en el activity log, ver security-checklist 10d y 5).
+  Un `ON DELETE CASCADE` no borra el objeto: juntá las rutas **antes** del
+  DELETE (`document_paths`) y quitá los objetos **después** (`remove_objects`).
+- `payments._stream_private` arma el `Content-Disposition` con
+  `_content_disposition()`: `filename="…"` con **respaldo ASCII** más
+  `filename*=UTF-8''…` percent-encoded (RFC 5987), y colapsa los saltos de línea
+  del nombre. Un header HTTP viaja en Latin-1: antes un nombre como `Łukasz.pdf`
+  (típico en un pasaporte escaneado) reventaba y el cliente veía un 502 de
+  "Storage fetch failed". No armes el header a mano en otro endpoint.
 
 ## Datos: tablas que confunden
 

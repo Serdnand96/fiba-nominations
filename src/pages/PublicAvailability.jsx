@@ -4,9 +4,10 @@ import {
   getPublicAvailabilityForm, getPublicAvailabilityPerson, submitPublicAvailability,
 } from '../api/client'
 import { useLanguage } from '../i18n/LanguageContext'
-import { LogoMonogram } from '../components/brand/Logo'
 import { Avatar } from '../components/ui/Avatar'
 import { Button } from '../components/ui/Button'
+import { Icon } from '../lib/icons'
+import { PublicShell, PublicUnavailable } from '../components/layout/PublicShell'
 
 // Public self-service form: officials open a shared per-role link, pick their
 // name and submit availability. Rendered outside the authenticated shell
@@ -28,7 +29,7 @@ const inputCls = 'w-full h-9 px-2.5 rounded-md border border-ink-200 dark:border
 
 export default function PublicAvailability() {
   const { token } = useParams()
-  const { t, lang, setLang } = useLanguage()
+  const { t, lang } = useLanguage()
   const locale = lang === 'es' ? 'es' : 'en-US'
 
   const [form, setForm] = useState(null)          // { role, personnel, competitions }
@@ -141,12 +142,12 @@ export default function PublicAvailability() {
   }
 
   function fmtCompDates(c) {
-    if (!c.start_date) return 'TBD'
+    if (!c.start_date) return lang === 'es' ? 'Por confirmar' : 'TBD'
     const opts = { month: 'short', day: 'numeric' }
     const s = new Date(c.start_date + 'T00:00:00').toLocaleDateString(locale, opts)
     if (!c.end_date || c.end_date === c.start_date) return s
     const e = new Date(c.end_date + 'T00:00:00').toLocaleDateString(locale, opts)
-    return `${s} – ${e}`
+    return lang === 'es' ? `${s} al ${e}` : `${s} to ${e}`
   }
 
   function fmtTimestamp(iso) {
@@ -157,30 +158,11 @@ export default function PublicAvailability() {
   /* ── Page chrome ─────────────────────────────────────────────── */
 
   const shell = (children) => (
-    <div className="min-h-screen bg-ink-50 dark:bg-navy-950 px-4 py-6 md:py-10">
-      <div className="max-w-2xl mx-auto">
-        <div className="flex items-start justify-between mb-6">
-          <div className="flex items-center gap-3">
-            <LogoMonogram size={40} />
-            <div className="leading-tight">
-              <div className="text-[15px] font-semibold text-navy-900 dark:text-white">FIBA Americas</div>
-              <div className="text-xs text-ink-500 dark:text-ink-400">{t('publicAvailability.pageTitle')}</div>
-            </div>
-          </div>
-          <div className="flex items-center gap-0.5 bg-white dark:bg-navy-900 border border-ink-200 dark:border-navy-700 rounded-md p-0.5">
-            {['es', 'en'].map(l => (
-              <button key={l} onClick={() => setLang(l)}
-                className={`px-2 py-1 rounded text-2xs font-semibold transition-all ${
-                  lang === l ? 'bg-basketball-700 text-white' : 'text-ink-500 dark:text-ink-400 hover:text-ink-900 dark:hover:text-white'
-                }`}>
-                {l.toUpperCase()}
-              </button>
-            ))}
-          </div>
-        </div>
+    <PublicShell width="max-w-2xl" title={t('publicAvailability.pageTitle')} context="FIBA Americas">
+      <div className="max-w-2xl mx-auto px-4 py-6 md:py-8">
         {children}
       </div>
-    </div>
+    </PublicShell>
   )
 
   if (loading) {
@@ -192,11 +174,10 @@ export default function PublicAvailability() {
   }
 
   if (invalid) {
-    return shell(
-      <div className="bg-white dark:bg-navy-900 border border-ink-200 dark:border-navy-800 rounded-xl p-8 text-center">
-        <div className="text-4xl mb-3">🔒</div>
-        <p className="text-sm text-ink-600 dark:text-ink-300">{t('publicAvailability.invalidLink')}</p>
-      </div>
+    return (
+      <PublicUnavailable
+        title={lang === 'es' ? 'Este enlace no está disponible' : 'This link is not available'}
+        message={t('publicAvailability.invalidLink')} />
     )
   }
 
@@ -206,9 +187,7 @@ export default function PublicAvailability() {
     return shell(
       <div className="bg-white dark:bg-navy-900 border border-ink-200 dark:border-navy-800 rounded-xl p-8 text-center">
         <div className="w-14 h-14 mx-auto rounded-full bg-success-100 dark:bg-success-500/20 flex items-center justify-center mb-4">
-          <svg className="w-7 h-7 text-success-600 dark:text-success-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
-          </svg>
+          <Icon.Check className="w-7 h-7 text-success-600 dark:text-success-500" />
         </div>
         <h2 className="text-lg font-semibold text-navy-900 dark:text-white mb-2">
           {t('publicAvailability.thanksTitle', { name: person?.name?.split(' ')[0] || '' })}
@@ -254,9 +233,7 @@ export default function PublicAvailability() {
                   <span className="block text-[13.5px] font-medium text-ink-900 dark:text-white truncate">{p.name}</span>
                   {p.country && <span className="block text-xs text-ink-500 dark:text-ink-400 truncate">{p.country}</span>}
                 </span>
-                <svg className="w-4 h-4 text-ink-300 dark:text-navy-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
-                </svg>
+                <Icon.Chevron className="w-4 h-4 text-ink-400 dark:text-navy-600" />
               </button>
             ))}
           </div>
@@ -282,7 +259,7 @@ export default function PublicAvailability() {
           </div>
         </div>
         <button onClick={resetPerson}
-          className="text-xs font-medium text-basketball-600 dark:text-basketball-400 hover:underline flex-shrink-0">
+          className="text-xs font-medium text-basketball-700 dark:text-basketball-400 hover:underline flex-shrink-0">
           {t('publicAvailability.changeName')}
         </button>
       </div>
@@ -355,7 +332,7 @@ export default function PublicAvailability() {
           </Button>
         </div>
         {ranges.length === 0 ? (
-          <div className="p-5 text-center text-sm text-ink-400 dark:text-ink-500">
+          <div className="p-5 text-center text-sm text-ink-500 dark:text-ink-400">
             {t('publicAvailability.noPeriods')}
           </div>
         ) : (
@@ -379,10 +356,8 @@ export default function PublicAvailability() {
                   </div>
                   <button onClick={() => setRanges(prev => prev.filter((_, i) => i !== idx))}
                     aria-label={t('availability.delete')} title={t('availability.delete')}
-                    className="h-9 w-9 flex-shrink-0 inline-flex items-center justify-center rounded-md text-ink-400 hover:text-danger-600 hover:bg-danger-50 dark:hover:bg-danger-500/10 transition-colors">
-                    <svg className="w-[18px] h-[18px]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
-                    </svg>
+                    className="h-9 w-9 flex-shrink-0 inline-flex items-center justify-center rounded-md text-ink-500 hover:text-danger-600 hover:bg-danger-50 dark:hover:bg-danger-500/10 transition-colors">
+                    <Icon.Trash className="w-[18px] h-[18px]" />
                   </button>
                 </div>
                 <input type="text" value={r.notes}
@@ -396,7 +371,7 @@ export default function PublicAvailability() {
       </div>
 
       {error && (
-        <div className="bg-danger-50 dark:bg-danger-500/10 border border-danger-200 dark:border-danger-500/30 rounded-lg px-4 py-3 text-sm text-danger-700 dark:text-danger-400">
+        <div className="bg-danger-50 dark:bg-danger-500/10 border border-danger-100 dark:border-danger-500/30 rounded-lg px-4 py-3 text-sm text-danger-700 dark:text-danger-500">
           {error}
         </div>
       )}

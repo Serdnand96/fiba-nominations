@@ -3,8 +3,9 @@
 Antes cada export repetía su propio `_autosize` / `_save` y armaba el
 `Response` a mano (logistics_import.py, budget_import.py + budget.py). Esto es
 el mismo código, una sola vez, para los exports nuevos (pagos, gastos,
-resumen de budget). Los viejos no se migraron a propósito: funcionan y moverlos
-no aporta nada.
+resumen de budget). Los viejos conservan su armado, pero todos guardan con
+`workbook_bytes`, que fija autor y último editor ("FIBA Americas" en vez de
+"openpyxl").
 
 Uso típico:
 
@@ -15,11 +16,14 @@ Uso típico:
     return xlsx_response(workbook_bytes(wb), "pagos.xlsx")
 """
 import io
+import zipfile
 import re
 
 from fastapi.responses import Response
 from openpyxl import Workbook
 from openpyxl.styles import Alignment, Font, PatternFill
+
+from api._lib.services.doc_metadata import ORG_AUTHOR, clip_title
 
 XLSX_MEDIA_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
@@ -70,10 +74,40 @@ def money_format(ws, columns, min_row: int = 2, fmt: str = "#,##0.00") -> None:
                 cell.number_format = fmt
 
 
-def workbook_bytes(wb: Workbook) -> bytes:
+def set_workbook_metadata(wb: Workbook, title: str | None = None) -> Workbook:
+    """Autor y último editor = FIBA Americas (si no, openpyxl firma "openpyxl")."""
+    wb.properties.creator = ORG_AUTHOR
+    wb.properties.lastModifiedBy = ORG_AUTHOR
+    if title:
+        wb.properties.title = clip_title(title)
+    return wb
+
+
+def workbook_bytes(wb: Workbook, title: str | None = None) -> bytes:
+    """El .xlsx listo para servir. Todo export pasa por acá: fija los metadatos."""
+    set_workbook_metadata(wb, title)
     buf = io.BytesIO()
     wb.save(buf)
-    return buf.getvalue()
+    return _plain_app_properties(buf.getvalue())
+
+
+_APP_XML = "docProps/app.xml"
+_APP_PROPERTIES = (
+    '<Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/'
+    'extended-properties"><Application>Microsoft Excel</Application></Properties>'
+)
+
+
+def _plain_app_properties(data: bytes) -> bytes:
+    """openpyxl escribe su nombre y versión en `docProps/app.xml` y no deja
+    configurarlo: se reescribe esa entrada del zip y el resto queda igual."""
+    out = io.BytesIO()
+    with zipfile.ZipFile(io.BytesIO(data)) as src, \
+            zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as dst:
+        for item in src.infolist():
+            content = _APP_PROPERTIES.encode() if item.filename == _APP_XML else src.read(item.filename)
+            dst.writestr(item, content)
+    return out.getvalue()
 
 
 def xlsx_response(content: bytes, filename: str) -> Response:

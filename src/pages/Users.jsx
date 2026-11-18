@@ -8,6 +8,7 @@ import { useLanguage } from '../i18n/LanguageContext'
 import { useToast } from '../components/ui/Toast'
 import { Avatar } from '../components/ui'
 import { useAuth } from '../contexts/AuthContext'
+import { Icon } from '../lib/icons'
 
 const MODULES = ['feed', 'calendar', 'nominations', 'payments', 'payments_approve', 'budget', 'personnel', 'competitions', 'templates', 'users', 'logistics', 'availability', 'training', 'games', 'assets', 'loans', 'employees', 'reports', 'evaluations', 'comp_days']
 // Permisos que gobiernan un dato, no una página: solo tienen sentido en "ver".
@@ -18,7 +19,7 @@ const VIEW_ONLY_MODULES = new Set(['comp_days', 'payments_approve'])
 const NO_DEPT_ACCESS = { can_view: false, can_edit: false, can_approve: false }
 
 export default function Users() {
-  const { t } = useLanguage()
+  const { t, lang } = useLanguage()
   const { push } = useToast()
   const { isSuperadmin, hasEdit } = useAuth()
   const canEdit = hasEdit('users')
@@ -233,13 +234,13 @@ export default function Users() {
               <label className="fiba-label">{t('users.email')}</label>
               <input type="email" required value={email} onChange={e => setEmail(e.target.value)}
                 className="fiba-input"
-                placeholder="usuario@fiba.basketball" />
+                placeholder={lang === 'en' ? 'user@fiba.basketball' : 'usuario@fiba.basketball'} />
             </div>
             <div>
               <label className="fiba-label">{t('users.password')}</label>
-              <input type="password" required minLength={6} value={password} onChange={e => setPassword(e.target.value)}
+              <input type="password" required minLength={8} value={password} onChange={e => setPassword(e.target.value)}
                 className="fiba-input"
-                placeholder={t('users.minChars')} />
+                placeholder={t('users.minChars8')} />
             </div>
             <button type="submit" disabled={saving}
               className="btn-fiba disabled:opacity-50">
@@ -326,7 +327,7 @@ export default function Users() {
                 <h3 className="text-lg font-bold text-ink-900 dark:text-white">{t('users.changePasswordTitle')}</h3>
                 <p className="text-sm text-fiba-muted">{pwdUser.email}</p>
               </div>
-              <button onClick={() => setPwdUser(null)} className="text-fiba-muted hover:text-ink-900 dark:text-white text-xl">&times;</button>
+              <button onClick={() => setPwdUser(null)} aria-label={t('common.close')} title={t('common.close')} className="text-fiba-muted hover:text-ink-900 dark:text-white text-xl"><Icon.X className="w-5 h-5" /></button>
             </div>
 
             <form onSubmit={handlePasswordSave} className="space-y-4">
@@ -370,7 +371,7 @@ export default function Users() {
                 <h3 className="text-lg font-bold text-ink-900 dark:text-white">{t('permissions.editPermissions')}</h3>
                 <p className="text-sm text-fiba-muted">{permUser.email}</p>
               </div>
-              <button onClick={() => setPermUser(null)} className="text-fiba-muted hover:text-ink-900 dark:text-white text-xl">&times;</button>
+              <button onClick={() => setPermUser(null)} aria-label={t('common.close')} title={t('common.close')} className="text-fiba-muted hover:text-ink-900 dark:text-white text-xl"><Icon.X className="w-5 h-5" /></button>
             </div>
 
             {permLoading ? (
@@ -443,6 +444,9 @@ export default function Users() {
                           // suman nada: se deshabilitan para no dar a entender
                           // que recortan algo.
                           const overridden = d.department_code !== '*' && all?.can_view
+                          const deptName = d.department_code === '*'
+                            ? t('budget.accessAll')
+                            : (deptList.find(x => x.code === d.department_code)?.label || d.department_code)
                           return (
                             <tr key={d.department_code}
                               className={`border-t border-fiba-border ${overridden ? 'opacity-40' : ''}`}>
@@ -453,19 +457,19 @@ export default function Users() {
                               </td>
                               <td className="px-2 py-2 text-center">
                                 <input type="checkbox" checked={d.can_view} disabled={overridden}
-                                  aria-label={`${t('permissions.canView')} — ${d.department_code}`}
+                                  aria-label={`${t('permissions.canView')}: ${deptName}`}
                                   onChange={() => toggleDept(d.department_code, 'can_view')}
                                   className="rounded border-fiba-border disabled:opacity-30" />
                               </td>
                               <td className="px-2 py-2 text-center">
                                 <input type="checkbox" checked={d.can_edit} disabled={overridden}
-                                  aria-label={`${t('permissions.canEdit')} — ${d.department_code}`}
+                                  aria-label={`${t('permissions.canEdit')}: ${deptName}`}
                                   onChange={() => toggleDept(d.department_code, 'can_edit')}
                                   className="rounded border-fiba-border disabled:opacity-30" />
                               </td>
                               <td className="px-2 py-2 text-center">
                                 <input type="checkbox" checked={!!d.can_approve} disabled={overridden}
-                                  aria-label={`${t('budget.approvalCanApprove')} — ${d.department_code}`}
+                                  aria-label={`${t('budget.approvalCanApprove')}: ${deptName}`}
                                   title={t('budget.approvalCanApproveHint')}
                                   onChange={() => toggleDept(d.department_code, 'can_approve')}
                                   className="rounded border-fiba-border disabled:opacity-30" />

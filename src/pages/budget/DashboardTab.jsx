@@ -24,16 +24,23 @@ const EVENT_TYPES = [
   'womens_americup', 'americup',
 ]
 const EVENT_TYPE_LABEL = {
-  single_game_mens_qualifiers: 'Single game — Men’s Qualifiers',
-  single_game_other: 'Single game — otros',
-  tournament_6d_youth: 'Torneo ≤6 días (Youth)',
-  tournament_6d_senior: 'Torneo ≤6 días (Senior)',
-  tournament_8d_youth: 'Torneo ≤8 días (Youth)',
-  tournament_8d_senior: 'Torneo ≤8 días (Senior)',
-  womens_americup: 'FIBA Women’s AmeriCup',
-  americup: 'FIBA AmeriCup',
+  single_game_mens_qualifiers: { es: 'Partido único: clasificatorios masculinos', en: "Single game: men's qualifiers" },
+  single_game_other: { es: 'Partido único: otros', en: 'Single game: other' },
+  tournament_6d_youth: { es: 'Torneo de hasta 6 días (juvenil)', en: 'Tournament up to 6 days (youth)' },
+  tournament_6d_senior: { es: 'Torneo de hasta 6 días (mayores)', en: 'Tournament up to 6 days (senior)' },
+  tournament_8d_youth: { es: 'Torneo de hasta 8 días (juvenil)', en: 'Tournament up to 8 days (youth)' },
+  tournament_8d_senior: { es: 'Torneo de hasta 8 días (mayores)', en: 'Tournament up to 8 days (senior)' },
+  womens_americup: { es: "FIBA Women's AmeriCup", en: "FIBA Women's AmeriCup" },
+  americup: { es: 'FIBA AmeriCup', en: 'FIBA AmeriCup' },
 }
-const ROLE_LABEL = { td: 'TD', vgo: 'VGO', ref: 'Árbitro', ref_instructor: 'Ref. Instructor', video_operator: 'Video Op.' }
+const ROLE_LABEL = {
+  td: { es: 'TD', en: 'TD' },
+  vgo: { es: 'VGO', en: 'VGO' },
+  ref: { es: 'Árbitro', en: 'Referee' },
+  ref_instructor: { es: 'Instructor de árbitros', en: 'Referee instructor' },
+  video_operator: { es: 'Operador de video', en: 'Video operator' },
+}
+const pick = (map, key, lang) => map[key]?.[lang === 'en' ? 'en' : 'es'] || key
 
 /* ──────────────────────────── Resumen ────────────────────────────
  *
@@ -146,14 +153,18 @@ export default function DashboardTab({ t, push, canEdit, departments, competitio
     setLoading(true)
     getBudgetSummary(department ? { year, department } : { year })
       .then(setSummary)
-      .catch(e => { console.error(e); push({ type: 'error', title: t('common.error') }) })
+      .catch(e => {
+        console.error(e)
+        push({ type: 'error', title: lang === 'en' ? 'Could not load the summary.' : 'No se pudo cargar el resumen.' })
+      })
       .finally(() => setLoading(false))
   }, [year, department])
 
   useEffect(() => {
     if (!costEvent) { setCost(null); return }
     getCompetitionCost(costEvent).then(setCost).catch(e => {
-      console.error(e); push({ type: 'error', title: t('common.error') })
+      console.error(e)
+      push({ type: 'error', title: lang === 'en' ? 'Could not load the event cost.' : 'No se pudo cargar el costo del evento.' })
     })
   }, [costEvent])
 
@@ -285,7 +296,11 @@ export default function DashboardTab({ t, push, canEdit, departments, competitio
                         </td>
                         <td className="px-3 py-2 text-right">${money(p.total)}</td>
                         <td className="px-3 py-2 text-right text-fiba-muted">${money(p.airfare)}</td>
-                        <td className="px-3 py-2 text-fiba-muted text-xs">{p.status}</td>
+                        <td className="px-3 py-2 text-fiba-muted text-xs">
+                          {t(`common.historyStatus_${p.status}`) !== `common.historyStatus_${p.status}`
+                            ? t(`common.historyStatus_${p.status}`)
+                            : p.status}
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -342,6 +357,7 @@ function SummaryStats({ summary, t }) {
 
 /** Tarifario: la grilla oficial y la acción de aplicarla a un evento. */
 function FeesPanel({ t, push, canEdit, competitions }) {
+  const { lang } = useLanguage()
   const [fees, setFees] = useState([])
   const [eventType, setEventType] = useState('womens_americup')
   const [target, setTarget] = useState('')
@@ -365,15 +381,19 @@ function FeesPanel({ t, push, canEdit, competitions }) {
       const res = await applyFeeSchedule({
         competition_id: target, fee_event_type: eventType, overwrite,
       })
-      const done = res.applied.map(a => ROLE_LABEL[a.role] || a.role).join(', ')
+      const done = res.applied.map(a => pick(ROLE_LABEL, a.role, lang)).join(', ')
       push({
         type: 'success',
         title: res.applied.length
           ? `${t('budget.applied')}: ${done}`
-          : `0 — ${res.skipped.length} ${t('budget.alreadySet')}`,
+          : `${lang === 'en' ? 'Nothing applied' : 'Nada aplicado'}: ${res.skipped.length} ${t('budget.alreadySet')}`,
       })
     } catch (e) {
-      push({ type: 'error', title: e?.response?.data?.detail || t('common.error') })
+      push({
+        type: 'error',
+        title: e?.response?.data?.detail
+          || (lang === 'en' ? 'Could not apply the fee schedule.' : 'No se pudo aplicar el tarifario.'),
+      })
     }
     setApplying(false)
   }
@@ -389,7 +409,7 @@ function FeesPanel({ t, push, canEdit, competitions }) {
       <div className="flex flex-wrap gap-3 mb-4">
         <select value={eventType} onChange={e => setEventType(e.target.value)}
           className="fiba-select !w-auto min-w-[240px]">
-          {EVENT_TYPES.map(v => <option key={v} value={v}>{EVENT_TYPE_LABEL[v]}</option>)}
+          {EVENT_TYPES.map(v => <option key={v} value={v}>{pick(EVENT_TYPE_LABEL, v, lang)}</option>)}
         </select>
       </div>
 
@@ -404,7 +424,7 @@ function FeesPanel({ t, push, canEdit, competitions }) {
         <tbody className="divide-y divide-fiba-border">
           {grid.map(g => (
             <tr key={g.role}>
-              <td className="pr-8 py-2 text-ink-900 dark:text-white">{ROLE_LABEL[g.role] || g.role}</td>
+              <td className="pr-8 py-2 text-ink-900 dark:text-white">{pick(ROLE_LABEL, g.role, lang)}</td>
               <td className="pr-8 py-2 text-right font-medium text-ink-900 dark:text-white">${money(g.row.fee)}</td>
               <td className="py-2 text-right text-fiba-muted">${money(g.row.incidentals)}</td>
             </tr>

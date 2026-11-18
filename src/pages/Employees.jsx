@@ -6,6 +6,7 @@ import {
 import { useLanguage } from '../i18n/LanguageContext'
 import { useToast } from '../components/ui/Toast'
 import { useAuth } from '../contexts/AuthContext'
+import { Icon } from '../lib/icons'
 
 const EMPTY_FORM = {
   name: '', email: '', position: '', department: '', phone: '',
@@ -13,7 +14,7 @@ const EMPTY_FORM = {
 }
 
 export default function Employees() {
-  const { t } = useLanguage()
+  const { t, lang } = useLanguage()
   const { push } = useToast()
   const { hasEdit, hasView } = useAuth()
   const canEdit = hasEdit('employees')
@@ -216,10 +217,10 @@ export default function Employees() {
             {filtered.map(e => (
               <tr key={e.id} className={!e.active ? 'opacity-50' : ''}>
                 <td className="px-4 py-3 font-medium text-ink-900 dark:text-white">{e.name}</td>
-                <td className="px-4 py-3 text-fiba-muted text-sm">{e.email || '—'}</td>
-                <td className="px-4 py-3 text-sm">{e.position || '—'}</td>
-                <td className="px-4 py-3 text-sm">{e.department || '—'}</td>
-                <td className="px-4 py-3 text-sm">{e.phone || '—'}</td>
+                <td className="px-4 py-3 text-fiba-muted text-sm">{e.email || '-'}</td>
+                <td className="px-4 py-3 text-sm">{e.position || '-'}</td>
+                <td className="px-4 py-3 text-sm">{e.department || '-'}</td>
+                <td className="px-4 py-3 text-sm">{e.phone || '-'}</td>
                 <td className="px-4 py-3">
                   {tripCounts[e.id] ? (
                     <button onClick={() => openTrips(e)}
@@ -228,7 +229,7 @@ export default function Employees() {
                       {tripCounts[e.id]}
                     </button>
                   ) : (
-                    <span className="text-fiba-muted/50 text-sm">—</span>
+                    <span className="text-fiba-muted/50 text-sm">-</span>
                   )}
                 </td>
                 {canSeeCompDays && (
@@ -239,7 +240,7 @@ export default function Employees() {
                         {compDays[e.id]}
                       </span>
                     ) : (
-                      <span className="text-fiba-muted/50 text-sm">—</span>
+                      <span className="text-fiba-muted/50 text-sm">-</span>
                     )}
                   </td>
                 )}
@@ -277,11 +278,13 @@ export default function Employees() {
               <div className="min-w-0">
                 <h3 className="text-lg font-bold text-ink-900 dark:text-white truncate">{tripPanel.employee.name}</h3>
                 <p className="text-xs text-fiba-muted mt-0.5">
-                  {[tripPanel.employee.position, tripPanel.employee.department].filter(Boolean).join(' · ') || '—'}
+                  {[tripPanel.employee.position, tripPanel.employee.department].filter(Boolean).join(' · ') || '-'}
                 </p>
               </div>
-              <button onClick={() => setTripPanel(null)}
-                className="p-1.5 rounded hover:bg-fiba-surface text-fiba-muted hover:text-ink-900 dark:hover:text-white">×</button>
+              <button onClick={() => setTripPanel(null)} aria-label={t('common.close')} title={t('common.close')}
+                className="p-1.5 rounded hover:bg-fiba-surface text-fiba-muted hover:text-ink-900 dark:hover:text-white">
+                <Icon.X className="w-5 h-5" />
+              </button>
             </div>
 
             <div className="px-6 py-3 border-b border-fiba-border bg-fiba-surface/50">
@@ -306,14 +309,14 @@ export default function Employees() {
                     <div className="fiba-stat">
                       <p className="text-xs text-fiba-muted">{t('employees.tripsDays')}</p>
                       <p className="text-2xl font-bold text-ink-900 dark:text-white">
-                        {tripPanel.data.totals.days || '—'}
+                        {tripPanel.data.totals.days || '-'}
                       </p>
                     </div>
                     {canSeeCompDays && (
                       <div className="fiba-stat">
                         <p className="text-xs text-fiba-muted">{t('employees.compDays')}</p>
                         <p className="text-2xl font-bold text-blue-400">
-                          {tripPanel.data.totals.weekend_days || '—'}
+                          {tripPanel.data.totals.weekend_days || '-'}
                         </p>
                       </div>
                     )}
@@ -325,16 +328,16 @@ export default function Employees() {
                         <div className="flex items-start justify-between gap-2">
                           <div className="min-w-0">
                             <p className="text-sm font-medium text-ink-900 dark:text-white truncate">
-                              {trip.competition_name || '—'}
+                              {trip.competition_name || '-'}
                             </p>
                             <p className="text-xs text-fiba-muted">
-                              {trip.start_date || '—'}
-                              {trip.end_date && trip.end_date !== trip.start_date ? ` — ${trip.end_date}` : ''}
+                              {trip.start_date || '-'}
+                              {trip.end_date && trip.end_date !== trip.start_date ? (lang === 'es' ? ` al ${trip.end_date}` : ` to ${trip.end_date}`) : ''}
                             </p>
                           </div>
                           <div className="shrink-0 text-right">
                             <span className="block text-sm font-semibold text-fiba-accent">
-                              {trip.days > 0 ? t('employees.tripsDaysCount', { count: trip.days }) : '—'}
+                              {trip.days > 0 ? t('employees.tripsDaysCount', { count: trip.days }) : '-'}
                             </span>
                             {canSeeCompDays && trip.weekend_days > 0 && (
                               <span className="block text-xs font-semibold text-blue-400"

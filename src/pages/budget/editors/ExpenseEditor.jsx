@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
-  createExpense, updateExpense, getExpenseHistory, getBudgetLines,
+  createExpense, updateExpense, getExpenseHistory, getBudgetLines, getBudgetCompetitionHotels,
   getExpenseAttachments, uploadExpenseAttachment, deleteExpenseAttachment, downloadExpenseAttachment,
   saveBlob,
 } from '../../../api/client'
@@ -21,7 +21,9 @@ const FINANCIAL = [
   'vendor_id', 'employee_id', 'payee_name', 'amount', 'expense_date',
 ]
 // En `paid` solo se editan estos dos.
-const PAID_EDITABLE = new Set(['invoice_no', 'comments'])
+// hotel_id: el vínculo con el hotel no es plata, y el hotel suele facturar
+// cuando el gasto ya está pagado (el backend lo permite en `paid`).
+const PAID_EDITABLE = new Set(['invoice_no', 'comments', 'hotel_id'])
 
 // Normaliza para comparar contra lo guardado: '' y undefined valen null.
 const norm = (v) => (v === '' || v === undefined ? null : v)
@@ -62,6 +64,7 @@ export default function ExpenseEditor({
     account_code: expense.account_code || '',
     budget_line_id: expense.budget_line_id || '',
     competition_id: expense.competition_id || '',
+    hotel_id: expense.hotel_id || '',
     payee_type: expense.payee_type || 'vendor',
     vendor_id: expense.vendor_id || '',
     employee_id: expense.employee_id || '',
@@ -81,6 +84,7 @@ export default function ExpenseEditor({
   const [attachments, setAttachments] = useState([])
   const [history, setHistory] = useState([])
   const [lines, setLines] = useState([])
+  const [hotels, setHotels] = useState([])
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
 
@@ -119,6 +123,17 @@ export default function ExpenseEditor({
     return () => { alive = false }
   }, [lineYear, form.department_code, form.account_code, readOnly])
 
+  // Hoteles del evento, para el selector opcional. Sin competencia o sin hoteles
+  // el campo no se muestra.
+  useEffect(() => {
+    if (!form.competition_id) { setHotels([]); return }
+    let alive = true
+    getBudgetCompetitionHotels(form.competition_id)
+      .then(data => { if (alive) setHotels(Array.isArray(data) ? data : []) })
+      .catch(e => { console.error(e); if (alive) setHotels([]) })
+    return () => { alive = false }
+  }, [form.competition_id])
+
   const transitions = useExpenseTransitions({
     t, push,
     onDone: (updated) => {
@@ -134,6 +149,7 @@ export default function ExpenseEditor({
       account_code: form.account_code,
       budget_line_id: form.budget_line_id || null,
       competition_id: form.competition_id || null,
+      hotel_id: form.competition_id ? (form.hotel_id || null) : null,
       payee_type: form.payee_type,
       vendor_id: form.payee_type === 'vendor' ? (form.vendor_id || null) : null,
       employee_id: form.payee_type === 'employee' ? (form.employee_id || null) : null,
@@ -334,7 +350,7 @@ export default function ExpenseEditor({
       <Field label={t('budget.account')}>
         <select className="fiba-select" value={form.account_code} disabled={lockFinancial}
           onChange={e => set('account_code', e.target.value)}>
-          <option value="">—</option>
+          <option value="">-</option>
           <AccountOptions accounts={expenseAccounts} department={form.department_code} t={t} />
         </select>
       </Field>
@@ -347,7 +363,7 @@ export default function ExpenseEditor({
             ? t('budget.approvalBudgetLineNone') : t('budget.approvalBudgetLinePick')}</option>
           {lines.map(l => (
             <option key={l.id} value={l.id}>
-              {l.description || l.account_label || l.account_code} — {l.competition_name || t('budget.general')} · ${money(l.amount)}
+              {l.description || l.account_label || l.account_code} · {l.competition_name || t('budget.general')} · ${money(l.amount)}
             </option>
           ))}
         </select>
@@ -356,11 +372,23 @@ export default function ExpenseEditor({
 
       <Field label={t('budget.competition')}>
         <select className="fiba-select" value={form.competition_id} disabled={lockFinancial}
-          onChange={e => set('competition_id', e.target.value)}>
+          // Otra competencia, otros hoteles: el elegido deja de valer.
+          onChange={e => setForm(f => ({ ...f, competition_id: e.target.value, hotel_id: '' }))}>
           <option value="">{t('budget.general')}</option>
           {competitions.map(c => <option key={c.id} value={c.id}>{competitionLabel(c, t('months.short'))}</option>)}
         </select>
       </Field>
+
+      {form.competition_id && hotels.length > 0 && (
+        <Field label={t('budget.hotel')}>
+          <select className="fiba-select" value={form.hotel_id} disabled={lockedField('hotel_id')}
+            onChange={e => set('hotel_id', e.target.value)}>
+            <option value="">{t('budget.hotelNone')}</option>
+            {hotels.map(h => <option key={h.id} value={h.id}>{h.name}</option>)}
+          </select>
+          <p className="text-xs text-fiba-muted mt-1">{t('budget.hotelHint')}</p>
+        </Field>
+      )}
 
       <Field label={t('budget.payee')}>
         <select className="fiba-select" value={form.payee_type} disabled={lockFinancial}
@@ -375,7 +403,7 @@ export default function ExpenseEditor({
         <Field label={t('budget.payeeVendor')}>
           <select className="fiba-select" value={form.vendor_id} disabled={lockFinancial}
             onChange={e => set('vendor_id', e.target.value)}>
-            <option value="">—</option>
+            <option value="">-</option>
             {vendors.map(v => <option key={v.id} value={v.id}>{v.name}</option>)}
           </select>
         </Field>
@@ -384,7 +412,7 @@ export default function ExpenseEditor({
         <Field label={t('budget.payeeEmployee')}>
           <select className="fiba-select" value={form.employee_id} disabled={lockFinancial}
             onChange={e => set('employee_id', e.target.value)}>
-            <option value="">—</option>
+            <option value="">-</option>
             {employees.map(v => <option key={v.id} value={v.id}>{v.name}</option>)}
           </select>
         </Field>

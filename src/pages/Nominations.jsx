@@ -21,6 +21,7 @@ import { InfoHint } from '../components/ui/Tooltip'
 import NominationsMatrix from '../components/NominationsMatrix'
 import PersonProfilePanel from '../components/PersonProfilePanel'
 import NominationFormModal, { NominationPreviewModal, describeNominationError } from '../components/NominationFormModal'
+import { Icon } from '../lib/icons'
 
 function compareValues(a, b, dir) {
   const av = (a ?? '').toString().toLowerCase()
@@ -358,11 +359,11 @@ export default function Nominations() {
     return (
       <th onClick={() => toggleSort(sortKey)}
         className="cursor-pointer select-none hover:text-ink-900 dark:hover:text-white"
-        title={t('common.sort') || 'Sort'}>
+        title={t('common.sort')}>
         <span className="inline-flex items-center gap-1">
           {label}
-          <span className={`text-fiba-accent transition-opacity ${active ? 'opacity-100' : 'opacity-0'}`}>
-            {sort.dir === 'asc' ? '▲' : '▼'}
+          <span className={`text-fiba-accent transition-opacity ${active ? 'opacity-100' : 'opacity-0'}`} aria-hidden="true">
+            {sort.dir === 'asc' ? <Icon.ArrowUp className="w-3 h-3" /> : <Icon.ArrowDown className="w-3 h-3" />}
           </span>
         </span>
       </th>
@@ -500,11 +501,11 @@ export default function Nominations() {
                 </td>
                 <td className="px-4 py-3">
                   <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${roleBadgeClass(n.personnel?.role)}`}>
-                    {roleLabel(n.personnel?.role)}
+                    {roleLabel(n.personnel?.role, t)}
                   </span>
                 </td>
                 <td className="px-4 py-3">{n.competitions?.name}</td>
-                <td className="px-4 py-3">{n.letter_date || '—'}</td>
+                <td className="px-4 py-3">{n.letter_date || '-'}</td>
                 <td className="px-4 py-3">
                   <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${n.status === 'generated' ? 'bg-blue-500/20 text-blue-400' : 'bg-yellow-500/20 text-yellow-400'}`}>
                     {n.status}

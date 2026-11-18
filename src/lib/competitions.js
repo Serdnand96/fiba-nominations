@@ -58,6 +58,12 @@ export const SELECTABLE_COMPETITION_TYPES = COMPETITION_TYPES.filter(t => !t.hid
 
 const TYPE_COLORS = Object.fromEntries(COMPETITION_TYPES.map(t => [t.key, t.color]))
 
+/** Rótulo del tipo en el idioma activo. Solo 'Other' cambia; el resto son siglas o nombres propios. */
+export function competitionTypeLabel(key, lang = 'es') {
+  if (key === 'Other') return lang === 'es' ? 'Otras' : 'Other'
+  return COMPETITION_TYPES.find(t => t.key === key)?.label || key
+}
+
 /** Color del tipo. Gris neutro si es uno que este build no conoce. */
 export function competitionTypeColor(type) {
   return TYPE_COLORS[type] || '#6B7280'
@@ -67,6 +73,13 @@ export function competitionTypeColor(type) {
 // etiqueta siga el idioma activo; los pocos usos sin contexto de i18n (tests,
 // helpers) caen acá.
 const MONTHS_SHORT_EN = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+
+// Fecha sin confirmar. El idioma se deduce de los meses que pasa la pantalla.
+function tbdLabel(monthsShort, year) {
+  const en = monthsShort?.[0] === 'Jan'
+  if (en) return year ? `TBD ${year}` : 'TBD'
+  return year ? `${year}, por confirmar` : 'Por confirmar'
+}
 
 // Las fechas de la fila son 'YYYY-MM-DD' sin zona. `new Date('2026-10-02')` las
 // interpreta como UTC y en zonas negativas devuelve el día anterior; con el
@@ -110,7 +123,7 @@ export function competitionPeriod(comp, monthsShort = MONTHS_SHORT_EN) {
 
   // Sin fechas confirmadas el año sigue siendo el dato útil: es lo que separa
   // la LSB de 2026 de la de 2027.
-  if (comp.is_tbd || !start) return year ? `TBD ${year}` : 'TBD'
+  if (comp.is_tbd || !start) return tbdLabel(monthsShort, year)
 
   const end = parseDay(comp.end_date) || start
   const sy = start.getFullYear()
@@ -118,8 +131,8 @@ export function competitionPeriod(comp, monthsShort = MONTHS_SHORT_EN) {
   const sm = monthsShort[start.getMonth()]
   const em = monthsShort[end.getMonth()]
 
-  if (sy !== ey) return `${sm} ${sy} – ${em} ${ey}`
-  if (start.getMonth() !== end.getMonth()) return `${sm}–${em} ${sy}`
+  if (sy !== ey) return `${sm} ${sy}-${em} ${ey}`
+  if (start.getMonth() !== end.getMonth()) return `${sm}-${em} ${sy}`
   return `${sm} ${sy}`
 }
 
@@ -146,17 +159,17 @@ export function competitionDateRange(comp, monthsShort = MONTHS_SHORT_EN, { year
   // lee como si el 9 de diciembre fuera de 2027.
   if (sy !== ey) {
     return year
-      ? `${start.getDate()} ${sm} ${sy} – ${end.getDate()} ${em} ${ey}`
-      : `${start.getDate()} ${sm} – ${end.getDate()} ${em}`
+      ? `${start.getDate()} ${sm} ${sy}-${end.getDate()} ${em} ${ey}`
+      : `${start.getDate()} ${sm}-${end.getDate()} ${em}`
   }
 
   const suffix = year ? ` ${sy}` : ''
   if (start.getMonth() === end.getMonth()) {
     return start.getDate() === end.getDate()
       ? `${start.getDate()} ${sm}${suffix}`
-      : `${start.getDate()}–${end.getDate()} ${sm}${suffix}`
+      : `${start.getDate()}-${end.getDate()} ${sm}${suffix}`
   }
-  return `${start.getDate()} ${sm} – ${end.getDate()} ${em}${suffix}`
+  return `${start.getDate()} ${sm}-${end.getDate()} ${em}${suffix}`
 }
 
 /**
@@ -166,7 +179,7 @@ export function competitionDateRange(comp, monthsShort = MONTHS_SHORT_EN, { year
  */
 export function competitionLabel(comp, monthsShort = MONTHS_SHORT_EN) {
   if (!comp) return ''
-  const name = comp.name || comp.short_name || '—'
+  const name = comp.name || comp.short_name || '-'
   const period = competitionPeriod(comp, monthsShort)
   return period ? `${name} · ${period}` : name
 }

@@ -50,7 +50,7 @@ export function accountOption(a) {
   // cuentas oficial de Finance todavía no llegó.
   return (
     <option key={a.code} value={a.code}>
-      {a.code} — {a.label}{a.pending_mapping ? ' *' : ''}
+      {a.code} · {a.label}{a.pending_mapping ? ' *' : ''}
     </option>
   )
 }
@@ -104,7 +104,7 @@ export function Bar({ budgeted, executed, committed }) {
         <div className="bg-blue-500/40" style={{ width: `${cPct}%` }} />
       </div>
       <span className={`text-xs tabular-nums w-12 text-right ${over ? 'text-red-500 font-medium' : 'text-fiba-muted'}`}>
-        {b > 0 ? `${Math.round((e / b) * 100)}%` : '—'}
+        {b > 0 ? `${Math.round((e / b) * 100)}%` : '-'}
       </span>
     </div>
   )

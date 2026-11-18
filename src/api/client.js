@@ -319,6 +319,9 @@ export const downloadBudgetLinesXlsx = async (params) => {
 // Costo total del evento. NO está recortado por departamento a propósito: el
 // scoping rige cargar y editar, no leer la cifra de una competencia.
 export const getCompetitionCost = (id) => api.get(`/budget/competitions/${id}/cost`).then(r => r.data)
+// Hoteles de la competencia (id + nombre) para el selector del gasto. No exige
+// el permiso 'logistics'.
+export const getBudgetCompetitionHotels = (id) => api.get(`/budget/competitions/${id}/hotels`).then(r => r.data)
 // Tarifario: rellena competitions.{prefix}_window_fee/_incidentals, que es lo
 // que sync-nominations ya lee. No es una segunda fuente de verdad.
 export const getFeeSchedule = (params) => api.get('/budget/fee-schedule', { params }).then(r => r.data)
@@ -440,7 +443,11 @@ export const createTransportVenue = (data) => api.post('/transport/venues', data
 export const deleteTransportVenue = (id) => api.delete(`/transport/venues/${id}`).then(r => r.data)
 // Logística — padrón, manifest, hospedaje y comidas. Transporte (arriba) es la
 // otra mitad del mismo módulo y comparte el permiso 'logistics'.
-export const getLogisticsParticipants = (competitionId) => api.get('/logistics/participants', { params: { competition_id: competitionId } }).then(r => r.data)
+// `audience` (staff / delegation / vip) recorta el padrón por categoría; vacío = todo.
+const logisticsParams = (competitionId, audience) => (
+  audience ? { competition_id: competitionId, audience } : { competition_id: competitionId }
+)
+export const getLogisticsParticipants = (competitionId, audience) => api.get('/logistics/participants', { params: logisticsParams(competitionId, audience) }).then(r => r.data)
 export const createLogisticsParticipant = (data) => api.post('/logistics/participants', data).then(r => r.data)
 export const updateLogisticsParticipant = (id, data) => api.put(`/logistics/participants/${id}`, data).then(r => r.data)
 export const deleteLogisticsParticipant = (id) => api.delete(`/logistics/participants/${id}`).then(r => r.data)
@@ -450,14 +457,14 @@ export const getLogisticsTravelLegs = (competitionId) => api.get('/logistics/tra
 export const createLogisticsTravelLeg = (data) => api.post('/logistics/travel-legs', data).then(r => r.data)
 export const updateLogisticsTravelLeg = (id, data) => api.put(`/logistics/travel-legs/${id}`, data).then(r => r.data)
 export const deleteLogisticsTravelLeg = (id) => api.delete(`/logistics/travel-legs/${id}`).then(r => r.data)
-export const getLogisticsMovements = (competitionId) => api.get('/logistics/movements', { params: { competition_id: competitionId } }).then(r => r.data)
+export const getLogisticsMovements = (competitionId, audience) => api.get('/logistics/movements', { params: logisticsParams(competitionId, audience) }).then(r => r.data)
 
-export const getLogisticsHotels = (competitionId) => api.get('/logistics/hotels', { params: { competition_id: competitionId } }).then(r => r.data)
+export const getLogisticsHotels = (competitionId, audience) => api.get('/logistics/hotels', { params: logisticsParams(competitionId, audience) }).then(r => r.data)
 export const createLogisticsHotel = (data) => api.post('/logistics/hotels', data).then(r => r.data)
 export const updateLogisticsHotel = (id, data) => api.put(`/logistics/hotels/${id}`, data).then(r => r.data)
 export const deleteLogisticsHotel = (id) => api.delete(`/logistics/hotels/${id}`).then(r => r.data)
 
-export const getLogisticsRooming = (competitionId) => api.get('/logistics/rooming', { params: { competition_id: competitionId } }).then(r => r.data)
+export const getLogisticsRooming = (competitionId, audience) => api.get('/logistics/rooming', { params: logisticsParams(competitionId, audience) }).then(r => r.data)
 export const createLogisticsStay = (data) => api.post('/logistics/stays', data).then(r => r.data)
 export const updateLogisticsStay = (id, data) => api.put(`/logistics/stays/${id}`, data).then(r => r.data)
 export const deleteLogisticsStay = (id) => api.delete(`/logistics/stays/${id}`).then(r => r.data)
@@ -480,39 +487,124 @@ export const getLogisticsLinkQr = async (competitionId) => {
   return URL.createObjectURL(resp.data)
 }
 
-const uploadLogisticsSheet = (path, competitionId, file) => {
+const uploadLogisticsSheet = (path, params, file) => {
   const form = new FormData()
   form.append('file', file)
   return api.post(path, form, {
-    params: { competition_id: competitionId },
+    params,
     headers: { 'Content-Type': 'multipart/form-data' },
   }).then(r => r.data)
 }
-export const previewLogisticsManifest = (competitionId, file) => uploadLogisticsSheet('/logistics/import/manifest/preview', competitionId, file)
-export const commitLogisticsManifest = (competitionId, file) => uploadLogisticsSheet('/logistics/import/manifest/commit', competitionId, file)
-export const previewLogisticsRooming = (competitionId, file) => uploadLogisticsSheet('/logistics/import/rooming/preview', competitionId, file)
-export const commitLogisticsRooming = (competitionId, file) => uploadLogisticsSheet('/logistics/import/rooming/commit', competitionId, file)
+// Importando desde la pestaña de una audiencia, lo que la planilla no
+// clasifica entra con la categoría de esa pestaña.
+export const previewLogisticsManifest = (competitionId, file, audience) => uploadLogisticsSheet('/logistics/import/manifest/preview', logisticsParams(competitionId, audience), file)
+export const commitLogisticsManifest = (competitionId, file, audience) => uploadLogisticsSheet('/logistics/import/manifest/commit', logisticsParams(competitionId, audience), file)
+export const previewLogisticsRooming = (competitionId, file, audience) => uploadLogisticsSheet('/logistics/import/rooming/preview', logisticsParams(competitionId, audience), file)
+export const commitLogisticsRooming = (competitionId, file, audience) => uploadLogisticsSheet('/logistics/import/rooming/commit', logisticsParams(competitionId, audience), file)
 
-export const downloadLogisticsXlsx = async (kind, competitionId) => {
+export const downloadLogisticsXlsx = async (kind, competitionId, audience) => {
   const resp = await api.get(`/logistics/export/${kind}.xlsx`, {
-    params: { competition_id: competitionId },
+    params: logisticsParams(competitionId, audience),
     responseType: 'blob',
   })
-  const objectUrl = URL.createObjectURL(resp.data)
-  const link = document.createElement('a')
-  link.href = objectUrl
-  link.download = kind === 'manifest' ? 'flight-manifest.xlsx' : 'rooming-list.xlsx'
-  document.body.appendChild(link)
-  link.click()
-  document.body.removeChild(link)
-  setTimeout(() => URL.revokeObjectURL(objectUrl), 1000)
+  const base = kind === 'manifest' ? 'flight-manifest' : 'rooming-list'
+  saveBlob(resp.data, `${base}${audience ? `-${audience}` : ''}.xlsx`)
 }
+
+// Cronogramas (transporte con pick-up/return, y comidas). Un documento por
+// competencia + sección ('transport' | 'meals') + audiencia + etiqueta: una
+// misma audiencia puede tener varios ('' = el general, 'Árbitros', …).
+const scheduleParams = (competitionId, section, audience, label) => ({
+  competition_id: competitionId, section, audience, ...(label ? { label } : {}),
+})
+export const getLogisticsSchedules = (competitionId, section) => api.get('/logistics/schedules', { params: { competition_id: competitionId, section } }).then(r => r.data)
+export const previewLogisticsSchedule = (competitionId, section, audience, file, label) => uploadLogisticsSheet('/logistics/schedules/import/preview', scheduleParams(competitionId, section, audience, label), file)
+// Devuelve el documento importado (el de esa sección + audiencia + etiqueta).
+export const commitLogisticsSchedule = (competitionId, section, audience, file, label) => uploadLogisticsSheet('/logistics/schedules/import/commit', scheduleParams(competitionId, section, audience, label), file)
+export const createLogisticsSchedule = (data) => api.post('/logistics/schedules', data).then(r => r.data)
+export const updateLogisticsSchedule = (id, data) => api.patch(`/logistics/schedules/${id}`, data).then(r => r.data)
+export const deleteLogisticsSchedule = (id) => api.delete(`/logistics/schedules/${id}`).then(r => r.data)
+export const createLogisticsScheduleRow = (scheduleId, data) => api.post(`/logistics/schedules/${scheduleId}/rows`, data).then(r => r.data)
+export const updateLogisticsScheduleRow = (rowId, data) => api.put(`/logistics/schedules/rows/${rowId}`, data).then(r => r.data)
+export const deleteLogisticsScheduleRow = (rowId) => api.delete(`/logistics/schedules/rows/${rowId}`).then(r => r.data)
+// El Excel original vive en el bucket privado: baja como blob con el JWT.
+export const downloadLogisticsScheduleFile = async (schedule) => {
+  const resp = await api.get(`/logistics/schedules/${schedule.id}/file`, { responseType: 'blob' })
+  saveBlob(resp.data, schedule.file_name || 'cronograma.xlsx')
+}
+
+// Con responseType 'blob' el JSON de un error llega como Blob y el `detail` del
+// backend se pierde: se recupera acá y queda en `err.detail` (mismo patrón que
+// downloadTrainingScheduleXlsx).
+const blobRequest = async (config) => {
+  try {
+    return await api.request({ ...config, responseType: 'blob' })
+  } catch (err) {
+    const blob = err?.response?.data
+    if (blob instanceof Blob) {
+      try { err.detail = JSON.parse(await blob.text())?.detail } catch { /* keep generic message */ }
+    }
+    throw err
+  }
+}
+
+// Operación de logística: directorio de contactos y proveedores, salones,
+// adicionales/cotizaciones de hotel y documentos privados (menús, pasaportes,
+// cotizaciones). Mismo permiso 'logistics'. `audience` null = visible a todas;
+// con una audiencia el GET trae la suya más las compartidas.
+export const getLogisticsContacts = (competitionId, audience, kind) => api.get('/logistics/contacts', { params: { ...logisticsParams(competitionId, audience), ...(kind ? { kind } : {}) } }).then(r => r.data)
+export const createLogisticsContact = (data) => api.post('/logistics/contacts', data).then(r => r.data)
+export const updateLogisticsContact = (id, data) => api.put(`/logistics/contacts/${id}`, data).then(r => r.data)
+export const deleteLogisticsContact = (id) => api.delete(`/logistics/contacts/${id}`).then(r => r.data)
+
+export const getLogisticsRooms = (competitionId, audience) => api.get('/logistics/rooms', { params: logisticsParams(competitionId, audience) }).then(r => r.data)
+export const createLogisticsRoom = (data) => api.post('/logistics/rooms', data).then(r => r.data)
+export const updateLogisticsRoom = (id, data) => api.put(`/logistics/rooms/${id}`, data).then(r => r.data)
+export const deleteLogisticsRoom = (id) => api.delete(`/logistics/rooms/${id}`).then(r => r.data)
+
+// Adicionales y cotizaciones de un hotel. Informativo: NO es un gasto de Budget.
+export const getLogisticsHotelCharges = (competitionId, hotelId) => api.get('/logistics/hotel-charges', { params: { competition_id: competitionId, hotel_id: hotelId } }).then(r => r.data)
+export const createLogisticsHotelCharge = (data) => api.post('/logistics/hotel-charges', data).then(r => r.data)
+export const updateLogisticsHotelCharge = (id, data) => api.put(`/logistics/hotel-charges/${id}`, data).then(r => r.data)
+export const deleteLogisticsHotelCharge = (id) => api.delete(`/logistics/hotel-charges/${id}`).then(r => r.data)
+
+// Pagos de FIBA a un hotel: solo lectura, salen de los gastos de Budget que
+// apuntan a ese hotel → { rows, total_paid, total_approved }.
+export const getLogisticsHotelPayments = (hotelId) => api.get(`/logistics/hotels/${hotelId}/payments`).then(r => r.data)
+
+// Documentos privados (PDF, JPG o PNG hasta 10 MB). `filters` = { kind,
+// hotel_id, participant_id, charge_id }. La subida lleva el archivo en `file` y
+// el resto por query params, como las planillas; la descarga es POST a
+// propósito (queda en el activity log) y va por blob + JWT.
+const documentParams = (competitionId, filters = {}) => (
+  Object.fromEntries(Object.entries({ competition_id: competitionId, ...filters }).filter(([, v]) => v))
+)
+export const getLogisticsDocuments = (competitionId, filters) => api.get('/logistics/documents', { params: documentParams(competitionId, filters) }).then(r => r.data)
+export const uploadLogisticsDocument = (competitionId, file, filters) => uploadLogisticsSheet('/logistics/documents', documentParams(competitionId, filters), file)
+export const downloadLogisticsDocument = async (doc) => {
+  const resp = await blobRequest({ method: 'post', url: `/logistics/documents/${doc.id}/download` })
+  saveBlob(resp.data, doc.file_name || 'documento')
+}
+export const deleteLogisticsDocument = (id) => api.delete(`/logistics/documents/${id}`).then(r => r.data)
+
+// PDF operativo para delegaciones (uno por competencia, sin datos personales).
+// Si el servidor no pudo convertir a PDF manda el .docx: la extensión sale del
+// content-type de la respuesta.
+export const downloadLogisticsBriefing = async (competitionId, baseName = 'delegation-briefing') => {
+  const resp = await blobRequest({ method: 'get', url: '/logistics/export/delegation-briefing', params: { competition_id: competitionId } })
+  const isPdf = String(resp.headers?.['content-type'] || resp.data?.type || '').includes('pdf')
+  saveBlob(resp.data, `${baseName}.${isPdf ? 'pdf' : 'docx'}`)
+}
+
+// Un viaje por grupo de llegadas/salidas del manifest.
+export const createTransportTripsFromMovements = (data) => api.post('/transport/trips/from-movements', data).then(r => r.data)
 
 // Vista pública de logística (sin auth, el token es el credencial)
 export const getPublicLogistics = (token) => api.get(`/public/logistics/${token}`).then(r => r.data)
 export const getPublicLogisticsTransport = (token, date) => api.get(`/public/logistics/${token}/transport`, { params: date ? { date } : {} }).then(r => r.data)
-export const getPublicLogisticsManifest = (token) => api.get(`/public/logistics/${token}/manifest`).then(r => r.data)
-export const getPublicLogisticsRooming = (token) => api.get(`/public/logistics/${token}/rooming`).then(r => r.data)
+export const getPublicLogisticsManifest = (token, audience) => api.get(`/public/logistics/${token}/manifest`, { params: audience ? { audience } : {} }).then(r => r.data)
+export const getPublicLogisticsRooming = (token, audience) => api.get(`/public/logistics/${token}/rooming`, { params: audience ? { audience } : {} }).then(r => r.data)
+export const getPublicLogisticsSchedules = (token) => api.get(`/public/logistics/${token}/schedules`).then(r => r.data)
 
 // Permissions
 export const getUserPermissions = (userId) => api.get(`/permissions/${userId}`).then(r => r.data)

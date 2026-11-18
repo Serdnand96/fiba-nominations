@@ -59,6 +59,10 @@ class CompetitionCreate(BaseModel):
     fiba_competition_id: Optional[int] = None
     # "A" o "37,38,39,40": acota el sync a esos groupPairingCode (LSB, Final Four).
     fiba_group_codes: Optional[str] = None
+    # Fechas de los PARTIDOS del tramo (migración 053), no las del viaje: para
+    # feeds sin windowCode que solo se separan por fecha (BCLA). Las dos o ninguna.
+    fiba_segment_from: Optional[str] = None
+    fiba_segment_to: Optional[str] = None
     # Alta desde "Nuevas en FIBA": las fechas y la sede que publica FIBA.
     start_date: Optional[str] = None
     end_date: Optional[str] = None
@@ -78,6 +82,8 @@ class CompetitionUpdate(BaseModel):
     fiba_window_code: Optional[str] = None
     fiba_competition_id: Optional[int] = None
     fiba_group_codes: Optional[str] = None
+    fiba_segment_from: Optional[str] = None
+    fiba_segment_to: Optional[str] = None
     fee_type: Optional[FeeType] = None
     is_national_team: Optional[bool] = None
     # Nomination defaults used by the per-game assignment workflow
@@ -426,6 +432,9 @@ class ExpenseCreate(BaseModel):
     department_code: str
     account_code: str
     competition_id: Optional[str] = None     # None → gasto general, sin evento
+    # Hotel de logística al que corresponde el gasto (migración 056). Exige
+    # competition_id y que el hotel sea de esa competencia. No es campo financiero.
+    hotel_id: Optional[str] = None
     payee_type: Optional[str] = "vendor"     # vendor | employee | other
     vendor_id: Optional[str] = None
     employee_id: Optional[str] = None
@@ -450,6 +459,7 @@ class ExpenseUpdate(BaseModel):
     department_code: Optional[str] = None
     account_code: Optional[str] = None
     competition_id: Optional[str] = None
+    hotel_id: Optional[str] = None           # null explícito = desvincular
     payee_type: Optional[str] = None
     vendor_id: Optional[str] = None
     employee_id: Optional[str] = None

@@ -2,7 +2,7 @@
 name: tests
 description: Corre la suite de pytest y reporta los fallos con su causa probable. No arregla nada.
 tools: Bash, Read, Glob, Grep
-model: haiku
+model: sonnet
 ---
 Corré la suite del backend:
 

@@ -573,7 +573,7 @@ export default function PaymentDrawer({ nominee, competitionName, budgets, canEd
             {t('payments.lastFinancialEdit', {
               user: payment.last_financial_edit_by === user?.id
                 ? t('payments.lastFinancialEditYou')
-                : (payment.last_financial_edit_by_email || payment.last_financial_edit_email || payment.last_financial_edit_by || '—'),
+                : (payment.last_financial_edit_by_email || payment.last_financial_edit_email || payment.last_financial_edit_by || '-'),
               date: formatDateTime(payment.last_financial_edit_at, lang),
             })}
           </p>
@@ -593,7 +593,7 @@ export default function PaymentDrawer({ nominee, competitionName, budgets, canEd
             <div>
               <span className="block text-xs text-fiba-muted mb-1">{t('payments.paidAmount')}</span>
               <p className="text-sm tabular-nums text-ink-900 dark:text-white py-1.5">
-                {payment.paid_amount != null ? `$${fmt(payment.paid_amount)}` : '—'}
+                {payment.paid_amount != null ? `$${fmt(payment.paid_amount)}` : '-'}
                 <span className="text-fiba-muted"> / ${fmt(payment.total)}</span>
               </p>
             </div>

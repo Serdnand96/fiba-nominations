@@ -162,6 +162,134 @@ Reglas de diseño (distintas de los otros dos importers):
 El mapeo fino de columnas vive en `logistics_import.py` — **leelo antes de
 tocar nada**; este resumen no reemplaza el código.
 
+### 3a) Rooming List: dos layouts
+
+`read_rooming` detecta el layout por el **encabezado**, no por el nombre de la
+hoja. Los dos producen filas con la misma estructura interna (`first_name`,
+`last_name`, `category`, `match`, `is_room_holder`, `stay{room_type,
+room_number, check_in, check_out, comments, share_with_row}`, `nights`), así
+que preview, matching, warnings y commit son los mismos.
+
+| | Staff (grilla de noches) | Equipo (`Team Rooming List`) |
+|---|---|---|
+| Encabezado | `Name` + `Room` (fila 2) | `Hab` + `Nombre` + `Check-in` + `Check-out` (+ `Tipo`), en la fila 6 |
+| Una fila es | una persona; `Name` / `Last Name` pueden venir invertidos | una persona; el **nombre completo** va en una celda |
+| Noches | una columna por fecha con `1` / `OUT` | `Check-in` / `Check-out` (fechas) |
+| Habitación | celda `Room` combinada verticalmente | `Hab` **solo en la primera fila** de la habitación; las filas siguientes sin número la comparten |
+| Equipo | no tiene | `Club` arriba (etiqueta en A3, nombre a su derecha) → `team` |
+| Categoría | `categorize(role)` | siempre `team` |
+| Hojas | una | **todas** las que tengan el encabezado (una por club) |
+
+Reglas del layout de equipo, todas con test en
+`tests/test_logistics_rooming_import.py`:
+
+- **Nombre completo**: `Apellido, Nombre` si trae coma; si no, primera palabra =
+  `first_name` y el resto = `last_name`. El preview lo avisa con un warning
+  `name_split` por hoja. El matching ignora el orden de las palabras, así que
+  partir mal no cambia a quién se vincula.
+- **Filas sin persona** (`cama libre (fisioterapia)`, `vacante`, `por confirmar`,
+  o nombre vacío con `Tipo`/fechas) **no se importan**: van a `skipped`
+  (`reason: not_a_person`) y a un warning. Siguen ocupando la habitación, pero
+  nunca son la titular: si la cama libre es la primera fila, la titular es la
+  persona que sigue.
+- **Compartir**: la primera persona de la habitación es la titular
+  (`is_room_holder`, la que cuenta en `total_nights`); las demás apuntan a ella
+  con `share_with_row` y heredan fechas y tipo si no los repiten. Una fila en
+  blanco corta la habitación. Las de 3+ siguen generando el warning `share_with`
+  de `commit_rooming` (el modelo guarda parejas).
+- **Pie de la hoja** (`Requisitos Alimenticios`, `Nombre`, `Firma`, `Whatsapp`):
+  la fila cuyo `Hab` es texto sin dígitos y sin `Tipo` ni fechas abre el pie; ahí
+  no se lee ninguna persona. Contacto y teléfono salen en `teams[]` del preview;
+  los requisitos alimenticios, si están escritos, salen como warning y **no se
+  asignan a nadie**.
+- **Fechas** ilegibles o faltantes son warnings y la estadía se guarda con lo que
+  haya (la base acepta una sola fecha). Un **check-out anterior al check-in**
+  (también el que resulta de heredar el de la titular) deja **las dos fechas en
+  `NULL`**: `logistics_stays_dates_check` rechaza el insert y dejaría el commit a
+  medias. `commit_rooming` repite esa red para cualquier layout (la grilla de
+  staff con `OUT` antes de la `1`) y avisa.
+- **Varias hojas**: la clave de una fila es `(sheet, source_row)` en el commit —
+  la fila 7 de un club no es la del otro—. Las hojas visibles sin el encabezado se
+  avisan y se ignoran.
+- **Commit**: guarda `team` en `logistics_participants` al crear y al vincular con
+  uno que **no lo tenga** (nunca pisa un equipo ya cargado).
+- **Hotel de la estadía** (`choose_stay_hotel`, el mismo para preview y commit y
+  para los dos layouts): solo cuentan los hoteles de la audiencia de la planilla
+  (`delegation` para equipo, `staff` para staff) o compartidos (`audience` NULL;
+  una fila sin esa clave, base sin migrar o fake de tests, cuenta como
+  compartida). En equipo, el único hotel `delegation` gana. Si no, el primario y
+  si no el primero, **ordenados por nombre** (la tabla no tiene índice único de
+  primarios). Sin ninguno compatible, las estadías van sin hotel. Warning
+  `field: "hotel"` (con el hotel usado) cuando se eligió entre varios sin un único
+  primario, hay 2+ hoteles de delegación, o quedó sin hotel; el preview además
+  devuelve `hotel: {id, name}`. Requiere la migración 055 (`team`, `audience`).
+- El preview agrega `layout` (`team` | `staff`), `teams[]` y `skipped[]`.
+
+Los cuatro endpoints y los dos exports aceptan `audience` (`staff` /
+`delegation` / `vip`). Importando desde la pestaña de una audiencia,
+`apply_default_category()` (`api/_lib/logistics_audiences.py`) reclasifica
+**solo** las filas que `categorize()` dejó en el fallback `official` y que no
+matchearon contra `personnel` / `employees`.
+
+### 3b) Cronogramas de transporte y comidas (`logistics_schedule_import.py`)
+
+`read_schedule(content, section)` con `section` = `transport` | `meals`,
+expuesto en `api/_lib/routers/logistics_schedules.py`
+(`POST /api/logistics/schedules/import/{preview,commit}`). Tres planillas
+reales con el mismo esqueleto de **bloques por día** (fila `FECHA` + título
+del día + `Comentarios/Notas`):
+
+| | Equipos, transporte | Equipos, comidas | Staff (árbitros) |
+|---|---|---|---|
+| Columnas propias | `PICK UP HOTEL`, `RETURN HOTEL` | `ALMUERZO`, `MERIENDA`, `CENA` | `PICK UP HOTEL`, `DEPARTURE TO HOTL` (sic), `PARTIDO` |
+| Rótulos | en la fila **siguiente** a `FECHA` | ídem | en la fila `FECHA` |
+| Filas | entrenamientos + franja `PARTIDOS` | ídem | solo partidos |
+
+**Dos layouts, y se reconocen por la forma** (`_detect_layout`). Si la planilla
+no encaja en ninguno es `ScheduleFormatError` (400): nunca se adivina, porque un
+off-by-one importaría pick-ups corridos sin avisar.
+
+| | `team` (equipos) | `referee` (árbitros) |
+|---|---|---|
+| Se reconoce por | columna `Comienzo` (en la fila `FECHA` o en la sub-fila de abajo) | sin `Comienzo`, rótulos visibles en la propia fila `FECHA`: en `transport` `PICK UP HOTEL` **y** `DEPARTURE TO HOTL`; en `meals` al menos una de `ALMUERZO` / `MERIENDA` / `CENA` |
+| Rótulos de las columnas reales | sub-fila `PICK UP HOTEL / RETURN HOTEL / Comienzo / Final / Estadio` | la fila `FECHA` (B = pick-up, C = regreso, D = `PARTIDO`) |
+| Filas | `kind='training'` + franja `PARTIDOS` (`kind='game'`) | solo `kind='game'`: F = local, H = visitante, D = hora del partido |
+| Sub-fila de abajo | se lee como rótulos | **no** se lee: ya es un partido (un equipo llamado `Final` no es una columna) |
+| Salida | misma forma en los dos: `title`, `subtitle`, `days`, `rows`, `skipped`, `warnings`, `columns` | |
+
+Un pick-up sin regreso (o al revés) en la fila `FECHA` no es el layout de
+árbitros. La detección es **por sección**: una planilla de comidas con forma de
+staff (sin `Comienzo`, comidas en la fila `FECHA`) se sigue importando igual que
+antes del layout explícito. Las columnas B:C **ocultas** de la planilla de equipos llevan los
+mismos rótulos pero no cuentan: sin `Comienzo` ni columnas visibles el archivo
+se rechaza en vez de leer horarios viejos.
+
+Reglas, todas con test en `tests/test_logistics_schedule_import.py`:
+
+- **Las columnas ocultas no existen.** Las planillas de equipos traen B:C
+  ocultas con los mismos rótulos y horarios viejos. Ni se leen ni cuentan para
+  detectar encabezados (`_hidden_columns`: ojo que openpyxl agrupa el rango en
+  la dimensión de la primera columna, `min`/`max`).
+- **Las filas tachadas en negro no se importan** (equipo local). El relleno es
+  "tema 1", no un RGB: `_is_black_fill` resuelve `dk1` del tema del libro. Van
+  a `skipped`, igual que las filas ocultas.
+- La columna `Estadio` trae el **nombre del equipo**.
+- En un partido los equipos son los textos a la derecha de la hora (las celdas
+  están combinadas de a dos).
+- Un bloque **hereda** del anterior las columnas que no rotula: la planilla de
+  árbitros pone `PARTIDO` solo en el primer día.
+- Comidas en **texto** (`TAKE AWAY`, `15:30 al IN`); pick-up/return por
+  `parse_time`, y lo ilegible es warning + `NULL`.
+- Sin columnas visibles de la sección → `ScheduleFormatError` (400), con la
+  pista de que el archivo parece el de la otra sección.
+- Un bloque con fecha que queda **sin filas** (o sin columna de hora que
+  heredar) siempre deja un warning: nunca se pierde un día en silencio.
+- Un texto suelto sin hora y con menos de dos equipos (pie de página, firma)
+  no es un partido: warning y no se importa. Una celda `vs` entre los equipos
+  no es un equipo.
+- El recorrido está acotado (`_MAX_ROWS` / `_MAX_COLS`): una celda perdida en
+  la fila 200.000 no pone al handler a iterar vacío.
+
 ---
 
 ## 4) Presupuesto — `budget_import.py`

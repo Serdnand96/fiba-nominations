@@ -132,13 +132,13 @@ export default function GoogleCalendarPanel({ active }) {
     <div className="w-full flex flex-col gap-3">
       <dl className="w-full grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 text-[13px]">
         <dt className="text-ink-500 dark:text-ink-400">{t('googleCalendar.account')}</dt>
-        <dd className="text-ink-900 dark:text-ink-50 break-all">{status.google_email || '—'}</dd>
+        <dd className="text-ink-900 dark:text-ink-50 break-all">{status.google_email || '-'}</dd>
         <dt className="text-ink-500 dark:text-ink-400">{t('googleCalendar.lastSync')}</dt>
         <dd className="text-ink-900 dark:text-ink-50">
-          {firstSyncPending && !gaveUp ? t('googleCalendar.firstSync') : (fmt(status.last_synced_at) || '—')}
+          {firstSyncPending && !gaveUp ? t('googleCalendar.firstSync') : (fmt(status.last_synced_at) || '-')}
         </dd>
         <dt className="text-ink-500 dark:text-ink-400">{t('googleCalendar.events')}</dt>
-        <dd className="text-ink-900 dark:text-ink-50 tabular-nums">{status.events_count ?? '—'}</dd>
+        <dd className="text-ink-900 dark:text-ink-50 tabular-nums">{status.events_count ?? '-'}</dd>
       </dl>
 
       {status.last_sync_error && (

@@ -10,6 +10,9 @@
  *   es texto libre (el comportamiento histórico de Pagos y Gastos).
  * - `onUpload(file, kind)` puede devolver `false` para indicar que falló (el
  *   caller ya avisó con un toast) y que no hay que limpiar la etiqueta.
+ * - `showKind={false}`: sin etiqueta (ni selector al subir ni badge en la lista),
+ *   para quien ya fija el tipo de documento por su contexto (menús de un hotel,
+ *   pasaporte de una persona). `onUpload` recibe `kind` en null.
  * - `labels`: textos ya traducidos por el caller, para que cada módulo use sus
  *   propias claves de i18n.
  */
@@ -19,7 +22,7 @@ import { Icon } from '../lib/icons'
 
 export default function AttachmentList({
   items = [], kinds, onUpload, onDownload, onDelete, canEdit = false, labels = {},
-  accept = 'application/pdf,image/*',
+  accept = 'application/pdf,image/*', showKind = true,
 }) {
   const { t } = useLanguage()
   const [kind, setKind] = useState('')
@@ -47,7 +50,7 @@ export default function AttachmentList({
               className="flex-1 min-w-0 text-left text-ink-900 dark:text-white hover:underline truncate">
               {a.file_name}
             </button>
-            {a.kind && (
+            {showKind && a.kind && (
               <span className="text-xs px-1.5 py-0.5 rounded bg-fiba-surface text-fiba-muted whitespace-nowrap">{a.kind}</span>
             )}
             {canEdit && onDelete && (
@@ -66,9 +69,9 @@ export default function AttachmentList({
 
       {canEdit && onUpload && (
         <div className="flex items-center gap-2 mt-3">
-          {Array.isArray(kinds) ? (
+          {!showKind ? <span className="flex-1" /> : Array.isArray(kinds) ? (
             <select value={kind} onChange={e => setKind(e.target.value)} className="fiba-select flex-1 text-sm">
-              <option value="">{labels.kindPlaceholder || '—'}</option>
+              <option value="">{labels.kindPlaceholder || '-'}</option>
               {kinds.map(k => (
                 <option key={typeof k === 'string' ? k : k.value} value={typeof k === 'string' ? k : k.value}>
                   {typeof k === 'string' ? k : k.label}

@@ -35,8 +35,10 @@ legacy `fibaamericascloud.com`).
    deshabilitado. **Ojo:** el export de training schedule
    (`api/_lib/routers/training.py`) es un camino aparte — arma la tabla con
    python-docx y todavía convierte vía CloudConvert únicamente (si no hay
-   API key, sirve el `.docx`). Las fuentes de la conversión salen de `fonts/`
-   (punto 20).
+   API key, sirve el `.docx`). Hay un **tercer camino**: el PDF operativo para
+   delegaciones de Logística (`services/logistics_briefing.py`, punto 7) arma
+   el `.docx` con python-docx en código y lo convierte con el LibreOffice local,
+   como las cartas. Las fuentes de la conversión salen de `fonts/` (punto 20).
 
 3. **Hay dos tablas distintas para personas:**
    - `personnel` → TDs / VGOs (oficiales que se nominan)
@@ -61,14 +63,19 @@ legacy `fibaamericascloud.com`).
 
 7. **Transport ya no es un módulo: es una sección de Logística.** Desde la
    migración 025 el permiso se llama `logistics` (`transport` no existe más
-   en `user_permissions`) y el módulo tiene tres secciones:
+   en `user_permissions`) y el módulo tiene cuatro secciones:
    - **Transporte** — vehículos, choferes, viajes. Sigue viviendo en
      `api/_lib/routers/transport.py` con prefijo `/api/transport/*`: la URL
      quedó igual porque es interna, solo cambió el permiso que exige.
    - **Hospedaje** — hoteles, rooming list y comidas.
    - **Travel Manifest** — llegadas y salidas de cada persona.
+   - **Servicios** — directorio de contactos y proveedores (transporte, hotel,
+     hielo, lavandería, hidratación, VIP) y salones (Media Day, charla técnica,
+     PIC). Vive en `api/_lib/routers/logistics_ops.py`, que además tiene los
+     adicionales de hotel y los documentos privados (más abajo).
 
-   Las dos últimas viven en `api/_lib/routers/logistics.py`. Todo cuelga de
+   Hospedaje y Travel Manifest viven en `api/_lib/routers/logistics.py`; los
+   cronogramas (más abajo) en `api/_lib/routers/logistics_schedules.py`. Todo cuelga de
    `logistics_participants`, el padrón de quién viene a la competencia
    (oficiales de `personnel`, staff de `employees`, VIPs y delegaciones sin
    vínculo). **No hay "Supabase Auth standalone"** ni sandbox separado:
@@ -83,14 +90,114 @@ legacy `fibaamericascloud.com`).
      pasos** (preview → commit) y nunca adivinan: un nombre dudoso se importa
      sin vincular y se reporta como warning. Las planillas vienen con typos
      reales (`Guyo`/`Juyo`, `BUELVAS`/`Vuelvas`) y con `Names`/`Last Name`
-     invertidos en varias filas.
+     invertidos en varias filas. La rooming de equipos trae filas "cama libre
+     (fisioterapia)": ocupan la habitación pero no son nadie, así que se
+     saltean y se reportan (`skipped` + warning) en vez de inventar una persona.
+
+   **Las secciones se dividen por audiencia** (noviembre 2026):
+   `staff` (oficiales y staff FIBA), `delegation` (equipos) y `vip` (VIPs e
+   invitados). Para las personas no es un dato nuevo: sale de
+   `logistics_participants.category` vía `AUDIENCES` en
+   `api/_lib/logistics_audiences.py`. `audience` es un parámetro **opcional** en
+   participantes, movimientos, rooming, imports y exports; sin él no hay recorte,
+   como antes. Es un **filtro de vista, no un permiso**: quien tiene `logistics`
+   ve las tres. La flota de Transporte no se divide (un vehículo sirve a staff y
+   a delegaciones).
+   - **Hoteles, contactos y salones sí guardan su `audience`** (migración 055),
+     y `NULL` significa **compartido**: un filtro por audiencia devuelve los de
+     esa audiencia **más** los compartidos, no solo los exactos. Es lo que hace
+     que una competencia con un solo hotel (todas las filas viejas) siga viéndose
+     igual en las tres pestañas. Se filtra en Python (`for_audience` en
+     `logistics_audiences.py`), no con `.or_()`.
+   - `logistics_participants.team` es el club de la persona de una delegación
+     (texto libre, como viene en la rooming). La **fila agregada** de una
+     delegación ("Barbados", pax 18) sigue existiendo y es válida: `team` no la
+     reemplaza, solo permite cargar a las personas una por una.
+
+   **Los cronogramas son documentos, no una vista derivada** (migración 054,
+   `logistics_schedules` + `logistics_schedule_rows`). Son las dos planillas que
+   logística manda afuera: transporte (`PICK UP HOTEL` / `RETURN HOTEL`) y
+   comidas (`ALMUERZO` / `MERIENDA` / `CENA`). Un documento por competencia +
+   sección + audiencia + **`label`** (migración 055); transporte y comidas son
+   dos documentos aunque repitan la base de entrenamientos. El `label` vacío es
+   el cronograma general; "Árbitros" y "Comunicaciones" son cronogramas propios
+   dentro de staff, con sus horarios y su Excel.
+   - No salen de `training_slots` ni de `game_schedule` y el import **no los
+     toca**: cada fila guarda su texto y sus horas, porque el pick-up no sigue
+     ninguna regla y la planilla se vuelve a subir cuando cambia.
+   - Reimportar **reemplaza** el documento (el Excel es la autoridad; el preview
+     avisa cuántas filas pisa) y guarda el original en el bucket privado
+     `nominations` bajo `logistics/schedules/`. Reemplaza **solo el de ese
+     `label`**: reimportar el general no toca el de Árbitros, y un `label` nuevo
+     crea otro documento. Por eso el commit devuelve el documento por id y no
+     `load_schedules(...)[0]`.
+   - El parser (`services/logistics_schedule_import.py`) **ignora las columnas
+     ocultas** — las planillas de equipos traen B:C ocultas con los mismos
+     rótulos y horarios viejos — y **no importa las filas tachadas en negro**
+     (el equipo local, que no usa transporte ni hotel): las lista en el preview.
+     Una sección que no encuentra sus columnas visibles es un 400, no una
+     adivinanza. Reconoce **dos layouts explícitos** (`team` y `referee`, el de
+     árbitros: solo partidos, con pick-up y regreso visibles en la fila `FECHA`)
+     y cualquier otra forma es 400; el de rooming también tiene dos (la grilla de
+     noches del staff y la "Team Rooming List" por club). Los detalles de los
+     cuatro están en el skill `fiba-excel-format`.
+   - Las comidas son **texto**, no hora: el hotel recibe `TAKE AWAY` y
+     `15:30 al IN`.
+   - En Transporte, "Cronograma" es este documento y "Viajes por vehículo" es
+     el despacho de flota de siempre (`transport_trips`). No son lo mismo.
+
+   **Traslados desde el manifiesto:** `POST /transport/trips/from-movements`
+   crea un viaje `transfer` por grupo de llegadas/salidas (fecha + aeropuerto)
+   y deja los tramos apuntando a su traslado (`logistics_travel_legs.trip_id`).
+   La persona elige vehículo y hora en un modal; un grupo ya cubierto
+   (`covered`) se saltea en vez de duplicarse.
+
+   **Adicionales de hotel, documentos y el PDF para equipos** (migración 055,
+   `logistics_ops.py`):
+   - **Adicionales y cotizaciones** (`logistics_hotel_charges`) son un
+     **registro operativo**: el monto es lo que informó el hotel y es
+     **informativo, no suma en Budget** (punto 14: la plata real es un
+     `expense`). Lo pagado se ve en el detalle del hotel en solo lectura, leído
+     de `expenses` con `GET /logistics/hotels/{id}/payments` (excepción del
+     punto 16). No copies esos montos a ninguna tabla de Budget.
+   - **Documentos privados** (`logistics_documents`: menús de hotel, pasaportes
+     de delegaciones, PDF de una cotización) van al bucket privado `nominations`
+     bajo `logistics/docs/`: PDF/JPEG/PNG por magic bytes, 10 MB (413). La
+     descarga es **POST a propósito** (`POST /logistics/documents/{id}/download`):
+     el activity log no audita los GET y un pasaporte escaneado tiene que dejar
+     rastro de quién lo bajó, mismo criterio que el W-8 (punto 25). La respuesta
+     de la lista nunca lleva `file_path`.
+   - El `ON DELETE CASCADE` borra la **fila** del documento pero no el objeto de
+     Storage. Por eso borrar un hotel, un participante, un cargo o una
+     competencia **junta las rutas antes** (`document_paths`; en la competencia,
+     también el Excel original de cada cronograma) y **quita los objetos
+     después** (`remove_objects`): con la fila ya borrada no habría de dónde
+     sacar la ruta.
+   - **PDF operativo para delegaciones** (`services/logistics_briefing.py`,
+     `GET /logistics/export/delegation-briefing`): **un** documento general por
+     competencia que logística le manda a todos los equipos. Por eso no lee
+     participantes, pasaportes, VIPs ni staff; solo hoteles, cronogramas de
+     delegación (label vacío), salones (sin PIC) y contactos operativos
+     (transporte, hotel, hielo, lavandería, hidratación). Se arma con
+     python-docx y se convierte con LibreOffice; si no hay `soffice` sirve el
+     `.docx`. Los contactos y salones llegan a los equipos **por este PDF**, no
+     por el link público (punto 8).
 
 8. **Hay una vista pública de logística, sin auth.** `/logistica/<token>`
    (frontend) → `/api/public/logistics/<token>` (backend). Un link secreto por
    competencia, rotable y desactivable desde el panel "Compartir".
    **Publica los datos completos, número de pasaporte incluido** — fue una
    decisión explícita del cliente. Si alguna vez hay que recortar, el único
-   lugar es `_redact()` en `public_logistics.py`.
+   lugar es `_redact()` en `public_logistics.py`. Los cronogramas (punto 7)
+   también se publican ahí (`/schedules`), pero solo la tabla: el Excel
+   original no se sirve por el link. Lo operativo del punto 7 **no se publica**:
+   contactos, salones, adicionales de hotel y documentos (los escaneos de
+   pasaporte incluidos; el *número* sí sale, como siempre) no tienen endpoint
+   público. Lo único nuevo que sale es el `label` de cada
+   cronograma, que la página usa de título cuando hay más de uno por audiencia.
+   `get_rooming` también pasa los hoteles por `_redact()` (antes salía el email
+   del hotel porque `build_rooming` hace un `select("*")`), y `contact_name` del
+   hotel se quita igual que el email.
 
 9. **Hay dos formas de asignar personal, y las decide `competitions.fee_type`:**
    - `per_game` → asignación **por partido** en `game_assignments` (un cargo
@@ -191,7 +298,7 @@ legacy `fibaamericascloud.com`).
     **84 partidos de las seis ventanas**; el de la LSB 2026 trae los 40 de
     grupos, QFs y Finals. Acá cada ventana o grupo es una **competencia
     aparte** con su crew, sus nominaciones y sus fees. Por eso, en
-    `competitions` (migraciones 040 y 051):
+    `competitions` (migraciones 040, 051 y 053):
     - `fiba_competition_id` → el ID de GDAP. Varias competencias nuestras lo
       comparten. `fiba_games_url` (URL o ID) sigue valiendo: el sync lo resuelve
       y lo guarda.
@@ -199,6 +306,14 @@ legacy `fibaamericascloud.com`).
       (`A`, o `37,38,39,40` para un Final Four) filtra por `groupPairingCode`.
       `NULL` = sin filtro, que es lo correcto para una AmeriCup o un
       CentroBasket — la mayoría.
+    - `fiba_segment_from` / `fiba_segment_to` (053) → tercer filtro: la fecha
+      **local** de los partidos tiene que caer en ese rango. Es para la **BCLA**:
+      la temporada entera es un solo ID (S8 = 209060), el feed no trae
+      `windowCode`, `/windows` viene vacío y B, C y D juegan en las tres
+      ventanas, así que lo único que separa W1/W2/W3 es la fecha. Van las dos
+      o ninguna (400). Un partido que ya es de la competencia se sigue
+      sincronizando aunque FIBA lo saque del rango, y uno que ya está en otra
+      competencia no se duplica (`claimed_elsewhere` en el reporte).
     - `fiba_start_date` / `fiba_end_date` → las fechas que FIBA le da al tramo.
       **No pisan** `start_date`/`end_date`: el Calendario muestra la diferencia
       y una persona la aplica (`POST /calendar/competitions/{id}/apply-fiba-dates`).
@@ -208,14 +323,19 @@ legacy `fibaamericascloud.com`).
     Reglas que se ven raras y son correctas:
     - **Usá la v1 de `/games`, no la v2.** La v2 no trae `windowCode` ni
       `groupPairingCode`.
-    - **No filtres por el rango de fechas de la competencia.** Window 3 de FIBA
-      termina el 2026-07-08 y la competencia declara hasta el 07-07: ese filtro
-      se come un partido, y en el caso real ese partido tenía TD y VGO
+    - **No filtres por `start_date`/`end_date` de la competencia.** Window 3 de
+      FIBA termina el 2026-07-08 y la competencia declara hasta el 07-07: ese
+      filtro se come un partido, y en el caso real ese partido tenía TD y VGO
       asignados. Los bordes de un tramo no coinciden con las fechas que carga
-      el equipo, que incluyen viaje.
-    - Los dos filtros **fallan del lado seguro**: si la competencia declara
+      el equipo, que incluyen viaje. El tramo de `fiba_segment_*` es otra cosa:
+      son las fechas de los partidos, se declaran a propósito y solo cuando el
+      feed no separa las ventanas.
+    - Ventana y grupos **fallan del lado seguro**: si la competencia declara
       ventana (o grupos) pero ningún partido del feed trae ese campo, no
       filtran. Un feed sin ventanas tiene que devolver sus partidos, no cero.
+      Por eso vincular las ventanas de la BCLA solo con `fiba_window_code`
+      metía los 36 partidos en cada una. El filtro de fechas no tiene ese
+      fallback porque todo partido definido tiene fecha.
     - Los cruces que FIBA publica **sin fecha (`0001-01-01`) o sin equipos**
       (un QF o una final todavía no definidos) no se importan: el reporte los
       cuenta en `pending_in_fiba` y entran solos cuando FIBA los complete.
@@ -257,6 +377,14 @@ legacy `fibaamericascloud.com`).
     **No metas un `nomination_id` nullable en `payments`** para unificarlas: eso
     volvería condicional el prefill desde `nominations.total`, la lógica de
     W8/bank info y el bloqueo de borrado de la migración 028.
+
+    `expenses.hotel_id` (migración 056) es un vínculo **opcional** a
+    `logistics_hotels`: exige `competition_id` y que el hotel sea de esa
+    competencia (400 si no), y **no es campo financiero** — no toca
+    `last_financial_edit_by` ni escribe historial, y se puede cambiar incluso en
+    `paid` (el hotel suele facturar después de pagado). Es solo la etiqueta que
+    deja a Logística ver qué pagó FIBA por hotel; los montos de
+    `logistics_hotel_charges` no entran acá (punto 7).
 
     El contrato completo del módulo está en `BUDGET_MODULE.md` y se actualiza en
     el mismo PR que el código.
@@ -317,10 +445,25 @@ legacy `fibaamericascloud.com`).
       `has_bank_info`). El headcount y los supuestos exigen en cambio el
       departamento **Competitions**, que es lo que alimentan: verlo para los
       GET, editarlo para los PUT.
+    - **Hay dos lecturas de tablas de Budget que NO pasan por `_scoped()`, a
+      propósito**: `GET /budget/competitions/{id}/cost` (BUDGET_MODULE.md §9) y
+      `GET /logistics/hotels/{hotel_id}/payments` (`logistics_ops.py`, permiso
+      `logistics`). La segunda lee solo gastos `approved`/`paid` con `hotel_id`
+      de ese hotel y devuelve una **proyección cerrada**: `record_no`,
+      `description`, `amount`, `status`, `expense_date`, `payment_date`,
+      `invoice_no` y el nombre del proveedor (más los totales). Nada de
+      `bank_confirmation`, `payment_method`, `comments`, emails ni adjuntos.
+      Logística necesita ver qué pagó FIBA por hotel sin tener acceso al
+      departamento que lo imputó. Cualquier otra lectura de `expenses`,
+      `payments` o `budget_*` sin `_scoped()` sigue siendo P0: no ensanches la
+      proyección ni copies este patrón "porque ya hay uno".
 
 17. **Las migraciones de Budget NO van en el deploy automático.** Son la
-    **033-037**, la **041** y la **045-050** (las 038-040 son de otros módulos:
-    checklists, hora UTC de los partidos, ventanas FIBA). Se aplican a mano
+    **033-037**, la **041**, la **045-050** y la **056** (`expenses.hotel_id`)
+    (las 038-040 son de otros módulos: checklists, hora UTC de los partidos,
+    ventanas FIBA; la **055** es de Logística y sigue la misma regla: hoteles con
+    audiencia, contactos, salones, adicionales, documentos y `label` de los
+    cronogramas). Se aplican a mano
     contra Supabase **antes** de pushear el código que las usa — si no, el
     deploy encuentra una columna que no existe. Cada archivo lo dice en su
     cabecera. El resto del schema sigue la misma convención, pero acá es
@@ -589,6 +732,7 @@ fiba-nominations/
 │       ├── auth.py            ← require_view, require_edit, require_user, has_view/has_edit
 │       ├── database.py        ← lightweight supabase client (httpx)
 │       ├── budget_accounts.py ← rol → cuenta de fees / de travel (payments ↔ budget)
+│       ├── logistics_audiences.py ← staff / delegation / vip → categorías del padrón; for_audience (punto 7)
 │       ├── finance_years.py   ← a qué año cae un pago (budget y la cola de payments)
 │       ├── routers/           ← uno por módulo (nominations, training, …) + notifications (/me)
 │       └── services/
@@ -596,6 +740,8 @@ fiba-nominations/
 │           ├── fiba_sync.py           ← sync con FIBA GDAP: partidos, resultados, fechas (punto 13)
 │           ├── finance_history.py     ← record_transition / history_for (punto 23)
 │           ├── google_calendar.py     ← OAuth + sync de partidos al Google Calendar de cada usuario (punto 26)
+│           ├── logistics_briefing.py  ← PDF operativo para delegaciones: python-docx → LibreOffice (punto 7)
+│           ├── logistics_schedule_import.py ← lee los cronogramas de transporte y comidas (punto 7)
 │           ├── notify.py              ← notify(), budget_approvers_for, module_editors (punto 24)
 │           └── xlsx_utils.py          ← helpers de los exports .xlsx nuevos
 │
@@ -736,7 +882,12 @@ npm run dev                 # vite
 
 - **Modo oscuro** vía `.dark` en `<html>`, persistido en
   `localStorage.fiba_dark`. Default actual: dark (ver
-  `DESIGN_SYSTEM.md` para por qué).
+  `DESIGN_SYSTEM.md` para por qué). Las rutas públicas (`/logistica`,
+  `/checklist`, `/availability` con token y `/asset`) van siempre en claro.
+
+- **Texto visible**: sigue la sección "Redacción" de `DESIGN_SYSTEM.md`
+  (tuteo neutro, glosario único, sin raya larga). Vale también para toasts,
+  `confirm()` y documentos generados.
 
 ### Plan mode
 
@@ -853,3 +1004,10 @@ explicación del truco de CSS variables para los aliases legacy
   descarga del W-8 a GET (dejarían de quedar en el activity log) (punto 25).
 - ❌ Mandarle `bank_info` / `tax_id` de un proveedor a alguien que no es admin
   general de budget, ni en un GET ni en la respuesta de un PATCH (punto 16).
+- ❌ Publicar contactos, salones, adicionales de hotel o documentos de logística
+  por el link público `/logistica/<token>`: llegan a los equipos por el PDF de
+  delegaciones, y los pasaportes solo los ve quien tiene `logistics` (puntos 7 y 8).
+- ❌ Sumar `logistics_hotel_charges` en `/budget/summary` o en cualquier reporte
+  de Budget (su monto es informativo; el pago real es un `expense` con
+  `hotel_id`), ni pasar la descarga de documentos de logística a GET (dejaría
+  de quedar en el activity log) (puntos 7 y 14).

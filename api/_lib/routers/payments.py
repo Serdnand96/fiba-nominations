@@ -43,6 +43,7 @@ import unicodedata
 import uuid
 from datetime import date, datetime, timezone
 from typing import Optional
+from urllib.parse import quote
 
 import httpx
 from fastapi import APIRouter, HTTPException, Query, Request, Depends, UploadFile, File, Form
@@ -281,6 +282,28 @@ def _delete_from_storage(storage_path: Optional[str]) -> None:
         logger.warning(f"[storage cleanup] could not remove {key}: {e}")
 
 
+def _content_disposition(filename: str) -> str:
+    """`attachment` con el nombre en dos formas (RFC 6266 / 5987).
+
+    Un header HTTP viaja en Latin-1: un nombre como "Łukasz.pdf" (típico en un
+    pasaporte escaneado) reventaba al armar la respuesta y el cliente veía un
+    502 de "Storage fetch failed" que no tenía nada que ver. `filename="…"`
+    lleva un respaldo ASCII para los clientes viejos y `filename*=UTF-8''…` el
+    nombre real, percent-encoded, que es el que usan los navegadores.
+    """
+    stem, ext = os.path.splitext(filename)
+
+    def ascii_part(text: str) -> str:
+        folded = unicodedata.normalize("NFKD", text).encode("ascii", "ignore").decode("ascii")
+        return _SAFE_FILENAME_RE.sub("", folded).strip()
+
+    fallback = f"{ascii_part(stem) or 'attachment'}{ascii_part(ext)}"
+    header = f'attachment; filename="{fallback}"'
+    if fallback != filename:
+        header += f"; filename*=UTF-8''{quote(filename, safe='')}"
+    return header
+
+
 def _stream_private(storage_path: Optional[str], filename: str) -> Response:
     """Sirve un objeto del bucket privado como descarga autenticada.
 
@@ -290,7 +313,9 @@ def _stream_private(storage_path: Optional[str], filename: str) -> Response:
     key = _extract_storage_key(storage_path)
     if not key:
         raise HTTPException(status_code=404, detail="File not available")
-    filename = _SAFE_FILENAME_RE.sub("", filename or "").strip() or "attachment"
+    # Los saltos de línea también son `\s`: se colapsan para que un nombre no
+    # pueda partir el header.
+    filename = re.sub(r"\s+", " ", _SAFE_FILENAME_RE.sub("", filename or "")).strip() or "attachment"
 
     supabase_url = os.environ.get("SUPABASE_URL", "")
     supabase_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY", "") or os.environ.get("SUPABASE_KEY", "")
@@ -304,7 +329,7 @@ def _stream_private(storage_path: Optional[str], filename: str) -> Response:
             content=resp.content,
             media_type=resp.headers.get("content-type", "application/octet-stream"),
             headers={
-                "Content-Disposition": f'attachment; filename="{filename}"',
+                "Content-Disposition": _content_disposition(filename),
                 "Cache-Control": "private, no-store",
             },
         )
@@ -1062,7 +1087,8 @@ def export_payments(
     autosize(ws)
 
     suffix = str(year) if year else date.today().isoformat()
-    return xlsx_response(workbook_bytes(wb), f"{'payments' if en else 'pagos'}-{suffix}.xlsx")
+    return xlsx_response(workbook_bytes(wb, "Payments" if en else "Pagos"),
+                         f"{'payments' if en else 'pagos'}-{suffix}.xlsx")
 
 
 # ─── Create ──────────────────────────────────────────────────────────────────

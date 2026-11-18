@@ -19,12 +19,12 @@ const EMOJIS = ['👍', '❤️', '🏀', '🎉', '😂', '👏']
 
 // Mismo orden y claves que CATEGORIES en feed.py.
 const CATEGORIES = [
-  { key: 'general', emoji: '💬', tone: 'ink' },
-  { key: 'news',    emoji: '📰', tone: 'navy' },
-  { key: 'event',   emoji: '🏀', tone: 'basketball' },
-  { key: 'hr',      emoji: '🧑‍💼', tone: 'info' },
-  { key: 'fun',     emoji: '😄', tone: 'warning' },
-  { key: 'kudos',   emoji: '👏', tone: 'success' },
+  { key: 'general', tone: 'ink' },
+  { key: 'news',    tone: 'navy' },
+  { key: 'event',   tone: 'basketball' },
+  { key: 'hr',      tone: 'info' },
+  { key: 'fun',     tone: 'warning' },
+  { key: 'kudos',   tone: 'success' },
 ]
 const CATEGORY_BY_KEY = Object.fromEntries(CATEGORIES.map(c => [c.key, c]))
 
@@ -71,13 +71,13 @@ function fmtRange(start, end, lang) {
   const s = new Date(`${start}T00:00:00`).toLocaleDateString(loc, opts)
   if (!end || end === start) return s
   const e = new Date(`${end}T00:00:00`).toLocaleDateString(loc, opts)
-  return `${s} – ${e}`
+  return lang === 'es' ? `${s} al ${e}` : `${s}-${e}`
 }
 
 function CategoryBadge({ category }) {
   const { t } = useLanguage()
   const cfg = CATEGORY_BY_KEY[category] || CATEGORY_BY_KEY.general
-  return <Badge tone={cfg.tone} size="sm">{cfg.emoji} {t(`feed.${cfg.key}`)}</Badge>
+  return <Badge tone={cfg.tone} size="sm">{t(`feed.${cfg.key}`)}</Badge>
 }
 
 /* ── Composer ──────────────────────────────────────────────────────────── */
@@ -229,7 +229,7 @@ function Composer({ me, events, onPosted }) {
                     : 'bg-transparent text-ink-600 border-ink-200 hover:bg-ink-100 dark:text-ink-300 dark:border-navy-700 dark:hover:bg-navy-800'
                 }`}
               >
-                {c.emoji} {t(`feed.${c.key}`)}
+                {t(`feed.${c.key}`)}
               </button>
             ))}
           </div>
@@ -240,7 +240,7 @@ function Composer({ me, events, onPosted }) {
                 <select value={competitionId} onChange={e => setCompetitionId(e.target.value)}
                   className="fiba-select !w-auto max-w-full text-xs" aria-label={t('feed.linkEvent')}>
                   <option value="">{t('feed.noEvent')}</option>
-                  {events.map(ev => <option key={ev.id} value={ev.id}>🏀 {ev.short_name || ev.name}</option>)}
+                  {events.map(ev => <option key={ev.id} value={ev.id}>{ev.short_name || ev.name}</option>)}
                 </select>
               )}
               {me?.is_moderator && (
@@ -691,7 +691,7 @@ function Sidebar({ data, isModerator }) {
         </div>
         {week.top_author && (
           <div className="mt-3 flex items-center gap-2 text-xs text-ink-600 dark:text-ink-300">
-            <span>🏆</span>
+            <Icon.Trophy className="w-3.5 h-3.5 text-basketball-600 dark:text-basketball-400" aria-hidden="true" />
             <span>{t('feed.topAuthor')}: <span className="font-semibold text-ink-900 dark:text-white">{week.top_author.name}</span></span>
           </div>
         )}
@@ -800,10 +800,12 @@ export default function Feed() {
             <FilterChip active={!category && !pinnedOnly} onClick={() => { setCategory(''); setPinnedOnly(false) }}>{t('feed.all')}</FilterChip>
             {CATEGORIES.map(c => (
               <FilterChip key={c.key} active={category === c.key && !pinnedOnly} onClick={() => { setCategory(c.key); setPinnedOnly(false) }}>
-                {c.emoji} {t(`feed.${c.key}`)}
+                {t(`feed.${c.key}`)}
               </FilterChip>
             ))}
-            <FilterChip active={pinnedOnly} onClick={() => { setPinnedOnly(v => !v); setCategory('') }}>📌 {t('feed.pinnedOnly')}</FilterChip>
+            <FilterChip active={pinnedOnly} onClick={() => { setPinnedOnly(v => !v); setCategory('') }}>
+              <span className="inline-flex items-center gap-1"><Icon.Pushpin className="w-3.5 h-3.5" aria-hidden="true" />{t('feed.pinnedOnly')}</span>
+            </FilterChip>
           </div>
 
           {loading ? (

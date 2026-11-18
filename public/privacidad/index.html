@@ -7,10 +7,10 @@
   <meta name="description" content="Política de privacidad de la plataforma de administración de FIBA Americas (fibaapp.com), incluida la integración con Google Calendar.">
   <link rel="icon" href="/favicon.png">
   <!--
-    Página estática a propósito (public/privacidad → dist/privacidad): Google la
+    Página estática a propósito (public/privacidad se copia a dist/privacidad): Google la
     revisa como link de la pantalla de consentimiento OAuth y tiene que leerse
     sin login y sin JavaScript. Sin <script> inline: la CSP de nginx no lo deja.
-    Si cambia lo que la integración con Google lee o guarda (CLAUDE.md punto 26),
+    Si cambia lo que la integración con Google lee o guarda,
     se actualiza acá en el mismo PR.
   -->
   <style>
@@ -63,12 +63,12 @@
       competencias y partidos, logística y gestión operativa. Solo pueden usarla
       personas con una cuenta habilitada por un administrador. Esta página explica
       qué datos usa la plataforma y, en particular, qué hace con tu cuenta de Google
-      si conectás Google Calendar.
+      si conectas Google Calendar.
     </p>
 
     <h2>Datos de la plataforma</h2>
     <p>
-      Para darte acceso guardamos tu email, tus permisos por módulo y, si la cargás,
+      Para darte acceso guardamos tu email, tus permisos por módulo y, si la cargas,
       tu foto de perfil. La plataforma también guarda los datos operativos que
       cargan los usuarios: competencias, partidos, asignaciones y nominaciones. Esos
       datos se usan solo para operar la plataforma y no se venden ni se comparten
@@ -77,8 +77,8 @@
 
     <h2>Integración con Google Calendar</h2>
     <p>
-      Es opcional. Si la activás desde <em>Mi perfil → Google Calendar</em>, la
-      plataforma crea en tu cuenta un calendario aparte, “FIBA Americas — Partidos”,
+      Es opcional. Si la activas desde <em>Mi perfil > Google Calendar</em>, la
+      plataforma crea en tu cuenta un calendario aparte, "FIBA Americas — Partidos",
       y lo mantiene actualizado con los partidos de las competencias activas.
     </p>
     <ul>
@@ -114,12 +114,12 @@
     <h2>Cómo desconectar y borrar tus datos</h2>
     <ul>
       <li>
-        Desde <em>Mi perfil → Google Calendar → Desconectar</em>: revocamos el
-        acceso, borramos el token y, si lo elegís, también el calendario
-        “FIBA Americas — Partidos”.
+        Desde <em>Mi perfil > Google Calendar > Desconectar</em>: revocamos el
+        acceso, borramos el token y, si lo eliges, también el calendario
+        "FIBA Americas — Partidos".
       </li>
       <li>
-        También podés quitar el acceso en cualquier momento desde
+        También puedes quitar el acceso en cualquier momento desde
         <a href="https://myaccount.google.com/permissions">myaccount.google.com/permissions</a>.
       </li>
       <li>
@@ -136,7 +136,7 @@
 
     <h2>Contacto</h2>
     <p>
-      Para consultas sobre esta política o sobre tus datos, comunicate con el
+      Para consultas sobre esta política o sobre tus datos, comunícate con el
       administrador de la plataforma de FIBA Americas.
     </p>
 
@@ -145,7 +145,7 @@
     <h1 lang="en">Privacy policy (English summary)</h1>
     <div lang="en">
       <p>
-        fibaapp.com is FIBA Americas’ internal administration platform. Access is
+        fibaapp.com is FIBA Americas' internal administration platform. Access is
         limited to users enabled by an administrator.
       </p>
       <p>
@@ -153,9 +153,9 @@
         Google account, the platform requests your Google email address and the
         <code>calendar.app.created</code> scope, which only grants access to
         calendars the platform itself creates. We create one secondary calendar,
-        “FIBA Americas — Partidos”, and keep it updated with game events. We do not
+        "FIBA Americas — Partidos", and keep it updated with game events. We do not
         read or modify your primary calendar or any other calendar. We store your
-        Google email, the created calendar’s ID and an encrypted Google token; we
+        Google email, the created calendar's ID and an encrypted Google token; we
         never store your Google password. Google user data is not sold, not used
         for advertising and not shared with third parties.
       </p>
@@ -165,7 +165,7 @@
         including the Limited Use requirements.
       </p>
       <p>
-        You can disconnect at any time from <em>My profile → Google Calendar →
+        You can disconnect at any time from <em>My profile > Google Calendar >
         Disconnect</em> (which revokes access and deletes the stored token and,
         optionally, the calendar), or from
         <a href="https://myaccount.google.com/permissions">myaccount.google.com/permissions</a>.

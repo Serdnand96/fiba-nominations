@@ -23,7 +23,7 @@ const EMPTY_FORM = {
 }
 
 export default function Assets() {
-  const { t } = useLanguage()
+  const { t, lang } = useLanguage()
   const { push } = useToast()
   const { hasEdit } = useAuth()
   const canEdit = hasEdit('assets')
@@ -196,15 +196,15 @@ export default function Assets() {
                   <Link to={`/inventory/${a.id}`} className="text-fiba-accent hover:underline">{a.name}</Link>
                   {a.brand && <div className="text-[11px] text-fiba-muted">{a.brand} {a.model || ''}</div>}
                 </td>
-                <td className="px-4 py-3 font-mono text-xs text-fiba-muted">{a.serial_number || '—'}</td>
-                <td className="px-4 py-3">{a.category || '—'}</td>
-                <td className="px-4 py-3">{a.location || '—'}</td>
+                <td className="px-4 py-3 font-mono text-xs text-fiba-muted">{a.serial_number || '-'}</td>
+                <td className="px-4 py-3">{a.category || '-'}</td>
+                <td className="px-4 py-3">{a.location || '-'}</td>
                 <td className="px-4 py-3">
                   <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${STATUS_BADGES[a.status]}`}>
                     {t(`assets.${camel(a.status)}`)}
                   </span>
                 </td>
-                <td className="px-4 py-3 text-sm">{a.assigned_to || '—'}</td>
+                <td className="px-4 py-3 text-sm">{a.assigned_to || '-'}</td>
                 <td className="px-4 py-3">
                   <div className="flex gap-2 text-sm">
                     <Link to={`/inventory/${a.id}`} className="text-fiba-accent hover:underline">{t('assets.view')}</Link>
@@ -250,7 +250,7 @@ export default function Assets() {
               </div>
               <div>
                 <label className="fiba-label">{t('assets.category')}</label>
-                <input placeholder="Laptop, Camera, AV Equipment..." value={form.category}
+                <input placeholder={lang === 'es' ? 'Ej.: laptop, cámara, equipo audiovisual' : 'e.g. laptop, camera, AV equipment'} value={form.category}
                   onChange={e => setForm(f => ({ ...f, category: e.target.value }))}
                   className="fiba-input" />
               </div>

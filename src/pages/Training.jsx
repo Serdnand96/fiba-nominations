@@ -12,6 +12,7 @@ import {
 } from '../api/client'
 import { readLastSearch, writeLastSearch } from '../lib/lastSearch'
 import { competitionLabel } from '../lib/competitions'
+import { Icon } from '../lib/icons'
 
 function formatTime(t) {
   if (!t) return ''
@@ -282,11 +283,18 @@ export default function Training() {
       setShowSlotModal(false)
       await loadSlots()
       showToastMsg(editingSlot ? t('training.slotUpdated') : t('training.slotCreated'), 'green')
-    } catch (err) { push({ type: 'error', title: err.response?.data?.detail || 'Error' }) }
+    } catch (err) { push({ type: 'error', title: err.response?.data?.detail || (lang === 'es' ? 'No se pudo guardar el turno.' : 'Could not save the slot.') }) }
+  }
+
+  // El valor guardado sigue en español; solo cambia lo que se muestra.
+  function venueLabel(venue) {
+    if (venue === 'Estadio') return lang === 'es' ? 'Estadio' : 'Stadium'
+    if (venue === 'Cancha de Entrenamiento') return t('training.trainingCourt')
+    return venue
   }
 
   async function handleDeleteSlot(slot) {
-    if (!confirm(lang === 'es' ? '¿Eliminar este slot?' : 'Delete this slot?')) return
+    if (!confirm(lang === 'es' ? '¿Eliminar este turno?' : 'Delete this slot?')) return
     await deleteTrainingSlot(slot.id)
     await loadSlots()
   }
@@ -327,7 +335,7 @@ export default function Training() {
         if (slot.date !== targetDate) continue
         if (!slot.assignments?.some(a => a.personnel_id === td.id)) continue
         if (overlaps(slot.start_time, slot.end_time, targetStart, targetEnd)) {
-          conflicts.push(`${slot.team_label} (${formatTime(slot.start_time)}-${formatTime(slot.end_time)}) @ ${slot.venue}`)
+          conflicts.push(`${slot.team_label}, ${formatTime(slot.start_time)}-${formatTime(slot.end_time)}, ${venueLabel(slot.venue)}`)
         }
       }
       if (conflicts.length > 0) map[td.id] = conflicts.join('; ')
@@ -345,7 +353,7 @@ export default function Training() {
       setAssignTdId('')
       await loadSlots()
       setAssignSlot(null)
-    } catch (err) { showToastMsg(err.response?.data?.detail || 'Error', 'red') }
+    } catch (err) { showToastMsg(err.response?.data?.detail || (lang === 'es' ? 'No se pudo asignar el TD.' : 'Could not assign the TD.'), 'red') }
     setAssignSaving(false)
   }
 
@@ -388,7 +396,7 @@ export default function Training() {
     if (!importFile || !importCompId) return
     setImporting(true)
     try { setImportPreview(await previewTrainingExcel(importFile, importCompId, importSport)) }
-    catch (err) { push({ type: 'error', title: err.response?.data?.detail || 'Error parsing file' }) }
+    catch (err) { push({ type: 'error', title: err.response?.data?.detail || (lang === 'es' ? 'No se pudo leer el archivo.' : 'Could not read the file.') }) }
     setImporting(false)
   }
 
@@ -396,7 +404,7 @@ export default function Training() {
     if (!importFile || !importCompId) return
     setImporting(true)
     try { setImportResult(await importTrainingExcel(importFile, importCompId, importSport)); await loadSlots() }
-    catch (err) { push({ type: 'error', title: err.response?.data?.detail || 'Error importing' }) }
+    catch (err) { push({ type: 'error', title: err.response?.data?.detail || (lang === 'es' ? 'No se pudo importar el archivo.' : 'Could not import the file.') }) }
     setImporting(false)
   }
 
@@ -476,12 +484,18 @@ export default function Training() {
             <div>
               <div className="flex flex-wrap items-center gap-3 mb-4">
                 <button onClick={prevDate} disabled={dates.indexOf(selectedDate) <= 0}
-                  className="px-3 py-1.5 border border-fiba-border rounded-lg text-sm text-fiba-muted disabled:opacity-30 hover:bg-fiba-surface">&larr;</button>
+                  aria-label={lang === 'es' ? 'Día anterior' : 'Previous day'} title={lang === 'es' ? 'Día anterior' : 'Previous day'}
+                  className="px-3 py-1.5 border border-fiba-border rounded-lg text-sm text-fiba-muted disabled:opacity-30 hover:bg-fiba-surface">
+                  <Icon.ChevronLeft className="w-4 h-4" />
+                </button>
                 <input type="date" value={selectedDate} onChange={e => setSelectedDate(e.target.value)}
                   className="fiba-input px-3 py-1.5 text-sm" />
                 <span className="text-sm font-medium text-ink-700 dark:text-gray-300">{formatDateLabel(selectedDate)}</span>
                 <button onClick={nextDate} disabled={dates.indexOf(selectedDate) >= dates.length - 1}
-                  className="px-3 py-1.5 border border-fiba-border rounded-lg text-sm text-fiba-muted disabled:opacity-30 hover:bg-fiba-surface">&rarr;</button>
+                  aria-label={lang === 'es' ? 'Día siguiente' : 'Next day'} title={lang === 'es' ? 'Día siguiente' : 'Next day'}
+                  className="px-3 py-1.5 border border-fiba-border rounded-lg text-sm text-fiba-muted disabled:opacity-30 hover:bg-fiba-surface">
+                  <Icon.Chevron className="w-4 h-4" />
+                </button>
                 <button onClick={() => downloadTrainingPdf('daily', { competition_id: competitionId, date: selectedDate }).catch(err => push({ type: 'error', title: err.message }))}
                   className="ml-auto px-3 py-1.5 border border-fiba-border rounded-lg text-sm text-fiba-accent hover:bg-fiba-surface">
                   {t('training.exportPdf')}
@@ -489,7 +503,7 @@ export default function Training() {
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <h3 className="text-sm font-bold text-fiba-muted mb-2 uppercase">Estadio</h3>
+                  <h3 className="text-sm font-bold text-fiba-muted mb-2 uppercase">{venueLabel('Estadio')}</h3>
                   {daySlots.estadio.length === 0 ? <p className="text-xs text-fiba-muted">{t('training.noSlots')}</p> : (
                     <div className="space-y-2">
                       {daySlots.estadio.map(slot => (
@@ -557,11 +571,15 @@ export default function Training() {
                           <tr key={slot.id} className={overlappingSlotIds.has(slot.id) ? 'bg-yellow-500/10' : ''}>
                             <td className="px-4 py-2 text-ink-900 dark:text-white">
                               {formatDateLabel(slot.date)}
-                              {overlappingSlotIds.has(slot.id) && <span className="ml-1 text-yellow-400 text-xs">&#9888;</span>}
+                              {overlappingSlotIds.has(slot.id) && (
+                                <span className="ml-1 inline-flex text-yellow-500 align-[-2px]" title={t('training.timeOverlap')} aria-label={t('training.timeOverlap')}>
+                                  <Icon.Alert className="w-3.5 h-3.5" />
+                                </span>
+                              )}
                             </td>
                             <td className="px-4 py-2 text-fiba-muted">{formatTime(slot.start_time)}</td>
                             <td className="px-4 py-2 text-fiba-muted">{formatTime(slot.end_time)}</td>
-                            <td className="px-4 py-2 text-fiba-muted">{slot.venue}</td>
+                            <td className="px-4 py-2 text-fiba-muted">{venueLabel(slot.venue)}</td>
                             <td className="px-4 py-2">
                               <div className="flex flex-wrap gap-1">
                                 {(slot.assignments || []).length === 0
@@ -572,7 +590,7 @@ export default function Training() {
                                       <span key={a.id} className={`inline-block px-2 py-0.5 rounded text-[11px] font-medium ${
                                         inConflict ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-500/20 dark:text-yellow-400' : 'bg-blue-100 text-blue-700 dark:bg-blue-500/20 dark:text-blue-400'
                                       }`} title={inConflict ? t('training.scheduleConflict') : ''}>
-                                        {inConflict ? '\u26A0 ' : ''}{a.personnel?.name || 'TD'}
+                                        {inConflict && <Icon.Alert className="inline w-3 h-3 mr-0.5 align-[-2px]" aria-hidden="true" />}{a.personnel?.name || 'TD'}
                                       </span>
                                     )
                                   })}
@@ -641,7 +659,7 @@ export default function Training() {
                             <td className="px-4 py-2 text-ink-900 dark:text-white">{formatDateLabel(slot.date)}</td>
                             <td className="px-4 py-2 text-fiba-muted">{formatTime(slot.start_time)}</td>
                             <td className="px-4 py-2 text-fiba-muted">{formatTime(slot.end_time)}</td>
-                            <td className="px-4 py-2 text-fiba-muted">{slot.venue}</td>
+                            <td className="px-4 py-2 text-fiba-muted">{venueLabel(slot.venue)}</td>
                             <td className="px-4 py-2 font-medium text-ink-900 dark:text-white">{slot.team_label}</td>
                             {canEdit && (
                               <td className="px-4 py-2 text-right">
@@ -667,7 +685,9 @@ export default function Training() {
           <div className="fiba-modal max-w-md p-6">
             <div className="flex justify-between items-start mb-4">
               <h3 className="text-lg font-bold text-ink-900 dark:text-white">{editingSlot ? t('training.editSlot') : t('training.addSlot')}</h3>
-              <button onClick={() => setShowSlotModal(false)} className="text-fiba-muted hover:text-ink-900 dark:text-white text-xl">&times;</button>
+              <button onClick={() => setShowSlotModal(false)} aria-label={t('common.close')} title={t('common.close')} className="text-fiba-muted hover:text-ink-900 dark:text-white">
+                <Icon.X className="w-5 h-5" />
+              </button>
             </div>
             <form onSubmit={handleSlotSubmit} className="space-y-3">
               <div>
@@ -694,8 +714,8 @@ export default function Training() {
                 <label className="fiba-label">{t('training.venue')}</label>
                 <select value={slotForm.venue} onChange={e => setSlotForm(f => ({ ...f, venue: e.target.value }))}
                   className="fiba-select">
-                  <option value="Estadio">Estadio</option>
-                  <option value="Cancha de Entrenamiento">Cancha de Entrenamiento</option>
+                  <option value="Estadio">{venueLabel('Estadio')}</option>
+                  <option value="Cancha de Entrenamiento">{venueLabel('Cancha de Entrenamiento')}</option>
                 </select>
               </div>
               <div>
@@ -703,7 +723,7 @@ export default function Training() {
                 <input type="text" required value={slotForm.team_label}
                   onChange={e => setSlotForm(f => ({ ...f, team_label: e.target.value }))}
                   className="fiba-input"
-                  placeholder="ej. A1 (F), B3 (M)" />
+                  placeholder={lang === 'es' ? 'Ej.: A1 (F), B3 (M)' : 'e.g. A1 (F), B3 (M)'} />
               </div>
               <div>
                 <label className="fiba-label">{t('training.sport')}</label>
@@ -735,11 +755,13 @@ export default function Training() {
               <div>
                 <h3 className="text-sm font-bold text-ink-900 dark:text-white">{t('training.assignTd')}</h3>
                 <p className="text-xs text-fiba-muted mt-0.5">
-                  {formatDateLabel(assignSlot.date)} | {formatTime(assignSlot.start_time)}-{formatTime(assignSlot.end_time)} | {assignSlot.venue}
+                  {formatDateLabel(assignSlot.date)} · {formatTime(assignSlot.start_time)}-{formatTime(assignSlot.end_time)} · {venueLabel(assignSlot.venue)}
                 </p>
                 <p className="text-xs font-medium text-ink-700 dark:text-gray-300">{assignSlot.team_label}</p>
               </div>
-              <button onClick={() => setAssignSlot(null)} className="text-fiba-muted hover:text-ink-900 dark:text-white text-xl">&times;</button>
+              <button onClick={() => setAssignSlot(null)} aria-label={t('common.close')} title={t('common.close')} className="text-fiba-muted hover:text-ink-900 dark:text-white">
+                <Icon.X className="w-5 h-5" />
+              </button>
             </div>
             {assignedInModal.length > 0 && (
               <div className="mb-4">
@@ -749,7 +771,11 @@ export default function Training() {
                     <div key={a.id} className="flex items-center justify-between bg-blue-500/20 rounded px-2 py-1">
                       <span className="text-xs font-medium text-blue-400">{a.personnel?.name || 'TD'}</span>
                       {canEdit && (
-                        <button onClick={() => handleRemoveAssignment(a.id)} className="text-red-400 hover:text-red-300 text-xs">&times;</button>
+                        <button onClick={() => handleRemoveAssignment(a.id)}
+                          aria-label={lang === 'es' ? 'Quitar TD' : 'Remove TD'} title={lang === 'es' ? 'Quitar TD' : 'Remove TD'}
+                          className="text-red-400 hover:text-red-300">
+                          <Icon.X className="w-3.5 h-3.5" />
+                        </button>
                       )}
                     </div>
                   ))}
@@ -775,7 +801,7 @@ export default function Training() {
                     <option value="">{t('training.selectTd')}</option>
                     {pickerTds.filter(td => !assignedInModal.some(a => a.personnel_id === td.id)).map(td => (
                       <option key={td.id} value={td.id}>
-                        {tdConflictsMap[td.id] ? '\u26A0\uFE0F ' : ''}{td.name}{td.country ? ` (${td.country})` : ''}
+                        {td.name}{td.country ? ` (${td.country})` : ''}{tdConflictsMap[td.id] ? ` (${t('training.scheduleConflict').toLowerCase()})` : ''}
                       </option>
                     ))}
                   </select>
@@ -802,7 +828,9 @@ export default function Training() {
           <div className="fiba-modal max-w-lg p-6">
             <div className="flex justify-between items-start mb-4">
               <h3 className="text-lg font-bold text-ink-900 dark:text-white">{t('training.importExcel')}</h3>
-              <button onClick={() => setShowImport(false)} className="text-fiba-muted hover:text-ink-900 dark:text-white text-xl">&times;</button>
+              <button onClick={() => setShowImport(false)} aria-label={t('common.close')} title={t('common.close')} className="text-fiba-muted hover:text-ink-900 dark:text-white">
+                <Icon.X className="w-5 h-5" />
+              </button>
             </div>
             {importResult ? (
               <div>
@@ -848,7 +876,7 @@ export default function Training() {
                 </div>
                 {importPreview && (
                   <div className="bg-fiba-surface rounded-lg p-3">
-                    <p className="text-xs font-medium text-fiba-muted mb-2">{t('training.preview')}: {importPreview.total} slots</p>
+                    <p className="text-xs font-medium text-fiba-muted mb-2">{t('training.preview')}: {importPreview.total} {lang === 'es' ? 'turnos' : 'slots'}</p>
                     <div className="max-h-40 overflow-auto">
                       <table className="w-full text-xs">
                         <thead><tr className="text-fiba-muted"><th className="text-left px-2 py-1">{t('training.date')}</th><th className="text-left px-2 py-1">{t('training.start')}</th><th className="text-left px-2 py-1">{t('training.venue')}</th><th className="text-left px-2 py-1">{t('training.team')}</th></tr></thead>
@@ -887,7 +915,9 @@ export default function Training() {
           <div className="fiba-modal max-w-md p-6">
             <div className="flex justify-between items-start mb-4">
               <h3 className="text-lg font-bold text-ink-900 dark:text-white">{t('training.exportSchedule')}</h3>
-              <button onClick={() => setShowExportModal(false)} disabled={exportingSchedule} className="text-fiba-muted hover:text-ink-900 dark:text-white text-xl disabled:opacity-50">&times;</button>
+              <button onClick={() => setShowExportModal(false)} disabled={exportingSchedule} aria-label={t('common.close')} title={t('common.close')} className="text-fiba-muted hover:text-ink-900 dark:text-white disabled:opacity-50">
+                <Icon.X className="w-5 h-5" />
+              </button>
             </div>
             <div className="space-y-3">
               <div>
@@ -947,13 +977,13 @@ function SlotCard({ slot, canEdit, t, conflictTds, isOverlapping, onAssign, onEd
       <div className="flex items-center justify-between mb-1">
         <div className="flex items-center gap-1.5">
           <span className="text-xs font-medium text-fiba-accent">
-            {formatTime(slot.start_time)} – {formatTime(slot.end_time)}
+            {formatTime(slot.start_time)}-{formatTime(slot.end_time)}
           </span>
           {isOverlapping && !hasTdConflicts && (
-            <span className="text-yellow-400 text-xs font-bold" title={t('training.timeOverlap')}>&#9888; {t('training.timeOverlap')}</span>
+            <span className="inline-flex items-center gap-0.5 text-yellow-500 text-xs font-bold"><Icon.Alert className="w-3.5 h-3.5" aria-hidden="true" />{t('training.timeOverlap')}</span>
           )}
           {hasTdConflicts && (
-            <span className="text-red-400 text-xs font-bold" title={t('training.scheduleConflict')}>&#9888; {t('training.scheduleConflict')}</span>
+            <span className="inline-flex items-center gap-0.5 text-red-500 text-xs font-bold"><Icon.Alert className="w-3.5 h-3.5" aria-hidden="true" />{t('training.scheduleConflict')}</span>
           )}
         </div>
         {canEdit && (
@@ -973,7 +1003,7 @@ function SlotCard({ slot, canEdit, t, conflictTds, isOverlapping, onAssign, onEd
               <span key={a.id} className={`inline-block px-2 py-0.5 rounded text-[11px] font-medium ${
                 inConflict ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-500/20 dark:text-yellow-400' : 'bg-blue-100 text-blue-700 dark:bg-blue-500/20 dark:text-blue-400'
               }`} title={inConflict ? t('training.scheduleConflict') : ''}>
-                {inConflict ? '\u26A0 ' : ''}{a.personnel?.name || 'TD'}
+                {inConflict && <Icon.Alert className="inline w-3 h-3 mr-0.5 align-[-2px]" aria-hidden="true" />}{a.personnel?.name || 'TD'}
               </span>
             )
           })}
