@@ -22,7 +22,7 @@ resumen claro y accionable. No propongas cambios ni edites nada.
   `src/api/client.js`.
 - **DB:** el esquema está en `supabase/migrations/*.sql` (numeradas). Ahí ves
   las tablas reales de cada módulo.
-- **Docs:** `CLAUDE.md` (los 20 puntos que confunden), `ARCHITECTURE.md`,
+- **Docs:** `CLAUDE.md` (los puntos que confunden), `ARCHITECTURE.md`,
   `DESIGN_SYSTEM.md`, `SECURITY_RUNBOOK.md`, `BUDGET_MODULE.md` (contrato de
   Budget), `LSB_LETTER_SPEC.md`, `PAYMENTS_MODULE.md` (histórico) y
   `MANUAL_USUARIO.md` (qué ve el usuario) — leelos si aplican al módulo.

@@ -53,7 +53,9 @@ VITE_API_URL=/api
 
 CORS_ORIGINS=http://localhost:5173,http://localhost:3000
 
-# Sync de partidos con la API de FIBA (sin esto, "Sincronizar resultados" falla)
+# Sync de partidos con FIBA (sin una de las dos, "Sincronizar resultados" falla).
+# GDAP es la fuente principal; FIBA_API_KEY es el respaldo (punto 13 de CLAUDE.md).
+GDAP_API_KEY=<api key de GDAP>
 FIBA_API_KEY=<subscription key de FIBA>
 ```
 
@@ -303,7 +305,7 @@ test contra producción sigue siendo `verify_security.sh`. Frontend: sin tests.
 7. **Las migraciones no viajan con el deploy.** Si el backend tira 500 con
    "column does not exist" después de un push, falta aplicar una migración
    a mano en Supabase (SQL editor). Es especialmente fácil olvidarlo con
-   las de Budget (033-041), que son nueve seguidas.
+   las de Budget, que son muchas y van en orden (punto 17 de `CLAUDE.md`).
 
 8. **Hora de un partido = hora local de la sede.** `games.date`/`time` no
    son UTC. Para convertir a otra zona usá `game_schedule.datetime_utc`,
