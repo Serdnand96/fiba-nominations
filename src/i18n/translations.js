@@ -127,6 +127,7 @@ const translations = {
     email: { en: 'Email', es: 'Correo electrónico' },
     password: { en: 'Password', es: 'Contraseña' },
     submit: { en: 'Sign in', es: 'Ingresar' },
+    privacy: { en: 'Privacy', es: 'Privacidad' },
     submitting: { en: 'Signing in...', es: 'Ingresando...' },
     invalidCredentials: { en: 'Invalid email or password', es: 'Correo electrónico o contraseña incorrectos' },
     placeholder_email: { en: 'user@fiba.basketball', es: 'usuario@fiba.basketball' },
