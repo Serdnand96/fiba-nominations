@@ -129,7 +129,8 @@ Vale para todo texto que ve una persona: `translations.js`, cadenas en JSX,
 toasts, `confirm()`, `aria-label` y documentos generados.
 
 **Registro (español).** Tuteo neutro en todo el sitio ("Elige", "Guarda",
-"puedes"). Sin voseo y sin usted. Botones y rótulos en infinitivo o sustantivo.
+"puedes"). Sin voseo y sin usted. Botones y rótulos en infinitivo o sustantivo,
+y el infinitivo va sin pronombre pegado: "Cargar a mano", no "Cargarlo a mano".
 Léxico neutro: aquí, omitir, reemplazar, monto, ahora. El sistema no habla en
 primera persona: "No se pudo...", "No se encontró...".
 
