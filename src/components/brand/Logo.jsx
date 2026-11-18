@@ -1,4 +1,5 @@
 import React from 'react';
+import { useLanguage } from '../../i18n/LanguageContext';
 
 // FIBA — logo oficial.
 // Los assets viven en /public y se sirven estáticos:
@@ -26,7 +27,7 @@ function LogoWordmark({ height = 32, className = '' }) {
   return (
     <img
       src="/fiba-logo.png"
-      alt="FIBA — We Are Basketball"
+      alt="FIBA. We Are Basketball"
       style={{ height, width: 'auto' }}
       className={`flex-shrink-0 object-contain ${className}`}
     />
@@ -35,12 +36,13 @@ function LogoWordmark({ height = 32, className = '' }) {
 
 // === Lockup del sidebar — acento vertical + wordmark tipográfico ===
 function LogoSidebar() {
+  const { t } = useLanguage();
   return (
     <div className="flex items-center gap-2.5">
       <LogoMonogram size={32} />
       <div className="leading-tight">
         <div className="text-[14px] font-semibold text-white tracking-tight">FIBA Americas</div>
-        <div className="text-[10px] text-navy-300 font-semibold tracking-[0.12em] uppercase mt-0.5">Nominations</div>
+        <div className="text-[10px] text-navy-300 font-semibold tracking-[0.12em] uppercase mt-0.5">{t('app.subtitle')}</div>
       </div>
     </div>
   );

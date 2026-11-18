@@ -8,6 +8,7 @@ import { useLanguage } from '../i18n/LanguageContext'
 import { useToast } from '../components/ui/Toast'
 import { useAuth } from '../contexts/AuthContext'
 import { camel, fmtDate } from '../lib/utils'
+import { Icon } from '../lib/icons'
 
 const STATUS_BADGES = {
   available:   'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40',
@@ -114,7 +115,7 @@ export default function AssetDetail() {
   return (
     <div>
       <Link to="/inventory" className="text-fiba-accent text-sm hover:underline mb-3 inline-block">
-        ← {t('assets.backToList')}
+        <span className="inline-flex items-center gap-1"><Icon.ChevronLeft className="w-4 h-4" aria-hidden="true" />{t('assets.backToList')}</span>
       </Link>
 
       <div className="flex items-start justify-between mb-6">
@@ -167,7 +168,7 @@ export default function AssetDetail() {
                 </a>
               </>
             ) : (
-              <p className="text-xs text-fiba-muted">—</p>
+              <p className="text-xs text-fiba-muted">-</p>
             )}
           </div>
         </div>
@@ -225,7 +226,7 @@ export default function AssetDetail() {
                     <tr key={l.id} className="border-t border-fiba-border">
                       <td className="py-2">{l.assigned_to}</td>
                       <td className="py-2">{fmtDate(l.loan_date)}</td>
-                      <td className="py-2">{fmtDate(l.actual_return) || '—'}</td>
+                      <td className="py-2">{fmtDate(l.actual_return) || '-'}</td>
                       <td className="py-2">
                         <span className={`px-2 py-0.5 rounded text-xs ${l.status === 'active' ? 'bg-blue-500/20 text-blue-400' : 'bg-emerald-500/20 text-emerald-400'}`}>
                           {t(`loans.${l.status}`)}
@@ -319,7 +320,7 @@ function Row({ k, v, full }) {
   return (
     <div className={full ? 'col-span-2' : ''}>
       <dt className="text-xs text-fiba-muted">{k}</dt>
-      <dd className="text-ink-900 dark:text-white">{v || '—'}</dd>
+      <dd className="text-ink-900 dark:text-white">{v || '-'}</dd>
     </div>
   )
 }

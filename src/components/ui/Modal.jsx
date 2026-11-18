@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useId } from 'react';
 import { createPortal } from 'react-dom';
 import { Icon } from '../../lib/icons';
 import { IconButton } from './Button';
+import { useLanguage } from '../../i18n/LanguageContext';
 
 const sizes = { sm:'max-w-md', md:'max-w-lg', lg:'max-w-2xl', xl:'max-w-3xl' };
 
@@ -23,7 +24,8 @@ function unlockScroll() {
 // al ancestro más cercano con `transform`, y el sidebar (App.jsx) siempre lleva
 // uno (`translate-x-*`). Sin portal, un modal abierto desde ahí medía 232px de
 // ancho — el del sidebar — en vez de la pantalla.
-export function Modal({ open, onClose, title, subtitle, children, footer, size='md', closeLabel='Cerrar', closeDisabled=false }) {
+export function Modal({ open, onClose, title, subtitle, children, footer, size='md', closeLabel, closeDisabled=false }) {
+  const { t } = useLanguage();
   const panelRef = useRef(null);
   const restoreFocusRef = useRef(null);
   const closeDisabledRef = useRef(closeDisabled);
@@ -88,7 +90,7 @@ export function Modal({ open, onClose, title, subtitle, children, footer, size='
             <h3 id={titleId} className="text-base font-semibold text-navy-900 dark:text-white">{title}</h3>
             {subtitle && <p className="text-[13px] text-ink-500 mt-0.5 dark:text-ink-400">{subtitle}</p>}
           </div>
-          <IconButton icon={<Icon.X/>} label={closeLabel} onClick={requestClose} disabled={closeDisabled} className="flex-shrink-0"/>
+          <IconButton icon={<Icon.X/>} label={closeLabel || t('common.close')} onClick={requestClose} disabled={closeDisabled} className="flex-shrink-0"/>
         </div>
         <div data-modal-body className="flex-1 min-h-0 px-4 sm:px-6 py-4 overflow-y-auto overflow-x-hidden">{children}</div>
         {footer && <div className="px-4 sm:px-6 py-4 bg-ink-50/60 dark:bg-navy-950/40 border-t border-ink-200 dark:border-navy-800 flex flex-wrap items-center justify-end gap-2">{footer}</div>}

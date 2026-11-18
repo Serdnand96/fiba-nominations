@@ -112,7 +112,7 @@ export default function BudgetLineEditor({
       </div>
       <Field label={t('budget.account')}>
         <select className="fiba-select" value={form.account_code} onChange={e => pickAccount(e.target.value)}>
-          <option value="">—</option>
+          <option value="">-</option>
           <AccountOptions accounts={expenseAccounts} department={form.department_code} t={t} />
         </select>
       </Field>

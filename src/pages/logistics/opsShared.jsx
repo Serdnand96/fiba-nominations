@@ -38,14 +38,14 @@ const AUDIENCE_TONE = { staff: 'navy', delegation: 'info', vip: 'basketball' }
 // audience null = compartido: se ve en las tres.
 export function AudienceBadge({ audience }) {
   const { lang } = useLanguage()
-  if (!audience) return <Badge tone="outline" size="sm">{lang === 'es' ? 'Compartido' : 'Shared'}</Badge>
+  if (!audience) return <Badge tone="outline" size="sm">{lang === 'es' ? 'Todos los grupos' : 'All groups'}</Badge>
   return <Badge tone={AUDIENCE_TONE[audience] || 'ink'} size="sm">{audienceLabel(audience, lang)}</Badge>
 }
 
 // Opciones del selector de audiencia de un registro: '' = compartido.
 export function audienceOptions(lang) {
   return [
-    { value: '', label: lang === 'es' ? 'Compartido (las tres)' : 'Shared (all three)' },
+    { value: '', label: lang === 'es' ? 'Todos los grupos' : 'All groups' },
     { value: 'staff', label: audienceLabel('staff', lang) },
     { value: 'delegation', label: audienceLabel('delegation', lang) },
     { value: 'vip', label: audienceLabel('vip', lang) },
@@ -117,7 +117,7 @@ export function DocumentsPanel({ competitionId, filters, canEdit, labels }) {
 
   async function handleDownload(doc) {
     try { await downloadLogisticsDocument(doc) }
-    catch (err) { push({ type: 'error', title: errorMessage(err, t('No se pudo bajar el archivo.', 'Could not download the file.')) }) }
+    catch (err) { push({ type: 'error', title: errorMessage(err, t('No se pudo descargar el archivo.', 'Could not download the file.')) }) }
   }
 
   async function handleDelete(doc) {

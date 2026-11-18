@@ -74,6 +74,11 @@ en `src/App.jsx`:
 Toggle en el topbar (icono ☀/🌙). Mobile theme-color en `index.html`
 está hardcodeado a navy-900.
 
+**Las rutas públicas van siempre en claro.** `/logistica/<token>`,
+`/checklist/<token>`, `/availability/<token>` y `/asset/<id>` las abre gente
+de afuera (hoteles, delegaciones, oficiales) y se imprimen: `App.jsx` les
+quita la clase `dark` (`PUBLIC_PATH`) y no toca la preferencia guardada.
+
 ---
 
 ## 🪄 Aliases legacy (`fiba-*`) — dark-aware vía CSS vars
@@ -115,6 +120,66 @@ modo**, sin tocar el JSX. Si migras una página, podés:
 
 Los aliases viven en el componente `@layer components` de
 `src/index.css` (`.btn-fiba`, `.fiba-card`, `.fiba-input`, etc).
+
+---
+
+## Redacción
+
+Vale para todo texto que ve una persona: `translations.js`, cadenas en JSX,
+toasts, `confirm()`, `aria-label` y documentos generados.
+
+**Registro (español).** Tuteo neutro en todo el sitio ("Elige", "Guarda",
+"puedes"). Sin voseo y sin usted. Botones y rótulos en infinitivo o sustantivo.
+Léxico neutro: aquí, omitir, reemplazar, monto, ahora. El sistema no habla en
+primera persona: "No se pudo...", "No se encontró...".
+
+**Glosario.** Un concepto, un nombre:
+
+| Concepto | Se dice | No se dice |
+|---|---|---|
+| game | partido, Partidos (también el módulo) | juego, Juegos |
+| crew del torneo (TD, VGO, árbitros) | oficiales del torneo | crew, equipo |
+| staffing plan (empleados FIBA en un evento) | Personal FIBA | staffing plan, staff |
+| training slot | turno de entrenamiento | slot |
+| lo que cobra la persona | honorarios | fee |
+| monto configurado por cargo o tipo | tarifa (por torneo, por partido, por ventana) | fee |
+| incidentals / airfare / travel | viáticos / pasajes / viajes | |
+| headcount | dotación | |
+| template / link / sync | plantilla / enlace / sincronizar | |
+| delete | eliminar | borrar, remover |
+| reason / required | motivo / obligatorio | razón / requerido |
+| TBD | por confirmar | |
+| pick-up / return / transfer | recogida / regreso / traslado | pick up, retorno |
+| travel manifest / flight manifest | Manifiesto de viaje / Manifiesto de vuelos | |
+| meals | comidas | alimentación |
+| módulos nombrados en un texto | Presupuesto, Pagos, Partidos, Calendario, Plantillas | Budget, Payments, Games |
+
+"Rooming list" y la audiencia "Staff" de Logística se mantienen: son términos
+del oficio. En inglés, crew, fee y slot quedan como están.
+
+**Tipografía (los dos idiomas).**
+
+- Sin raya larga ni raya media. Se reescribe con punto, coma, dos puntos o
+  paréntesis.
+- Rangos con guion ("08:00-10:00") o con "al" en fechas ("13 al 15 de noviembre").
+- Sin flechas en frases ni botones. Rutas de menú: "Partidos > Datos comunes".
+- Puntos suspensivos de tres puntos ("..."). Comillas rectas.
+- Sin mayúsculas enfáticas. Celda vacía: "-".
+- "·" solo como separador de metadatos en celdas densas.
+
+**Forma.**
+
+- Mayúscula solo en la primera palabra y en nombres propios, en los dos idiomas.
+- Errores: "No se pudo guardar el evento" / "Could not save the event". Nunca
+  "Error guardando...".
+- Sin plurales con paréntesis: "Nominaciones elegibles: {count}".
+- Sin "exitosamente" ni "correctamente": "TD asignado", "Guardado".
+- Contraseña: el mínimo es 8 caracteres (lo exige el backend).
+
+**Textos de ayuda.** Dicen qué hacer o qué va a pasar, en una oración. No
+explican cómo está hecho el sistema ni muestran rutas de archivo, endpoints,
+nombres de campo, permisos (`budget:view`) ni valores internos (`in_process`).
+El porqué va al manual.
 
 ---
 
@@ -199,7 +264,12 @@ Iconos disponibles: Dashboard, Trophy, Users, Calendar, Whistle, Truck,
 Shield, Plus, Search, Download, Upload, Doc, Check, X, Chevron,
 ChevronDown, ArrowUp, ArrowDown, Alert, Info, Bell, Clock, Globe, Pin,
 Pushpin, PushpinFilled, Plane, Moon, Sun, Cog, Logout, Eye, History,
-Report, Star, StarFilled.
+Report, Wallet, Star, StarFilled, Feed, Message, Photo, Refresh, Link, Poll,
+Dots, Trash, Pencil, Send, Megaphone, Bus, Ship, Car, Lock, Tool,
+ChevronLeft, Menu.
+
+No se usan emojis ni glifos (✓ ✕ ⚠) como íconos: siempre `Icon.*`. La única
+excepción son las reacciones del Muro, donde el emoji es el contenido.
 
 Si necesitás otro: agregalo a `lib/icons.jsx` con la sintaxis
 `I(<><path d="…"/></>)` o instalá `@tabler/icons-react`.

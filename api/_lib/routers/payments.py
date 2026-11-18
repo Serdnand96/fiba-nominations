@@ -1087,7 +1087,8 @@ def export_payments(
     autosize(ws)
 
     suffix = str(year) if year else date.today().isoformat()
-    return xlsx_response(workbook_bytes(wb), f"{'payments' if en else 'pagos'}-{suffix}.xlsx")
+    return xlsx_response(workbook_bytes(wb, "Payments" if en else "Pagos"),
+                         f"{'payments' if en else 'pagos'}-{suffix}.xlsx")
 
 
 # ─── Create ──────────────────────────────────────────────────────────────────

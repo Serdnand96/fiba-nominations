@@ -157,7 +157,7 @@ def test_docx_with_full_data(db):
 
     for expected in ("LSB Grupo F 2026", "Información operativa para delegaciones", "Bogotá, Colombia",
                      "13 al 15 de noviembre de 2026", "Hotel Equipos", "Marta Gil", "Check-in: 15:00",
-                     "Transporte", "Viernes 13 de noviembre de 2026 · DÍA DE PARTIDO", "Llevar acreditación",
+                     "Transporte", "Viernes 13 de noviembre de 2026 (DÍA DE PARTIDO)", "Llevar acreditación",
                      "Barbados", "Cancha auxiliar", "Colombia vs Panamá", "09:15",
                      "Comidas", "TAKE AWAY", "15:30 al IN",
                      "Salón Andes", "Reunión técnica", "Hotel Equipos", "Media Day",

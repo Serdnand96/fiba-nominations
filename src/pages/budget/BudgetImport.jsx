@@ -258,7 +258,7 @@ export default function BudgetImport({ year, department, competitions, kind = 'e
               </div>
               <ul className="space-y-0.5 text-[11px] text-amber-500/90 max-h-28 overflow-auto">
                 {preview.new_accounts.map(a => (
-                  <li key={a.code}>{a.code} — {a.label} (${money(a.amount)})</li>
+                  <li key={a.code}>{a.code} · {a.label} (${money(a.amount)})</li>
                 ))}
               </ul>
             </div>

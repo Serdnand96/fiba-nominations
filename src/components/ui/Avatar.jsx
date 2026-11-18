@@ -27,7 +27,7 @@ export function Avatar({ name, src, alt='', size='md', tone='navy', className=''
   }
   return (
     <span className={`${base} ${tones[tone]}`} role={alt ? 'img' : undefined} aria-label={alt || undefined} aria-hidden={alt ? undefined : true}>
-      {initials || '—'}
+      {initials || '-'}
     </span>
   );
 }

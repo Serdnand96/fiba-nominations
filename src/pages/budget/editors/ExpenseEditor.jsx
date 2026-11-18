@@ -350,7 +350,7 @@ export default function ExpenseEditor({
       <Field label={t('budget.account')}>
         <select className="fiba-select" value={form.account_code} disabled={lockFinancial}
           onChange={e => set('account_code', e.target.value)}>
-          <option value="">—</option>
+          <option value="">-</option>
           <AccountOptions accounts={expenseAccounts} department={form.department_code} t={t} />
         </select>
       </Field>
@@ -363,7 +363,7 @@ export default function ExpenseEditor({
             ? t('budget.approvalBudgetLineNone') : t('budget.approvalBudgetLinePick')}</option>
           {lines.map(l => (
             <option key={l.id} value={l.id}>
-              {l.description || l.account_label || l.account_code} — {l.competition_name || t('budget.general')} · ${money(l.amount)}
+              {l.description || l.account_label || l.account_code} · {l.competition_name || t('budget.general')} · ${money(l.amount)}
             </option>
           ))}
         </select>
@@ -403,7 +403,7 @@ export default function ExpenseEditor({
         <Field label={t('budget.payeeVendor')}>
           <select className="fiba-select" value={form.vendor_id} disabled={lockFinancial}
             onChange={e => set('vendor_id', e.target.value)}>
-            <option value="">—</option>
+            <option value="">-</option>
             {vendors.map(v => <option key={v.id} value={v.id}>{v.name}</option>)}
           </select>
         </Field>
@@ -412,7 +412,7 @@ export default function ExpenseEditor({
         <Field label={t('budget.payeeEmployee')}>
           <select className="fiba-select" value={form.employee_id} disabled={lockFinancial}
             onChange={e => set('employee_id', e.target.value)}>
-            <option value="">—</option>
+            <option value="">-</option>
             {employees.map(v => <option key={v.id} value={v.id}>{v.name}</option>)}
           </select>
         </Field>

@@ -6,6 +6,7 @@ import {
 import { Drawer } from '../../components/ui/Drawer'
 import { Modal } from '../../components/ui/Modal'
 import { Icon } from '../../lib/icons'
+import { useLanguage } from '../../i18n/LanguageContext'
 import BudgetImport from './BudgetImport'
 import BudgetLineEditor from './editors/BudgetLineEditor'
 import HeadcountPanel from './HeadcountPanel'
@@ -27,6 +28,7 @@ const GENERAL = '__general__'   // clave de la columna "sin evento" en la matriz
  */
 export default function PlanTab({ t, push, canEdit, departments, expenseAccounts, competitions }) {
   const scope = useBudgetScope()
+  const { lang } = useLanguage()
   const thisYear = new Date().getFullYear()
   const [year, setYear] = useState(thisYear)
   const [department, setDepartment] = useState('')
@@ -82,7 +84,7 @@ export default function PlanTab({ t, push, canEdit, departments, expenseAccounts
       setView(withEvents.size >= 2 ? 'matrix' : 'list')
     } catch (e) {
       console.error(e)
-      push({ type: 'error', title: t('common.error') })
+      push({ type: 'error', title: lang === 'en' ? 'Could not load the budget.' : 'No se pudo cargar el presupuesto.' })
     }
     setLoading(false)
   }
@@ -101,7 +103,11 @@ export default function PlanTab({ t, push, canEdit, departments, expenseAccounts
       push({ type: 'success', title: `${res.created} ${t('budget.projectDone')}` })
       load()
     } catch (e) {
-      push({ type: 'error', title: e?.response?.data?.detail || t('common.error') })
+      push({
+        type: 'error',
+        title: e?.response?.data?.detail
+          || (lang === 'en' ? 'Could not project the budget.' : 'No se pudo proyectar el presupuesto.'),
+      })
     }
     setProjecting(false)
   }
@@ -261,6 +267,7 @@ export default function PlanTab({ t, push, canEdit, departments, expenseAccounts
               <span className="font-medium text-ink-900 dark:text-white ml-3">${money(l.amount)}</span>
               {canEditRow(l.department_code) && (
                 <button onClick={() => { setCellDetail(null); setEditingLine(l) }}
+                  aria-label={t('budget.editLine')} title={t('budget.editLine')}
                   className="ml-2 p-1.5 rounded hover:bg-fiba-surface text-fiba-muted hover:text-ink-900 dark:hover:text-white">
                   <Icon.Doc className="w-4 h-4" />
                 </button>
@@ -280,6 +287,7 @@ function MatrixView({ lines, competitions, expenseAccounts, department, canEdit,
   const [editing, setEditing] = useState(null)        // 'account|colKey'
   const [draft, setDraft] = useState('')
   const [collapsed, setCollapsed] = useState(true)    // cuentas sin evento, plegadas
+  const { lang } = useLanguage()
 
   // Editar una celda crea una línea, y una línea necesita departamento. Con
   // "todos" seleccionado la matriz es un consolidado de solo lectura.
@@ -354,7 +362,11 @@ function MatrixView({ lines, competitions, expenseAccounts, department, canEdit,
       }
       onReload()
     } catch (e) {
-      push({ type: 'error', title: e?.response?.data?.detail || t('common.error') })
+      push({
+        type: 'error',
+        title: e?.response?.data?.detail
+          || (lang === 'en' ? 'Could not save the amount.' : 'No se pudo guardar el monto.'),
+      })
     }
   }
 
@@ -393,8 +405,9 @@ function MatrixView({ lines, competitions, expenseAccounts, department, canEdit,
                 <tr key={a.code} className="hover:bg-fiba-surface/40 transition-colors">
                   <td className="px-3 py-2 sticky left-0 bg-fiba-card z-10">
                     <span className="text-ink-900 dark:text-white">{a.label}</span>
-                    <span className="block text-2xs text-fiba-muted font-mono">
-                      {a.code}{a.pending_mapping ? ' ·' : ''}
+                    <span className="block text-2xs text-fiba-muted font-mono"
+                      title={a.pending_mapping ? t('budget.accountsPendingHint') : undefined}>
+                      {a.code}{a.pending_mapping ? ' *' : ''}
                     </span>
                   </td>
                   {cols.map(c => {
@@ -441,7 +454,7 @@ function MatrixView({ lines, competitions, expenseAccounts, department, canEdit,
                             className={`w-full text-right ${
                               total ? 'text-ink-900 dark:text-white' : 'text-fiba-muted/40'
                             } ${editable ? 'hover:bg-fiba-surface rounded px-1' : 'cursor-default'}`}>
-                            {total ? money(total) : '—'}
+                            {total ? money(total) : '-'}
                           </button>
                         )}
                       </td>
@@ -470,7 +483,7 @@ function MatrixView({ lines, competitions, expenseAccounts, department, canEdit,
                     <td key={c.id} className="px-3 py-2 text-right text-fiba-muted">
                       {c.id === GENERAL
                         ? money(generalOnly.reduce((s, a) => s + cellTotal(`${a.code}|${GENERAL}`), 0))
-                        : '—'}
+                        : '-'}
                     </td>
                   ))}
                   <td className="px-3 py-2 text-right font-semibold text-fiba-muted">
@@ -510,12 +523,12 @@ function MatrixView({ lines, competitions, expenseAccounts, department, canEdit,
         <div className="flex flex-wrap gap-3 mt-4">
           <select value="" onChange={e => e.target.value && setExtraRows(r => [...r, e.target.value])}
             className="fiba-select !w-auto min-w-[220px]">
-            <option value="">+ {t('budget.addRow')}</option>
+            <option value="">{t('budget.addRow')}</option>
             <AccountOptions accounts={availableAccounts} department={department} t={t} />
           </select>
           <select value="" onChange={e => e.target.value && setExtraCols(c => [...c, e.target.value])}
             className="fiba-select !w-auto min-w-[220px]">
-            <option value="">+ {t('budget.addColumn')}</option>
+            <option value="">{t('budget.addColumn')}</option>
             {availableComps.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
           </select>
         </div>
@@ -568,9 +581,9 @@ function ListView({ lines, year, t, canEditRow, onEdit, onSeries }) {
                     <td className="px-4 py-2.5 text-fiba-muted">
                       {l.competition_name || <span className="italic">{t('budget.general')}</span>}
                     </td>
-                    <td className="px-4 py-2.5 text-right text-fiba-muted">{l.qty ?? '—'}</td>
+                    <td className="px-4 py-2.5 text-right text-fiba-muted">{l.qty ?? '-'}</td>
                     <td className="px-4 py-2.5 text-right text-fiba-muted">
-                      {l.monthly_amount ? money(l.monthly_amount) : '—'}
+                      {l.monthly_amount ? money(l.monthly_amount) : '-'}
                     </td>
                     <td className="px-4 py-2.5 text-right font-medium text-ink-900 dark:text-white">
                       {money(l.amount)}
@@ -631,6 +644,7 @@ function ListView({ lines, year, t, canEditRow, onEdit, onSeries }) {
  */
 function SeriesModal({ line, t, push, currentYear, onClose, onGoToYear }) {
   const [rows, setRows] = useState(null)
+  const { lang } = useLanguage()
 
   useEffect(() => {
     let alive = true
@@ -638,7 +652,7 @@ function SeriesModal({ line, t, push, currentYear, onClose, onGoToYear }) {
       .then(data => { if (alive) setRows(data || []) })
       .catch(e => {
         console.error(e)
-        push({ type: 'error', title: t('common.error') })
+        push({ type: 'error', title: lang === 'en' ? 'Could not load the history.' : 'No se pudo cargar el historial.' })
         if (alive) setRows([])
       })
     return () => { alive = false }
@@ -669,7 +683,7 @@ function SeriesModal({ line, t, push, currentYear, onClose, onGoToYear }) {
     <Modal
       open
       onClose={onClose}
-      closeLabel={t('budget.cancel')}
+      closeLabel={t('common.close')}
       title={t('budget.seriesTitle')}
       subtitle={`${line.account_code} · ${line.description}`}
     >
@@ -697,10 +711,10 @@ function SeriesModal({ line, t, push, currentYear, onClose, onGoToYear }) {
                       : <span className="text-xs text-fiba-muted italic">{t('budget.seriesEmpty')}</span>}
                   </td>
                   <td className="px-2 py-2 text-right tabular-nums text-xs text-fiba-muted">
-                    {delta == null ? '—' : `${delta > 0 ? '+' : ''}${(delta * 100).toFixed(1)}%`}
+                    {delta == null ? '-' : `${delta > 0 ? '+' : ''}${(delta * 100).toFixed(1)}%`}
                   </td>
                   <td className="px-2 py-2 text-right text-fiba-muted tabular-nums">
-                    {row ? `${(Number(row.escalation_pct || 0) * 100).toFixed(1)}%` : '—'}
+                    {row ? `${(Number(row.escalation_pct || 0) * 100).toFixed(1)}%` : '-'}
                   </td>
                   <td className="px-2 py-2 text-right whitespace-nowrap">
                     {year !== currentYear && (

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { discoverFibaCompetitions } from '../../api/client'
 import { useLanguage } from '../../i18n/LanguageContext'
 import { competitionDateRange } from '../../lib/competitions'
+import { Icon } from '../../lib/icons'
 
 // Competencias de FIBA Americas (GDAP) que ninguna de las nuestras tiene
 // vinculadas. Solo lista: "Dar de alta" abre el formulario prellenado y una
@@ -11,7 +12,7 @@ import { competitionDateRange } from '../../lib/competitions'
 // una vez: con dar de alta la primera y vincular las demás al mismo ID alcanza.
 
 export default function FibaDiscoverModal({ onClose, onPick }) {
-  const { t } = useLanguage()
+  const { t, lang } = useLanguage()
   const MONTHS_SHORT = t('months.short')
   const thisYear = new Date().getFullYear()
   const [season, setSeason] = useState(thisYear)
@@ -33,8 +34,10 @@ export default function FibaDiscoverModal({ onClose, onPick }) {
       <div className="fiba-modal max-w-3xl p-6" onClick={e => e.stopPropagation()}>
         <div className="flex items-start justify-between gap-3 mb-1">
           <h3 className="text-lg font-bold text-ink-900 dark:text-white">{t('competitions.fibaDiscoverTitle')}</h3>
-          <button onClick={onClose} aria-label={t('competitions.cancel')}
-            className="text-fiba-muted hover:text-ink-900 dark:hover:text-white text-xl leading-none">&times;</button>
+          <button onClick={onClose} aria-label={t('common.close')} title={t('common.close')}
+            className="text-fiba-muted hover:text-ink-900 dark:hover:text-white">
+            <Icon.X className="w-5 h-5" />
+          </button>
         </div>
         <p className="text-xs text-fiba-muted mb-4">{t('competitions.fibaDiscoverHint')}</p>
 
@@ -47,7 +50,7 @@ export default function FibaDiscoverModal({ onClose, onPick }) {
                   ? 'bg-basketball-700 text-white border-basketball-700'
                   : 'bg-fiba-surface text-fiba-muted border-fiba-border hover:bg-fiba-surface-2'
               }`}>
-              {y}–{y + 1}
+              {y}-{y + 1}
             </button>
           ))}
         </div>
@@ -73,7 +76,7 @@ export default function FibaDiscoverModal({ onClose, onPick }) {
                   </div>
                 </div>
                 <div className="text-xs tabular-nums text-fiba-muted whitespace-nowrap">
-                  {competitionDateRange({ start_date: it.start, end_date: it.end }, MONTHS_SHORT, { year: true }) || 'TBD'}
+                  {competitionDateRange({ start_date: it.start, end_date: it.end }, MONTHS_SHORT, { year: true }) || (lang === 'es' ? 'Por confirmar' : 'TBD')}
                 </div>
                 <button onClick={() => onPick(it)} className="btn-fiba text-xs px-2.5 py-1">
                   {t('competitions.fibaDiscoverAdd')}

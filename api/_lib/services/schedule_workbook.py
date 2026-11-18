@@ -16,12 +16,13 @@ Two layers, both pure (no DB access) so they can be tested standalone:
   PDF exports (docx-based) are a separate pipeline, see
   `.claude/skills/pdf-templates`.
 """
-import io
 from collections import Counter
 from datetime import datetime, time
 
 from openpyxl import Workbook
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+
+from api._lib.services.xlsx_utils import workbook_bytes
 
 # ── Palette / typography from the official FIBA template ─────────────────────
 FONT_TITLE = "FIBA Regular"     # falls back silently if not installed
@@ -603,6 +604,4 @@ def build_schedule_workbook(header: dict, days: list, lang: str = "es") -> bytes
             c.border = Border(top=b.top, left=b.left, right=b.right,
                               bottom=MEDIUM)
 
-    buf = io.BytesIO()
-    wb.save(buf)
-    return buf.getvalue()
+    return workbook_bytes(wb, header.get("title") or None)

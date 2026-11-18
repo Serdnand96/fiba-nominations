@@ -36,9 +36,9 @@ export default function SheetImport({ kind, competitionId, audience, onDone }) {
   const [result, setResult] = useState(null)
 
   const STATUS_LABELS = {
-    matched: t('vinculado', 'linked'),
-    review: t('revisar', 'review'),
-    new: t('nuevo', 'new'),
+    matched: t('vinculada', 'linked'),
+    review: t('a revisar', 'to review'),
+    new: t('nueva', 'new'),
   }
 
   function reset() {
@@ -72,8 +72,8 @@ export default function SheetImport({ kind, competitionId, audience, onDone }) {
   }
 
   const title = kind === 'manifest'
-    ? t('Importar Flight Manifest', 'Import Flight Manifest')
-    : t('Importar Rooming List', 'Import Rooming List')
+    ? t('Importar manifiesto de vuelos', 'Import flight manifest')
+    : t('Importar rooming list', 'Import rooming list')
 
   return (
     <div className="mb-4 rounded-xl border border-fiba-border bg-fiba-card p-4">
@@ -81,8 +81,8 @@ export default function SheetImport({ kind, competitionId, audience, onDone }) {
         <div>
           <div className="text-sm font-medium text-ink-900 dark:text-white">{title}</div>
           <div className="text-xs text-fiba-muted mt-0.5">
-            {t('Archivo .xlsx. Se muestra un resumen antes de guardar nada.',
-               '.xlsx file. You get a summary before anything is saved.')}
+            {t('Archivo .xlsx. Antes de guardar verás un resumen.',
+               '.xlsx file. You will see a summary before saving.')}
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -103,10 +103,10 @@ export default function SheetImport({ kind, competitionId, audience, onDone }) {
       {result && (
         <div className="mt-3 rounded-lg bg-emerald-500/10 border border-emerald-500/20 px-3 py-2 text-xs text-emerald-500">
           {kind === 'manifest'
-            ? t(`Importado: ${result.participants_total} personas, ${result.legs} tramos de viaje.`,
-                `Imported: ${result.participants_total} people, ${result.legs} travel legs.`)
-            : t(`Importado: ${result.stays} estadías, ${result.total_nights} noches de habitación.`,
-                `Imported: ${result.stays} stays, ${result.total_nights} room nights.`)}
+            ? t(`Se importaron ${result.participants_total} personas y ${result.legs} vuelos.`,
+                `Imported ${result.participants_total} people and ${result.legs} flights.`)
+            : t(`Se importaron ${result.stays} estadías (${result.total_nights} noches).`,
+                `Imported ${result.stays} stays (${result.total_nights} room nights).`)}
         </div>
       )}
 
@@ -118,14 +118,16 @@ export default function SheetImport({ kind, competitionId, audience, onDone }) {
             <span className={`px-2 py-0.5 rounded ${STATUS_STYLES.review}`}>{preview.review} {t('a revisar', 'to review')}</span>
             <span className={`px-2 py-0.5 rounded ${STATUS_STYLES.new}`}>{preview.new} {t('nuevas', 'new')}</span>
             {kind === 'rooming' && (
-              <span className="text-fiba-muted">· {preview.total_nights} {t('noches de habitación', 'room nights')}</span>
+              <span className="text-fiba-muted">· {preview.total_nights} {t('noches', 'room nights')}</span>
             )}
           </div>
 
           {preview.warnings?.length > 0 && (
             <div className="mb-3 rounded-lg bg-amber-500/10 border border-amber-500/20 px-3 py-2">
               <div className="text-xs font-medium text-amber-500 mb-1">
-                {t(`${preview.warnings.length} cosa(s) que conviene mirar`, `${preview.warnings.length} thing(s) worth checking`)}
+                {preview.warnings.length === 1
+                  ? t('1 aviso', '1 warning')
+                  : t(`${preview.warnings.length} avisos`, `${preview.warnings.length} warnings`)}
               </div>
               <ul className="space-y-0.5 text-[11px] text-amber-500/90">
                 {preview.warnings.map((w, i) => (
@@ -140,7 +142,7 @@ export default function SheetImport({ kind, competitionId, audience, onDone }) {
               <thead>
                 <tr>
                   <th>{t('Nombre en la planilla', 'Name in the sheet')}</th>
-                  <th>{t('Rol', 'Role')}</th>
+                  <th>{t('Cargo', 'Role')}</th>
                   <th>{t('Estado', 'Status')}</th>
                   <th>{t('Se vincula con', 'Links to')}</th>
                 </tr>
@@ -152,7 +154,7 @@ export default function SheetImport({ kind, competitionId, audience, onDone }) {
                       {[row.first_name, row.last_name].filter(Boolean).join(' ')}
                       {row.pax > 1 && <span className="text-fiba-muted"> ({row.pax} pax)</span>}
                     </td>
-                    <td className="px-4 py-1.5 text-xs text-fiba-muted">{row.role || '—'}</td>
+                    <td className="px-4 py-1.5 text-xs text-fiba-muted">{row.role || '-'}</td>
                     <td className="px-4 py-1.5">
                       <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${STATUS_STYLES[row.match.status]}`}>
                         {STATUS_LABELS[row.match.status]}
@@ -161,7 +163,7 @@ export default function SheetImport({ kind, competitionId, audience, onDone }) {
                     <td className="px-4 py-1.5 text-xs text-fiba-muted">
                       {row.match.matched_name
                         ? `${row.match.matched_name} (${Math.round(row.match.score * 100)}%)`
-                        : t('Se crea nuevo', 'Created new')}
+                        : t('Nueva persona', 'New person')}
                     </td>
                   </tr>
                 ))}

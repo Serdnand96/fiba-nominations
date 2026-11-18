@@ -284,15 +284,15 @@ export default function Reports() {
               {!loading && reports.map(r => (
                 <tr key={r.id}>
                   <td className="px-4 py-3 font-medium">{r.title}</td>
-                  <td className="px-4 py-3">{r.competition_name || '—'}</td>
+                  <td className="px-4 py-3">{r.competition_name || '-'}</td>
                   <td className="px-4 py-3">
                     <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${TYPE_BADGES[r.type_code] || TYPE_BADGES.other}`}>
                       {typeLabel(r.type_code)}
                     </span>
                   </td>
-                  <td className="px-4 py-3">{r.venue || '—'}</td>
-                  <td className="px-4 py-3">{r.loc || '—'}</td>
-                  <td className="px-4 py-3 tabular-nums">{r.report_date || '—'}</td>
+                  <td className="px-4 py-3">{r.venue || '-'}</td>
+                  <td className="px-4 py-3">{r.loc || '-'}</td>
+                  <td className="px-4 py-3 tabular-nums">{r.report_date || '-'}</td>
                   <td className="px-4 py-3 text-right tabular-nums">{r.file_count ?? 0}</td>
                   <td className="px-4 py-3 text-right">
                     <button onClick={() => openReport(r)} className="text-fiba-accent hover:underline text-sm">
@@ -327,7 +327,9 @@ export default function Reports() {
                   <p className="text-sm text-fiba-muted">{editing.competition_name}</p>
                 )}
               </div>
-              <button onClick={closeEditor} className="text-fiba-muted hover:text-ink-900 dark:hover:text-white text-xl leading-none">×</button>
+              <button onClick={closeEditor} aria-label={t('common.close')} title={t('common.close')} className="text-fiba-muted hover:text-ink-900 dark:hover:text-white">
+                <Icon.X className="w-5 h-5" />
+              </button>
             </div>
 
             <div className="flex-1 overflow-y-auto p-6 space-y-4">
@@ -345,7 +347,7 @@ export default function Reports() {
                     />
                   ) : (
                     <p className="text-sm text-ink-900 dark:text-white">
-                      {competitions.find(c => c.id === form.competition_id)?.name || '—'}
+                      {competitions.find(c => c.id === form.competition_id)?.name || '-'}
                     </p>
                   )}
                 </div>

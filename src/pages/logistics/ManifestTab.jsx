@@ -11,6 +11,7 @@ import SheetImport from './SheetImport'
 import MovementTrips from './MovementTrips'
 import { DEFAULT_CATEGORY } from './audiences'
 import { DocumentsPanel } from './opsShared'
+import { Icon } from '../../lib/icons'
 
 // Sección Travel Manifest: el padrón de quién viene, y con qué vuelo llega y se
 // va cada uno.
@@ -20,8 +21,8 @@ import { DocumentsPanel } from './opsShared'
 // hoja suelta que la organización arma a mano en cada evento.
 
 const CATEGORY_LABELS = {
-  es: { official: 'Oficial', fiba_staff: 'Staff FIBA', vip: 'VIP', team: 'Delegación', guest: 'Invitado' },
-  en: { official: 'Official', fiba_staff: 'FIBA Staff', vip: 'VIP', team: 'Team', guest: 'Guest' },
+  es: { official: 'Oficial', fiba_staff: 'Personal FIBA', vip: 'VIP', team: 'Delegación', guest: 'Invitado' },
+  en: { official: 'Official', fiba_staff: 'FIBA staff', vip: 'VIP', team: 'Team', guest: 'Guest' },
 }
 
 const CATEGORY_STYLES = {
@@ -32,7 +33,7 @@ const CATEGORY_STYLES = {
   guest: 'bg-fiba-surface text-fiba-muted',
 }
 
-const MODE_ICONS = { flight: '✈', bus: '🚌', ferry: '⛴', car: '🚗', other: '•' }
+const MODE_ICONS = { flight: Icon.Plane, bus: Icon.Bus, ferry: Icon.Ship, car: Icon.Car }
 
 const EMPTY_PARTICIPANT = {
   first_name: '', last_name: '', role: '', category: 'official', team: '',
@@ -45,7 +46,7 @@ const EMPTY_LEG = {
 }
 
 function shortDate(iso, lang) {
-  if (!iso) return '—'
+  if (!iso) return '-'
   return new Date(iso + 'T12:00:00').toLocaleDateString(lang === 'es' ? 'es' : 'en-US', { day: 'numeric', month: 'short' })
 }
 
@@ -56,18 +57,19 @@ const hhmm = (t) => (t ? t.slice(0, 5) : '')
 // toda la tabla (perdiendo foco). MODE_ICONS/shortDate/hhmm son module-level.
 function LegCell({ participant, direction, lang, canEdit, openLeg }) {
   const leg = direction === 'arrival' ? participant.arrival : participant.departure
+  const ModeIcon = leg ? MODE_ICONS[leg.transport_mode] : null
   const content = leg ? (
     <div className="leading-tight">
       <div className="text-xs whitespace-nowrap">
-        <span className="mr-1">{MODE_ICONS[leg.transport_mode] || ''}</span>
+        {ModeIcon && <ModeIcon className="w-3.5 h-3.5 inline-block mr-1 align-[-2px]" />}
         {shortDate(leg.date, lang)} {hhmm(leg.time)}
       </div>
       <div className="text-[10px] text-fiba-muted whitespace-nowrap">
-        {[leg.flight_number, leg.airport].filter(Boolean).join(' · ') || '—'}
-        {leg.pickup_time && ` · pick-up ${hhmm(leg.pickup_time)}`}
+        {[leg.flight_number, leg.airport].filter(Boolean).join(' · ') || '-'}
+        {leg.pickup_time && ` · ${lang === 'es' ? 'recogida' : 'pick-up'} ${hhmm(leg.pickup_time)}`}
       </div>
     </div>
-  ) : <span className="text-fiba-muted text-xs">—</span>
+  ) : <span className="text-fiba-muted text-xs">-</span>
 
   if (!canEdit) return content
   return (
@@ -147,13 +149,13 @@ export default function ManifestTab({ competitionId, canEdit, audience }) {
       if (editingPerson) await updateLogisticsParticipant(editingPerson.id, payload)
       else await createLogisticsParticipant({ ...payload, competition_id: competitionId })
       setShowPersonModal(false); await load()
-    } catch (err) { push({ type: 'error', title: err.response?.data?.detail || 'Error' }) }
+    } catch (err) { push({ type: 'error', title: err.response?.data?.detail || t('No se pudo guardar la persona.', 'Could not save the person.') }) }
   }
 
   async function handleDeletePerson(p) {
     const name = [p.first_name, p.last_name].filter(Boolean).join(' ')
-    if (!confirm(t(`¿Quitar a ${name} del padrón? También se borran sus vuelos y su estadía.`,
-                   `Remove ${name} from the roster? Their flights and stay go too.`))) return
+    if (!confirm(t(`¿Quitar a ${name}? También se eliminan sus vuelos y su estadía.`,
+                   `Remove ${name}? Their flights and stay are deleted too.`))) return
     await deleteLogisticsParticipant(p.id); await load()
   }
 
@@ -164,7 +166,7 @@ export default function ManifestTab({ competitionId, canEdit, audience }) {
         push({ type: 'info', title: t('No hay oficiales asignados nuevos para agregar.', 'No new assigned officials to add.') })
       }
       await load()
-    } catch (err) { push({ type: 'error', title: err.response?.data?.detail || 'Error' }) }
+    } catch (err) { push({ type: 'error', title: err.response?.data?.detail || t('No se pudieron agregar los oficiales.', 'Could not add the officials.') }) }
   }
 
   function openLeg(participant, direction) {
@@ -189,12 +191,17 @@ export default function ManifestTab({ competitionId, canEdit, audience }) {
       if (legTarget.leg) await updateLogisticsTravelLeg(legTarget.leg.id, payload)
       else await createLogisticsTravelLeg({ ...payload, participant_id: legTarget.participant.id })
       setLegTarget(null); await load()
-    } catch (err) { push({ type: 'error', title: err.response?.data?.detail || 'Error' }) }
+    } catch (err) {
+      const fallback = legTarget.direction === 'arrival'
+        ? t('No se pudo guardar la llegada.', 'Could not save the arrival.')
+        : t('No se pudo guardar la salida.', 'Could not save the departure.')
+      push({ type: 'error', title: err.response?.data?.detail || fallback })
+    }
   }
 
   const VIEW_LABELS = {
     people: t('Por persona', 'By person'),
-    groups: t('Grupos de traslado', 'Transfer groups'),
+    groups: t('Por grupo', 'By group'),
   }
 
   return (
@@ -226,7 +233,7 @@ export default function ManifestTab({ competitionId, canEdit, audience }) {
               {/* El crew son oficiales: no tiene sentido traerlo a Delegación o VIP. */}
               {(!audience || audience === 'staff') && (
                 <button onClick={handleSeedFromCrew} className="btn-fiba-ghost text-xs px-3 py-1.5">
-                  {t('Traer crew asignado', 'Pull assigned crew')}
+                  {t('Agregar oficiales asignados', 'Add assigned officials')}
                 </button>
               )}
               <button onClick={openCreatePerson} className="btn-fiba text-xs px-3 py-1.5">+ {t('Persona', 'Person')}</button>
@@ -246,10 +253,10 @@ export default function ManifestTab({ competitionId, canEdit, audience }) {
         <div className="text-center py-8 text-fiba-muted text-sm">{t('Cargando...', 'Loading...')}</div>
       ) : participants.length === 0 ? (
         <div className="fiba-card p-8 text-center text-fiba-muted">
-          <p className="text-sm">{t('El padrón está vacío.', 'The roster is empty.')}</p>
+          <p className="text-sm">{t('Todavía no hay personas.', 'No people yet.')}</p>
           <p className="text-xs mt-1">
-            {t('Importa el Flight Manifest, trae el crew ya asignado, o agrega personas a mano.',
-               'Import the Flight Manifest, pull the assigned crew, or add people manually.')}
+            {t('Importa el manifiesto de vuelos o agrega personas.',
+               'Import the flight manifest or add people.')}
           </p>
         </div>
       ) : view === 'people' ? (
@@ -258,7 +265,7 @@ export default function ManifestTab({ competitionId, canEdit, audience }) {
             <thead>
               <tr>
                 <th>{t('Nombre', 'Name')}</th>
-                <th>{t('Rol', 'Role')}</th>
+                <th>{t('Cargo', 'Role')}</th>
                 <th>{t('Categoría', 'Category')}</th>
                 {audience === 'delegation' && <th>{t('Equipo', 'Team')}</th>}
                 <th>{t('Pasaporte', 'Passport')}</th>
@@ -274,14 +281,14 @@ export default function ManifestTab({ competitionId, canEdit, audience }) {
                     {[p.first_name, p.last_name].filter(Boolean).join(' ')}
                     {p.pax > 1 && <span className="text-fiba-muted text-xs"> ({p.pax} pax)</span>}
                   </td>
-                  <td className="px-4 py-2 text-xs text-fiba-muted whitespace-nowrap">{p.role || '—'}</td>
+                  <td className="px-4 py-2 text-xs text-fiba-muted whitespace-nowrap">{p.role || '-'}</td>
                   <td className="px-4 py-2">
                     <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${CATEGORY_STYLES[p.category] || ''}`}>
                       {CATEGORY_LABELS[lang]?.[p.category] || p.category}
                     </span>
                   </td>
-                  {audience === 'delegation' && <td className="px-4 py-2 text-xs whitespace-nowrap">{p.team || '—'}</td>}
-                  <td className="px-4 py-2 font-mono text-xs text-fiba-muted">{p.passport || '—'}</td>
+                  {audience === 'delegation' && <td className="px-4 py-2 text-xs whitespace-nowrap">{p.team || '-'}</td>}
+                  <td className="px-4 py-2 font-mono text-xs text-fiba-muted">{p.passport || '-'}</td>
                   <td className="px-4 py-2"><LegCell participant={p} direction="arrival" lang={lang} canEdit={canEdit} openLeg={openLeg} /></td>
                   <td className="px-4 py-2"><LegCell participant={p} direction="departure" lang={lang} canEdit={canEdit} openLeg={openLeg} /></td>
                   {canEdit && (
@@ -325,7 +332,7 @@ export default function ManifestTab({ competitionId, canEdit, audience }) {
                         <span className="flex items-center gap-2 text-xs text-fiba-muted">
                           {group.covered && (
                             <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-500">
-                              {t('con traslado', 'transfer set')}
+                              {t('con traslado', 'transfer booked')}
                             </span>
                           )}
                           {group.pax} pax
@@ -335,12 +342,12 @@ export default function ManifestTab({ competitionId, canEdit, audience }) {
                         <tbody>
                           {group.legs.map(leg => (
                             <tr key={leg.id}>
-                              <td className="px-4 py-1.5 text-xs font-mono w-16">{hhmm(leg.time) || '—'}</td>
+                              <td className="px-4 py-1.5 text-xs font-mono w-16">{hhmm(leg.time) || '-'}</td>
                               <td className="px-4 py-1.5 text-xs font-medium whitespace-nowrap">{leg.participant_name}</td>
                               <td className="px-4 py-1.5 text-xs text-fiba-muted">{leg.participant_role || ''}</td>
                               <td className="px-4 py-1.5 text-xs text-fiba-muted">{leg.flight_number || ''}</td>
                               <td className="px-4 py-1.5 text-xs text-fiba-muted">
-                                {leg.pickup_time ? `pick-up ${hhmm(leg.pickup_time)}` : ''}
+                                {leg.pickup_time ? `${t('recogida', 'pick-up')} ${hhmm(leg.pickup_time)}` : ''}
                               </td>
                             </tr>
                           ))}
@@ -376,8 +383,8 @@ export default function ManifestTab({ competitionId, canEdit, audience }) {
                   <input value={personForm.last_name} onChange={e => setPersonForm(f => ({ ...f, last_name: e.target.value }))} className="fiba-input" /></div>
               </div>
               <div className="grid grid-cols-2 gap-3">
-                <div><label className="fiba-label">{t('Rol', 'Role')}</label>
-                  <input placeholder={t('Ej: Technical Delegate', 'e.g. Technical Delegate')} value={personForm.role} onChange={e => setPersonForm(f => ({ ...f, role: e.target.value }))} className="fiba-input" /></div>
+                <div><label className="fiba-label">{t('Cargo', 'Role')}</label>
+                  <input placeholder={t('Ej.: Delegado técnico', 'e.g. Technical Delegate')} value={personForm.role} onChange={e => setPersonForm(f => ({ ...f, role: e.target.value }))} className="fiba-input" /></div>
                 <div><label className="fiba-label">{t('Categoría', 'Category')}</label>
                   <select value={personForm.category} onChange={e => setPersonForm(f => ({ ...f, category: e.target.value }))} className="fiba-select">
                     {Object.entries(CATEGORY_LABELS[lang] || CATEGORY_LABELS.en).map(([key, label]) => (
@@ -387,7 +394,7 @@ export default function ManifestTab({ competitionId, canEdit, audience }) {
                 </div>
               </div>
               <div><label className="fiba-label">{t('Equipo / delegación', 'Team / delegation')}</label>
-                <input placeholder={t('Ej: Argentina', 'e.g. Argentina')} value={personForm.team} onChange={e => setPersonForm(f => ({ ...f, team: e.target.value }))} className="fiba-input" /></div>
+                <input placeholder={t('Ej.: Argentina', 'e.g. Argentina')} value={personForm.team} onChange={e => setPersonForm(f => ({ ...f, team: e.target.value }))} className="fiba-input" /></div>
               <div className="grid grid-cols-3 gap-3">
                 <div><label className="fiba-label">{t('Pasaporte', 'Passport')}</label>
                   <input value={personForm.passport} onChange={e => setPersonForm(f => ({ ...f, passport: e.target.value }))} className="fiba-input" /></div>
@@ -399,7 +406,7 @@ export default function ManifestTab({ competitionId, canEdit, audience }) {
               <div className="grid grid-cols-2 gap-3">
                 <div><label className="fiba-label">{t('Teléfono', 'Phone')}</label>
                   <input value={personForm.phone} onChange={e => setPersonForm(f => ({ ...f, phone: e.target.value }))} className="fiba-input" /></div>
-                <div><label className="fiba-label">Email</label>
+                <div><label className="fiba-label">{t('Correo electrónico', 'Email')}</label>
                   <input type="email" value={personForm.email} onChange={e => setPersonForm(f => ({ ...f, email: e.target.value }))} className="fiba-input" /></div>
               </div>
               <div><label className="fiba-label">{t('Restricciones alimentarias', 'Dietary restrictions')}</label>
@@ -410,7 +417,7 @@ export default function ManifestTab({ competitionId, canEdit, audience }) {
                   escaneos son privados y no salen en el link público. */}
               {editingPerson && (
                 <div className="pt-3 border-t border-fiba-border">
-                  <label className="fiba-label">{t('Documentos · pasaporte', 'Documents · passport')}</label>
+                  <label className="fiba-label">{t('Escaneo del pasaporte', 'Passport scan')}</label>
                   <DocumentsPanel competitionId={competitionId}
                     filters={{ kind: 'passport', participant_id: editingPerson.id }} canEdit={canEdit}
                     labels={{ empty: t('Sin escaneo de pasaporte cargado.', 'No passport scan uploaded.'), upload: t('Subir escaneo', 'Upload scan') }} />
@@ -440,7 +447,7 @@ export default function ManifestTab({ competitionId, canEdit, audience }) {
                 <div><label className="fiba-label">{t('Medio', 'Mode')}</label>
                   <select value={legForm.transport_mode} onChange={e => setLegForm(f => ({ ...f, transport_mode: e.target.value }))} className="fiba-select">
                     <option value="flight">{t('Vuelo', 'Flight')}</option>
-                    <option value="bus">{t('Micro', 'Bus')}</option>
+                    <option value="bus">{t('Bus', 'Bus')}</option>
                     <option value="ferry">{t('Ferry', 'Ferry')}</option>
                     <option value="car">{t('Auto', 'Car')}</option>
                     <option value="other">{t('Otro', 'Other')}</option>
@@ -452,11 +459,11 @@ export default function ManifestTab({ competitionId, canEdit, audience }) {
                   <input type="time" value={legForm.time} onChange={e => setLegForm(f => ({ ...f, time: e.target.value }))} className="fiba-input" /></div>
               </div>
               <div className="grid grid-cols-3 gap-3">
-                <div><label className="fiba-label">{t('N° de vuelo', 'Flight #')}</label>
+                <div><label className="fiba-label">{t('N.º de vuelo', 'Flight #')}</label>
                   <input value={legForm.flight_number} onChange={e => setLegForm(f => ({ ...f, flight_number: e.target.value }))} className="fiba-input" /></div>
                 <div><label className="fiba-label">{t('Aeropuerto / terminal', 'Airport / terminal')}</label>
                   <input placeholder="EZE" value={legForm.airport} onChange={e => setLegForm(f => ({ ...f, airport: e.target.value }))} className="fiba-input" /></div>
-                <div><label className="fiba-label">{t('Hora de pick-up', 'Pick-up time')}</label>
+                <div><label className="fiba-label">{t('Hora de recogida', 'Pick-up time')}</label>
                   <input type="time" value={legForm.pickup_time} onChange={e => setLegForm(f => ({ ...f, pickup_time: e.target.value }))} className="fiba-input" /></div>
               </div>
               <div><label className="fiba-label">{t('Comentarios', 'Comments')}</label>

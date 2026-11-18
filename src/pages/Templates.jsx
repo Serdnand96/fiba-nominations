@@ -481,7 +481,7 @@ export default function Templates() {
                 <td className="px-4 py-3">{t(`templates.${tmpl.type}`)}</td>
                 <td className="px-4 py-3">
                   <div className="flex flex-wrap gap-1 max-w-[10rem]">
-                    {!tmpl.fonts?.length && <span className="text-fiba-muted text-xs">—</span>}
+                    {!tmpl.fonts?.length && <span className="text-fiba-muted text-xs">-</span>}
                     {tmpl.fonts?.filter(f => f.status !== 'unknown').map(f => {
                       const chip = (
                         <span tabIndex={f.status === 'ok' ? undefined : 0}
@@ -673,7 +673,7 @@ export default function Templates() {
                 </div>
               )}
               {!previewBusy && previewUrl && (
-                <iframe src={previewUrl} title={`${preview.key} preview`}
+                <iframe src={previewUrl} title={`${t('templates.preview')}: ${preview.key}`}
                   className="w-full h-[70vh] rounded-lg border border-fiba-border bg-white" />
               )}
             </div>

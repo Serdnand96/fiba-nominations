@@ -352,7 +352,7 @@ export default function ExpensesTab({ t, push, canEdit, departments, expenseAcco
                     <td className="px-4 py-3 text-fiba-muted">
                       {r.competition_name || <span className="italic">{t('budget.general')}</span>}
                     </td>
-                    <td className="px-4 py-3 text-fiba-muted">{r.payee_display || '—'}</td>
+                    <td className="px-4 py-3 text-fiba-muted">{r.payee_display || '-'}</td>
                     <td className="px-4 py-3 text-fiba-muted whitespace-nowrap">{r.expense_date}</td>
                     <td className="px-4 py-3 text-right font-medium text-ink-900 dark:text-white whitespace-nowrap">
                       ${money(r.amount)}

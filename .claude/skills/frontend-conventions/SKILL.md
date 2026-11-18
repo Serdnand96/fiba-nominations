@@ -64,6 +64,12 @@ const { t, lang, setLang } = useLanguage()
 - **Todo** string visible pasa por `t('clave')`. ES es el default; el switch
   ES/EN está en el sidebar.
 - Agregá las claves nuevas en **ambos** idiomas en `src/i18n/translations.js`.
+- El texto sigue la sección **Redacción** de `DESIGN_SYSTEM.md`: tuteo neutro,
+  glosario único (partido, oficiales del torneo, honorarios, enlace, eliminar...),
+  sin raya larga ni flechas, y hints que dicen qué hacer sin explicar el diseño.
+- Las cuatro páginas públicas comparten encabezado, enlace de idioma y bloque de
+  "enlace no disponible": `components/layout/PublicShell.jsx` (`PublicShell`,
+  `LanguageLink`, `PublicUnavailable`). Se muestran siempre en modo claro.
 
 ## Llamadas al API (`src/api/client.js`)
 

@@ -113,7 +113,7 @@ export function compactMoney(n) {
 
 function clip(text, max) {
   const s = String(text ?? '')
-  return s.length > max ? `${s.slice(0, max - 1)}…` : s
+  return s.length > max ? `${s.slice(0, max - 3)}...` : s
 }
 
 const round2 = (n) => Math.round(n * 100) / 100
@@ -189,7 +189,7 @@ function accountRows(rows, t) {
       const name = r.general ? t('budget.general') : (r.label || r.key)
       return {
         name,
-        full: r.key && !r.general ? `${r.key} — ${name}` : name,
+        full: r.key && !r.general ? `${r.key} · ${name}` : name,
         budgeted,
         executed,
         over: budgeted > 0 ? executed > budgeted : executed > 0,

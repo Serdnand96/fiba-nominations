@@ -8,7 +8,8 @@ import {
 import { useLanguage } from '../i18n/LanguageContext'
 import { useToast } from '../components/ui/Toast'
 import { useAuth } from '../contexts/AuthContext'
-import { SELECTABLE_COMPETITION_TYPES, competitionTypeColor, fibaDatesDiffer, fibaDateRange } from '../lib/competitions'
+import { SELECTABLE_COMPETITION_TYPES, competitionTypeColor, competitionTypeLabel, fibaDatesDiffer, fibaDateRange } from '../lib/competitions'
+import { roleLabel } from '../lib/roles'
 
 // El registro de tipos vive en src/lib/competitions.js — estaba duplicado acá y
 // en Availability.jsx, y las dos copias habían quedado desactualizadas.
@@ -16,6 +17,15 @@ const COMP_TYPES = [{ key: 'All', label: 'All' }, ...SELECTABLE_COMPETITION_TYPE
 // Roles the competition crew accepts (mirrors api/_lib/roles.py). On
 // tournament-fee competitions this roster covers every game and training slot.
 const CREW_ROLES = ['TD', 'VGO', 'REF', 'REF_INSTRUCTOR', 'VIDEO_OPERATOR']
+
+// Plantillas base de carta. La clave se guarda; el rótulo es solo para mostrar.
+const TEMPLATE_LABELS = {
+  WCQ: { es: 'WCQ', en: 'WCQ' },
+  BCLA_F4: { es: 'BCLA Final Four', en: 'BCLA Final Four' },
+  BCLA_RS: { es: 'BCLA Temporada regular', en: 'BCLA Regular season' },
+  LSB: { es: 'LSB', en: 'LSB' },
+  GENERIC: { es: 'Genérica', en: 'Generic' },
+}
 const getTypeColor = competitionTypeColor
 
 const TEMPLATE_MAP = {
@@ -98,16 +108,21 @@ export default function Calendar() {
     if (ev.is_tbd || !ev.start_date) return null
     const s = new Date(ev.start_date + 'T00:00:00'), e = new Date(ev.end_date + 'T00:00:00')
     const sm = MONTHS_SHORT[s.getMonth()], em = MONTHS_SHORT[e.getMonth()]
-    if (s.getMonth() === e.getMonth()) return `${sm} ${s.getDate()}–${e.getDate()}`
-    return `${sm} ${s.getDate()} – ${em} ${e.getDate()}`
+    if (s.getMonth() === e.getMonth()) return `${sm} ${s.getDate()}-${e.getDate()}`
+    return `${sm} ${s.getDate()}-${em} ${e.getDate()}`
   }
 
   function formatFullDate(ev) {
     if (ev.is_tbd || !ev.start_date) return t('calendar.tbd')
     const locale = lang === 'es' ? 'es' : 'en-US'
     const opts = { day: 'numeric', month: 'long', year: 'numeric' }
-    return `${new Date(ev.start_date + 'T00:00:00').toLocaleDateString(locale, opts)} – ${new Date(ev.end_date + 'T00:00:00').toLocaleDateString(locale, opts)}`
+    const from = new Date(ev.start_date + 'T00:00:00').toLocaleDateString(locale, opts)
+    const to = new Date(ev.end_date + 'T00:00:00').toLocaleDateString(locale, opts)
+    return lang === 'es' ? `Del ${from} al ${to}` : `${from} to ${to}`
   }
+
+  const templateLabel = key => TEMPLATE_LABELS[key]?.[lang === 'es' ? 'es' : 'en'] || key
+  const typeChipLabel = key => (key === 'All' ? (lang === 'es' ? 'Todas' : 'All') : competitionTypeLabel(key, lang))
 
   useEffect(() => { load() }, [filter])
 
@@ -313,7 +328,7 @@ export default function Calendar() {
             style={filter === ct.key ? { backgroundColor: ct.color || '#374151', borderColor: ct.color || '#374151' } : {}}>
             <span className="inline-block w-1.5 h-1.5 rounded-full mr-1.5 align-middle"
               style={{ backgroundColor: filter === ct.key ? '#fff' : (ct.color || '#9CA3AF') }} />
-            {ct.label}
+            {typeChipLabel(ct.key)}
           </button>
         ))}
       </div>
@@ -341,7 +356,7 @@ export default function Calendar() {
                           {formatDateRange(ev) ? (
                             <span className="text-xs text-fiba-muted/60">{formatDateRange(ev)}</span>
                           ) : (
-                            <span className="text-xs bg-amber-100 text-amber-800 dark:bg-amber-500/20 dark:text-amber-400 px-1.5 py-0.5 rounded font-medium">TBD</span>
+                            <span className="text-xs bg-amber-100 text-amber-800 dark:bg-amber-500/20 dark:text-amber-400 px-1.5 py-0.5 rounded font-medium">{lang === 'es' ? 'Por confirmar' : 'TBD'}</span>
                           )}
                           {fibaDatesDiffer(ev) && (
                             <span className="text-[10px] bg-amber-100 text-amber-800 dark:bg-amber-500/20 dark:text-amber-400 px-1.5 py-0.5 rounded font-medium"
@@ -433,10 +448,10 @@ export default function Calendar() {
                 <div className="flex items-center gap-2 mb-1">
                   <span className="inline-block px-2 py-0.5 rounded text-xs font-medium text-ink-900 dark:text-white"
                     style={{ backgroundColor: getTypeColor(panelData?.competition_type || selectedEvent.competition_type) }}>
-                    {panelData?.competition_type || selectedEvent.competition_type}
+                    {competitionTypeLabel(panelData?.competition_type || selectedEvent.competition_type, lang)}
                   </span>
                   <span className="inline-block px-2 py-0.5 rounded text-xs font-medium bg-fiba-surface text-fiba-muted">
-                    {panelData?.template_key || selectedEvent.template_key || 'GENERIC'}
+                    {templateLabel(panelData?.template_key || selectedEvent.template_key || 'GENERIC')}
                   </span>
                 </div>
                 <h3 className="text-lg font-bold text-ink-900 dark:text-white">{panelData?.name || selectedEvent.name}</h3>
@@ -481,7 +496,7 @@ export default function Calendar() {
                     </button>
                   </>
                 )}
-                <button onClick={closePanel}
+                <button onClick={closePanel} aria-label={t('common.close')} title={t('common.close')}
                   className="p-1.5 rounded hover:bg-fiba-surface text-fiba-muted hover:text-ink-900 dark:text-white">
                   <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
                 </button>
@@ -502,8 +517,8 @@ export default function Calendar() {
                         <div key={a.id} className="flex items-center justify-between bg-fiba-surface/50 rounded-lg px-3 py-2">
                           <div className="flex items-center gap-2">
                             {a.personnel?.id && a.role === 'TD' && <AvailDot avail={availabilityMap[a.personnel.id]} t={t} />}
-                            <span className="text-sm font-medium text-ink-900 dark:text-white">{a.personnel?.name || 'Staff'}</span>
-                            <span className={`inline-block px-1.5 py-0.5 rounded text-xs font-medium ${a.role === 'VGO' ? 'bg-purple-100 text-purple-700 dark:bg-purple-500/20 dark:text-purple-400' : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-400'}`}>{a.role}</span>
+                            <span className="text-sm font-medium text-ink-900 dark:text-white">{a.personnel?.name || (lang === 'es' ? 'Sin nombre' : 'No name')}</span>
+                            <span className={`inline-block px-1.5 py-0.5 rounded text-xs font-medium ${a.role === 'VGO' ? 'bg-purple-100 text-purple-700 dark:bg-purple-500/20 dark:text-purple-400' : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-400'}`}>{roleLabel(a.role, t)}</span>
                           </div>
                           {canEdit && (
                             <button onClick={() => handleRemoveAssignment(a.id)}
@@ -537,7 +552,7 @@ export default function Calendar() {
                                 {p.role === 'TD' && <AvailDot avail={availabilityMap[p.id]} t={t} />}
                                 <span>{p.name}</span>
                               </div>
-                              <span className={`text-xs px-1.5 py-0.5 rounded ${p.role === 'VGO' ? 'bg-purple-100 text-purple-700 dark:bg-purple-500/20 dark:text-purple-400' : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-400'}`}>{p.role}</span>
+                              <span className={`text-xs px-1.5 py-0.5 rounded ${p.role === 'VGO' ? 'bg-purple-100 text-purple-700 dark:bg-purple-500/20 dark:text-purple-400' : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-400'}`}>{roleLabel(p.role, t)}</span>
                             </button>
                           ))}
                         </div>
@@ -594,7 +609,7 @@ export default function Calendar() {
                         por eso se podía crear un evento con un tipo que la
                         barra de filtros no ofrecía. */}
                     {COMP_TYPES.filter(ct => ct.key !== 'All').map(ct => (
-                      <option key={ct.key} value={ct.key}>{ct.label}</option>
+                      <option key={ct.key} value={ct.key}>{competitionTypeLabel(ct.key, lang)}</option>
                     ))}
                   </select>
                 </div>
@@ -602,11 +617,9 @@ export default function Calendar() {
                   <label className="fiba-label">{t('calendar.template')}</label>
                   <select value={eventForm.template_key} onChange={e => setEventForm(f => ({ ...f, template_key: e.target.value }))}
                     className="fiba-select">
-                    <option value="WCQ">WCQ</option>
-                    <option value="BCLA_F4">BCLA Final 4</option>
-                    <option value="BCLA_RS">BCLA Regular Season</option>
-                    <option value="LSB">LSB</option>
-                    <option value="GENERIC">GENERIC</option>
+                    {Object.keys(TEMPLATE_LABELS).map(key => (
+                      <option key={key} value={key}>{templateLabel(key)}</option>
+                    ))}
                   </select>
                 </div>
               </div>

@@ -110,14 +110,14 @@ export default function Loans() {
                 <tr key={l.id} className={overdue ? 'bg-red-500/5' : ''}>
                   <td className="px-4 py-3">
                     <Link to={`/inventory/${l.asset_id}`} className="text-fiba-accent hover:underline">{l.asset_name}</Link>
-                    <div className="text-[11px] text-fiba-muted font-mono">{l.asset_serial_number || '—'}</div>
+                    <div className="text-[11px] text-fiba-muted font-mono">{l.asset_serial_number || '-'}</div>
                   </td>
                   <td className="px-4 py-3">{l.assigned_to}</td>
                   <td className="px-4 py-3 text-sm">{fmtDate(l.loan_date)}</td>
                   <td className={`px-4 py-3 text-sm ${overdue ? 'text-red-400 font-medium' : ''}`}>
-                    {l.expected_return || '—'}
+                    {l.expected_return || '-'}
                   </td>
-                  <td className="px-4 py-3 text-sm">{fmtDate(l.actual_return) || '—'}</td>
+                  <td className="px-4 py-3 text-sm">{fmtDate(l.actual_return) || '-'}</td>
                   <td className="px-4 py-3">
                     <span className={`px-2 py-0.5 rounded text-xs ${l.status === 'active' ? 'bg-blue-500/20 text-blue-400' : 'bg-emerald-500/20 text-emerald-400'}`}>
                       {t(`loans.${l.status}`)}

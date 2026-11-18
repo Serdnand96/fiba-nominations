@@ -6,8 +6,8 @@ export const hhmm = (t) => (t ? String(t).slice(0, 5) : '')
 // Columnas propias de cada sección; el resto de la fila es igual en las dos.
 export const SECTION_COLUMNS = {
   transport: [
-    { key: 'pickup_time', es: 'Pick up hotel', en: 'Pick up hotel', time: true },
-    { key: 'return_time', es: 'Return hotel', en: 'Return hotel', time: true },
+    { key: 'pickup_time', es: 'Recogida en el hotel', en: 'Hotel pick-up', time: true },
+    { key: 'return_time', es: 'Regreso al hotel', en: 'Return to hotel', time: true },
   ],
   meals: [
     { key: 'lunch', es: 'Almuerzo', en: 'Lunch' },
@@ -17,7 +17,7 @@ export const SECTION_COLUMNS = {
 }
 
 export function longDate(iso, lang) {
-  if (!iso) return '—'
+  if (!iso) return '-'
   return new Date(iso + 'T12:00:00').toLocaleDateString(lang === 'es' ? 'es' : 'en-US',
     { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })
 }
@@ -67,8 +67,8 @@ export function ScheduleDay({ day, section, lang, onEdit, onDelete }) {
           <thead>
             <tr>
               {cols.map(c => <th key={c.key}>{t(c.es, c.en)}</th>)}
-              <th>{t('Comienzo', 'Start')}</th>
-              <th>{t('Final', 'End')}</th>
+              <th>{t('Inicio', 'Start')}</th>
+              <th>{t('Fin', 'End')}</th>
               <th>{t('Equipo', 'Team')}</th>
               {editable && <th />}
             </tr>
@@ -76,11 +76,11 @@ export function ScheduleDay({ day, section, lang, onEdit, onDelete }) {
           <tbody>
             {day.trainings.map((row, i) => (
               <tr key={row.id ?? `t${i}`}>
-                {cols.map(c => <td key={c.key} className="px-4 py-1.5 text-xs font-mono font-semibold">{cellValue(row, c) || '—'}</td>)}
-                <td className="px-4 py-1.5 text-xs font-mono">{hhmm(row.start_time) || '—'}</td>
-                <td className="px-4 py-1.5 text-xs font-mono">{hhmm(row.end_time) || '—'}</td>
+                {cols.map(c => <td key={c.key} className="px-4 py-1.5 text-xs font-mono font-semibold">{cellValue(row, c) || '-'}</td>)}
+                <td className="px-4 py-1.5 text-xs font-mono">{hhmm(row.start_time) || '-'}</td>
+                <td className="px-4 py-1.5 text-xs font-mono">{hhmm(row.end_time) || '-'}</td>
                 <td className="px-4 py-1.5 text-xs font-medium">
-                  {row.team || '—'}
+                  {row.team || '-'}
                   {row.notes && <span className="block text-[11px] font-normal text-fiba-muted">{row.notes}</span>}
                 </td>
                 {actions(row)}
@@ -95,8 +95,8 @@ export function ScheduleDay({ day, section, lang, onEdit, onDelete }) {
             )}
             {day.games.map((row, i) => (
               <tr key={row.id ?? `g${i}`}>
-                {cols.map(c => <td key={c.key} className="px-4 py-1.5 text-xs font-mono font-semibold">{cellValue(row, c) || '—'}</td>)}
-                <td className="px-4 py-1.5 text-xs font-mono font-semibold" colSpan={2}>{hhmm(row.start_time) || '—'}</td>
+                {cols.map(c => <td key={c.key} className="px-4 py-1.5 text-xs font-mono font-semibold">{cellValue(row, c) || '-'}</td>)}
+                <td className="px-4 py-1.5 text-xs font-mono font-semibold" colSpan={2}>{hhmm(row.start_time) || '-'}</td>
                 <td className="px-4 py-1.5 text-xs font-medium">
                   {row.team || '?'} <span className="text-fiba-muted font-normal">vs</span> {row.team_b || '?'}
                   {row.notes && <span className="block text-[11px] font-normal text-fiba-muted">{row.notes}</span>}
@@ -105,7 +105,7 @@ export function ScheduleDay({ day, section, lang, onEdit, onDelete }) {
               </tr>
             ))}
             {day.trainings.length === 0 && day.games.length === 0 && (
-              <tr><td colSpan={span} className="px-4 py-3 text-xs text-center text-fiba-muted">{t('Sin filas este día.', 'No rows this day.')}</td></tr>
+              <tr><td colSpan={span} className="px-4 py-3 text-xs text-center text-fiba-muted">{t('Nada programado este día.', 'Nothing scheduled this day.')}</td></tr>
             )}
           </tbody>
         </table>

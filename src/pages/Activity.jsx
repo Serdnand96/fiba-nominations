@@ -92,7 +92,7 @@ export default function Activity() {
   }
 
   function moduleLabel(m) {
-    if (!m) return '—'
+    if (!m) return '-'
     if (m === 'assets') return t('nav.inventory')
     if (m === 'permissions') return t('activity.permissionsModule')
     const label = t(`nav.${m}`)
@@ -171,7 +171,7 @@ export default function Activity() {
                     return (
                       <tr key={r.id}>
                         <td className="px-4 py-3 text-sm whitespace-nowrap text-fiba-muted">{formatDate(r.created_at)}</td>
-                        <td className="px-4 py-3 text-sm font-medium text-ink-900 dark:text-white">{r.user_email || '—'}</td>
+                        <td className="px-4 py-3 text-sm font-medium text-ink-900 dark:text-white">{r.user_email || '-'}</td>
                         <td className="px-4 py-3">
                           <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${style.cls}`}>
                             {style.labelKey ? t(style.labelKey) : r.action}
@@ -183,7 +183,7 @@ export default function Activity() {
                             {r.action} {r.path.replace(/^\/api/, '')}
                           </span>
                         </td>
-                        <td className="px-4 py-3 text-xs text-fiba-muted whitespace-nowrap">{r.ip || '—'}</td>
+                        <td className="px-4 py-3 text-xs text-fiba-muted whitespace-nowrap">{r.ip || '-'}</td>
                       </tr>
                     )
                   })}

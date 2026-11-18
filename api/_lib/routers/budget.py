@@ -1510,7 +1510,8 @@ def export_summary(
     autosize(ws)
 
     suffix = f"-{department}" if department else ""
-    return xlsx_response(workbook_bytes(wb), f"budget-summary-{year}{suffix}.xlsx")
+    title = f"{'Budget summary' if lang == 'en' else 'Resumen de presupuesto'} {year}"
+    return xlsx_response(workbook_bytes(wb, title), f"budget-summary-{year}{suffix}.xlsx")
 
 
 @router.get("/competitions/{competition_id}/cost")
@@ -2254,7 +2255,8 @@ def export_expenses(
 
     money_format(ws, [_EXPENSE_EXPORT_AMOUNT_COL])
     autosize(ws)
-    return xlsx_response(workbook_bytes(wb), f"budget-expenses-{year or 'all'}.xlsx")
+    title = ("Expenses" if lang_key == "en" else "Gastos") + (f" {year}" if year else "")
+    return xlsx_response(workbook_bytes(wb, title), f"budget-expenses-{year or 'all'}.xlsx")
 
 
 def _group_totals(rows: list, key: str) -> list:

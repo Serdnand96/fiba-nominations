@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useLanguage } from '../../i18n/LanguageContext'
 import { updateGame } from '../../api/client'
+import { Icon } from '../../lib/icons'
 
 // Qué hizo el último sync con FIBA.
 //
@@ -40,7 +41,7 @@ export default function SyncReport({ report, onClose, onApplied, canEdit }) {
   const pending = report.pending_in_fiba || []
   const claimed = report.claimed_elsewhere || []
 
-  // "Ventana W5", "Grupo D", "Grupos 37, 38, 39, 40", "Fechas …" o la combinación.
+  // "Ventana W5", "Grupo D", "Grupos 37, 38, 39, 40", "Fechas del X al Y" o la combinación.
   function segmentLabel(l) {
     const parts = []
     if (report.window_applied) parts.push(`${l === 'es' ? 'Ventana' : 'Window'} ${report.window_code}`)
@@ -49,7 +50,9 @@ export default function SyncReport({ report, onClose, onApplied, canEdit }) {
       const word = l === 'es' ? (codes.length > 1 ? 'Grupos' : 'Grupo') : (codes.length > 1 ? 'Groups' : 'Group')
       parts.push(`${word} ${codes.join(', ')}`)
     }
-    if (report.date_applied) parts.push(`${l === 'es' ? 'Fechas' : 'Dates'} ${report.date_from} → ${report.date_to}`)
+    if (report.date_applied) parts.push(l === 'es'
+      ? `Fechas del ${report.date_from} al ${report.date_to}`
+      : `Dates ${report.date_from} to ${report.date_to}`)
     return parts.join(' · ')
   }
 
@@ -89,8 +92,8 @@ export default function SyncReport({ report, onClose, onApplied, canEdit }) {
           {report.window_applied || report.group_applied || report.date_applied ? (
             <div className="text-[11px] text-fiba-muted/80 mt-0.5">
               {t(
-                `${segmentLabel('es')}: ${report.imported_from_window} de los ${report.total_from_fiba} partidos que devuelve FIBA. Los otros ${report.total_from_fiba - report.imported_from_window - pending.length} son de otro tramo.`,
-                `${segmentLabel('en')}: ${report.imported_from_window} of the ${report.total_from_fiba} games FIBA returns. The other ${report.total_from_fiba - report.imported_from_window - pending.length} belong to another segment.`,
+                `${segmentLabel('es')}: ${report.imported_from_window} de ${report.total_from_fiba} partidos de FIBA. Los demás son de otras ventanas o grupos.`,
+                `${segmentLabel('en')}: ${report.imported_from_window} of ${report.total_from_fiba} FIBA games. The rest belong to other windows or groups.`,
               )}
             </div>
           ) : (
@@ -104,8 +107,8 @@ export default function SyncReport({ report, onClose, onApplied, canEdit }) {
           {pending.length > 0 && (
             <div className="text-[11px] text-amber-500 mt-0.5">
               {t(
-                `${pending.length} partidos todavía sin fecha o sin equipos en FIBA: se importan cuando FIBA los defina.`,
-                `${pending.length} games still without date or teams on FIBA: they will be imported once FIBA sets them.`,
+                `${pending.length} partidos aún sin fecha o sin equipos en FIBA. Se agregarán cuando estén definidos.`,
+                `${pending.length} games still without date or teams on FIBA. They will be added once they are set.`,
               )}
             </div>
           )}
@@ -114,40 +117,42 @@ export default function SyncReport({ report, onClose, onApplied, canEdit }) {
           {claimed.length > 0 && (
             <div className="text-[11px] text-amber-500 mt-0.5">
               {t(
-                `${claimed.length} partido(s) del tramo ya están en otra competencia y no se duplicaron: ${claimed.join(', ')}.`,
-                `${claimed.length} game(s) in this segment already belong to another competition and were not duplicated: ${claimed.join(', ')}.`,
+                `Ya están en otra competencia: ${claimed.join(', ')}.`,
+                `Already in another competition: ${claimed.join(', ')}.`,
               )}
             </div>
           )}
         </div>
-        <button onClick={onClose}
-          className="text-fiba-muted hover:text-ink-900 dark:hover:text-white text-lg leading-none shrink-0">&times;</button>
+        <button onClick={onClose} aria-label={t('Cerrar', 'Close')} title={t('Cerrar', 'Close')}
+          className="text-fiba-muted hover:text-ink-900 dark:hover:text-white shrink-0">
+          <Icon.X className="w-4 h-4" />
+        </button>
       </div>
 
       {error && (
-        <div className="mx-4 mb-3 rounded-lg bg-red-500/10 border border-red-500/20 px-3 py-2 text-xs text-red-400">{error}</div>
+        <div className="mx-4 mb-3 rounded-lg bg-danger-50 dark:bg-danger-500/10 border border-danger-100 dark:border-danger-500/20 px-3 py-2 text-xs text-danger-700 dark:text-danger-500">{error}</div>
       )}
 
       {/* 1 — lo que necesita una decisión humana */}
       {mismatches.length > 0 && (
         <div className="border-t border-fiba-border px-4 py-3">
           <div className="text-[10px] font-bold uppercase tracking-wider text-amber-500 mb-2">
-            {t(`${mismatches.length} necesitan tu atención`, `${mismatches.length} need your attention`)}
+            {t(`${mismatches.length} por revisar`, `${mismatches.length} to review`)}
           </div>
           <p className="text-[11px] text-fiba-muted mb-2">
-            {t('El sync no cambia los equipos solo: quién es local define la sede y el texto de las cartas.',
-               'The sync does not change teams on its own: who plays at home drives the venue and the letter text.')}
+            {t('Confirma el local antes de aplicar. De eso dependen la sede y las cartas.',
+               'Check the home team before applying. It sets the venue and the letters.')}
           </p>
           <div className="divide-y divide-fiba-border border border-fiba-border rounded-lg">
             {mismatches.map(m => (
               <div key={m.game_id} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2">
-                <span className="font-mono text-[10px] text-fiba-muted/80 shrink-0">{m.game_number || '—'}</span>
+                <span className="font-mono text-[10px] text-fiba-muted/80 shrink-0">{m.game_number || '-'}</span>
                 <span className="text-xs text-fiba-muted shrink-0">{m.date}</span>
                 <span className="text-sm text-ink-900 dark:text-white min-w-0">
                   <span className="line-through decoration-red-400/70 opacity-70">
                     {m.ours.team_a_code} vs {m.ours.team_b_code}
                   </span>
-                  <span className="mx-1.5 text-fiba-muted">→</span>
+                  <Icon.Chevron className="inline w-3.5 h-3.5 mx-1 text-fiba-muted align-[-2px]" aria-hidden="true" />
                   <span className="font-semibold">{m.fiba.team_a_code} vs {m.fiba.team_b_code}</span>
                 </span>
                 {m.kind === 'differs' && (
@@ -160,7 +165,7 @@ export default function SyncReport({ report, onClose, onApplied, canEdit }) {
                     className="btn-fiba text-xs px-2.5 py-1 ml-auto disabled:opacity-50">
                     {applying === m.game_id
                       ? t('Aplicando...', 'Applying...')
-                      : t('Aplicar FIBA', 'Apply FIBA')}
+                      : t('Usar datos de FIBA', 'Use FIBA data')}
                   </button>
                 )}
               </div>
@@ -186,7 +191,7 @@ export default function SyncReport({ report, onClose, onApplied, canEdit }) {
               {rescheduled.map(r => (
                 <div key={r.game_id} className="px-3 py-2">
                   <div className="flex items-center gap-2 min-w-0">
-                    <span className="font-mono text-[10px] text-fiba-muted/80 shrink-0">{r.game_number || '—'}</span>
+                    <span className="font-mono text-[10px] text-fiba-muted/80 shrink-0">{r.game_number || '-'}</span>
                     <span className="text-sm text-ink-900 dark:text-white truncate">{r.game}</span>
                     <span className="text-xs text-fiba-muted shrink-0 ml-auto">{r.date}</span>
                   </div>
@@ -194,9 +199,9 @@ export default function SyncReport({ report, onClose, onApplied, canEdit }) {
                     {Object.entries(r.changes).map(([field, v]) => (
                       <span key={field} className="text-[11px] text-fiba-muted">
                         {label(field)}:{' '}
-                        <span className="line-through opacity-60">{v.before || '—'}</span>
-                        {' → '}
-                        <span className="text-ink-700 dark:text-gray-300">{v.after || '—'}</span>
+                        <span className="line-through opacity-60">{v.before || '-'}</span>
+                        <Icon.Chevron className="inline w-3 h-3 mx-1 align-[-2px]" aria-hidden="true" />
+                        <span className="text-ink-700 dark:text-gray-300">{v.after || '-'}</span>
                       </span>
                     ))}
                   </div>
