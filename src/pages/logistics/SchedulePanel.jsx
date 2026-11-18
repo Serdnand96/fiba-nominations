@@ -356,7 +356,7 @@ function ScheduleDoc({ competitionId, competitionName, section, audience, schedu
           <p className="text-sm">{t('Todavía no hay cronograma cargado para este grupo.', 'No schedule loaded for this group yet.')}</p>
           {canEdit && (
             <button onClick={handleCreateEmpty} className="text-xs text-fiba-accent hover:underline mt-2">
-              {t('Cargarlo a mano, sin Excel', 'Enter it manually, without Excel')}
+              {t('Cargar a mano, sin Excel', 'Enter manually, without Excel')}
             </button>
           )}
         </div>
@@ -551,7 +551,7 @@ function AudienceSchedules({ competitionId, competitionName, section, audience, 
   const hasGeneral = sorted.some(d => !d.label)
   // Con al menos un cronograma con etiqueta, el selector siempre ofrece
   // "General", exista o no: si no existe, al elegirlo se ve el estado vacío con
-  // "Importar Excel" y "Cargarlo a mano" operando sobre la etiqueta vacía.
+  // "Importar Excel" y "Cargar a mano" operando sobre la etiqueta vacía.
   const entries = useMemo(() => (
     sorted.length > 0 && !hasGeneral
       ? [{ id: GENERAL_KEY, label: '', doc: null }, ...sorted.map(d => ({ id: d.id, label: d.label, doc: d }))]
