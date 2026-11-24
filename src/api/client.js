@@ -310,6 +310,30 @@ const postBudgetImport = (path, file, options) =>
 export const previewBudgetImport = (file, options) => postBudgetImport('/budget/import/lines/preview', file, options)
 export const commitBudgetImport = (file, options) => postBudgetImport('/budget/import/lines/commit', file, options)
 
+// Import de gastos desde el ledger de Finanzas. Mismo esquema: preview sin
+// escribir, commit con lo que el usuario asignó. El commit manda además lo que
+// el preview prometió (cantidad y total): si el backend recalcula otra cosa
+// responde 409 y no escribe. Solo admin general de budget.
+const expenseImportForm = (file, options = {}) => {
+  const form = new FormData()
+  form.append('file', file)
+  if (options.sheet) form.append('sheet', options.sheet)
+  if (options.mapping) form.append('mapping', JSON.stringify(options.mapping))
+  if (options.expected) {
+    form.append('expected_count', options.expected.count)
+    form.append('expected_total', options.expected.total)
+  }
+  return form
+}
+const postExpenseImport = (path, file, options) =>
+  api.post(path, expenseImportForm(file, options), {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  }).then(r => r.data)
+export const previewExpenseImport = (file, options) => postExpenseImport('/budget/import/expenses/preview', file, options)
+export const commitExpenseImport = (file, options) => postExpenseImport('/budget/import/expenses/commit', file, options)
+export const undoExpenseImport = (batch, reason) =>
+  api.post('/budget/import/expenses/undo', { batch, reason }).then(r => r.data)
+
 // Export de las líneas en el mismo formato que lee el import (plantilla y
 // round-trip). Blob + JWT, como el resto de las descargas.
 export const downloadBudgetLinesXlsx = async (params) => {

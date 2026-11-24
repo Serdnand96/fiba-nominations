@@ -310,8 +310,9 @@ recorte vive en el código (el `service_role` bypassa RLS). Contrato completo en
 `_assert_general_admin()` = superadmin o fila `'*'` con `can_edit`. Lo exigen:
 `POST`/`PATCH` de `/budget/accounts`, `/accounts/{code}/remap`,
 `DELETE /budget/vendors/{id}`, cambiar `name` / `active` de un proveedor, crear
-un gasto ya `paid`, y **todo** lo que toque `vendors.bank_info` /
-`vendors.tax_id`:
+un gasto ya `paid` (de a uno, o en lote con el import del ledger:
+`/budget/import/expenses/preview`, `/commit` y `/undo`), y **todo** lo que toque
+`vendors.bank_info` / `vendors.tax_id`:
 
 - Un no-admin recibe `has_bank_info: bool`, nunca el dato: ni en el GET, ni en
   la **respuesta** de un POST/PATCH (`_shape_vendor`), ni como oráculo de
@@ -321,6 +322,24 @@ un gasto ya `paid`, y **todo** lo que toque `vendors.bank_info` /
 
 El headcount y los supuestos no son de admin general sino de Competitions:
 los GET exigen **ver** ese departamento y los PUT **editarlo**.
+
+**Import del ledger de gastos.** Crea gastos `paid` sin pasar por aprobación,
+así que hay que mirar tres cosas en cualquier cambio:
+
+- Los tres endpoints llevan `require_edit("budget")` **y**
+  `_assert_general_admin()`, y el preview también: muestra gastos existentes de
+  todos los departamentos.
+- `/undo` es la **única** eliminación de gastos `paid`. Tiene que seguir
+  exigiendo motivo y que el lote lo haya importado el caller (o ser
+  superadmin), y borrar solo las filas que `untouched()` da por intactas
+  (BUDGET_MODULE.md §14). El `batch` se valida con regex (`^[0-9a-f]{12}$`).
+- **El lote se identifica por `finance_status_history.meta.import.batch`, no
+  por `expenses.comments`.** `comments` es editable hasta en `paid`: con el
+  lote saliendo de ahí, un editor podía marcar un gasto ajeno y un superadmin
+  lo borraba al deshacer. Volver a `ilike` sobre `comments` reabre ese agujero.
+- El commit exige `expected_count` / `expected_total` (finito) y responde 409 si
+  el plan cambió. Ante un timeout **no reintenta** el insert: concilia contra
+  la base. Cada gasto y cada borrado dejan fila en `finance_status_history`.
 
 ### 10d. Datos bancarios de personas (`personnel_banking`)
 
@@ -408,6 +427,9 @@ de Supabase Auth). Tenelos presentes pero no son código de este repo.
       gastos) siguen chequeando el derecho adentro?
 - [ ] ¿`bank_info` / `tax_id` de proveedores siguen solo para el admin general
       (GET, respuesta de PATCH y búsqueda)?
+- [ ] Import del ledger: ¿preview, commit y undo siguen solo para el admin
+      general? ¿El undo sigue limitado al lote (por historial, no por
+      `comments`), a quien lo importó, con motivo y a las filas sin tocar?
 - [ ] ¿`personnel_banking` sigue fuera de `personnel.py`, enmascarado en el GET
       y con `reveal` y la descarga del W-8 como POST auditados?
 - [ ] `/me/*`: ¿cada query filtra por el `user_id` del caller?

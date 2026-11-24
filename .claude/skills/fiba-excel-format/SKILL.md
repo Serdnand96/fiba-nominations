@@ -1,11 +1,11 @@
 ---
 name: fiba-excel-format
-description: Mapeo de columnas y reglas de parsing/matching de los imports de planilla de fiba-nominations — el formato Excel multi-sport de FIBA del Training Schedule (training.py), el import de roster de personnel (bulk_import.py), los imports de logística, flight manifest y rooming list (logistics_import.py) y el import de presupuesto (budget_import.py). Usar para cualquier cambio de parsing/validación de Excel o CSV.
+description: Mapeo de columnas y reglas de parsing/matching de los imports de planilla de fiba-nominations — el formato Excel multi-sport de FIBA del Training Schedule (training.py), el import de roster de personnel (bulk_import.py), los imports de logística, flight manifest y rooming list (logistics_import.py), el import de presupuesto (budget_import.py) y el import de gastos desde el ledger de Finanzas (expense_import.py). Usar para cualquier cambio de parsing/validación de Excel o CSV.
 ---
 
 # Formatos de import — Excel/CSV (fiba-nominations)
 
-Hay **cuatro importers distintos**. No los confundas: viven en archivos
+Hay **cinco importers distintos**. No los confundas: viven en archivos
 separados, tienen formatos distintos y alimentan tablas distintas.
 
 | Import | Código | Endpoint | Tabla destino |
@@ -14,6 +14,7 @@ separados, tienen formatos distintos y alimentan tablas distintas.
 | Roster de personnel | `api/_lib/services/bulk_import.py::process_bulk_import` | `POST /api/personnel/import` | `personnel` |
 | Logística (flight manifest + rooming list) | `api/_lib/services/logistics_import.py` | `POST /api/logistics/import/{manifest,rooming}/{preview,commit}` | `logistics_participants`, `logistics_travel_legs`, `logistics_stays` |
 | Presupuesto | `api/_lib/services/budget_import.py` | `POST /api/budget/import/lines/{preview,commit}` | `budget_lines` (+ `accounts` provisorias) |
+| Gastos (ledger de Finanzas) | `api/_lib/services/expense_import.py` | `POST /api/budget/import/expenses/{preview,commit,undo}` | `expenses` (entran `paid`) |
 
 ---
 
@@ -351,3 +352,75 @@ Lo que lo diferencia de los otros tres:
 Validado contra los archivos reales del cliente: el de IT reproduce
 $215.015 (2027) y el de Competitions $970.416 con las 13 columnas mapeadas —
 las mismas cifras de `BUDGET_MODULE.md` §10.
+
+---
+
+## 5) Gastos — ledger de Finanzas (`expense_import.py`)
+
+Import de `expenses` desde el ledger plano que exporta Finanzas, una fila por
+movimiento. Solo admin general de Budget. Contrato completo en
+`BUDGET_MODULE.md` §13.
+
+- `POST /api/budget/import/expenses/preview` → `read_ledger()` + `build_plan()`
+- `POST /api/budget/import/expenses/commit` → lo mismo + `commit_records()`
+- `POST /api/budget/import/expenses/undo` → elimina un lote
+
+**El servicio es puro**: `read_ledger(content, sheet)` solo lee, y
+`build_plan(parsed, mapping=, catalog=, existing=, lines=)` recibe los catálogos
+y los gastos existentes que le pasa el router (`_ledger_plan` en `budget.py`,
+siempre por `_scoped()`). No agregues una query adentro del servicio.
+
+### Layout real (`10.31.26.xlsx`)
+
+Encabezado en la **fila 2**, datos desde la 3, filas vacías al final:
+
+```
+Posting Date | Account | Details | Debit (LC) | Credit (LC) | Project | Departments | Cost Center
+```
+
+El encabezado se busca por texto exacto (normalizado) en las primeras 25 filas
+y en cualquier columna; el mapa está en `_ROLES`. Variantes aceptadas: `Date`,
+`Description`, `Amount`, `Dept`, y sus equivalentes en español. Obligatorios:
+fecha, cuenta, detalle y monto (si falta uno, `LedgerFormatError` → 400).
+
+### Gotchas
+
+- **`Offset Account` no es la cuenta de gasto.** Es la contrapartida (la
+  tarjeta, 102430). Tiene su propio rol y va a `comments`. No la agregues al
+  rol `account`: una versión del export traía solo esa columna y todo habría
+  ido a una cuenta inexistente. Por eso el clasificador es propio y exacto, y
+  no se reutiliza `_classify` de `budget_import.py` (que toma "offset account"
+  como cuenta y "total" como monto).
+- **Códigos numéricos**: Excel guarda `611000` como número. `_code()` lo pasa a
+  texto sin el `.0`.
+- **Fechas**: celda de fecha o texto ISO. `3/4/2026` es error a propósito
+  (ledger de EE. UU., usuarios en América Latina). No uses `parse_date` de
+  `logistics_import.py`, que es día-primero.
+- **Monto en centavos** (`cents()`, mitad hacia arriba): `round()` redondea al
+  par y `numeric(12,2)` no; con centavos la clave de duplicado y lo guardado
+  coinciden.
+- **Clave de duplicado** (`dedupe_key`): fecha + `text_key(detalle)` + centavos.
+  `text_key` deja solo letras y números: el mismo cargo sale con espacios de
+  ancho fijo, con una comilla final (`ANYDESK AMERICAS, INC"`) o en otra
+  capitalización según el export. No la cambies por `norm()`: deja pasar esa
+  comilla y duplica.
+- **Multiconjunto, tres pasadas**: clave + cuenta + departamento, clave +
+  cuenta, clave. El mismo cargo dos veces el mismo día es legítimo (Apple) y
+  el ledger llegó a traer las mismas 8 filas en dos cuentas.
+- **Nada se asigna solo**: departamento y proyecto sin asignar son error; la
+  sugerencia de departamento sale de dónde están los duplicados, nunca del
+  parecido del nombre (`ADMN` no es `admin`).
+- **Fila de total**: monto sin fecha, detalle ni cuenta. Se ignora solo si
+  cierra con la suma de arriba; si no, es error.
+- **Créditos y negativos** no se importan (`expenses.amount` no admite
+  negativos) y se listan con su total.
+- **`payee_name`** sale de `VENDOR_PATTERNS` (regex sobre el detalle en
+  mayúsculas) o, sin patrón, del primer tramo del detalle crudo antes de dos
+  espacios. Agregar un proveedor conocido es agregar una tupla ahí.
+- **`comments`** empieza con `import:ledger:<lote>.` y es único por fila
+  (archivo, hoja y fila). Es la traza para las personas y lo que usa el commit
+  para saber qué entró cuando un insert termina en timeout. El **deshacer no
+  lo usa**: identifica el lote por el historial (`meta.import.batch`).
+- **Débito y crédito en la misma fila** es error, no un débito.
+- **Sugerencia de departamento**: por evidencia o por código idéntico, y nunca
+  se aplica sola.

@@ -25,6 +25,7 @@ Ver BUDGET_MODULE.md para el diseño completo.
 import calendar
 import json
 import logging
+import math
 import os
 import re
 import uuid
@@ -37,14 +38,14 @@ from fastapi.responses import Response
 
 from api._lib.auth import has_edit, is_superadmin_request, require_edit, require_superadmin, require_view
 from api._lib.budget_accounts import ACCOUNT_BY_ROLE, TRAVEL_ACCOUNT_BY_ROLE, travel_account_for_role
-from api._lib.database import supabase
+from api._lib.database import SupabaseError, supabase
 from api._lib.finance_years import (
     OPEN_PAYMENT_STATUSES,
     payment_fiscal_year,
     payment_status_year,
     year_of,
 )
-from api._lib.services.finance_history import history_for, record_transition
+from api._lib.services.finance_history import history_for, record_transition, record_transitions
 from api._lib.services.notify import budget_approvers_for, notify
 from api._lib.schemas import (
     AccountCreate,
@@ -57,6 +58,8 @@ from api._lib.schemas import (
     BudgetProject,
     ExpenseApprove,
     ExpenseCreate,
+    ExpenseImportMapping,
+    ExpenseImportUndo,
     ExpenseTransition,
     ExpenseUpdate,
     FeeScheduleApply,
@@ -1023,6 +1026,385 @@ async def commit_line_import(
         year, ",".join(result["departments"]), _user_id(request),
     )
     return result
+
+
+# ─── Import de gastos desde el ledger de Finanzas ────────────────────────────
+#
+# Mismo esquema de dos pasos, con tres diferencias que salen de que los gastos
+# entran **pagados** (son cargos ya cobrados: la carga histórica de
+# `create_expense`, en lote):
+#
+#   1. Solo el admin general. Un `paid` no pasa por aprobación, y `create_expense`
+#      ya reserva esa carga al admin general.
+#   2. El commit recibe lo que el preview prometió (`expected_count` /
+#      `expected_total`) y responde 409 si el plan recalculado no coincide: lo
+#      que se confirma es lo que se vio, aunque la base haya cambiado en el medio.
+#   3. Hay `/undo`. Un gasto pagado casi no se edita ni se borra (§14 de
+#      BUDGET_MODULE.md); sin esto, una importación con el departamento
+#      equivocado se corrige fila por fila o con SQL.
+#
+# El plan lo arma `services/expense_import.py`, que no consulta la base: acá se
+# traen los catálogos y los gastos existentes, siempre por `_scoped()`.
+
+_LEDGER_BATCH_RE = re.compile(r"^[0-9a-f]{12}$")
+_LEDGER_EXISTING_COLUMNS = (
+    "id, record_no, expense_date, description, amount, account_code, "
+    "department_code, status, comments"
+)
+_PAGE = 1000
+
+
+def _paged(build) -> list:
+    """Todas las filas de una lectura, de a `_PAGE`.
+
+    PostgREST corta en 1000 filas sin avisar. Para el control de duplicados eso
+    sería dejar pasar como nuevo lo que quedó después del corte.
+    """
+    rows: list = []
+    offset = 0
+    while True:
+        page = build().order("id").limit(_PAGE).offset(offset).execute().data or []
+        rows.extend(page)
+        if len(page) < _PAGE:
+            return rows
+        offset += _PAGE
+
+
+def _ledger_mapping(raw: Optional[str]) -> dict:
+    if not raw:
+        return ExpenseImportMapping().model_dump()
+    try:
+        return ExpenseImportMapping.model_validate_json(raw).model_dump()
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid mapping")
+
+
+def _ledger_plan(request: Request, content: bytes, sheet: Optional[str], mapping_raw: Optional[str]) -> dict:
+    """Lee el ledger y arma el plan contra la base. Lo comparten preview y commit."""
+    from api._lib.services import expense_import
+
+    mapping = _ledger_mapping(mapping_raw)
+    try:
+        parsed = expense_import.read_ledger(content, sheet or None)
+    except expense_import.LedgerFormatError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+    accounts = {
+        a["code"]: a
+        for a in supabase.table("accounts").select("code, label, kind, active").execute().data or []
+    }
+    departments = {
+        d["code"]: d
+        for d in supabase.table("departments").select("code, label, active").execute().data or []
+    }
+    competitions = {
+        c["id"]: c for c in supabase.table("competitions").select("id, name").execute().data or []
+    }
+
+    # Lo que eligió el usuario tiene que existir: un destino inválido es un 400,
+    # no una fila que se queda en error sin explicar por qué.
+    for code in mapping["accounts"].values():
+        info = accounts.get(code)
+        if not info or not info.get("active") or info.get("kind") != "expense":
+            raise HTTPException(status_code=400, detail=f"Unknown or inactive expense account '{code}'")
+    for code in mapping["departments"].values():
+        if not (departments.get(code) or {}).get("active"):
+            raise HTTPException(status_code=400, detail=f"Unknown or inactive department '{code}'")
+    for target in mapping["projects"].values():
+        if target != expense_import.GENERAL and target not in competitions:
+            raise HTTPException(status_code=400, detail="Unknown competition")
+
+    # Un solo filtro sobre expense_date (`in_` con las fechas del archivo): un
+    # .gte() y un .lte() sobre la misma columna se pisan en el builder.
+    dates = sorted({r["date"] for r in parsed["rows"] if r["date"]})
+    existing: list = []
+    for start in range(0, len(dates), _IN_CHUNK):
+        chunk = dates[start:start + _IN_CHUNK]
+        existing.extend(_paged(lambda: _scoped(
+            supabase.table("expenses").select(_LEDGER_EXISTING_COLUMNS).in_("expense_date", chunk),
+            request,
+        )))
+    years = sorted({int(d[:4]) for d in dates})
+    lines = _paged(lambda: _scoped(
+        supabase.table("budget_lines")
+        .select("id, year, department_code, account_code, competition_id, kind")
+        .in_("year", years),
+        request,
+    )) if years else []
+
+    return expense_import.build_plan(
+        parsed, mapping=mapping, existing=existing, lines=lines,
+        catalog={"accounts": accounts, "departments": departments, "competitions": competitions},
+    )
+
+
+@router.post("/import/expenses/preview", dependencies=[Depends(require_edit("budget"))])
+async def preview_expense_import(
+    request: Request,
+    file: UploadFile = File(...),
+    sheet: Optional[str] = Form(None),
+    mapping: Optional[str] = Form(None),
+):
+    _assert_general_admin(request)
+    content = await _read_sheet_upload(file)
+    return _ledger_plan(request, content, sheet, mapping)
+
+
+@router.post("/import/expenses/commit", status_code=201, dependencies=[Depends(require_edit("budget"))])
+async def commit_expense_import(
+    request: Request,
+    file: UploadFile = File(...),
+    sheet: Optional[str] = Form(None),
+    mapping: Optional[str] = Form(None),
+    expected_count: int = Form(...),
+    expected_total: float = Form(...),
+):
+    """Crea como pagados los gastos nuevos del ledger, en un lote identificable."""
+    from api._lib.services import expense_import
+
+    _assert_general_admin(request)
+    content = await _read_sheet_upload(file)
+    plan = _ledger_plan(request, content, sheet, mapping)
+
+    expected = plan["expected"]
+    # `not (… <= …)` y no `… > …`: con un total NaN la segunda es siempre falsa
+    # y la guarda quedaría apagada.
+    if expected["count"] != expected_count or not math.isfinite(expected_total) \
+            or not abs(expected["total"] - expected_total) <= 0.005:
+        raise HTTPException(
+            status_code=409,
+            detail="The import no longer matches the preview; review it again before confirming",
+        )
+    if not expected["count"]:
+        raise HTTPException(status_code=400, detail="Nothing to import")
+    # Para el admin general no recorta nada; queda por si algún día este
+    # endpoint se abre a un editor de departamento.
+    for code in {r["department_code"] for r in plan["rows"] if r["will_import"]}:
+        _assert_can_edit(request, code)
+
+    batch = uuid.uuid4().hex[:12]
+    records = expense_import.commit_records(
+        plan, batch=batch, file_name=file.filename or "", user_id=_user_id(request), now=_now_iso(),
+    )
+
+    def failure(rec: dict) -> dict:
+        return {"expense_date": rec["expense_date"], "description": rec["description"], "amount": rec["amount"]}
+
+    created: list = []
+    failed: list = []
+    uncertain: list = []
+    for start in range(0, len(records), _INSERT_CHUNK):
+        chunk = records[start:start + _INSERT_CHUNK]
+        try:
+            inserted = supabase.table("expenses").insert(chunk).execute().data or []
+        except SupabaseError as exc:
+            # Postgres rechazó el tramo: es una sola sentencia, no entró nada.
+            # Se reintenta de a una fila para crear lo que sí se puede.
+            logger.warning("[budget] ledger bulk insert rejected, retrying one by one: %s", exc)
+            for rec in chunk:
+                try:
+                    created.extend(supabase.table("expenses").insert(rec).execute().data or [])
+                except SupabaseError as one_exc:
+                    logger.warning("[budget] ledger insert rejected (%s %s): %s",
+                                   rec["expense_date"], rec["description"], one_exc)
+                    failed.append(failure(rec))
+                except Exception as one_exc:
+                    logger.warning("[budget] ledger insert unknown (%s %s): %s",
+                                   rec["expense_date"], rec["description"], one_exc)
+                    uncertain.append(rec)
+            continue
+        except Exception as exc:
+            # Timeout o corte de red: el tramo pudo haber entrado igual.
+            # Reintentarlo duplicaría hasta 100 gastos pagados, así que NO se
+            # reintenta: abajo se mira en la base qué quedó.
+            logger.warning("[budget] ledger bulk insert unknown outcome, will reconcile: %s", exc)
+            uncertain.extend(chunk)
+            continue
+        if len(inserted) != len(chunk):
+            uncertain.extend(chunk)
+        else:
+            created.extend(inserted)
+
+    if uncertain:
+        # `comments` es único por fila (lote + archivo + hoja + fila) y se acaba
+        # de escribir: alcanza para saber cuáles de las dudosas entraron.
+        landed = {
+            r.get("comments"): r
+            for r in _paged(lambda: _scoped(
+                supabase.table("expenses").select("*").ilike("comments", f"{expense_import.MARK}{batch}.*"),
+                request,
+            ))
+        }
+        known = {r["id"] for r in created}
+        for rec in uncertain:
+            row = landed.get(rec["comments"])
+            if row is None:
+                failed.append(failure(rec))
+            elif row["id"] not in known:
+                created.append(row)
+                known.add(row["id"])
+
+    written = record_transitions([
+        {
+            "entity_type": "expense", "entity_id": row["id"], "from_status": None, "to_status": "paid",
+            "meta": {
+                "historical_load": True, "payment_date": row.get("payment_date"),
+                "import": {"batch": batch, "file": file.filename, "sheet": plan["sheet"]},
+            },
+        }
+        for row in created
+    ], request)
+    if written != len(created):
+        # El deshacer encuentra el lote por estas filas: las que faltan quedan
+        # fuera de su alcance. Se avisa en la respuesta y en el log.
+        logger.error("budget ledger import %s: %s of %s history rows were not written",
+                     batch, len(created) - written, len(created))
+
+    total = round(sum(float(r.get("amount") or 0) for r in created), 2)
+    logger.info("budget ledger import %s: %s expenses, $%s (user=%s)",
+                batch, len(created), total, _user_id(request))
+    return {
+        "batch": batch,
+        "created": len(created),
+        "total": total,
+        "failed": failed,
+        "history_failed": len(created) - written,
+        "skipped": {"duplicate": plan["counts"]["duplicate"], "error": plan["counts"]["error"]},
+        "date_from": plan["date_from"],
+        "date_to": plan["date_to"],
+    }
+
+
+@router.post("/import/expenses/undo", dependencies=[Depends(require_edit("budget"))])
+def undo_expense_import(data: ExpenseImportUndo, request: Request):
+    """Elimina los gastos de un lote importado. Exige motivo.
+
+    Es la ÚNICA eliminación de gastos `paid`: `DELETE /expenses/{id}` sigue
+    limitado a draft / rejected / cancelled. Se justifica porque el lote se
+    creó de una vez, sin aprobación, y deshacerlo fila por fila son cinco
+    transiciones de superadmin por gasto.
+
+    Qué gastos son del lote lo dice el **historial** (`meta.import.batch`), que
+    solo escribe el servidor. `comments` también lleva la marca, pero es un
+    campo editable incluso en `paid`: si el lote saliera de ahí, alguien podría
+    meter un gasto ajeno en un lote (y un superadmin lo borraría) o sacar uno
+    propio.
+
+    Solo quien importó el lote, o un superadmin, y solo las filas que siguen
+    exactamente como entraron (`_ledger_untouched`). Lo que alguien ya tocó se
+    deja y vuelve en `kept`.
+    """
+    from api._lib.services import expense_import
+
+    _assert_general_admin(request)
+    batch = (data.batch or "").strip().lower()
+    if not _LEDGER_BATCH_RE.match(batch):
+        raise HTTPException(status_code=400, detail="Invalid import batch")
+    reason = (data.reason or "").strip()
+    if not reason:
+        raise HTTPException(status_code=400, detail="A reason is required to undo an import")
+
+    # `finance_status_history` no tiene departamento: el recorte por fila se
+    # aplica abajo, al leer los gastos por `_scoped()`.
+    loaded = _paged(lambda: (
+        supabase.table("finance_status_history").select("entity_id, changed_by")
+        .eq("entity_type", "expense").eq("to_status", "paid")
+        .eq("meta->import->>batch", batch)
+    ))
+    if not loaded:
+        raise HTTPException(status_code=404, detail="Import batch not found")
+    uid = _user_id(request)
+    if not is_superadmin_request(request) and any(h.get("changed_by") != uid for h in loaded):
+        raise HTTPException(status_code=403, detail="Only who imported this batch or a superadmin can undo it")
+
+    ids = list(dict.fromkeys(str(h["entity_id"]) for h in loaded))
+    rows: list = []
+    events: dict = {}
+    attached: set = set()
+    for start in range(0, len(ids), _IN_CHUNK):
+        chunk = ids[start:start + _IN_CHUNK]
+        rows.extend(_paged(lambda: _scoped(supabase.table("expenses").select("*").in_("id", chunk), request)))
+        for h in _paged(lambda: (
+            supabase.table("finance_status_history").select("entity_id")
+            .eq("entity_type", "expense").in_("entity_id", chunk)
+        )):
+            events[str(h["entity_id"])] = events.get(str(h["entity_id"]), 0) + 1
+        attached |= {
+            a["expense_id"] for a in
+            supabase.table("expense_attachments").select("expense_id").in_("expense_id", chunk).execute().data or []
+        }
+
+    def untouched(row: dict) -> bool:
+        """El gasto sigue exactamente como lo dejó el import.
+
+        Reabrir y volver a pagar no deja sello en la fila (limpia `paid_*` y los
+        vuelve a escribir), así que no alcanza con mirar `approved_by`: se
+        compara contra lo que el import escribe, y contra el historial, donde
+        toda transición y toda edición de plata dejan una fila más.
+        """
+        return (
+            row.get("status") == "paid"
+            and not row.get("approved_by")
+            and not row.get("last_financial_edit_by")
+            and not row.get("last_financial_edit_at")
+            and row.get("paid_by") == row.get("created_by")
+            and str(row.get("payment_date") or "")[:10] == str(row.get("expense_date") or "")[:10]
+            and not row.get("payment_method")
+            and not row.get("bank_confirmation")
+            and not row.get("hotel_id")
+            and (row.get("invoice_no") or None) == expense_import.invoice_for(row.get("description"))
+            and row["id"] not in attached
+            and events.get(row["id"], 0) == 1
+        )
+
+    removable = [r for r in rows if untouched(r)]
+    if not removable:
+        raise HTTPException(
+            status_code=409,
+            detail="No expense of this batch is still as it was imported; nothing can be removed",
+        )
+
+    deleted: list = []
+    removable_ids = [r["id"] for r in removable]
+    for start in range(0, len(removable_ids), _IN_CHUNK):
+        chunk = removable_ids[start:start + _IN_CHUNK]
+        # Lo que se puede volver a comprobar va también en el DELETE: lo que se
+        # reabrió, corrigió o vinculó a un hotel entre la lectura y acá no se
+        # borra. Son columnas distintas, no se pisan en el builder.
+        deleted.extend(
+            supabase.table("expenses").delete().in_("id", chunk).eq("status", "paid")
+            .is_("approved_by").is_("last_financial_edit_by").is_("hotel_id")
+            .execute().data or []
+        )
+
+    deleted_ids = {r["id"] for r in deleted}
+    written = record_transitions([
+        {
+            "entity_type": "expense", "entity_id": row["id"], "from_status": "paid", "to_status": "deleted",
+            "reason": reason,
+            "meta": {
+                "import_undo": batch, "record_no": row.get("record_no"), "amount": row.get("amount"),
+                "department_code": row.get("department_code"), "description": row.get("description"),
+            },
+        }
+        for row in deleted
+    ], request)
+    if written != len(deleted):
+        logger.error("budget ledger import %s undone: %s of %s history rows were not written",
+                     batch, len(deleted) - written, len(deleted))
+
+    total = round(sum(float(r.get("amount") or 0) for r in deleted), 2)
+    logger.info("budget ledger import %s undone: %s expenses, $%s (user=%s)", batch, len(deleted), total, uid)
+    return {
+        "batch": batch,
+        "deleted": len(deleted),
+        "total": total,
+        "history_failed": len(deleted) - written,
+        "kept": [
+            {"id": r["id"], "record_no": r.get("record_no"), "status": r.get("status")}
+            for r in rows if r["id"] not in deleted_ids
+        ],
+    }
 
 
 @router.get("/lines/export.xlsx")

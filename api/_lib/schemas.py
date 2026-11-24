@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 from typing import Literal, Optional
 
 # fee_type gobierna todo el dispatch per-game vs. tournament. Un str libre dejaba
@@ -497,6 +497,30 @@ class ExpenseTransition(BaseModel):
 
 class ExpenseApprove(BaseModel):
     """Cuerpo opcional del alias POST /budget/expenses/{id}/approve."""
+    reason: Optional[str] = Field(None, max_length=2000)
+
+
+# ─── BUDGET: import de gastos desde el ledger ─────────────────────────────
+
+class ExpenseImportMapping(BaseModel):
+    """Lo que el usuario decidió sobre el ledger; viaja igual al preview y al commit.
+
+    Las claves son los códigos tal como vienen en el archivo. `projects` acepta
+    el id de una competencia o "__general__". `force` y `skip` son números de
+    fila: importar igual un duplicado, o dejar afuera una fila nueva.
+    """
+    model_config = ConfigDict(extra="forbid")
+
+    accounts: dict[str, str] = Field(default_factory=dict)
+    departments: dict[str, str] = Field(default_factory=dict)
+    projects: dict[str, str] = Field(default_factory=dict)
+    force: list[int] = Field(default_factory=list)
+    skip: list[int] = Field(default_factory=list)
+
+
+class ExpenseImportUndo(BaseModel):
+    """Cuerpo de POST /budget/import/expenses/undo."""
+    batch: str = Field(..., max_length=40)
     reason: Optional[str] = Field(None, max_length=2000)
 
 
