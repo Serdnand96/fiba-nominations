@@ -498,6 +498,122 @@ const translations = {
     impAccountsNew: { en: 'New accounts', es: 'Cuentas nuevas' },
     impFailed: { en: 'Could not read the file.', es: 'No se pudo leer el archivo.' },
 
+    // Import de gastos desde el ledger de Finanzas
+    expImpTitle: { en: 'Import expenses from Excel', es: 'Importar gastos desde Excel' },
+    expImpHint: {
+      en: 'The Finance ledger as .xlsx: one row per entry with date, account, details and amount. Nothing is saved until you confirm.',
+      es: 'El ledger de Finanzas en .xlsx: una fila por movimiento con fecha, cuenta, detalle y monto. No se guarda nada hasta que confirmes.',
+    },
+    expImpPaidNote: {
+      en: 'Expenses are loaded as paid, with the payment date equal to the entry date.',
+      es: 'Los gastos entran como pagados, con fecha de pago igual a la fecha del movimiento.',
+    },
+    expImpAll: { en: 'All', es: 'Todas' },
+    expImpDuplicate: { en: 'already loaded', es: 'ya existen' },
+    expImpSkipped: { en: 'left out', es: 'excluidas' },
+    expImpDepartments: { en: 'Departments in the file', es: 'Departamentos del archivo' },
+    expImpDepartmentsHint: {
+      en: 'Choose the department for each code. Rows without a department are not imported.',
+      es: 'Elige a qué departamento va cada código. Las filas sin departamento no se importan.',
+    },
+    expImpProjects: { en: 'Projects in the file', es: 'Proyectos del archivo' },
+    expImpProjectsHint: {
+      en: 'Choose the event for each project, or General if it does not belong to one.',
+      es: 'Elige el evento de cada proyecto, o General si no es de un evento.',
+    },
+    expImpAccounts: { en: 'Accounts missing from the chart', es: 'Cuentas que no están en el plan' },
+    expImpAccountsHint: {
+      en: 'Choose the expense account for each code.',
+      es: 'Elige la cuenta de gasto para cada código.',
+    },
+    expImpChoose: { en: 'Choose...', es: 'Elegir...' },
+    expImpNoDepartment: { en: '(no department)', es: '(sin departamento)' },
+    expImpRows: { en: '{count} rows', es: '{count} filas' },
+    expImpEvidence: {
+      en: '{count} rows with this code are already loaded in {department}',
+      es: '{count} filas de este código ya están cargadas en {department}',
+    },
+    expImpUse: { en: 'Use {department}', es: 'Usar {department}' },
+    expImpSummary: { en: 'What will be imported', es: 'Lo que se importa' },
+    expImpCredits: {
+      en: 'Credits and negative amounts, not imported',
+      es: 'Créditos y montos negativos, no se importan',
+    },
+    expImpNotInFile: {
+      en: 'Previously imported expenses that are no longer in the file',
+      es: 'Gastos importados antes que ya no están en el archivo',
+    },
+    expImpNotInFileHint: {
+      en: 'They are not changed. Check whether they should be cancelled.',
+      es: 'No se modifican. Revisa si hay que anularlos.',
+    },
+    expImpForce: { en: 'Import anyway', es: 'Importar igual' },
+    expImpExistsAs: { en: 'Already loaded as {record}', es: 'Ya existe como {record}' },
+    expImpNoRows: { en: 'No rows in this view.', es: 'No hay filas en esta vista.' },
+    expImpConfirmCount: { en: 'Import {count} expenses', es: 'Importar {count} gastos' },
+    expImpDone: { en: 'expenses imported', es: 'gastos importados' },
+    expImpResult: {
+      en: 'Imported: {count} expenses for ${total}. Batch code: {batch}',
+      es: 'Importados: {count} gastos por ${total}. Código del lote: {batch}',
+    },
+    expImpFailedRows: {
+      en: '{count} rows could not be saved. Preview the file again to retry them.',
+      es: '{count} filas no se pudieron guardar. Vuelve a cargar el archivo para reintentarlas.',
+    },
+    expImpChanged: {
+      en: 'The data changed since the preview. Review it again before confirming.',
+      es: 'Los datos cambiaron desde la vista previa. Revísala de nuevo antes de confirmar.',
+    },
+    expImpUndo: { en: 'Undo import', es: 'Deshacer importación' },
+    expImpUndoPrevious: { en: 'Undo a previous import', es: 'Deshacer una importación anterior' },
+    expImpUndoHint: {
+      en: 'Removes the expenses of that batch that are still as they were loaded. The batch code is at the start of the comments of each imported expense, after "import:ledger:".',
+      es: 'Elimina los gastos de ese lote que siguen como entraron. El código del lote está al inicio de los comentarios de cada gasto importado, después de "import:ledger:".',
+    },
+    expImpBatch: { en: 'Batch code', es: 'Código del lote' },
+    expImpReason: { en: 'Reason', es: 'Motivo' },
+    expImpUndoConfirm: { en: 'Remove batch expenses', es: 'Eliminar gastos del lote' },
+    expImpUndone: { en: '{count} expenses removed', es: '{count} gastos eliminados' },
+    expImpUndoKept: {
+      en: '{count} expenses were kept because they were changed after the import.',
+      es: '{count} gastos se conservaron porque se modificaron después de importarlos.',
+    },
+    expImpHistoryFailed: {
+      en: '{count} expenses were saved without a history record and cannot be undone from here.',
+      es: '{count} gastos se guardaron sin registro en el historial y no se pueden deshacer desde aquí.',
+    },
+    expImpUndoFailed: { en: 'Could not undo the import', es: 'No se pudo deshacer la importación' },
+    expImpCode: {
+      orphan_amount: { en: 'Amount without date or details', es: 'Monto sin fecha ni detalle' },
+      amount_unreadable: { en: 'Could not read the amount', es: 'No se pudo leer el monto' },
+      date_missing: { en: 'Missing date', es: 'Falta la fecha' },
+      date_unreadable: { en: 'Unrecognized date', es: 'Fecha no reconocida' },
+      description_missing: { en: 'Missing details', es: 'Falta el detalle' },
+      account_missing: { en: 'Missing account', es: 'Falta la cuenta' },
+      account_unknown: { en: 'Account not in the chart', es: 'La cuenta no está en el plan' },
+      department_unmapped: { en: 'Department not assigned', es: 'Falta asignar el departamento' },
+      project_unmapped: { en: 'Project not assigned', es: 'Falta asignar el proyecto' },
+      debit_and_credit: { en: 'The row has both a debit and a credit', es: 'La fila trae débito y crédito a la vez' },
+    },
+    expImpWarn: {
+      possible_duplicate: {
+        en: 'Possible duplicate of {record}: same date and amount, other details ({details})',
+        es: 'Posible duplicado de {record}: misma fecha y monto, otro detalle ({details})',
+      },
+      repeated_in_file: {
+        en: 'The same entry appears {count} times in the file (rows {rows})',
+        es: 'El mismo movimiento aparece {count} veces en el archivo (filas {rows})',
+      },
+      hidden_rows: {
+        en: 'The file has {count} hidden or filtered rows. They are read anyway.',
+        es: 'El archivo tiene {count} filas ocultas o filtradas. Se leen igual.',
+      },
+      total_mismatch: {
+        en: 'The total row ({amount}) does not match the sum of the file',
+        es: 'La fila de total ({amount}) no coincide con la suma del archivo',
+      },
+    },
+
     // Acceso por departamento (fase 3)
     access: { en: 'Budget departments', es: 'Departamentos de presupuesto' },
     accessHint: {

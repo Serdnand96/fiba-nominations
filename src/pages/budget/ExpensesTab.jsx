@@ -6,6 +6,7 @@ import { useAuth } from '../../contexts/AuthContext'
 import { Icon } from '../../lib/icons'
 import { competitionLabel } from '../../lib/competitions'
 import ExpenseEditor from './editors/ExpenseEditor'
+import ExpenseImport from './ExpenseImport'
 import { ExpenseActionButtons, errorDetail, expenseActions, useExpenseTransitions } from './ExpenseActionModals'
 import { useBudgetScope } from './scope'
 import { money, accountOption, useDepartmentAccounts, EXPENSE_STATUSES, STATUS_BADGE } from './shared'
@@ -55,6 +56,7 @@ export default function ExpensesTab({ t, push, canEdit, departments, expenseAcco
   const [search, setSearch] = useState('')
 
   const [editing, setEditing] = useState(null)
+  const [importing, setImporting] = useState(false)
   // `?open=<id>` abre el gasto en el editor (links de notificaciones). Solo si
   // está en la lista cargada con los filtros actuales; si no, se descarta.
   const [openId, setOpenId] = useOpenParam()
@@ -70,6 +72,8 @@ export default function ExpensesTab({ t, push, canEdit, departments, expenseAcco
   // el backend revalida cada alta, edición, borrado y transición.
   const canApproveAny = scope.isSuperadmin || scope.approve === null || scope.approve.length > 0
   const canCreate = canEdit && (scope.isSuperadmin || scope.edit === null || scope.edit.length > 0)
+  // Importar el ledger carga gastos ya pagados: solo el admin general.
+  const canImport = canEdit && scope.isGeneralAdmin
   const hasDates = !!(dateFrom || dateTo)
   const isPending = view === 'pending'
 
@@ -300,11 +304,25 @@ export default function ExpensesTab({ t, push, canEdit, departments, expenseAcco
           )}
         </div>
         {canCreate ? (
-          <button onClick={() => openEditor({})} className="btn-fiba ml-auto">{t('budget.newExpense')}</button>
+          <div className="ml-auto flex flex-wrap items-center gap-3">
+            {canImport && (
+              <button type="button" onClick={() => setImporting(v => !v)} aria-expanded={importing}
+                className="btn-fiba-ghost">
+                <Icon.Upload className="w-4 h-4 inline mr-1.5" />
+                {t('budget.import')}
+              </button>
+            )}
+            <button onClick={() => openEditor({})} className="btn-fiba">{t('budget.newExpense')}</button>
+          </div>
         ) : canEdit ? (
           <p className="ml-auto self-center text-xs text-fiba-muted">{t('budget.approvalNoEditableDepts')}</p>
         ) : null}
       </div>
+
+      {importing && canImport && (
+        <ExpenseImport departments={departments} expenseAccounts={expenseAccounts} competitions={competitions}
+          t={t} push={push} onDone={reloadAll} onClose={() => setImporting(false)} />
+      )}
 
       {isPending && (
         <p className="text-xs text-fiba-muted mb-3">{t('budget.approvalPendingAllYears')}</p>
