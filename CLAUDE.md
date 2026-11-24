@@ -441,8 +441,11 @@ legacy `fibaamericascloud.com`).
       para el **admin general** (superadmin o fila `'*'` con `can_edit`,
       `_assert_general_admin()`): el plan de cuentas (`POST`/`PATCH` y `remap`
       de `/budget/accounts`), borrar proveedores o cambiarles `name` / `active`,
-      y leer o escribir `bank_info` / `tax_id` de un proveedor (el resto ve
-      `has_bank_info`). El headcount y los supuestos exigen en cambio el
+      leer o escribir `bank_info` / `tax_id` de un proveedor (el resto ve
+      `has_bank_info`) y la **carga histórica** de gastos ya pagados: de a uno
+      (`POST /budget/expenses` con `status = 'paid'`) o en lote con el import
+      del ledger de Finanzas (`/budget/import/expenses/{preview,commit,undo}`,
+      `services/expense_import.py`, BUDGET_MODULE.md §13). El headcount y los supuestos exigen en cambio el
       departamento **Competitions**, que es lo que alimentan: verlo para los
       GET, editarlo para los PUT.
     - **Hay dos lecturas de tablas de Budget que NO pasan por `_scoped()`, a
@@ -631,6 +634,16 @@ legacy `fibaamericascloud.com`).
     - No hay `approved → cancelled` en gastos ni `completed → cancelled` en
       pagos: primero se reabre. Un pago con `paid_amount > 0` no vuelve a `new`
       ni se cancela (desaparecería del ejecutado).
+    - **El import del ledger crea gastos `paid` en lote y es la única forma de
+      eliminar un `paid`** (`POST /budget/import/expenses/undo`): solo el lote
+      importado, solo quien lo importó o un superadmin, con motivo, y solo las
+      filas que siguen exactamente como entraron. Qué gastos son del lote lo
+      dice el historial (`meta.import.batch`), **no** `comments`: ese campo se
+      edita hasta en `paid` y dejaría meter un gasto ajeno en un lote. No es un atajo para borrar
+      gastos pagados: `DELETE /budget/expenses/{id}` sigue en draft / rejected /
+      cancelled. Como un `paid` casi no se corrige, el import **no asigna nada
+      solo**: departamento, proyecto y cuenta desconocida los elige una persona
+      en la vista previa (BUDGET_MODULE.md §13).
 
 24. **Las notificaciones son in-app y no tienen cron ni email.** La campana
     (`src/components/NotificationsBell.jsx`) lee de `/api/me/notifications`
@@ -743,8 +756,9 @@ fiba-nominations/
 │       ├── routers/           ← uno por módulo (nominations, training, …) + notifications (/me)
 │       └── services/
 │           ├── document_generator.py  ← docx (docxtpl) → pdf (LibreOffice)
+│           ├── expense_import.py      ← lee el ledger de Finanzas y arma el plan de gastos a importar (punto 23)
 │           ├── fiba_sync.py           ← sync con FIBA GDAP: partidos, resultados, fechas (punto 13)
-│           ├── finance_history.py     ← record_transition / history_for (punto 23)
+│           ├── finance_history.py     ← record_transition(s) / history_for (punto 23)
 │           ├── google_calendar.py     ← OAuth + sync de partidos al Google Calendar de cada usuario (punto 26)
 │           ├── logistics_briefing.py  ← PDF operativo para delegaciones: python-docx → LibreOffice (punto 7)
 │           ├── logistics_schedule_import.py ← lee los cronogramas de transporte y comidas (punto 7)

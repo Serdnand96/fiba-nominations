@@ -548,6 +548,28 @@ pasajes en la cuenta de travel.
 ve IT y no Competitions. El **costo de un evento** sí se muestra completo,
 sea cual sea tu departamento.
 
+**Importar gastos desde Excel** (solo el administrador general de
+Presupuesto): en **Gastos > Importar Excel** se sube el ledger que entrega
+Finanzas (un `.xlsx` con una fila por movimiento: fecha, cuenta, detalle,
+monto, proyecto y departamento).
+
+1. Elige el archivo. Aparece una vista previa; todavía no se guarda nada.
+2. Asigna cada **departamento** y cada **proyecto** del archivo. Si un
+   proyecto no es de un evento, elige **General**. Si una cuenta no está en
+   el plan, elige a cuál va.
+3. Revisa las filas. Las que **ya existen** no se vuelven a cargar. Con
+   **No importar** dejas afuera una fila; con **Importar igual** cargas una
+   que el sistema marcó como repetida.
+4. Confirma. Los gastos entran como **pagados**, con fecha de pago igual a
+   la fecha del movimiento.
+
+Si algo salió mal, **Deshacer importación** elimina los gastos de esa carga
+que nadie haya modificado. Pide un motivo y queda en el historial.
+
+> Si el ledger incluye el pago a una persona nominada (un honorario que ya
+> está en Pagos), márcalo con **No importar**. Si se carga también como
+> gasto, ese dinero se cuenta dos veces.
+
 > Si entras a Presupuesto y no ves datos, casi siempre es que no tienes
 > ningún departamento asignado. Pídeselo a un administrador.
 

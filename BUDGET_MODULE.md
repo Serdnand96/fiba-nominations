@@ -10,7 +10,7 @@
 > Las 038-040 son de otros módulos (checklists, hora UTC, ventanas FIBA) y la 055
 > es de Logística. Todas se aplican **a mano** antes del push (CLAUDE.md §17).
 >
-> Código: `api/_lib/routers/budget.py` (**56 endpoints**),
+> Código: `api/_lib/routers/budget.py` (**59 endpoints**),
 > `api/_lib/routers/payments.py` (26), `api/_lib/routers/notifications.py` (4);
 > `src/pages/Budget.jsx` es un shell de 6 pestañas (+ Cuentas para el admin
 > general) que viven en `src/pages/budget/`, y `src/pages/Payments.jsx` uno de 2
@@ -606,7 +606,9 @@ no pertenece a ningún departamento y por lo tanto no se puede recortar por fila
   un POST/PATCH que traiga esos campos (aunque sea en `null`) es 403, la respuesta del PATCH también va
   recortada, y la búsqueda por `tax_id` solo corre para el admin (si no, sirve
   de oráculo). Cambiar el CBU de un proveedor es el fraude de manual.
-- **Carga histórica:** crear un gasto directamente `paid`.
+- **Carga histórica:** crear un gasto directamente `paid`, de a uno
+  (`POST /expenses`) o en lote con el import del ledger
+  (`/import/expenses/preview`, `/commit` y `/undo`, §13).
 
 El **headcount** y los **supuestos** no son de admin general sino del
 departamento que alimentan: `PUT /headcount` y `PUT /assumptions/{year}` exigen
@@ -623,7 +625,7 @@ Router `api/_lib/routers/budget.py`, prefijo `/api/budget/*`,
 `dependencies=[Depends(require_view("budget"))]` a nivel `APIRouter` y
 `require_edit("budget")` en cada escritura, **más** el filtro por departamento.
 
-Son **56** (`grep -c "@router\." api/_lib/routers/budget.py`). Las marcas
+Son **59** (`grep -c "@router\." api/_lib/routers/budget.py`). Las marcas
 entre corchetes son lo que se exige **además** de eso:
 
 ```
@@ -667,6 +669,9 @@ GET      /budget/expenses?year=&department=&account=&competition_id=&general_onl
          # mine=1 → solo los que cargó el caller
 GET      /budget/expenses/summary?year=&department=&account=&competition_id=&general_only=&date_from=&date_to=
 GET      /budget/expenses/export.xlsx?(los filtros de la bandeja)&lang=
+POST     /budget/import/expenses/preview   [admin general]  # ledger de Finanzas; no escribe (§13)
+POST     /budget/import/expenses/commit    [admin general]  # crea los nuevos como `paid`; 409 si ya no coincide con el preview
+POST     /budget/import/expenses/undo      [admin general]  # {batch, reason}; única eliminación sobre `paid` (§14)
 POST     /budget/expenses                  # nace draft; `paid` directo solo admin general; `hotel_id` opcional (056)
 PATCH    /budget/expenses/{id}             # sin status ni payment_date (§14); `hotel_id` editable hasta en `paid`
 DELETE   /budget/expenses/{id}             # solo draft / rejected / cancelled
@@ -695,7 +700,7 @@ DELETE   /budget/revenues/{id}
 # Vista de costo de evento
 GET      /budget/competitions/{id}/cost    # sin _scoped, a propósito (§9)
 GET      /budget/competitions/{id}/hotels  # [{id, name}] para el selector "Hotel" del gasto; no pide `logistics`
-GET      /logistics/hotels/{hotel_id}/payments   # NO es de este router ni cuenta en los 56: logistics_ops.py, permiso `logistics`;
+GET      /logistics/hotels/{hotel_id}/payments   # NO es de este router ni cuenta en los 59: logistics_ops.py, permiso `logistics`;
                                                  # sin _scoped, a propósito (§9)
 
 # Tarifario
@@ -835,6 +840,13 @@ editables, y editar/borrar/aprobar sale de `canEditDept(row.department_code)` /
    comentarios, factura y hotel en `paid`). El selector **Hotel** aparece solo
    si el gasto tiene competencia y esa competencia tiene hoteles (los trae
    `/budget/competitions/{id}/hotels`); cambiar de competencia lo limpia.
+   **Importar Excel** (`ExpenseImport.jsx`, solo con `scope.isGeneralAdmin`)
+   abre el import del ledger de Finanzas (§13): asignación de departamentos,
+   proyectos y cuentas, pastillas que filtran la vista previa (a crear, ya
+   existen, con error, excluidas), "Importar igual" / "No importar" por fila y,
+   después de confirmar, **Deshacer importación** con motivo. "Deshacer una
+   importación anterior" pide el código del lote, que está en los comentarios
+   de cada gasto importado.
 3. **Recurrentes** — plantillas + el panel "pendientes de este mes".
 4. **Ingresos** — bandeja simple; los ingresos sin fecha (que no imputan a
    ningún año, §8) se marcan en ámbar.
@@ -1238,11 +1250,14 @@ que lo importado siga cuadrando con la planilla.
   cuando el cambio a ese archivo va en el mismo deploy.
 - **Gastos ejecutados 2026 de Competitions y Comms.** Los de IT ya están
   (§10, `scripts/import_it_2026.py`); los otros dos departamentos siguen sin
-  archivo.
+  archivo. Cuando llegue el ledger se carga desde la app (§13, Gastos >
+  Importar Excel), no con un script.
 - **612100 / 612200 duplicadas en el ledger de IT 2026.** Finance imputó las
   mismas 8 filas ($2.870,98) a las dos cuentas. Están cargadas las dos con marca
-  `DUP` en `comments`; cuando Finance diga cuál vale, se corrige el Excel y se
-  reimporta.
+  `DUP` en `comments`. El ledger al 31/10/2026 ya las trae solo en 612100: el
+  import de gastos (§13) lista las 8 de 612200 como "en la base y no en el
+  archivo" y no las toca. Falta anularlas (hoy: reabrir y cancelar cada una
+  como superadmin).
 - **Afinar la cadencia de los recurrentes de IT.** Las 23 plantillas ya están
   sembradas (§10). La cadencia sale de la CUENTA y no del proveedor —la
   planilla presupuesta un anual y no dice cada cuánto se factura, así que mirar
@@ -1331,6 +1346,112 @@ Validado contra los archivos reales: el de IT reproduce **$215.015** para 2027
 (92 filas, 4 años) y el de Competitions **$970.416** con las 13 columnas
 mapeadas, dejando afuera los mismos **$563.416** de §10.
 
+### Import de gastos desde el ledger de Finanzas
+
+El ejecutado llega de Finanzas como un ledger plano (`.xlsx`): una fila por
+movimiento. Botón **Importar Excel** en la pestaña Gastos (solo admin general)
+→ `api/_lib/services/expense_import.py`. Reemplaza al script
+`scripts/import_it_2026.py`, que queda como registro de la carga de 2026: el
+script borraba y reinsertaba por marca y salteaba `created_by`, el historial y
+las validaciones del router.
+
+**Formato.** El encabezado se busca por texto en las primeras 25 filas y en
+cualquier columna (el archivo real lo trae en la fila 2):
+
+| Columna | Encabezados aceptados | Uso |
+|---|---|---|
+| Fecha | `Posting Date`, `Date`, `Fecha` | `expense_date` y `payment_date`. Celda de fecha o texto `AAAA-MM-DD`; otro texto es error (`3/4/2026` es ambiguo) |
+| Cuenta | `Account`, `Cuenta`, `Expense account` | cuenta de gasto del plan |
+| Detalle | `Details`, `Description`, `Detalle` | `description`; de ahí sale `payee_name` |
+| Monto | `Debit (LC)`, `Debit`, `Amount`, `Monto` | `amount` |
+| Crédito | `Credit (LC)`, `Credit` | la fila no se importa |
+| Proyecto | `Project`, `Proyecto` | se asigna a una competencia o a General |
+| Departamento | `Dept`, `Departments`, `Departamento` | se asigna a un departamento |
+| Centro de costo | `Cost Center` | queda en `comments` |
+| Contrapartida | `Offset Account` | queda en `comments`; **no** es la cuenta de gasto |
+
+Faltan fecha, cuenta, detalle o monto → 400. `Offset Account` es la cuenta de
+la tarjeta (102430) y nunca se toma como cuenta de gasto: un export que solo
+trae esa columna se rechaza en vez de imputar todo a una cuenta que no existe.
+
+**Los gastos entran `paid`**, con `payment_date = expense_date`, `created_by`,
+`paid_by` y `paid_at` de quien importa, `payee_type = 'other'` y una fila de
+historial por gasto (`meta.historical_load` + `meta.import = {batch, file,
+sheet}`). Son cargos ya cobrados: es la carga histórica de `POST /expenses`, en
+lote. No avisan a nadie porque no hay nada que aprobar.
+
+Como un gasto pagado casi no se corrige (§14), **nada se asigna solo**:
+
+1. **Cuenta.** Tiene que ser una cuenta de gasto activa. Un código que no está
+   en el plan deja la fila en error hasta que el usuario elige a qué cuenta va
+   (`mapping.accounts`). No hay cuenta por defecto.
+2. **Departamento.** Cada código del archivo (`ADMN`, `COMP`…) se asigna a un
+   departamento (`mapping.departments`). Sin asignar es error. Se sugiere solo
+   por evidencia —"121 filas de este código ya están cargadas en IT"— y nunca
+   por parecido: `ADMN` se parece a `admin` y sería incorrecto. Un código
+   idéntico al del sistema (`it`) también se sugiere, pero la sugerencia nunca
+   se aplica sola: la confirma una persona.
+3. **Proyecto.** Cada código (`OTHOPS26`, `26BCLAGP`…) se asigna a una
+   competencia o a "General" (`mapping.projects`). Sin asignar es error; una
+   fila sin proyecto es general.
+
+**Duplicados.** La clave es fecha + detalle (solo letras y números, en
+minúsculas) + monto en centavos, comparada como **multiconjunto** contra los
+gastos no anulados ni rechazados de las fechas del archivo: si el archivo trae
+el cargo tres veces y la base una, entra dos veces. Empareja primero por
+clave + cuenta + departamento, después por clave + cuenta y al final solo por
+clave, para que el orden de las filas no decida cuál entra cuando el mismo
+cargo está en dos cuentas. Un duplicado no se importa salvo que se marque
+"Importar igual" (`mapping.force`); cualquier fila nueva se puede excluir
+(`mapping.skip`). Misma fecha y monto con otro detalle entra, con aviso.
+
+**Lo que no se importa y se informa:** créditos y montos negativos (con su
+total: el ejecutado queda sobreestimado en eso), una fila con débito y crédito
+a la vez (error: tomar el débito escondería el crédito), montos en cero, filas vacías,
+la fila de total del export (solo si cierra con la suma; si no, es error) y
+"en la base y no en el archivo": gastos importados antes que el ledger ya no
+trae. Esa lista es informativa, no borra nada.
+
+**Línea de presupuesto.** Se vincula solo si hay exactamente una línea para
+año + departamento + cuenta + competencia. Los reportes no dependen de
+`budget_line_id` (agrupan por departamento, cuenta y competencia); es para que
+el export salga coherente.
+
+**Lo que se confirma es lo que se vio.** El archivo viaja en las dos llamadas y
+el commit recibe `expected_count` y `expected_total` del preview: si el plan
+recalculado no coincide (alguien cargó un gasto en el medio, cambió el
+archivo), responde **409** sin escribir. Reimportar el mismo archivo no crea
+nada: todo sale como duplicado.
+
+**El insert no se reintenta a ciegas.** Va por tramos de 100. Si Postgres
+rechaza un tramo (`SupabaseError`), no entró nada y se reintenta fila por fila.
+Si el error es de transporte (timeout, corte), el tramo **pudo** haber entrado:
+reintentarlo duplicaría hasta 100 gastos pagados, así que se lee de la base qué
+quedó (por la marca del lote en `comments`, recién escrita) y solo lo que no
+está se informa en `failed`. Lo único que esto no cubre son dos confirmaciones
+simultáneas del mismo archivo desde dos pestañas: no hay unicidad en `expenses`
+que las frene, y se resuelve deshaciendo uno de los dos lotes.
+
+**Deshacer.** Cada importación es un lote. `comments` empieza con
+`import:ledger:<lote>.` seguido del archivo, la hoja, la fila y lo que el
+ledger decía (proyecto, departamento, centro de costo): es la traza para las
+personas, y de ahí se copia el código. Pero **qué gastos son del lote lo dice
+el historial** (`meta.import.batch`, que solo escribe el servidor), no
+`comments`, que se puede editar hasta en `paid`. `POST
+/budget/import/expenses/undo {batch, reason}` elimina las filas del lote que
+siguen como entraron (ver §14). Si el historial de un gasto no se pudo escribir
+al importar, el commit lo informa en `history_failed` y ese gasto queda fuera
+del alcance del deshacer.
+
+**Lo que este import no cruza:** `payments`. Cuando Finanzas paga un fee, la
+transferencia aparece en el ledger; importarla como gasto contaría esa plata
+dos veces (§8). Se excluye a mano en la vista previa ("No importar").
+
+Validado contra el ledger real al 31/10/2026 (`10.31.26.xlsx`, 159 movimientos,
+$83.528,39): 121 duplicados de los 129 gastos de IT ya cargados y **38 nuevos
+por $44.732,44**, los 38 con línea de presupuesto. Lista además 8 gastos de la
+cuenta 612200 ($2.870,98) que el ledger ya no trae: las filas `DUP` de §12.
+
 ---
 
 ## 14. Máquinas de estado e historial
@@ -1388,6 +1509,23 @@ Alrededor de la máquina:
   (ver abajo).
 - `DELETE` solo en `draft` / `rejected` / `cancelled`; lo demás → 409. El
   borrado también queda en el historial.
+- **Única excepción al DELETE: deshacer una importación**
+  (`POST /import/expenses/undo`, §13). Elimina gastos `paid`, pero solo los de
+  un lote importado, solo el admin general que lo importó (o un superadmin),
+  con `reason` obligatorio, y solo las filas que siguen **exactamente** como
+  entraron. Eso es más que "sin `approved_by`": reabrir y volver a pagar limpia
+  y reescribe los sellos sin dejar marca en la fila, y editar `invoice_no` o
+  `hotel_id` en un `paid` no deja traza. Por eso una fila se elimina solo si
+  cumple todo: `paid`; sin `approved_by` ni `last_financial_edit_by`;
+  `paid_by == created_by`; `payment_date == expense_date`; sin
+  `payment_method`, `bank_confirmation` ni `hotel_id`; `invoice_no` igual al
+  que derivó el import; sin adjuntos; y una sola fila en el historial (la del
+  alta). Lo demás se conserva y vuelve en `kept`. El DELETE repite los filtros
+  de estado, aprobación, edición y hotel, por si algo cambió después de la
+  lectura. Deja una fila `paid → deleted` por gasto con el motivo y
+  `meta.import_undo`. Existe porque el lote entra sin aprobación: sin esto, una
+  importación con el departamento equivocado son cinco transiciones de
+  superadmin por gasto.
 - `POST /expenses/{id}/approve` es un alias de `transition` con
   `status=approved` (body opcional, solo para el `reason` del override).
 
@@ -1489,7 +1627,14 @@ funciones, siempre con `reason`: `self_approval` / `self_completion` si lo creó
 (edición de plata sin cambio de estado: `{campo: {from, to}}`), `sync_amount`,
 `previous` (el `paid_amount` anterior de un parcial), en los borrados la foto de
 lo borrado (`record_no`, `amount`, …), `bulk: true`, `historical_load: true`, `payment_date`, `paid_amount`,
-`reverted_payment_date`.
+`reverted_payment_date`, `import` (`{batch, file, sheet}` en cada gasto que entró por el ledger) e
+`import_undo` (el lote, en las filas `deleted` de un deshacer).
+
+`record_transitions(entries, request)` es la versión en lote: un insert por
+tramo de 100, con reintento fila por fila si el tramo falla, y devuelve cuántas
+filas escribió. La usan el import del ledger y su deshacer, donde 150 inserts
+sueltos bloquearían el worker; los dos informan lo que faltó en
+`history_failed`.
 
 El `activity_log` no alcanza como traza: registra método + path + id pero no
 guarda bodies, así que no sabe a qué estado pasó ni con qué motivo.
@@ -1633,6 +1778,8 @@ con `state.user` y `state._is_superadmin` precargados.
 | `test_notifications.py` | `notify()`, `budget_approvers_for`, `module_editors`, `/pending` por permiso y el aislamiento por usuario de `/me/notifications` |
 | `test_authorization.py` | `require_view` / `require_edit` / `require_superadmin` y la autoría del Muro |
 | `test_finance_review.py` | lo que cerró la revisión de la rama: `record-partial` y `completed ⇒ paid == total`, `last_financial_edit_by`, `by_month == totals`, descarga del W-8 por POST, vendors `name`/`active`, `cm_pending`, traza de ediciones y borrados, `generate_recurring`, headcount/supuestos con Competitions |
+| `test_expense_import.py` | lectura del ledger y plan, sin base: encabezado en fila 1 o 2 y columna corrida, los dos vocabularios, `Offset Account` nunca es la cuenta, total que cierra y que no, créditos, fechas ambiguas, cuenta / departamento / proyecto sin asignar, clave de duplicado (espacios, comilla, x,xx5), multiconjunto y emparejado por cuenta, `force` / `skip`, "en la base y no en el archivo", vínculo de línea con 0, 1 y 2 candidatas, registros con claves uniformes |
+| `test_expense_import_router.py` | los tres endpoints: 403 para quien no es admin general, el preview no escribe y lee `expenses` con un solo filtro de fecha y paginado, 400 por archivo o asignación inválidos, el commit crea `paid` con sus sellos, un insert por tramo y el historial, segundo commit crea 0, 409 si el plan cambió o el total esperado no es finito, reintento fila por fila ante un rechazo y **sin** reintento ante un timeout (el tramo que sí entró no se duplica); undo (motivo, lote inválido, otro admin, el lote sale del historial y no de `comments`, reabierto y vuelto a pagar, hotel / factura / fecha / adjuntos, filtros repetidos en el DELETE) y `record_transitions` |
 | `test_logistics_ops.py` | lo de Budget que toca Logística: `hotel_id` en alta y PATCH de gasto (hotel de otra competencia, sin competencia, id inválido y cambio de competencia → 400; `''`/null desvincula; no es edición financiera, no escribe historial y se puede en `paid`), `/budget/competitions/{id}/hotels` (solo id y nombre; exige `budget:view`, no `logistics`) y la proyección de `/logistics/hotels/{id}/payments` (solo `approved`/`paid`, ningún campo sensible, un solo SELECT a `vendors`). El resto del archivo cubre el router de Logística |
 
 Las funciones de transición y de año/balde son puras justamente para poder
