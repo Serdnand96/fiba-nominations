@@ -29,6 +29,11 @@ contra cero, y un presupuesto sin gasto no dice nada.
    sería adivinar; cada fila lleva la marca `DUP` en comments y el preview lo
    avisa. Si Finance corrige, se reimporta el archivo y desaparece.
 
+⚠️ **Histórico.** Desde noviembre 2026 el ledger se carga desde la app
+(`POST /budget/import/expenses/*`), que detecta lo ya importado y deja
+`created_by` e historial. No volver a correr este script: su `--commit` borra y
+reinserta los 129 gastos por marca.
+
 Dos pasos como el resto de los importadores: preview por defecto, --commit
 para escribir. Idempotente: borra lo que importó antes (marcado en notes /
 comments) y reinserta.
@@ -50,6 +55,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
 from api._lib.database import supabase   # noqa: E402
+from api._lib.services.expense_import import invoice_for, vendor_for   # noqa: E402
 
 YEAR = 2026
 DEPARTMENT = "it"
@@ -80,57 +86,13 @@ BUDGET_2026 = [
 ]
 BUDGET_TOTAL = 280_111
 
-# Descripción de tarjeta -> proveedor legible. Regex sobre la descripción ya
-# limpia (mayúsculas, un espacio). Lo que no matchea se importa con la
-# descripción cruda como payee_name y el preview lo lista.
-VENDOR_PATTERNS = [
-    (r"^AT&T|^CREDENCE-AT&T", "AT&T"),
-    (r"^TMOBILE|^T-MOBILE", "T-Mobile"),
-    (r"^ADOBE", "Adobe"),
-    (r"^MICROSOFT", "Microsoft"),
-    (r"APPLE\.COM", "Apple"),
-    (r"^WIFIONBOARD", "WiFi Onboard"),
-    (r"^OPENAI", "OpenAI"),
-    (r"^AD AGE", "Ad Age"),
-    (r"^ESPN PLUS", "ESPN+"),
-    (r"^SPOTIFY", "Spotify"),
-    (r"^STARLINK", "Starlink"),
-    (r"^TELECOM ARGENTINA", "Telecom Argentina"),
-    (r"^AMAZON", "Amazon"),
-    (r"^THE UPS STORE", "The UPS Store"),
-    (r"^HOLAFLY", "Holafly"),
-    (r"EVOLVE BY HUD", "Evolve by Hudl"),
-    (r"^PERSONAL ", "Personal"),
-    (r"^ZOOM\.COM", "Zoom"),
-    (r"^BESTBUY", "Best Buy"),
-    (r"^FEDEX", "FedEx"),
-    (r"^TAX1099", "Tax1099"),
-    (r"^ANYDESK", "AnyDesk"),
-    (r"^BOLD ", "Bold"),
-    (r"^GOOGLE", "Google"),
-    (r"^CLAUDE\.AI|^ANTHROPIC", "Anthropic"),
-    (r"^OTTER\.AI", "Otter.ai"),
-    (r"^DIGITALOCEAN", "DigitalOcean"),
-    (r"^DROPBOX", "Dropbox"),
-    (r"^A/P INVOICES", "A/P Invoice"),
-]
+# Descripción de tarjeta -> proveedor legible: los patrones viven ahora en
+# services/expense_import.py, que es el import de gastos de la app (Budget >
+# Gastos > Importar Excel). Este script queda como registro de la carga de 2026.
 
 
 def clean(text) -> str:
     return re.sub(r"\s+", " ", str(text or "")).strip().strip('"')
-
-
-def vendor_for(description: str) -> tuple:
-    upper = description.upper()
-    for pattern, name in VENDOR_PATTERNS:
-        if re.search(pattern, upper):
-            return name, True
-    return description, False
-
-
-def invoice_for(description: str):
-    m = re.search(r"A/P Invoices?\s*-\s*(\S+)", description, re.I)
-    return m.group(1) if m else None
 
 
 def read_ledger(path: Path) -> list:

@@ -81,6 +81,59 @@ def record_transition(
         )
 
 
+_BULK_CHUNK = 100
+
+
+def record_transitions(entries: list, request: Optional[Request]) -> int:
+    """Varias filas de historial en un insert por tramo. Nunca lanza.
+
+    Devuelve cuántas filas quedaron escritas, para que quien llama pueda avisar
+    si alguna se perdió.
+
+    Para las acciones en lote (el import de gastos carga 150 de una vez): un
+    `record_transition()` por fila son 150 requests seguidos dentro del mismo
+    handler. Cada entrada es un dict con `entity_type`, `entity_id`,
+    `from_status`, `to_status` y, opcionales, `reason` y `meta`.
+
+    Si un tramo falla se reintenta de a una fila, para perder lo menos posible.
+    """
+    user_id, user_email = _caller(request)
+    rows = []
+    for entry in entries:
+        if entry.get("entity_type") not in ENTITY_TYPES:
+            logger.warning("[finance_history] entity_type inválido: %r", entry.get("entity_type"))
+            continue
+        # Mismas claves en todas las filas: PostgREST exige un array uniforme.
+        rows.append({
+            "entity_type": entry["entity_type"],
+            "entity_id": str(entry["entity_id"]),
+            "from_status": entry.get("from_status"),
+            "to_status": entry["to_status"],
+            "changed_by": user_id,
+            "changed_by_email": user_email,
+            "reason": (entry.get("reason") or "").strip() or None,
+            "meta": entry.get("meta") or None,
+        })
+    written = 0
+    for start in range(0, len(rows), _BULK_CHUNK):
+        chunk = rows[start:start + _BULK_CHUNK]
+        try:
+            supabase.table("finance_status_history").insert(chunk).execute()
+            written += len(chunk)
+        except Exception as exc:
+            logger.warning("[finance_history] bulk insert failed, retrying one by one: %s", exc)
+            for row in chunk:
+                try:
+                    supabase.table("finance_status_history").insert(row).execute()
+                    written += 1
+                except Exception as one_exc:
+                    logger.warning(
+                        "[finance_history] insert failed (%s %s %s→%s): %s",
+                        row["entity_type"], row["entity_id"], row["from_status"], row["to_status"], one_exc,
+                    )
+    return written
+
+
 def history_for(entity_type: str, entity_id: str) -> list:
     """Historial de una entidad, del cambio más reciente al más viejo."""
     if entity_type not in ENTITY_TYPES:

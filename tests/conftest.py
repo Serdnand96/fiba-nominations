@@ -81,8 +81,19 @@ def _parse_in(raw: str) -> list:
     return [v[1:-1] if v.startswith('"') and v.endswith('"') else v for v in inner.split(",")]
 
 
+def _value_at(row: dict, column: str):
+    """Valor de una columna, o de una ruta JSON de PostgREST (`meta->a->>b`)."""
+    if "->" not in column:
+        return row.get(column)
+    head, *path = re.split(r"->>?", column)
+    value = row.get(head)
+    for key in path:
+        value = value.get(key) if isinstance(value, dict) else None
+    return value
+
+
 def _matches(row: dict, column: str, expr: str) -> bool:
-    value = _norm(row.get(column))
+    value = _norm(_value_at(row, column))
     if expr.startswith("not.is."):
         return value is not None
     if expr.startswith("is."):
