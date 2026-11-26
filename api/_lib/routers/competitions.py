@@ -79,6 +79,11 @@ def discover_fiba_competitions(
     Solo lista: el alta la hace una persona desde el formulario, que decide
     nombre, plantilla y si la competencia se divide en ventanas o grupos. Lleva
     `edit` porque existe para dar de alta, y cada llamada gasta cuota de GDAP.
+
+    `from_season` / `to_season` son los años en que la competencia se juega, no
+    la temporada de FIBA: un clasificatorio lleva la del torneo al que
+    clasifica. Cada ítem trae además `hosts` (todas las sedes) y `candidates`
+    (competencias nuestras sin vincular en las mismas fechas).
     """
     this_year = date.today().year
     from_season = from_season or this_year

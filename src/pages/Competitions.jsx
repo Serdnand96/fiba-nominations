@@ -183,10 +183,25 @@ export default function Competitions() {
       start_date: item.start || null,
       end_date: item.end || null,
       month: item.start ? Number(item.start.slice(5, 7)) : null,
-      location: [item.host_city, item.host_country].filter(Boolean).join(', ') || null,
+      // Con más de una sede no se elige una: la competencia se va a dividir
+      // por grupo y la ubicación de cada parte la carga quien la da de alta.
+      location: (item.hosts?.length || 0) > 1
+        ? null
+        : [item.host_city, item.host_country].filter(Boolean).join(', ') || null,
     })
     setShowDiscover(false)
     setShowModal(true)
+  }
+
+  // "Nuevas en FIBA" encontró una competencia nuestra sin vincular en las
+  // mismas fechas: se abre su formulario con el ID de FIBA puesto. Si es un
+  // grupo o una ventana de esa competencia lo decide quien guarda.
+  function openLinkFromFiba(candidate, item) {
+    const comp = competitions.find(c => c.id === candidate.id)
+    if (!comp) return
+    openEdit(comp)
+    setForm(f => ({ ...f, fiba_games_url: String(item.fiba_competition_id) }))
+    setShowDiscover(false)
   }
 
   function openEdit(comp) {
@@ -410,7 +425,7 @@ export default function Competitions() {
       </div>
 
       {showDiscover && (
-        <FibaDiscoverModal onClose={() => setShowDiscover(false)} onPick={openCreateFromFiba} />
+        <FibaDiscoverModal onClose={() => setShowDiscover(false)} onPick={openCreateFromFiba} onLink={openLinkFromFiba} />
       )}
 
       {showModal && (
