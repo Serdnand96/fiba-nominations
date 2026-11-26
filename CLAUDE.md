@@ -313,7 +313,11 @@ legacy `fibaamericascloud.com`).
       ventanas, así que lo único que separa W1/W2/W3 es la fecha. Van las dos
       o ninguna (400). Un partido que ya es de la competencia se sigue
       sincronizando aunque FIBA lo saque del rango, y uno que ya está en otra
-      competencia no se duplica (`claimed_elsewhere` en el reporte).
+      competencia no se duplica (`claimed_elsewhere` en el reporte). Ese control
+      corre **siempre**, con tramo o sin él: la W1 de la S8 perdió sus fechas en
+      octubre 2026 (un guardado del formulario las dejó vacías) y el cron le
+      cargó los 27 partidos de W2 y W3. Una competencia sin ningún filtro
+      aplicado que comparte partidos con otra queda con `fiba_sync_error`.
     - `fiba_start_date` / `fiba_end_date` → las fechas que FIBA le da al tramo.
       **No pisan** `start_date`/`end_date`: el Calendario muestra la diferencia
       y una persona la aplica (`POST /calendar/competitions/{id}/apply-fiba-dates`).

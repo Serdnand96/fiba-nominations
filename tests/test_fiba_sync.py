@@ -267,6 +267,39 @@ def test_date_segment_fully_claimed_elsewhere_flags_error(fake_db):
     assert "ya están en otra competencia" in fake_db.tables["competitions"][0]["fiba_sync_error"]
 
 
+def test_missing_segment_does_not_duplicate_other_windows_games(fake_db):
+    # BCLA S8 W1, octubre 2026: se guardó sin tramo de fechas y el cron le cargó
+    # los 27 partidos de W2 y W3. Sin tramo el feed entra entero, pero lo que ya
+    # es de otra competencia no se crea otra vez y el sync queda en error.
+    w1 = comp(fiba_window_code="W1")
+    fake_db.seed("competitions", [w1, comp(id="w2"), comp(id="w3")])
+    fake_db.seed("game_schedule", (
+        [{"id": f"w1-{g['gameId']}", "competition_id": "comp-1", "fiba_game_id": g["gameId"],
+          "date": g["gameDateTime"][:10], "team_a": "Team DSC", "team_b": "Team OTC"} for g in BCLA_FEED[:9]]
+        + [{"id": f"w2-{g['gameId']}", "competition_id": "w2", "fiba_game_id": g["gameId"],
+            "date": g["gameDateTime"][:10], "team_a": "Team DSC", "team_b": "Team OTC"} for g in BCLA_FEED[9:18]]
+        + [{"id": f"w3-{g['gameId']}", "competition_id": "w3", "fiba_game_id": g["gameId"],
+            "date": g["gameDateTime"][:10], "team_a": "Team DSC", "team_b": "Team OTC"} for g in BCLA_FEED[18:36]]
+    ))
+
+    report = fiba_sync.sync_competition(w1, FakeClient(BCLA_FEED))
+
+    mine = [r for r in fake_db.tables["game_schedule"] if r["competition_id"] == "comp-1"]
+    assert len(mine) == 9 and len(fake_db.tables["game_schedule"]) == 36
+    assert report["created"] == 0 and len(report["claimed_elsewhere"]) == 27
+    assert not report["date_applied"] and not report["window_applied"]
+    error = fake_db.tables["competitions"][0]["fiba_sync_error"]
+    assert "ya están en otra competencia" in error and "tramo" in error
+
+
+def test_unfiltered_competition_without_overlap_is_not_an_error(fake_db):
+    # Una AmeriCup o un CentroBasket: sin filtro y sin compartir partidos con nadie.
+    fake_db.seed("competitions", [comp()])
+    report = fiba_sync.sync_competition(comp(), FakeClient([game(1), game(2, date="2026-10-24")]))
+    assert report["created"] == 2 and report["claimed_elsewhere"] == []
+    assert fake_db.tables["competitions"][0]["fiba_sync_error"] is None
+
+
 def test_empty_date_segment_flags_error(fake_db):
     seg = dict(fiba_segment_from="2027-03-01", fiba_segment_to="2027-03-02")
     fake_db.seed("competitions", [comp(**seg)])

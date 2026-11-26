@@ -522,24 +522,29 @@ def sync_competition(comp: dict, client: GdapClient | None = None, *, dry_run: b
     pending = [g.get("gameName") or str(g.get("gameId")) for g in kept if not is_defined(g)]
     games_data = [fiba_json_to_game(g) for g in defined]
 
-    # Tramos por fecha que comparten feed (las ventanas de la BCLA): si FIBA mueve
-    # un partido de W2 a la semana de W3, W3 lo ve en su rango y W2 lo sigue
-    # teniendo. No se crea dos veces: es de la competencia que ya lo tenía.
+    # Un partido de FIBA es de UNA sola competencia nuestra: el que ya está en
+    # otra no se crea de nuevo. Pasa en dos casos:
+    # - Tramos por fecha que comparten feed (las ventanas de la BCLA): FIBA mueve
+    #   un partido de W2 a la semana de W3, W3 lo ve en su rango y W2 lo sigue
+    #   teniendo.
+    # - Una competencia que comparte el feed y se quedó sin filtro que aplique.
+    #   La BCLA S8 W1 perdió su tramo de fechas en octubre de 2026 y el cron le
+    #   cargó los 27 partidos de W2 y W3. Por eso el control no depende de que
+    #   haya tramo: justo cuando falta es cuando más hace falta.
     claimed_elsewhere = []
-    if info["date_applied"]:
-        mine = {str(e["fiba_game_id"]) for e in existing if e.get("fiba_game_id")}
-        candidates = [g["fiba_game_id"] for g in games_data
-                      if g.get("fiba_game_id") and str(g["fiba_game_id"]) not in mine]
-        if candidates:
-            taken = {
-                str(r["fiba_game_id"]) for r in (
-                    supabase.table("game_schedule").select("fiba_game_id, competition_id")
-                    .in_("fiba_game_id", candidates).execute().data or []
-                ) if r.get("competition_id") != competition_id
-            }
-            claimed_elsewhere = [g.get("game_number") or str(g["fiba_game_id"])
-                                 for g in games_data if str(g.get("fiba_game_id")) in taken]
-            games_data = [g for g in games_data if str(g.get("fiba_game_id")) not in taken]
+    mine = {str(e["fiba_game_id"]) for e in existing if e.get("fiba_game_id")}
+    candidates = [g["fiba_game_id"] for g in games_data
+                  if g.get("fiba_game_id") and str(g["fiba_game_id"]) not in mine]
+    if candidates:
+        taken = {
+            str(r["fiba_game_id"]) for r in (
+                supabase.table("game_schedule").select("fiba_game_id, competition_id")
+                .in_("fiba_game_id", candidates).execute().data or []
+            ) if r.get("competition_id") != competition_id
+        }
+        claimed_elsewhere = [g.get("game_number") or str(g["fiba_game_id"])
+                             for g in games_data if str(g.get("fiba_game_id")) in taken]
+        games_data = [g for g in games_data if str(g.get("fiba_game_id")) not in taken]
 
     synced = 0
     created = 0
@@ -664,17 +669,24 @@ def sync_competition(comp: dict, client: GdapClient | None = None, *, dry_run: b
         message = (f"FIBA tiene {info['total_from_fiba']} partidos pero ninguno de este tramo "
                    f"(ventana {comp.get('fiba_window_code') or '-'}, grupos {comp.get('fiba_group_codes') or '-'}, "
                    f"fechas {dates})")
+    elif claimed_elsewhere and not segment_filtered:
+        message = (f"{len(claimed_elsewhere)} partido(s) de FIBA ya están en otra competencia y esta no "
+                   "tiene un tramo que los separe (ventana, grupos o fechas): revisa el tramo de FIBA")
     elif claimed_elsewhere:
         message = (f"{len(claimed_elsewhere)} partido(s) del tramo ya están en otra competencia: "
                    + ", ".join(claimed_elsewhere[:10]))
     # Que todo el tramo esté en otra competencia tampoco es "sano con cero
     # partidos": es la misma señal que un tramo mal tipeado.
     all_claimed = bool(claimed_elsewhere and not games_data)
+    # Compartir partidos con otra competencia sin ningún filtro aplicado no es el
+    # caso transitorio de un partido que FIBA movió: es un tramo sin declarar (o
+    # borrado), y tiene que verse en Competencias y Calendario.
+    unfiltered_overlap = bool(claimed_elsewhere and not segment_filtered)
 
     comp_update = {
         "fiba_competition_id": fiba_id,
         "fiba_synced_at": _now_iso(),
-        "fiba_sync_error": message if (empty_segment or all_claimed) else None,
+        "fiba_sync_error": message if (empty_segment or all_claimed or unfiltered_overlap) else None,
     }
     # Sin fechas (tramo todavía sin partidos definidos) no se borran las que ya
     # había: un QF sin fecha hoy no anula lo que FIBA dijo ayer.
@@ -707,7 +719,8 @@ def sync_competition(comp: dict, client: GdapClient | None = None, *, dry_run: b
         "imported_from_window": len(games_data),
         # Cruces que FIBA todavía no definió (sin fecha o sin equipos).
         "pending_in_fiba": pending,
-        # Del tramo por fechas pero ya cargados en otra competencia (FIBA los movió).
+        # Del tramo pero ya cargados en otra competencia: FIBA los movió de ventana,
+        # o esta competencia comparte el feed sin un filtro que aplique.
         "claimed_elsewhere": claimed_elsewhere,
         "fiba_competition_id": fiba_id,
         "fiba_start_date": fiba_start,
