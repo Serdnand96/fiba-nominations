@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo, useCallback, useLayoutEffect } from 'react'
+import { useState, useEffect, useRef, useMemo, useCallback, useLayoutEffect, lazy, Suspense } from 'react'
 import { createPortal } from 'react-dom'
 import { Link } from 'react-router-dom'
 import {
@@ -17,6 +17,7 @@ import SyncReport from './games/SyncReport'
 import { Icon } from '../lib/icons'
 import { useLanguage } from '../i18n/LanguageContext'
 import { useToast } from '../components/ui/Toast'
+import { Tabs, useTabParam } from '../components/ui/Tabs'
 import { useAuth } from '../contexts/AuthContext'
 import CompetitionSearch from '../components/CompetitionSearch'
 import { COUNTRIES, countryName } from '../lib/countries'
@@ -25,6 +26,9 @@ import { readLastSearch, writeLastSearch } from '../lib/lastSearch'
 import { warRoomTime, formatWarRoom, WAR_ROOM_TZ } from '../lib/warRoom'
 import { isFibaLinked } from '../lib/competitions'
 import { cityKey, memberCities, coversGame } from '../lib/crew'
+
+// La pestaña En vivo va en su propio chunk: solo la baja quien la abre.
+const LiveBoard = lazy(() => import('./games/LiveBoard'))
 
 const PHASE_OPTIONS = ['Group Phase', 'Quarterfinals', 'Semifinals', 'Classification', 'Finals']
 // The stored phase stays in English (it is what FIBA and the Excel import
@@ -145,6 +149,9 @@ export default function Games() {
   // Data
   const [competitions, setCompetitions] = useState([])
   const [selectedCompId, setSelectedCompId] = useState('')
+  // 'schedule' es la página de siempre, por competencia; 'live' es lo que se
+  // juega hoy en todas a la vez. Va en la URL (?tab=live) para poder enlazarla.
+  const [tab, setTab] = useTabParam(['schedule', 'live'])
   const [games, setGames] = useState([])
   const [gameDates, setGameDates] = useState([])
   const [teams, setTeams] = useState([])
@@ -1077,6 +1084,26 @@ export default function Games() {
     return d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })
   }
 
+  const tabs = (
+    <Tabs value={tab} onChange={setTab}
+      items={[{ key: 'schedule', label: t('games.tabSchedule') }, { key: 'live', label: t('games.live') }]} />
+  )
+
+  if (tab === 'live') {
+    return (
+      <div>
+        <div className="mb-6">
+          <h2 className="text-2xl font-bold text-ink-900 dark:text-white">{t('games.title')}</h2>
+        </div>
+        {tabs}
+        <Suspense fallback={<div className="py-12 text-center text-sm text-fiba-muted">{t('common.loading')}</div>}>
+          <LiveBoard phaseLabel={phaseLabel}
+            onOpen={compId => { if (compId) setSelectedCompId(compId); setTab('schedule') }} />
+        </Suspense>
+      </div>
+    )
+  }
+
   return (
     <div>
       {/* Header */}
@@ -1185,6 +1212,7 @@ export default function Games() {
           )}
         </div>
       </div>
+      {tabs}
 
       {syncMsg && (
         <div className="mb-4 px-4 py-2 bg-blue-100 text-blue-700 dark:bg-blue-500/10 dark:text-blue-400 rounded-lg text-sm">{syncMsg}</div>

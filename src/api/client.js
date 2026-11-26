@@ -742,6 +742,8 @@ export const downloadTrainingScheduleXlsx = async (competitionId, lang = 'es', {
 
 // Games
 export const getGames = (competitionId) => api.get('/games', { params: { competition_id: competitionId } }).then(r => r.data)
+// Lo que se juega hoy en todas las competencias (pestaña En vivo de Partidos).
+export const getLiveGames = () => api.get('/games/live').then(r => r.data)
 export const getGamesByDate = (competitionId, date) => api.get('/games/by-date', { params: { competition_id: competitionId, date } }).then(r => r.data)
 export const getGameTeams = (competitionId) => api.get('/games/teams', { params: { competition_id: competitionId } }).then(r => r.data)
 export const getGameDates = (competitionId) => api.get('/games/dates', { params: { competition_id: competitionId } }).then(r => r.data)
