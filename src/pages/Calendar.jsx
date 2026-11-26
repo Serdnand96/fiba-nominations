@@ -10,6 +10,7 @@ import { useToast } from '../components/ui/Toast'
 import { useAuth } from '../contexts/AuthContext'
 import { SELECTABLE_COMPETITION_TYPES, competitionTypeColor, competitionTypeLabel, fibaDatesDiffer, fibaDateRange } from '../lib/competitions'
 import { roleLabel } from '../lib/roles'
+import { memberCities } from '../lib/crew'
 
 // El registro de tipos vive en src/lib/competitions.js — estaba duplicado acá y
 // en Availability.jsx, y las dos copias habían quedado desactualizadas.
@@ -519,6 +520,9 @@ export default function Calendar() {
                             {a.personnel?.id && a.role === 'TD' && <AvailDot avail={availabilityMap[a.personnel.id]} t={t} />}
                             <span className="text-sm font-medium text-ink-900 dark:text-white">{a.personnel?.name || (lang === 'es' ? 'Sin nombre' : 'No name')}</span>
                             <span className={`inline-block px-1.5 py-0.5 rounded text-xs font-medium ${a.role === 'VGO' ? 'bg-purple-100 text-purple-700 dark:bg-purple-500/20 dark:text-purple-400' : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-400'}`}>{roleLabel(a.role, t)}</span>
+                            {memberCities(a).length > 0 && (
+                              <span className="text-xs text-fiba-muted">{memberCities(a).join(', ')}</span>
+                            )}
                           </div>
                           {canEdit && (
                             <button onClick={() => handleRemoveAssignment(a.id)}
