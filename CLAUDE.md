@@ -393,6 +393,19 @@ legacy `fibaamericascloud.com`).
     - "Nuevas en FIBA" (`GET /competitions/fiba/discover`) lista lo que GDAP
       tiene en Americas (`zoneId=10`) y ninguna competencia nuestra vincula.
       Solo lista; el alta la decide una persona.
+      - Busca por **año en que se juega**, no por la `season` de GDAP: un
+        clasificatorio lleva la temporada del torneo al que clasifica. Los
+        Pre-Qualifiers de la AmeriCup 2029 (209058) son temporada 2029 y se
+        jugaron en noviembre de 2026; pidiendo solo 2026-2027 no aparecían. Por
+        eso se le piden a FIBA cuatro temporadas de más (`SEASON_LOOKAHEAD`) y
+        el recorte por fecha se hace acá.
+      - Muestra **todas las sedes** (`hosts`), no la primera: ese clasificatorio
+        se jugó en Managua y en Isla Margarita.
+      - `candidates` son las competencias nuestras **sin vincular en las mismas
+        fechas**. Es el caso habitual: la competencia ya está cargada desde el
+        calendario del año y lo que falta es el vínculo. El modal ofrece
+        "Vincular" (abre su formulario con el ID puesto) en vez de crear un
+        duplicado. No se vincula sola.
     - Sin `GDAP_API_KEY`, los partidos salen del feed de la web
       (`digital-api…/hapi`, `FIBA_API_KEY`), que tiene la misma forma; ventanas,
       fechas y discover necesitan GDAP.
