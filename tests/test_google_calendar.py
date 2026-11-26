@@ -247,6 +247,15 @@ class TestDesiredEvents:
         assert "Carla Ruiz" not in body["description"]
         assert "VGO: Diego Sosa" in body["description"]      # el resto del crew sigue
 
+    def test_window_with_later_fiba_games_stays_active(self, fake_db):
+        seed_world(fake_db)
+        # Window 1 de la BCLA: para el equipo terminó en mayo, pero FIBA le da
+        # partidos (los del grupo A) hasta julio. Sus eventos siguen al día.
+        old = next(c for c in fake_db.tables["competitions"] if c["id"] == "comp-old")
+        assert gcal.event_id_for(G_OLD) not in gcal.desired_events(TODAY)
+        old["fiba_end_date"] = "2026-07-05"
+        assert gcal.event_id_for(G_OLD) in gcal.desired_events(TODAY)
+
     def test_finished_yesterday_still_active_for_the_last_result(self, fake_db):
         seed_world(fake_db)
         # La competencia 1 terminó ayer: el resultado del último partido tiene

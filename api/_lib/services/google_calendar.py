@@ -13,9 +13,11 @@ Reglas que se ven raras y son correctas:
   `"g" + game_id sin guiones`: el hex es un subconjunto del base32hex que acepta
   Google. El hash del contenido viaja en `extendedProperties.private.fiba_hash`
   y solo se escribe lo que cambió.
-- **"Activa" = `end_date >= hoy - 3 días`.** Los días de gracia son para el
-  resultado del último partido: en América termina de noche, que en el reloj
-  UTC del servidor ya es el día siguiente. Cuando una competencia sale de ese
+- **"Activa" = su último día `>= hoy - 3 días`.** El último día es el mayor
+  entre `end_date` y `fiba_end_date` (`fiba_sync.active_range`): una ventana de
+  la BCLA tiene partidos del grupo A semanas después de su `end_date`. Los días
+  de gracia son para el resultado del último partido: en América termina de
+  noche, que en el reloj UTC del servidor ya es el día siguiente. Cuando una competencia sale de ese
   rango sus eventos SE QUEDAN en Google como historial (con el resultado): solo
   se borra un evento si su partido ya no existe en `game_schedule`.
 - **Una sync por usuario a la vez** (`sync_started_at`, claim atómico) y el
@@ -49,6 +51,7 @@ from cryptography.fernet import Fernet, InvalidToken
 
 from api._lib.crew import is_tournament_mode, list_crew
 from api._lib.database import SupabaseError, supabase
+from api._lib.services.fiba_sync import active_range
 from api._lib.services.notify import notify
 
 logger = logging.getLogger(__name__)
@@ -465,14 +468,16 @@ def desired_events(today: Optional[date] = None) -> dict[str, dict]:
     Es lo mismo para todos los usuarios: el cron lo calcula una vez por corrida.
     """
     today = today or datetime.now(timezone.utc).date()
+    # Se filtra en Python: "activa" mira dos columnas (el fin que cargó el equipo
+    # y el que da FIBA) y el wrapper no tiene `.or_()`. Son pocas filas.
     comps = (
         supabase.table("competitions")
-        .select("id, name, short_name, end_date, fee_type")
-        .gte("end_date", (today - ACTIVE_GRACE).isoformat())
+        .select("id, name, short_name, start_date, end_date, fiba_start_date, fiba_end_date, fee_type")
         .execute()
         .data
     ) or []
-    by_id = {c["id"]: c for c in comps}
+    cutoff = today - ACTIVE_GRACE
+    by_id = {c["id"]: c for c in comps if (active_range(c)[1] or date.min) >= cutoff}
     if not by_id:
         return {}
     games: list[dict] = []
