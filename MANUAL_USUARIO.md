@@ -229,6 +229,12 @@ template de carta usa**.
   juntas; si eliges la ventana de esta competencia, **Sincronizar
   Resultados** trae solo sus partidos. Para un torneo que no va por
   ventanas (AmeriCup, Centrobasket) déjalo en *Sin ventana*.
+- **Partidos del grupo en FIBA**: solo para las ventanas de la BCLA. FIBA
+  publica la temporada entera junta y numera del 1 al 9 los partidos de
+  cada grupo. Escribe `1,2,3` en la Window 1, `4,5,6` en la Window 2 y
+  `7,8,9` en la Window 3: cada ventana trae sus 12 partidos, incluidos
+  los del grupo que juega en otra fecha. En cualquier otra competencia
+  déjalo vacío.
 
 ---
 

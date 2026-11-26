@@ -3,8 +3,9 @@
 Lo mismo que el botón Sync de Games (services/fiba_sync.py), para todas las
 competencias vinculadas a FIBA. Dos modos:
 
-    --live   competencias en curso (start_date - 1 ≤ hoy ≤ end_date + 1): los
-             resultados del día. Cada 15 minutos.
+    --live   competencias en curso (inicio - 1 ≤ hoy ≤ fin + 1, tomando el tramo
+             real: las fechas del equipo y las de FIBA): los resultados del día.
+             Cada 15 minutos.
     --all    todas las vinculadas que no terminaron (y sus fechas): cambios de
              horario, partidos nuevos, fechas de FIBA. Una vez por día.
 
@@ -56,8 +57,9 @@ def select_competitions(mode: str, competition_id: str | None) -> list[dict]:
     today = date.today()
     out = []
     for r in rows:
-        start = date.fromisoformat(r["start_date"]) if r.get("start_date") else None
-        end = date.fromisoformat(r["end_date"]) if r.get("end_date") else None
+        # El tramo real, no solo start/end_date: una ventana de la BCLA tiene
+        # partidos del grupo A semanas después de su end_date.
+        start, end = fiba_sync.active_range(r)
         if mode == "live":
             # Un día de margen a cada lado: partidos que terminan pasada la
             # medianoche UTC y husos de toda América.
@@ -130,6 +132,8 @@ def main() -> int:
             filt.append(f"ventana {r['window_code']}")
         if r["group_applied"]:
             filt.append("grupos " + ",".join(r["group_codes"]))
+        if r.get("game_number_applied"):
+            filt.append("partidos " + ",".join(r["game_numbers"]))
         if r["date_applied"]:
             filt.append(f"fechas {r['date_from']}..{r['date_to']}")
         log(

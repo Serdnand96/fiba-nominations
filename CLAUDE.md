@@ -298,7 +298,7 @@ legacy `fibaamericascloud.com`).
     **84 partidos de las seis ventanas**; el de la LSB 2026 trae los 40 de
     grupos, QFs y Finals. Acá cada ventana o grupo es una **competencia
     aparte** con su crew, sus nominaciones y sus fees. Por eso, en
-    `competitions` (migraciones 040, 051 y 053):
+    `competitions` (migraciones 040, 051, 053 y 058):
     - `fiba_competition_id` → el ID de GDAP. Varias competencias nuestras lo
       comparten. `fiba_games_url` (URL o ID) sigue valiendo: el sync lo resuelve
       y lo guarda.
@@ -306,11 +306,19 @@ legacy `fibaamericascloud.com`).
       (`A`, o `37,38,39,40` para un Final Four) filtra por `groupPairingCode`.
       `NULL` = sin filtro, que es lo correcto para una AmeriCup o un
       CentroBasket — la mayoría.
-    - `fiba_segment_from` / `fiba_segment_to` (053) → tercer filtro: la fecha
-      **local** de los partidos tiene que caer en ese rango. Es para la **BCLA**:
-      la temporada entera es un solo ID (S8 = 209060), el feed no trae
-      `windowCode`, `/windows` viene vacío y B, C y D juegan en las tres
-      ventanas, así que lo único que separa W1/W2/W3 es la fecha. Van las dos
+    - `fiba_game_numbers` (058) → filtra por `gameNumber`, el número del
+      partido **dentro de su grupo**. Son las ventanas de la **BCLA**: la
+      temporada entera es un solo ID (S8 = 209060), el feed no trae
+      `windowCode` y `/windows` viene vacío. Cada grupo juega 9 partidos en
+      tres sedes de 3, numerados del 1 al 9: `1,2,3` es la Window 1, `4,5,6` la
+      2 y `7,8,9` la 3, **12 por ventana**. Los QFs (`A`, `B`, `C`) y el Final 4
+      (`49`, `51`, `52`) no entran en ninguna y se separan por grupo.
+    - `fiba_segment_from` / `fiba_segment_to` (053) → otro filtro: la fecha
+      **local** de los partidos tiene que caer en ese rango. Se hizo para la
+      BCLA y **la BCLA ya no lo usa**: el grupo A juega sus tres sedes entre
+      fines de enero y febrero, así que por fecha La Asunción y Managua caían
+      en la W3 y el reparto daba 9, 9 y 18. Queda para un feed que no tenga
+      otro dato que separe los tramos. Van las dos
       o ninguna (400). Un partido que ya es de la competencia se sigue
       sincronizando aunque FIBA lo saque del rango, y uno que ya está en otra
       competencia no se duplica (`claimed_elsewhere` en el reporte). Ese control
@@ -323,6 +331,12 @@ legacy `fibaamericascloud.com`).
       y una persona la aplica (`POST /calendar/competitions/{id}/apply-fiba-dates`).
     - `fiba_synced_at` / `fiba_sync_error` → la salud del cron, visible en
       Competencias y Calendario.
+    - **Qué se sigue sincronizando lo decide el tramo real**, no `end_date`
+      sola: `fiba_sync.active_range()` une las fechas del equipo con las de
+      FIBA, y lo usan el cron (`--live` y `--all`) y Google Calendar. La W1 de
+      la S8 termina el 14 de diciembre para el equipo y tiene partidos del
+      grupo A hasta el 25 de enero: con `end_date` sola el cron la daba por
+      terminada y esos resultados no entraban.
 
     Reglas que se ven raras y son correctas:
     - **Usá la v1 de `/games`, no la v2.** La v2 no trae `windowCode` ni
@@ -334,8 +348,8 @@ legacy `fibaamericascloud.com`).
       el equipo, que incluyen viaje. El tramo de `fiba_segment_*` es otra cosa:
       son las fechas de los partidos, se declaran a propósito y solo cuando el
       feed no separa las ventanas.
-    - Ventana y grupos **fallan del lado seguro**: si la competencia declara
-      ventana (o grupos) pero ningún partido del feed trae ese campo, no
+    - Ventana, grupos y números de partido **fallan del lado seguro**: si la
+      competencia declara uno pero ningún partido del feed trae ese campo, no
       filtran. Un feed sin ventanas tiene que devolver sus partidos, no cero.
       Por eso vincular las ventanas de la BCLA solo con `fiba_window_code`
       metía los 36 partidos en cada una. El filtro de fechas no tiene ese
@@ -470,7 +484,7 @@ legacy `fibaamericascloud.com`).
     (las 038-040 son de otros módulos: checklists, hora UTC de los partidos,
     ventanas FIBA; la **055** es de Logística y sigue la misma regla: hoteles con
     audiencia, contactos, salones, adicionales, documentos y `label` de los
-    cronogramas). Se aplican a mano
+    cronogramas; la **058**, el número de partido del sync con FIBA, también). Se aplican a mano
     contra Supabase **antes** de pushear el código que las usa — si no, el
     deploy encuentra una columna que no existe. Cada archivo lo dice en su
     cabecera. El resto del schema sigue la misma convención, pero acá es
@@ -690,7 +704,8 @@ legacy `fibaamericascloud.com`).
     FIBA). Quien tiene `calendar` o `games` conecta su cuenta desde Mi perfil →
     Google Calendar y la app le crea un calendario **secundario** propio,
     "FIBA Americas — Partidos", con los partidos de las competencias activas
-    (`end_date >= hoy - 3 días`: la gracia es para que llegue el resultado del
+    (su último día `>= hoy - 3 días`, tomando el mayor entre `end_date` y
+    `fiba_end_date`, punto 13: la gracia es para que llegue el resultado del
     último partido, que en América termina cuando en UTC ya es mañana).
 
     - Scope `calendar.app.created`: la app solo ve los calendarios que creó.

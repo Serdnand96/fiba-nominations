@@ -50,6 +50,10 @@ export default function SyncReport({ report, onClose, onApplied, canEdit }) {
       const word = l === 'es' ? (codes.length > 1 ? 'Grupos' : 'Grupo') : (codes.length > 1 ? 'Groups' : 'Group')
       parts.push(`${word} ${codes.join(', ')}`)
     }
+    if (report.game_number_applied) {
+      const numbers = (report.game_numbers || []).join(', ')
+      parts.push(l === 'es' ? `Partidos ${numbers} de cada grupo` : `Games ${numbers} of each group`)
+    }
     if (report.date_applied) parts.push(l === 'es'
       ? `Fechas del ${report.date_from} al ${report.date_to}`
       : `Dates ${report.date_from} to ${report.date_to}`)
@@ -89,7 +93,7 @@ export default function SyncReport({ report, onClose, onApplied, canEdit }) {
           {/* FIBA devuelve el clasificatorio entero por una sola URL. Sin esta
               línea, "84 en FIBA / 12 importados" se lee como que se perdieron
               72 partidos, cuando es exactamente lo correcto. */}
-          {report.window_applied || report.group_applied || report.date_applied ? (
+          {report.window_applied || report.group_applied || report.game_number_applied || report.date_applied ? (
             <div className="text-[11px] text-fiba-muted/80 mt-0.5">
               {t(
                 `${segmentLabel('es')}: ${report.imported_from_window} de ${report.total_from_fiba} partidos de FIBA. Los demás son de otras ventanas o grupos.`,

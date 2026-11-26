@@ -96,8 +96,8 @@ def create_competition(data: CompetitionCreate):
     record = data.model_dump()
     # Un campo del formulario que quedó en blanco es NULL, no "": un
     # fiba_group_codes "" se leería como "filtrar por ningún grupo".
-    for k in ("fiba_games_url", "fiba_window_code", "fiba_group_codes", "fiba_segment_from",
-              "fiba_segment_to", "start_date", "end_date", "location"):
+    for k in ("fiba_games_url", "fiba_window_code", "fiba_group_codes", "fiba_game_numbers",
+              "fiba_segment_from", "fiba_segment_to", "start_date", "end_date", "location"):
         if isinstance(record.get(k), str) and not record[k].strip():
             record[k] = None
     _check_fiba_segment(record.get("fiba_segment_from"), record.get("fiba_segment_to"))
@@ -114,7 +114,8 @@ _CLEARABLE_DATE_FIELDS = {
     "default_confirmation_deadline", "fiba_segment_from", "fiba_segment_to",
 }
 _CLEARABLE_TEXT_FIELDS = {
-    "fiba_games_url", "fiba_window_code", "fiba_group_codes", "default_location", "default_venue",
+    "fiba_games_url", "fiba_window_code", "fiba_group_codes", "fiba_game_numbers",
+    "default_location", "default_venue",
 }
 
 
