@@ -5,8 +5,9 @@
 > de gastos con aprobador separado, pagos como pipeline, historial de estados,
 > campana de notificaciones, dashboard con gráficos y exports a Excel.
 >
-> Migraciones del módulo: **033-037** (aplicadas a prod), **041**, **045-050** y
-> **056** (`expenses.hotel_id`, noviembre 2026).
+> Migraciones del módulo: **033-037** (aplicadas a prod), **041**, **045-050**,
+> **056** (`expenses.hotel_id`, noviembre 2026) y **057** (plan de cuentas
+> oficial de Finance, noviembre 2026, aplicada a prod).
 > Las 038-040 son de otros módulos (checklists, hora UTC, ventanas FIBA) y la 055
 > es de Logística. Todas se aplican **a mano** antes del push (CLAUDE.md §17).
 >
@@ -139,8 +140,9 @@ CREATE TABLE vendors (
 );
 ```
 
-**Seed del plan de cuentas.** Finance tiene el plan oficial pero todavía no lo
-entregó. Se siembra con lo que ya existe y se marca `pending_mapping = true`:
+**Seed del plan de cuentas.** Cuando se escribió la 033 Finance todavía no
+había entregado el plan oficial (llegó en noviembre 2026 y lo carga la 057, más
+abajo). Se sembró con lo que ya existía, marcado `pending_mapping = true`:
 
 - Los **6 códigos reales de IT** (610400, 610500, 611000, 612100, 612200,
   612300) con sus `escalation_pct` del sheet *Assumptions* (5%, 0%, 3%, 3%, 4%,
@@ -148,9 +150,9 @@ entregó. Se siembra con lo que ya existe y se marca `pending_mapping = true`:
 - Las **28 líneas de Competitions** como códigos provisorios `COMP-01`…`COMP-28`
   → `pending_mapping = true`.
 
-Cuando llegue el plan oficial, se remapean los `COMP-*` con un `UPDATE` y una
-migración de datos. Hasta entonces la UI muestra un badge en las cuentas
-pendientes.
+La UI muestra un badge en las cuentas pendientes. Con el plan oficial ya
+cargado, llevar los `COMP-*` a su cuenta definitiva es una fusión y no un
+renombre (§12).
 
 ### 035 — Presupuesto
 
@@ -518,6 +520,30 @@ hotel. Reglas del backend (§5):
   que es cuando el hotel suele facturar. `null` o `''` desvincula.
 - `ON DELETE SET NULL`: borrar un hotel no borra ni bloquea el gasto.
 
+### 057 — Plan de cuentas oficial de Finance
+
+Solo datos. Finance entregó el plan de cuentas de gasto (`Chart Of
+Accounts.xlsx`: 112 cuentas, 500000 a 680999) y `accounts` tenía 9 de esos
+códigos. La 057 carga las **103 que faltaban**, con `kind = 'expense'` y
+`pending_mapping = false`. Qué significa cada cuenta está en
+`GLOSARIO_CUENTAS.md`.
+
+- El `label` es el nombre de Finance con los espacios limpios y cinco errores
+  de tipeo corregidos (Fronge, Contiuous, chargeas, Plateform, deductable).
+- **11 entran `active = false`**: son de otras entidades de FIBA (Alemania:
+  501910, 501911, 502020, 625001; Costa de Marfil: 502900, 502901, 503900,
+  503901, 503902, 623110; sede central: 503300). Quedan en el plan, no salen en
+  los selectores y `_check_account` rechaza imputarles un gasto. El import del
+  ledger (§13) las trata como cualquier cuenta inactiva: la fila queda en error
+  hasta que alguien elige otra cuenta o activa esa.
+- Las 112 quedan en orden de código (`sort` 1010 a 2120, de a 10). Para las 9
+  que ya existían es lo único que cambia: `label`, `escalation_pct` y estado
+  quedan como estaban.
+- **No toca los provisorios.** `COMP-*`, `COMM-*` y `REV-*` siguen igual, las
+  líneas de presupuesto siguen ahí y `budget_accounts.py` sigue imputando los
+  pagos a `COMP-07`…`14` y `COMP-29`/`30`. El pase de provisorio a oficial está
+  pendiente (§12).
+
 ---
 
 ## 4. Autorización
@@ -656,6 +682,8 @@ POST     /budget/import/lines/preview      # no escribe; propone el mapeo de col
 POST     /budget/import/lines/commit       # con el mapeo que confirmó el usuario
 GET      /budget/summary?year=&department=          # totales, rollups, by_month, by_status (§8)
 GET      /budget/summary/export.xlsx?year=&department=&lang=   # 5 hojas, mismo _summary_data
+GET      /budget/cashflow?year=&department=         # salidas, ingresos y neto por trimestre (§8)
+GET      /budget/cashflow/export.xlsx?year=&department=&lang=  # 4 hojas, mismo _cashflow_data
 GET      /budget/headcount?year=           [ver competitions]
 PUT      /budget/headcount                 [edit de competitions]
 POST     /budget/headcount/generate?year=&department=&replace_manual=   [edit del department]
@@ -783,7 +811,8 @@ Ruta `/budget`, lazy-loaded, envuelta en `<PermissionGuard module="budget">`.
 `BudgetScopeProvider`, y dibuja la pestaña activa con `<Tabs>`. La pestaña va en
 la URL (`?tab=expenses`) y una pestaña puede abrir un registro con `?open=<id>`:
 así los links de la campana caen directo en el detalle. Pestañas, en orden:
-`dashboard` (Resumen) · `plan` (Presupuesto) · `expenses` (Gastos) ·
+`dashboard` (Resumen) · `cashflow` (Flujo de caja) · `plan` (Presupuesto) ·
+`expenses` (Gastos) ·
 `recurring` (Recurrentes) · `revenues` (Ingresos) · `vendors` (Proveedores) ·
 `accounts` (Cuentas, solo admin general). Cada una en
 `src/pages/budget/*Tab.jsx`, los editores en `src/pages/budget/editors/`.
@@ -866,6 +895,16 @@ editables, y editar/borrar/aprobar sale de `canEditDept(row.department_code)` /
    prorrateado, y top 10 cuentas en barras horizontales; después, las tablas por
    departamento, competencia y cuenta. Debajo, el **costo del evento** — `pagos a personas (nominaciones) + airfare + gastos del evento`
    vs. presupuestado, con el delta — y el tarifario.
+8. **Flujo de caja** (`cashflow`, `CashflowTab.jsx`) — el mismo año recordado
+   que el Resumen (`storedYear` / `rememberYear` en `shared.jsx`) y filtro de
+   departamento. Tabla por trimestre (presupuesto de referencia, ejecutado,
+   comprometido, total salidas, ingresos cobrados y esperados, neto y neto
+   acumulado) con Q1 a Q4 y el año; el trimestre en curso va resaltado y el
+   comprometido de un trimestre ya cerrado, en ámbar. Debajo, el gráfico
+   `CashflowChart` (mismo chunk `charts`, con `React.lazy`) y el **Desglose**
+   por departamento, evento o cuenta, con selector de qué mostrar (salidas,
+   ejecutado, comprometido o ingresos). **Exportar flujo de caja** baja las
+   cuatro hojas. Reglas en §8.
 
 **Pagos** (`/payments`, `src/pages/Payments.jsx`) es otro shell con `<Tabs>`:
 
@@ -978,6 +1017,49 @@ Salen de las mismas filas recortadas que los totales:
   cargado", no "qué consume". Un pago `cancelled` se ubica en el año de su
   `payment_date` o de su competencia (`payment_status_year`). El monto de un
   pago es fee + pasaje.
+
+### Flujo de caja por trimestre
+
+`GET /budget/cashflow` es el mismo año del Resumen cortado en Q1 a Q4, con los
+ingresos adentro. **No tiene regla de fechas propia**: `_summary_rows()` es la
+única carga de la que salen el Resumen (`_summary_data`) y el flujo de caja
+(`_cashflow_data`), y el trimestre de una fila es el de su `month`, el mismo
+que usa `by_month`. Por eso los cuatro trimestres suman exactamente los totales
+del Resumen. Si alguna vez una vista necesita otra carga, se rompe esa garantía:
+agregá el dato a `_summary_rows`, no una query nueva.
+
+| Fila | Trimestre |
+|---|---|
+| Gasto `paid` | el de `payment_date` (si cae en otro año, el de `expense_date`) |
+| Gasto `approved` | el de `expense_date` |
+| Pago ejecutado (`completed`, o lo pagado de un parcial) | el de `payment_date` |
+| Pago comprometido (`new`, resto de un `in_process`) | el del inicio de la competencia |
+| Ingreso `received` | el de `received_date` |
+| Ingreso `expected` | el de `expected_date` |
+
+La respuesta trae `quarters` (cuatro, con `budgeted`, `executed`, `committed`,
+`outflow`, `revenue_received`, `revenue_expected`, `inflow`, `net`,
+`net_actual` y los dos acumulados), `totals` y tres matrices (`by_department`,
+`by_competition`, `by_account`), cada fila con sus cuatro trimestres.
+
+- **`net`** = ingresos (cobrados + esperados) menos salidas (ejecutado +
+  comprometido). **`net_actual`** mira solo lo que ya pasó por el banco:
+  cobrado menos ejecutado. El acumulado arranca en cero: el sistema no guarda
+  un saldo inicial de caja.
+- **El presupuesto trimestral es una referencia, no un plan.** `budget_lines`
+  guarda un monto anual sin reparto por período, así que `_quarter_budget()` lo
+  divide en cuatro partes iguales al centavo (los centavos que sobran van a los
+  últimos trimestres). En Competitions,
+  donde los eventos concentran el gasto, esa referencia dice poco.
+- **Los recurrentes no generados no se proyectan.** El flujo de caja muestra
+  solo lo cargado: una plantilla recurrente sin su gasto del período no
+  aparece en ningún trimestre.
+- **Diciembre pagado en enero.** Un gasto imputa al año de `expense_date`, así
+  que una factura de diciembre pagada en enero queda en Q4 del año de la
+  factura y no en Q1 del siguiente. Es la misma decisión que en `by_month`:
+  moverla acá haría que Resumen y flujo de caja dieran ejecutados distintos.
+- Las matrices solo listan lo que tiene presupuesto o movimiento, y la cuenta
+  de un ingreso es su cuenta de ingreso: no se mezcla con las de gasto.
 
 ### De dónde sale la imputación de un pago
 
@@ -1240,14 +1322,32 @@ que lo importado siga cuadrando con la planilla.
 
 ## 12. Pendientes
 
-- **Plan de cuentas oficial de Finance.** Hasta que llegue, los códigos de
-  Competitions son `COMP-01`…`COMP-30` con `pending_mapping = true` (29 y 30
-  son del Video Operator, migración 045). El remap ya tiene UI (Budget →
-  Cuentas → "Asignar código oficial"): el `ON UPDATE CASCADE` mueve las filas
-  ya escritas, pero `ACCOUNT_BY_ROLE` / `TRAVEL_ACCOUNT_BY_ROLE` en
-  `api/_lib/budget_accounts.py` son dicts en Python y no lo siguen. Por eso
-  `/remap` responde 409 sobre una cuenta que figura ahí, salvo `force=true`
-  cuando el cambio a ese archivo va en el mismo deploy.
+- **Pasar los provisorios al plan oficial.** El plan de Finance ya está cargado
+  (migración 057), pero los 63 provisorios siguen vivos: `COMP-01`…`COMP-30`
+  (29 y 30 son del Video Operator, migración 045), `COMM-01`…`COMM-28` y
+  `REV-01`…`REV-05`, todos con `pending_mapping = true`. Mientras convivan, lo
+  presupuestado en un provisorio y lo ejecutado en su cuenta oficial salen en
+  filas separadas del reporte por cuenta. Lo que falta:
+  - **Una fusión, no un renombre.** "Asignar código oficial" (`/remap`) cambia
+    la PK y responde 409 si el código destino ya existe, así que hoy **no sirve
+    para llevar un provisorio a una cuenta del plan**. Tampoco alcanzaba antes
+    de la 057: varios provisorios caen en la misma cuenta oficial (vallas y
+    stickers de piso van los dos a 648100) y el segundo renombre ya chocaba.
+    Hace falta mover las filas de `expenses`, `budget_lines`, `revenues`,
+    `recurring_expenses`, `payments` y `fee_schedule` a la cuenta destino y
+    desactivar el provisorio, resolviendo qué pasa cuando dos líneas de
+    presupuesto terminan en el mismo año + departamento + cuenta + competencia.
+  - **La equivalencia la define Finance.** Qué provisorio va a qué cuenta no
+    sale del nombre. La lista de dudas está en `GLOSARIO_CUENTAS.md` ("Por
+    confirmar con Finance"); la que más pesa es si TD, VGO y Video Operator van
+    como oficiales (648350 / 648450) o como proveedores externos (648300 /
+    648400).
+  - **`budget_accounts.py` no sigue a la base.** `ACCOUNT_BY_ROLE` /
+    `TRAVEL_ACCOUNT_BY_ROLE` son dicts en Python: cuando se fusionen esas
+    cuentas hay que cambiar el archivo en el mismo deploy. Ojo con que el plan
+    oficial tiene una sola cuenta de honorarios y una de viajes para todos los
+    oficiales, no un par por rol.
+  - El plan no trae cuentas de **ingreso**: `REV-*` sigue sin código oficial.
 - **Gastos ejecutados 2026 de Competitions y Comms.** Los de IT ya están
   (§10, `scripts/import_it_2026.py`); los otros dos departamentos siguen sin
   archivo. Cuando llegue el ledger se carga desde la app (§13, Gastos >
@@ -1775,6 +1875,7 @@ con `state.user` y `state._is_superadmin` precargados.
 | `test_expense_transitions.py` | cada fila de la tabla de gastos, positiva y negativa; self-approval y override |
 | `test_payment_transitions.py` | cada fila de la tabla de pagos; W-8 (`tax_form_status`), `has_bank_info`, `mask_value` |
 | `test_summary_year.py` | `_payment_fiscal_year`, `_revenue_year`, `_payment_buckets` |
+| `test_cashflow.py` | flujo de caja: los cuatro trimestres suman los totales del Resumen, cada fila cae en su trimestre (parcial, pasaje, factura pagada al trimestre siguiente, ingreso por fecha de cobro), neto y acumulados, cada matriz suma lo mismo que los totales, recorte por departamento y el Excel contra la pantalla |
 | `test_notifications.py` | `notify()`, `budget_approvers_for`, `module_editors`, `/pending` por permiso y el aislamiento por usuario de `/me/notifications` |
 | `test_authorization.py` | `require_view` / `require_edit` / `require_superadmin` y la autoría del Muro |
 | `test_finance_review.py` | lo que cerró la revisión de la rama: `record-partial` y `completed ⇒ paid == total`, `last_financial_edit_by`, `by_month == totals`, descarga del W-8 por POST, vendors `name`/`active`, `cm_pending`, traza de ediciones y borrados, `generate_recurring`, headcount/supuestos con Competitions |

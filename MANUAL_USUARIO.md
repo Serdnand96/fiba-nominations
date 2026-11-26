@@ -531,6 +531,7 @@ por cuenta y por evento.
 | Pestaña | Qué hay |
 |---------|---------|
 | **Resumen** | Ejecutado vs. presupuestado por departamento, cuenta y evento; el **costo de un evento** (fees, pasajes y gastos) |
+| **Flujo de caja** | Salidas, ingresos y neto por trimestre, con desglose por departamento, evento y cuenta |
 | **Presupuesto** | Las líneas del plan por año, editables a mano o importadas desde el Excel de FIBA |
 | **Gastos** | Todo gasto que no es el pago a una persona nominada. Se **aprueba** y luego se marca como **pagado** |
 | **Recurrentes** | Costos fijos mensuales (software, internet, leasing). Cada período se confirma; nunca se cargan solos |
@@ -542,6 +543,23 @@ por cuenta y por evento.
 no pagado figura como **comprometido**. Los pagos a personas nominadas
 (módulo Pagos) se suman al ejecutado en la cuenta de fees del rol, y sus
 pasajes en la cuenta de travel.
+
+**Flujo de caja:** muestra el año elegido en cuatro trimestres. A qué
+trimestre va cada monto depende de su estado:
+
+- Un gasto **pagado** va al trimestre de su fecha de pago; uno **aprobado**,
+  al de la fecha del gasto.
+- Un pago a una persona ya **completado** va al trimestre de su fecha de pago;
+  uno todavía abierto, al trimestre en que empieza el evento.
+- Un ingreso **cobrado** va al trimestre en que entró; uno **esperado**, al de
+  su fecha esperada.
+
+El **Neto** es lo que entra menos lo que sale, contando también lo pendiente.
+El **Presupuesto de referencia** es el total del año repartido en cuatro
+partes iguales: sirve de guía, no dice cuándo se planeó gastar. Si un
+comprometido aparece en ámbar, es de un trimestre que ya cerró y sigue sin
+pagarse. En **Desglose** puedes ver lo mismo por departamento, por evento o
+por cuenta, y **Exportar flujo de caja** baja todo a Excel.
 
 **Quién ve qué:** además del permiso del módulo, cada usuario tiene sus
 **departamentos de presupuesto** (se asignan en Usuarios). Quien tiene IT

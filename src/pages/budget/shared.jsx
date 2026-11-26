@@ -27,6 +27,33 @@ export function currentPeriod() {
   return new Date().toISOString().slice(0, 7)
 }
 
+// Año de trabajo, recordado entre visitas (mismo patrón que `fiba_dark`). Lo
+// comparten el Resumen y el Flujo de caja: cambiarlo en una pestaña lo cambia
+// en la otra.
+const YEAR_KEY = 'fiba_budget_year'
+
+/** Años del selector: del actual +4 al actual -2. */
+export function yearOptions() {
+  const thisYear = new Date().getFullYear()
+  return Array.from({ length: 7 }, (_, i) => thisYear + 4 - i)
+}
+
+// Un año guardado fuera de la ventana del selector (de una visita de hace
+// años) vuelve al actual.
+export function storedYear() {
+  const thisYear = new Date().getFullYear()
+  try {
+    const y = Number(localStorage.getItem(YEAR_KEY))
+    return Number.isInteger(y) && y >= thisYear - 2 && y <= thisYear + 4 ? y : thisYear
+  } catch {
+    return thisYear
+  }
+}
+
+export function rememberYear(year) {
+  try { localStorage.setItem(YEAR_KEY, String(year)) } catch { /* sin storage, no se recuerda */ }
+}
+
 /* ─── Cuentas por departamento ───────────────────────────────────────────────
  *
  * La cuenta no pertenece a un departamento (son dimensiones separadas), pero

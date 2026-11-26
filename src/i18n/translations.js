@@ -638,6 +638,7 @@ const translations = {
 
     // Dashboard y costo del evento (fase 4)
     tabDashboard: { en: 'Overview', es: 'Resumen' },
+    tabCashflow: { en: 'Cash flow', es: 'Flujo de caja' },
     byDepartment: { en: 'By department', es: 'Por departamento' },
     byAccount: { en: 'By account', es: 'Por cuenta' },
     byCompetition: { en: 'By event', es: 'Por evento' },
@@ -966,6 +967,45 @@ const translations = {
     },
     exportExporting: { en: 'Exporting...', es: 'Exportando...' },
     exportError: { en: 'Could not export', es: 'No se pudo exportar' },
+
+    // Flujo de caja por trimestre
+    cashflowByQuarter: { en: 'By quarter', es: 'Por trimestre' },
+    cashflowHint: {
+      en: 'Each amount falls in the quarter of its payment date or, if not paid yet, of the expense date or the start of the event. The reference budget is the annual total split into four equal parts.',
+      es: 'Cada monto cae en el trimestre de su fecha de pago o, si aún no se pagó, de la fecha del gasto o del inicio del evento. El presupuesto de referencia es el total anual repartido en cuatro partes iguales.',
+    },
+    cashflowYear: { en: 'Year', es: 'Año' },
+    cashflowCurrent: { en: 'In progress', es: 'En curso' },
+    cashflowReference: { en: 'Reference budget', es: 'Presupuesto de referencia' },
+    cashflowOutflow: { en: 'Total outflow', es: 'Total salidas' },
+    cashflowReceived: { en: 'Revenue received', es: 'Ingresos cobrados' },
+    cashflowExpected: { en: 'Revenue expected', es: 'Ingresos esperados' },
+    cashflowInflow: { en: 'Total revenue', es: 'Total ingresos' },
+    cashflowNet: { en: 'Net', es: 'Neto' },
+    cashflowNetCumulative: { en: 'Cumulative net', es: 'Neto acumulado' },
+    cashflowOverdue: {
+      en: 'In amber: committed amounts from a quarter that has already closed and are still unpaid.',
+      es: 'En ámbar: comprometido de un trimestre ya cerrado que sigue sin pagarse.',
+    },
+    cashflowOverdueCell: { en: 'Quarter closed, still unpaid', es: 'Trimestre cerrado, sin pagar' },
+    cashflowConcept: { en: 'Item', es: 'Concepto' },
+    cashflowUnallocated: { en: 'Unallocated', es: 'Sin imputar' },
+    cashflowBreakdown: { en: 'Breakdown', es: 'Desglose' },
+    cashflowMetric: { en: 'Show', es: 'Mostrar' },
+    cashflowMetricOutflow: { en: 'Outflow', es: 'Salidas' },
+    cashflowMetricInflow: { en: 'Revenue', es: 'Ingresos' },
+    cashflowNoRows: { en: 'No amounts for this selection', es: 'Sin montos para esta selección' },
+    cashflowChart: { en: 'Outflow and revenue by quarter', es: 'Salidas e ingresos por trimestre' },
+    cashflowChartHint: {
+      en: 'The line is the cumulative net: revenue minus outflow, quarter after quarter.',
+      es: 'La línea es el neto acumulado: ingresos menos salidas, trimestre a trimestre.',
+    },
+    cashflowLoadError: { en: 'Could not load the cash flow', es: 'No se pudo cargar el flujo de caja' },
+    exportCashflow: { en: 'Export cash flow', es: 'Exportar flujo de caja' },
+    exportCashflowHint: {
+      en: 'Excel by quarter, by department, by event and by account',
+      es: 'Excel por trimestre, por departamento, por evento y por cuenta',
+    },
   },
 
   // ===== Payments =====

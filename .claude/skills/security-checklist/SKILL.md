@@ -265,7 +265,9 @@ recorte vive en el código (el `service_role` bypassa RLS). Contrato completo en
   scope (bypass con `?department=finance`).
 - **Los exports pasan por `_scoped`**: `/budget/expenses/export.xlsx` y
   `/budget/summary/export.xlsx` salen de las mismas funciones que la pantalla
-  (`_expense_rows` → `_fetch_expenses`, `_summary_data`). Un export nuevo que
+  (`_expense_rows` → `_fetch_expenses`, `_summary_data`, y `_cashflow_data`
+  para el flujo de caja por trimestre; las dos últimas comparten la carga
+  `_summary_rows`). Un export nuevo que
   arme su propia query es un hallazgo.
 - Escrituras: `_assert_can_edit(dept)` o `_row_or_403(…, "edit")`; mover una
   fila a otro departamento exige permiso sobre el destino. Filas ajenas → 404.
