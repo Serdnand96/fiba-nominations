@@ -670,8 +670,8 @@ def sync_competition(comp: dict, client: GdapClient | None = None, *, dry_run: b
                    f"(ventana {comp.get('fiba_window_code') or '-'}, grupos {comp.get('fiba_group_codes') or '-'}, "
                    f"fechas {dates})")
     elif claimed_elsewhere and not segment_filtered:
-        message = (f"{len(claimed_elsewhere)} partido(s) de FIBA ya están en otra competencia y esta no "
-                   "tiene un tramo que los separe (ventana, grupos o fechas): revisa el tramo de FIBA")
+        message = (f"{len(claimed_elsewhere)} partido(s) de FIBA ya están en otra competencia y a esta "
+                   "no se le aplicó ningún filtro (ventana, grupos o fechas): revisa el tramo de FIBA")
     elif claimed_elsewhere:
         message = (f"{len(claimed_elsewhere)} partido(s) del tramo ya están en otra competencia: "
                    + ", ".join(claimed_elsewhere[:10]))
