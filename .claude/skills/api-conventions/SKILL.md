@@ -344,7 +344,10 @@ return xlsx_response(workbook_bytes(wb), "pagos-2027.xlsx")
 - `personnel` = oficiales que se nominan (TDs, VGOs, REFs…).
 - `employees` = staff interno de FIBA (inventario, staffing plan, viajes),
   **no** se nomina.
-- `competition_assignments` = crew del torneo (se nomina, cobra);
+- `competition_assignments` = crew del torneo (se nomina, cobra). Cubre toda
+  la competencia salvo que la fila tenga `cities` (sedes): qué partidos le
+  tocan a cada uno lo decide `covers_game()` en `api/_lib/crew.py`, no cada
+  router por su cuenta;
   `competition_staffing` = empleados FIBA en el evento (no se nomina, no cobra).
   No unificarlas: la primera alimenta `sync-nominations`, cartas y fees.
 - `payments` (una persona nominada) y `expenses` (todo lo demás) son dos
