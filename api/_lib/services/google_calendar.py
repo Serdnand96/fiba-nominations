@@ -49,7 +49,7 @@ from urllib.parse import quote, urlencode
 import httpx
 from cryptography.fernet import Fernet, InvalidToken
 
-from api._lib.crew import is_tournament_mode, list_crew
+from api._lib.crew import covers_game, is_tournament_mode, list_crew
 from api._lib.database import SupabaseError, supabase
 from api._lib.services.fiba_sync import active_range
 from api._lib.services.notify import notify
@@ -422,7 +422,8 @@ def _chunks(items: list, size: int = _CHUNK):
 
 def _crew_for_games(competitions: dict[str, dict], games: list[dict]) -> dict[str, list[tuple[str, str]]]:
     """game_id → [(cargo, nombre)]: por partido si hay filas, si no el crew del
-    torneo en modo `tournament` (CLAUDE.md punto 9)."""
+    torneo en modo `tournament` (CLAUDE.md punto 9). Del crew, a cada partido
+    le toca solo quien cubre su sede (`covers_game`)."""
     per_game: dict[str, list[tuple[str, str]]] = {}
     ids = [g["id"] for g in games]
     for chunk in _chunks(ids):
@@ -438,13 +439,11 @@ def _crew_for_games(competitions: dict[str, dict], games: list[dict]) -> dict[st
             if name:
                 per_game.setdefault(r["game_id"], []).append((r.get("role") or "", name))
 
-    tournament_crew: dict[str, list[tuple[str, str]]] = {}
+    tournament_crew: dict[str, list[dict]] = {}
     for cid, comp in competitions.items():
         if is_tournament_mode(comp):
             tournament_crew[cid] = [
-                (c.get("role") or "", (c.get("personnel") or {}).get("name"))
-                for c in list_crew(cid)
-                if (c.get("personnel") or {}).get("name")
+                c for c in list_crew(cid) if (c.get("personnel") or {}).get("name")
             ]
 
     out = {}
@@ -457,7 +456,11 @@ def _crew_for_games(competitions: dict[str, dict], games: list[dict]) -> dict[st
             # tournament: la fila por partido es un override de SU cargo (quién
             # estuvo en la mesa); el resto del crew del torneo sigue.
             overridden = {role for role, _ in rows}
-            crew = [c for c in base if c[0] not in overridden] + rows
+            here = [
+                (c.get("role") or "", c["personnel"]["name"])
+                for c in base if covers_game(c, g)
+            ]
+            crew = [c for c in here if c[0] not in overridden] + rows
         out[g["id"]] = sorted(crew)
     return out
 

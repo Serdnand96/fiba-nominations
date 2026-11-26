@@ -203,12 +203,43 @@ legacy `fibaamericascloud.com`).
    - `per_game` → asignación **por partido** en `game_assignments` (un cargo
      por juego), solo para templates WCQ/BCLA/LSB.
    - `tournament` → el **crew del torneo** en `competition_assignments`
-     (helper: `api/_lib/crew.py`) cubre **todos** los partidos y todos los
-     slots de training, sin importar el template. Las filas por partido pasan
-     a ser un *override* opcional (quién estuvo realmente en la mesa) y ahí
-     sí puede haber más de una persona en el mismo cargo.
+     (helper: `api/_lib/crew.py`) cubre los partidos y los slots de training,
+     sin importar el template. Las filas por partido pasan a ser un *override*
+     opcional (quién estuvo realmente en la mesa) y ahí sí puede haber más de
+     una persona en el mismo cargo.
    `sync-nominations` sale del crew en modo torneo y de `game_assignments` en
    modo per-game. El crew se edita desde Games y desde el panel de Calendar.
+
+   **El crew cubre toda la competencia, salvo que la fila diga su sede**
+   (`competition_assignments.cities`, migración 059). Una ventana de la BCLA
+   se juega en tres o cuatro ciudades a la vez y cada TD o VGO trabaja una:
+   sin sede, los cuatro TD figuraban en los doce partidos y la sincronización
+   les ponía las fechas y las sedes de toda la ventana.
+   - `NULL` o vacío = toda la competencia. Es el caso de un torneo de una sola
+     sede, la mayoría, y ninguna fila vieja cambió de significado.
+   - La sede es la **ciudad** (`game_schedule.city`), no el grupo: Montevideo
+     recibe a dos grupos en el mismo estadio con un solo TD. Es una lista
+     porque una persona puede cubrir dos sedes seguidas.
+   - Se compara por nombre, sin mayúsculas ni acentos (`city_key`). Si FIBA
+     renombra la ciudad, la persona queda con cero partidos y **se reporta**
+     (`games_covered` en el panel, `no_games` en el sync): no se adivina. El
+     sync no le crea ni le toca la nominación, y la carta sale sin anfitrión
+     en vez de nombrar otra ciudad. La sede vieja se puede quitar desde el
+     panel aunque ya no exista.
+   - Cambiar la sede **no reescribe el viaje** de una nominación que ya existe:
+     el sync le actualiza las fechas de partido y "Recalcular viajes" el resto,
+     como siempre.
+   - **Una sola regla, `covers_game()` en `crew.py`.** La usan
+     `sync-nominations`, `/nominations/prefill`, el anfitrión de la carta
+     (`_host_location_for_nomination`), las tarjetas de Games y Google
+     Calendar. Un lector nuevo del crew que mire partidos pasa por ahí, no
+     vuelve a asumir "todos". El espejo del frontend es `src/lib/crew.js`.
+   - La sede se elige en el panel de Games (`PATCH /games/crew/{id}`), que la
+     muestra solo cuando la competencia tiene más de una ciudad. El panel de
+     Calendar la muestra pero no la edita.
+   - Siguen siendo de toda la competencia, a propósito: el padrón de logística
+     (`from-crew`), la lista del checklist público y el selector de TDs de
+     Training.
 
 10. **El "Staffing Plan" NO es el crew.** `competition_staffing` (migración
     029, router `staffing.py`, panel en Games) registra a los **empleados FIBA**
@@ -484,7 +515,8 @@ legacy `fibaamericascloud.com`).
     (las 038-040 son de otros módulos: checklists, hora UTC de los partidos,
     ventanas FIBA; la **055** es de Logística y sigue la misma regla: hoteles con
     audiencia, contactos, salones, adicionales, documentos y `label` de los
-    cronogramas; la **058**, el número de partido del sync con FIBA, también). Se aplican a mano
+    cronogramas; la **058**, el número de partido del sync con FIBA, y la **059**,
+    las sedes del crew, también). Se aplican a mano
     contra Supabase **antes** de pushear el código que las usa — si no, el
     deploy encuentra una columna que no existe. Cada archivo lo dice en su
     cabecera. El resto del schema sigue la misma convención, pero acá es
@@ -767,7 +799,7 @@ fiba-nominations/
 │   └── _lib/
 │       ├── auth.py            ← require_view, require_edit, require_user, has_view/has_edit
 │       ├── database.py        ← lightweight supabase client (httpx)
-│       ├── crew.py            ← crew del torneo (competition_assignments)
+│       ├── crew.py            ← crew del torneo (competition_assignments) y qué partidos cubre cada uno (punto 9)
 │       ├── travel.py          ← sede y fechas de viaje derivadas de los partidos
 │       ├── budget_accounts.py ← rol → cuenta de fees / de travel (payments ↔ budget)
 │       ├── logistics_audiences.py ← staff / delegation / vip → categorías del padrón; for_audience (punto 7)

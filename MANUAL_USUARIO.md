@@ -329,7 +329,12 @@ cargos llevas cubiertos (*"3 de 7 cargos asignados"*).
 **Competencias con honorario por torneo:** el equipo se define **una
 sola vez** en el **Crew del torneo** (botón arriba en Juegos, o
 **Agregar Staff** en el panel del evento del Calendario) y cubre todos
-los partidos y entrenamientos. En cada partido solo se marca, si
+los partidos y entrenamientos. Si la competencia se juega en **varias
+sedes a la vez** (una ventana de la BCLA), cada persona del crew tiene
+debajo de su nombre un botón por ciudad: marca la sede que le toca y
+pasa a cubrir solo los partidos de esa ciudad. Puedes marcar más de una
+si cubre dos sedes seguidas; con **Todas** cubre la competencia entera.
+Con una sola sede no aparece nada de esto. En cada partido solo se marca, si
 quieres, quién estuvo realmente en la mesa en los cargos de arbitraje —
 Crew Chief, Umpire 1 y 2, Instructor y Video Operator — así que ahí el
 contador es *"de 5"*.
@@ -355,7 +360,8 @@ exactamente por qué.
    de salida después del último.
 2. **Sincronizar nominaciones** — crea o actualiza los borradores de
    nominación de todos los asignados, calculando la sede y las fechas de
-   viaje de cada persona según los partidos que le tocaron.
+   viaje de cada persona según los partidos que le tocaron. En un crew
+   del torneo con sedes, a cada persona le tocan los partidos de su sede.
 3. **Generar PDFs** — sincroniza y genera las cartas de todos, de una vez.
 
 **Otras utilidades:**

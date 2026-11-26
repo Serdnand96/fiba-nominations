@@ -254,7 +254,7 @@ Proyecto: `mckaplalscnvaanukrmz`. Schema inicial en
 | `games`            | Partidos del calendario                       |
 | `assets`           | Inventario (Macs, monitors, cámaras…)         |
 | `loans`            | Préstamos de assets a employees               |
-| `competition_assignments` | Crew del torneo (fee `tournament`); `game_assignments` es por partido |
+| `competition_assignments` | Crew del torneo (fee `tournament`); con `cities`, solo los partidos de esas sedes. `game_assignments` es por partido |
 | `competition_staffing` | Staffing Plan: empleados FIBA en un evento (no se nominan) |
 | `game_schedule`    | `datetime_utc` del partido (ancla para zonas horarias) |
 | `checklist_templates` / `game_checklists` / `game_checklist_items` | Control de sede por partido; `checklist_public_links` da el token público |

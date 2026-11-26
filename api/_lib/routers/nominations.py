@@ -17,7 +17,9 @@ from api._lib.services.document_generator import (
     generate_nomination, _build_doc, _convert_to_pdf, custom_type,
 )
 from api._lib.travel import sede_pairs, format_sedes
-from api._lib.crew import get_competition, is_tournament_mode, list_crew
+from api._lib.crew import (
+    games_for_member, get_competition, is_tournament_mode, list_crew, member_cities,
+)
 # Reused rather than re-derived — see letter_data_for()/prefill_nomination()
 # docstrings. games.py does not import this module at module scope, so this
 # stays a plain top-level import (no cycle).
@@ -62,8 +64,11 @@ def _host_location_for_nomination(
       1. games where this personnel has a game_assignments row (most precise —
          disambiguates multi-host days like a WCQ window with 3 countries on
          the same date),
-      2. games whose date matches the nomination's `game_dates`,
-      3. all games for the competition.
+      2. games played in the sedes of this person's crew row (a BCLA window:
+         two cities play on the same dates, so the dates alone would name
+         both),
+      3. games whose date matches the nomination's `game_dates`,
+      4. all games for the competition.
 
     For WCQ (national-team competitions) the home team (`team_a`) IS the host
     country, so we fall back to team_a when country is empty.
@@ -100,6 +105,27 @@ def _host_location_for_nomination(
             assigned_ids = {a["game_id"] for a in assignments}
             relevant = [g for g in games if g["id"] in assigned_ids]
             person_scoped = bool(relevant)
+        except Exception:
+            relevant = []
+
+    if not relevant and personnel_id:
+        try:
+            crew_rows = (
+                supabase.table("competition_assignments")
+                .select("*")
+                .eq("competition_id", competition_id)
+                .eq("personnel_id", personnel_id)
+                .execute()
+                .data
+            ) or []
+            if crew_rows and member_cities(crew_rows[0]):
+                relevant = games_for_member(crew_rows[0], games)
+                if not relevant:
+                    # Their sede has no games (FIBA renamed the city). An
+                    # empty host shows in the letter; falling back to the
+                    # dates would print another city as if it were theirs.
+                    return "", ""
+                person_scoped = True
         except Exception:
             relevant = []
 
@@ -614,13 +640,17 @@ def prefill_nomination(
         ) or []
         role_by_pid = {p["id"]: (p.get("role") or "").upper() for p in person_rows}
 
-        crew_pids = (
-            {m["personnel_id"] for m in list_crew(competition_id)} if tournament else set()
+        # A crew member gets the games they cover: the whole schedule, or
+        # only those of their sedes (api/_lib/crew.py). Same rule as
+        # sync-nominations.
+        crew_by_pid = (
+            {m["personnel_id"]: m for m in list_crew(competition_id)} if tournament else {}
         )
         person_game_ids: dict[str, set] = {pid: set() for pid in requested_pids}
         for pid in requested_pids:
-            if pid in crew_pids:
-                person_game_ids[pid] = set(game_by_id.keys())
+            if pid in crew_by_pid:
+                person_game_ids[pid] = {
+                    g["id"] for g in games_for_member(crew_by_pid[pid], games)}
         if game_by_id:
             assignments = (
                 supabase.table("game_assignments")

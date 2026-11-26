@@ -12,7 +12,10 @@ from datetime import datetime, timedelta, timezone
 
 from api._lib.database import supabase
 from api._lib.auth import require_view, require_edit
-from api._lib.crew import get_competition, is_tournament_mode, list_crew
+from api._lib.crew import (
+    competition_sedes, games_for_member, get_competition, is_tournament_mode,
+    list_crew, member_cities, resolve_cities,
+)
 
 logger = logging.getLogger(__name__)
 from api._lib.services import fiba_sync
@@ -471,14 +474,57 @@ def _referee_conflict(game: dict, person: dict) -> dict | None:
 
 
 # ── Tournament crew (competition-level roster) ──────────────────────────────
-# On fee_type = 'tournament' competitions the crew covers every game and every
-# training slot; per-game rows are only an optional override. Editable from
-# here and from the Calendar panel — same table, same data.
+# On fee_type = 'tournament' competitions the crew covers the games and the
+# training slots; per-game rows are only an optional override. A member covers
+# the whole competition unless the row names its sedes (`cities`): see
+# api/_lib/crew.py. Editable from here and from the Calendar panel — same
+# table, same data (the sede is only edited here).
+
+_CREW_GAME_FIELDS = (
+    "id, date, city, country, team_a, team_a_code, team_a_country, "
+    "team_b, team_b_code, team_b_country, group_label, competition_id"
+)
+
 
 class CrewCreate(BaseModel):
     competition_id: str
     personnel_id: str
     role: Optional[str] = None  # defaults to the person's own role
+    cities: Optional[List[str]] = None  # sedes; empty = the whole competition
+
+
+class CrewUpdate(BaseModel):
+    cities: Optional[List[str]] = None
+
+
+def _crew_games(competition_id: str) -> list[dict]:
+    return (
+        supabase.table("game_schedule")
+        .select(_CREW_GAME_FIELDS)
+        .eq("competition_id", competition_id)
+        .execute()
+        .data
+    ) or []
+
+
+def _resolve_crew_cities(values, games: list[dict], stored=None) -> list[str] | None:
+    try:
+        return resolve_cities(values, games, stored)
+    except ValueError as exc:
+        raise HTTPException(400, f"{exc} is not a venue of this competition")
+
+
+def _crew_neutrality_warnings(role: str, person: dict | None, games: list[dict]) -> list[str]:
+    """Referee neutrality at tournament level is informative, not a block: a
+    referee can be part of the crew and simply not work the games of their own
+    country (those are blocked per game, in create_assignment). Only the games
+    the referee covers count."""
+    if (role or "").upper() != "REF" or not person:
+        return []
+    return [
+        f"{g.get('team_a') or ''} vs {g.get('team_b') or ''}"
+        for g in games if _referee_conflict(g, person)
+    ]
 
 
 @router.get("/crew/by-competition")
@@ -489,10 +535,17 @@ def list_crew_by_competition(competition_id: str = Query(...)):
     competition = get_competition(competition_id)
     if not competition:
         raise HTTPException(404, "Competition not found")
+    games = _crew_games(competition_id)
+    crew = [
+        {**m, "cities": member_cities(m) or None,
+         "games_covered": len(games_for_member(m, games))}
+        for m in list_crew(competition_id)
+    ]
     return {
         "fee_type": competition.get("fee_type") or "per_game",
         "covers_all_games": is_tournament_mode(competition),
-        "crew": list_crew(competition_id),
+        "sedes": competition_sedes(games),
+        "crew": crew,
     }
 
 
@@ -530,30 +583,70 @@ def add_crew_member(data: CrewCreate):
     if existing:
         raise HTTPException(409, "This person is already in the crew")
 
+    games = _crew_games(data.competition_id)
+    cities = _resolve_crew_cities(data.cities, games)
+
     record = {
         "competition_id": data.competition_id,
         "personnel_id": data.personnel_id,
         "role": role,
     }
+    # Only sent when a sede was chosen: the column is new (migration 059) and
+    # a crew for the whole competition is the row as it always was.
+    if cities:
+        record["cities"] = cities
     created = supabase.table("competition_assignments").insert(record).execute().data[0]
+    covered = games_for_member(created, games)
+    return {**created, "cities": member_cities(created) or None,
+            "games_covered": len(covered), "personnel": person,
+            "neutrality_warnings": _crew_neutrality_warnings(role, person, covered)}
 
-    # Referee neutrality at tournament level is informative, not a block: a
-    # referee can be part of the crew and simply not work the games of their
-    # own country (those are blocked per game, in create_assignment).
-    warnings = []
-    if role == "REF":
-        games = (
-            supabase.table("game_schedule")
-            .select("id, team_a, team_a_code, team_a_country, team_b, team_b_code, "
-                    "team_b_country, group_label, competition_id")
-            .eq("competition_id", data.competition_id)
-            .execute()
-            .data
-        ) or []
-        for g in games:
-            if _referee_conflict(g, person):
-                warnings.append(f"{g.get('team_a') or ''} vs {g.get('team_b') or ''}")
-    return {**created, "personnel": person, "neutrality_warnings": warnings}
+
+@router.patch("/crew/{assignment_id}", dependencies=[Depends(require_edit("games"))])
+def update_crew_member(assignment_id: str, data: CrewUpdate):
+    """Change the sedes a crew member covers. Role and person do not change
+    here: that is remove + add, as before.
+
+    It does not touch the nomination: the travel a person already has is kept
+    until someone runs the sync (game dates) or "Recalcular viajes"."""
+    if "cities" not in data.model_fields_set:
+        # An empty body must not read as "the whole competition".
+        raise HTTPException(400, "cities is required (an empty list = the whole competition)")
+    rows = (
+        supabase.table("competition_assignments")
+        .select("*")
+        .eq("id", assignment_id)
+        .execute()
+        .data
+    )
+    if not rows:
+        raise HTTPException(404, "Crew assignment not found")
+    games = _crew_games(rows[0]["competition_id"])
+    cities = _resolve_crew_cities(data.cities, games, member_cities(rows[0]))
+
+    updated = (
+        supabase.table("competition_assignments")
+        .update({"cities": cities})
+        .eq("id", assignment_id)
+        .execute()
+        .data
+    )
+    if not updated:
+        raise HTTPException(404, "Crew assignment not found")
+    row = updated[0]
+    person = (
+        supabase.table("personnel")
+        .select("id, name, role, email, country, country_code, nationalities")
+        .eq("id", row["personnel_id"])
+        .execute()
+        .data
+    )
+    person = person[0] if person else None
+    covered = games_for_member(row, games)
+    role = (person or {}).get("role") or row.get("role")
+    return {**row, "cities": member_cities(row) or None,
+            "games_covered": len(covered), "personnel": person,
+            "neutrality_warnings": _crew_neutrality_warnings(role, person, covered)}
 
 
 @router.delete("/crew/{assignment_id}", dependencies=[Depends(require_edit("games"))])
@@ -984,7 +1077,8 @@ def sync_assignments_to_nominations(
         raise HTTPException(400, "This competition does not support per-game assignments")
 
     empty = {"created": 0, "updated": 0, "people": 0, "multi_sede": 0,
-             "multi_sede_names": [], "source": "crew" if tournament else "games"}
+             "multi_sede_names": [], "no_games": 0, "no_games_names": [],
+             "source": "crew" if tournament else "games"}
 
     games = (
         supabase.table("game_schedule")
@@ -1031,20 +1125,29 @@ def sync_assignments_to_nominations(
 
     by_person: dict[str, dict] = {}
 
-    # Tournament crew → the whole schedule, every member.
-    all_dates = {g["date"] for g in games if g.get("date")}
-    all_game_ids = set(game_by_id)
+    # Tournament crew → every member gets the games they cover: the whole
+    # schedule, or only those of their sedes (api/_lib/crew.py).
+    no_games_pids: list[str] = []
     for member in crew:
         pid = member["personnel_id"]
+        covered = games_for_member(member, games)
+        if games and not covered:
+            # Their sede has no games here (FIBA renamed the city, or the
+            # games moved to another window). Nothing can be derived for
+            # them, so their nomination is neither created nor touched — a
+            # recalc would otherwise overwrite their travel with the
+            # competition defaults — and the person is reported.
+            no_games_pids.append(pid)
+            continue
         by_person[pid] = {
             "role": role_by_pid.get(pid) or (member.get("role") or "").upper(),
-            "dates": set(all_dates),
-            "game_ids": set(all_game_ids),
+            "dates": {g["date"] for g in covered if g.get("date")},
+            "game_ids": {g["id"] for g in covered},
         }
 
     # Per-game rows. On per-game competitions this is the only source; on
     # tournament competitions it only adds people who are not in the crew
-    # (the crew already covers every game).
+    # (the crew already covers its games).
     crew_pids = set(by_person)
     for a in assignments:
         if a["personnel_id"] in crew_pids:
@@ -1070,7 +1173,8 @@ def sync_assignments_to_nominations(
             pid: info for pid, info in by_person.items()
             if role_by_pid.get(pid) == role_filter
         }
-        if not by_person:
+        no_games_pids = [pid for pid in no_games_pids if role_by_pid.get(pid) == role_filter]
+        if not by_person and not no_games_pids:
             return empty
 
     # Existing nominations for this competition
@@ -1158,6 +1262,8 @@ def sync_assignments_to_nominations(
     # Names of multi-sede people, so the UI can point at who to double-check
     multi_names = sorted(
         (person_by_id.get(pid, {}).get("name") or "") for pid in multi_sede_pids)
+    no_games_names = sorted(
+        (person_by_id.get(pid, {}).get("name") or "") for pid in no_games_pids)
 
     return {
         "created": created,
@@ -1165,6 +1271,8 @@ def sync_assignments_to_nominations(
         "people": len(by_person),
         "multi_sede": len(multi_sede_pids),
         "multi_sede_names": multi_names,
+        "no_games": len(no_games_pids),
+        "no_games_names": no_games_names,
         "source": "crew" if tournament else "games",
     }
 
