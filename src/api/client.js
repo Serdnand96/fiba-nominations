@@ -774,8 +774,16 @@ export const importGamesExcel = (file, competitionId) => {
 // covers every game and training slot; per-game rows are only an override.
 export const getCompetitionCrew = (competitionId) =>
   api.get('/games/crew/by-competition', { params: { competition_id: competitionId } }).then(r => r.data)
-export const addCrewMember = (competitionId, personnelId, role = null) =>
-  api.post('/games/crew', { competition_id: competitionId, personnel_id: personnelId, ...(role ? { role } : {}) }).then(r => r.data)
+export const addCrewMember = (competitionId, personnelId, role = null, cities = null) =>
+  api.post('/games/crew', {
+    competition_id: competitionId,
+    personnel_id: personnelId,
+    ...(role ? { role } : {}),
+    ...(Array.isArray(cities) && cities.length > 0 ? { cities } : {}),
+  }).then(r => r.data)
+// Sedes de un oficial del torneo: { cities: [] | null } = toda la competencia.
+export const updateCrewMember = (assignmentId, data) =>
+  api.patch(`/games/crew/${assignmentId}`, data).then(r => r.data)
 export const removeCrewMember = (assignmentId) =>
   api.delete(`/games/crew/${assignmentId}`).then(r => r.data)
 export const getTrainingCrew = (competitionId) =>

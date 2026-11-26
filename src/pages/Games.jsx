@@ -7,7 +7,7 @@ import {
   getPersonnel, getGameAssignments, setGameAssignment, deleteGameAssignment,
   syncAssignmentsToNominations, generateAssignmentPDFs, updateCompetition,
   setTeamCountries, getCompetitionFlights, setFlightBooked,
-  getCompetitionCrew, addCrewMember, removeCrewMember,
+  getCompetitionCrew, addCrewMember, updateCrewMember, removeCrewMember,
   getStaffing, getStaffingCandidates, addStaffing, updateStaffing, removeStaffing,
   getChecklistTemplates, getChecklistSummary,
 } from '../api/client'
@@ -24,6 +24,7 @@ import { findRefereeGameConflict } from '../lib/refereeNeutrality'
 import { readLastSearch, writeLastSearch } from '../lib/lastSearch'
 import { warRoomTime, formatWarRoom, WAR_ROOM_TZ } from '../lib/warRoom'
 import { isFibaLinked } from '../lib/competitions'
+import { cityKey, memberCities, coversGame } from '../lib/crew'
 
 const PHASE_OPTIONS = ['Group Phase', 'Quarterfinals', 'Semifinals', 'Classification', 'Finals']
 // The stored phase stays in English (it is what FIBA and the Excel import
@@ -55,6 +56,7 @@ const SYNC_ROLES = ['TD', 'VGO', 'REF', 'REF_INSTRUCTOR', 'VIDEO_OPERATOR']
 // when one is confirmed on a game. Only TD/VGO: the officiating roles (REF,
 // REF_INSTRUCTOR, VIDEO_OPERATOR) get their own per-game positions instead.
 const CHIP_SLOT_FOR_ROLE = { TD: 'TD', VGO: 'VGO' }
+const isChipCrew = (m) => !!CHIP_SLOT_FOR_ROLE[((m.personnel?.role || m.role) || '').toUpperCase()]
 
 // Staffing plan: FIBA staff designated to the event. These people are NOT
 // nominated — no letter, no fee — so they live in their own table, apart from
@@ -84,6 +86,20 @@ const roleCode = (role) => ROLE_CODE[(role || '').toUpperCase()] || (role || '')
 // Orden de las columnas del panel de crew: primero la mesa, después el cuerpo
 // arbitral. Cualquier rol que no esté acá se muestra igual, al final.
 const CREW_ROLE_ORDER = ['TD', 'VGO', 'REF_INSTRUCTOR', 'REF', 'VIDEO_OPERATOR']
+// Toggle chips of the crew panel (one per venue). Same look as the card chips.
+const SEDE_CHIP = 'inline-flex items-center px-1.5 py-0.5 rounded text-[10px] border transition-colors disabled:opacity-60'
+const SEDE_CHIP_ON = 'border-fiba-accent/50 bg-fiba-accent/10 text-fiba-accent font-semibold'
+const SEDE_CHIP_OFF = 'border-fiba-border text-fiba-muted hover:text-ink-900 dark:hover:text-white'
+// Slot → people of the crew that can fill it (by personnel role).
+function slotOptionsFor(members) {
+  const people = members.map(m => m.personnel).filter(Boolean)
+  const map = {}
+  for (const slot of [...REF_SLOTS, ...CREW_SLOTS]) {
+    const role = SLOT_PERSONNEL_ROLE[slot]
+    map[slot] = people.filter(p => (p.role || '').toUpperCase() === role)
+  }
+  return map
+}
 
 const EMPTY_FORM = {
   date: '', time: '', team_a: '', team_a_code: '', team_a_country: '',
@@ -134,6 +150,7 @@ export default function Games() {
   const [teams, setTeams] = useState([])
   const [assignments, setAssignments] = useState([]) // per-game TD/VGO assignments
   const [crew, setCrew] = useState([]) // tournament crew (competition-level roster)
+  const [sedes, setSedes] = useState([]) // host cities of the competition (from the crew endpoint)
   const [flights, setFlights] = useState([]) // per-person flight-purchase check (competition-wide)
 
   // Filters
@@ -174,6 +191,8 @@ export default function Games() {
   const [crewOptions, setCrewOptions] = useState([])
   const [crewMsg, setCrewMsg] = useState('')
   const [crewSaving, setCrewSaving] = useState(false)
+  const [crewSede, setCrewSede] = useState('') // venue applied to the people added next ('' = all)
+  const [sedeSavingId, setSedeSavingId] = useState(null) // crew row whose venues are being saved
   // Staffing plan panel (FIBA staff — any competition, tournament or not)
   const [staffing, setStaffing] = useState([])
   const [showStaffing, setShowStaffing] = useState(false)
@@ -284,6 +303,7 @@ export default function Games() {
     setLoading(true)
     setFilterDates([])
     setFilterGroup('')
+    setCrewSede('')
     try {
       const comp = competitions.find(c => c.id === selectedCompId)
       const tournament = (comp?.fee_type || 'per_game') === 'tournament'
@@ -303,6 +323,7 @@ export default function Games() {
       setAssignments(asg)
       setFlights(fl)
       setCrew(cw?.crew || [])
+      setSedes(cw?.sedes || [])
       let finalGames = g
       let finalDates = d
 
@@ -371,6 +392,7 @@ export default function Games() {
       setAssignments(asg)
       setFlights(fl)
       setCrew(cw?.crew || [])
+      setSedes(cw?.sedes || [])
     } catch (e) {
       console.error(e)
     }
@@ -391,6 +413,7 @@ export default function Games() {
     try {
       const cw = await getCompetitionCrew(selectedCompId)
       setCrew(cw?.crew || [])
+      setSedes(cw?.sedes || [])
     } catch (e) {
       console.error(e)
     }
@@ -412,7 +435,7 @@ export default function Games() {
     setCrewSaving(true)
     setCrewMsg('')
     try {
-      const r = await addCrewMember(selectedCompId, person.id)
+      const r = await addCrewMember(selectedCompId, person.id, null, crewSede ? [crewSede] : null)
       await reloadCrew()
       setCrewSearch('')
       // Neutrality at tournament level is informative: the referee joins the
@@ -427,6 +450,35 @@ export default function Games() {
     }
     setCrewSaving(false)
     setTimeout(() => setCrewMsg(''), 6000)
+  }
+
+  // Toggle one venue on a crew member. "Todas" is the empty list, so removing
+  // the last venue sends [] and puts the person back on the whole competition.
+  async function handleToggleSede(member, city) {
+    const key = cityKey(city)
+    const current = memberCities(member)
+    const next = current.some(c => cityKey(c) === key)
+      ? current.filter(c => cityKey(c) !== key)
+      : [...current, city]
+    await saveMemberCities(member, next)
+  }
+
+  async function saveMemberCities(member, cities) {
+    setSedeSavingId(member.id)
+    try {
+      const r = await updateCrewMember(member.id, { cities })
+      await reloadCrew()
+      const warned = (r?.neutrality_warnings || []).length
+      if (warned > 0) {
+        setCrewMsg(t('games.sedeNeutralityNote', { name: member.personnel?.name || '', count: warned }))
+        setTimeout(() => setCrewMsg(''), 6000)
+      }
+    } catch (err) {
+      const detail = err.response?.data?.detail
+      setCrewMsg(typeof detail === 'string' ? detail : tx('No se pudo actualizar la sede.', 'Could not update the venue.'))
+      setTimeout(() => setCrewMsg(''), 6000)
+    }
+    setSedeSavingId(null)
   }
 
   async function handleRemoveCrew(member) {
@@ -632,6 +684,14 @@ export default function Games() {
     })
   }
 
+  // "N sin partidos en su sede: nombres" — crew whose venue has no games
+  function noGamesNote(r) {
+    return t('games.noGamesPeople', {
+      count: r.no_games,
+      names: (r.no_games_names || []).join(', '),
+    })
+  }
+
   // Close the per-role sync menu on outside click
   useEffect(() => {
     function handleClickOutside(e) {
@@ -666,6 +726,7 @@ export default function Games() {
       let msg = t('games.nominationsSynced', { created: r.created, updated: r.updated, people: r.people })
       if (roleFilter) msg = `${t(`rolesShort.${roleFilter}`)}: ${msg}`
       if (r.multi_sede > 0) msg += `. ${multiSedeNote(r)}`
+      if (r.no_games > 0) msg += `. ${noGamesNote(r)}`
       setNomMsg(msg)
     } catch (err) {
       setNomMsg(err.response?.data?.detail || tx('No se pudieron sincronizar las nominaciones.', 'Could not sync the nominations.'))
@@ -738,6 +799,7 @@ export default function Games() {
       const r = await syncAssignmentsToNominations(selectedCompId, true)
       let msg = t('games.travelRecalced', { people: r.people })
       if (r.multi_sede > 0) msg += `. ${multiSedeNote(r)}`
+      if (r.no_games > 0) msg += `. ${noGamesNote(r)}`
       setDefaultsMsg(msg)
     } catch (err) {
       const detail = err.response?.data?.detail
@@ -812,10 +874,27 @@ export default function Games() {
 
   // Crew members with no per-game slot (TD/VGO): they cover the whole event,
   // so each card lists them as chips instead of as positions to fill.
-  const coveringCrew = useMemo(
-    () => crew.filter(m => CHIP_SLOT_FOR_ROLE[((m.personnel?.role || m.role) || '').toUpperCase()]),
-    [crew],
-  )
+  const coveringCrew = useMemo(() => crew.filter(isChipCrew), [crew])
+
+  // A competition played in several cities: each crew member covers the games
+  // of their own venues (none = all). The cards get the crew of THEIR city,
+  // computed once per city and not once per card.
+  // `sedeMode` also holds when the schedule shrank to one city but a row
+  // still names a venue: the backend scopes that person either way, so the
+  // panel must keep showing (and letting you clear) what they have.
+  const multiSede = sedes.length > 1
+  const sedeMode = multiSede || crew.some(m => memberCities(m).length > 0)
+  const crewByCity = useMemo(() => {
+    if (!isTournament || !sedeMode) return null
+    const map = {}
+    for (const g of games) {
+      const key = cityKey(g.city)
+      if (map[key]) continue
+      const members = crew.filter(m => coversGame(m, g))
+      map[key] = { covering: members.filter(isChipCrew), slotOptions: slotOptionsFor(members) }
+    }
+    return map
+  }, [isTournament, sedeMode, games, crew])
 
   // Crew grouped by role for the panel. Un solo wrap de chips con nombres de
   // largos distintos se lee como un párrafo: pasado el docena de personas no
@@ -852,13 +931,7 @@ export default function Games() {
   // role instead of every person with that role in the database.
   const crewSlotOptions = useMemo(() => {
     if (!isTournament) return null
-    const people = crew.map(m => m.personnel).filter(Boolean)
-    const map = {}
-    for (const slot of [...REF_SLOTS, ...CREW_SLOTS]) {
-      const role = SLOT_PERSONNEL_ROLE[slot]
-      map[slot] = people.filter(p => (p.role || '').toUpperCase() === role)
-    }
-    return map
+    return slotOptionsFor(crew)
   }, [isTournament, crew])
 
   // game_id → slot → rows. A list rather than one row per slot: on a
@@ -1233,7 +1306,9 @@ export default function Games() {
             <div>
               <h3 className="text-sm font-bold text-ink-900 dark:text-white">{t('games.crewTitle')}</h3>
               <p className="text-xs text-fiba-muted mt-0.5">
-                {t('games.crewSubtitle', { games: games.length })}
+                {sedeMode
+                  ? t('games.crewSubtitleSedes')
+                  : t('games.crewSubtitle', { games: games.length })}
               </p>
             </div>
             <button onClick={() => setShowCrew(false)}
@@ -1263,19 +1338,64 @@ export default function Games() {
                       <span className="num text-[10px] text-fiba-muted">{members.length}</span>
                     </div>
                     <ul className={wide ? 'gap-x-8 sm:columns-2 lg:columns-3 xl:columns-4' : ''}>
-                      {members.map(m => (
-                        <li key={m.id}
-                          className="group flex items-center justify-between gap-2 rounded px-1.5 py-1 break-inside-avoid hover:bg-fiba-surface">
-                          <span className="min-w-0 text-sm leading-snug text-ink-900 dark:text-white break-words">
-                            {m.personnel?.name}
-                          </span>
-                          {canEdit && (
-                            <button onClick={() => handleRemoveCrew(m)}
-                              className="shrink-0 px-1 leading-none text-fiba-muted opacity-50 hover:opacity-100 hover:text-red-400 group-hover:opacity-100"
-                              title={t('games.crewRemove')} aria-label={t('games.crewRemove')}><Icon.X className="w-3.5 h-3.5" /></button>
-                          )}
-                        </li>
-                      ))}
+                      {members.map(m => {
+                        const cities = memberCities(m)
+                        const savingSede = sedeSavingId === m.id
+                        // Venues the row names that the schedule no longer has
+                        const staleCities = cities.filter(c => !sedes.some(s => cityKey(s.city) === cityKey(c)))
+                        return (
+                          <li key={m.id}
+                            className="group rounded px-1.5 py-1 break-inside-avoid hover:bg-fiba-surface">
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="min-w-0 text-sm leading-snug text-ink-900 dark:text-white break-words">
+                                {m.personnel?.name}
+                              </span>
+                              {canEdit && (
+                                <button onClick={() => handleRemoveCrew(m)}
+                                  className="shrink-0 px-1 leading-none text-fiba-muted opacity-50 hover:opacity-100 hover:text-red-400 group-hover:opacity-100"
+                                  title={t('games.crewRemove')} aria-label={t('games.crewRemove')}><Icon.X className="w-3.5 h-3.5" /></button>
+                              )}
+                            </div>
+                            {sedeMode && (canEdit ? (
+                              <div role="group" aria-label={t('games.sedeOf', { name: m.personnel?.name || '' })}
+                                className="flex flex-wrap gap-1 mt-1">
+                                <button type="button" aria-pressed={cities.length === 0}
+                                  disabled={savingSede}
+                                  onClick={() => { if (cities.length > 0) saveMemberCities(m, []) }}
+                                  className={`${SEDE_CHIP} ${cities.length === 0 ? SEDE_CHIP_ON : SEDE_CHIP_OFF}`}>
+                                  {t('games.sedeAll')}
+                                </button>
+                                {sedes.map(sede => {
+                                  const on = cities.some(c => cityKey(c) === cityKey(sede.city))
+                                  return (
+                                    <button key={sede.city} type="button" aria-pressed={on}
+                                      disabled={savingSede}
+                                      onClick={() => handleToggleSede(m, sede.city)}
+                                      className={`${SEDE_CHIP} ${on ? SEDE_CHIP_ON : SEDE_CHIP_OFF}`}>
+                                      {sede.city}
+                                    </button>
+                                  )
+                                })}
+                                {staleCities.map(city => (
+                                  <button key={`stale-${city}`} type="button" aria-pressed
+                                    disabled={savingSede} title={t('games.sedeStale', { city })}
+                                    onClick={() => handleToggleSede(m, city)}
+                                    className={`${SEDE_CHIP} border-amber-500/50 text-amber-700 dark:text-amber-500 line-through`}>
+                                    {city}
+                                  </button>
+                                ))}
+                              </div>
+                            ) : (
+                              <p className="text-[11px] text-fiba-muted mt-0.5">
+                                {cities.length > 0 ? cities.join(', ') : t('games.sedeAllOption')}
+                              </p>
+                            ))}
+                            {sedeMode && cities.length > 0 && m.games_covered === 0 && (
+                              <p className="text-[11px] text-amber-700 dark:text-amber-500 mt-1">{t('games.sedeNoGames')}</p>
+                            )}
+                          </li>
+                        )
+                      })}
                     </ul>
                   </div>
                 )
@@ -1286,9 +1406,22 @@ export default function Games() {
           {canEdit && (
             <div className="max-w-md border-t border-fiba-border pt-4">
               <label className="fiba-label">{t('games.crewAdd')}</label>
-              <input type="text" value={crewSearch} onChange={e => setCrewSearch(e.target.value)}
-                placeholder={t('games.crewSearchPlaceholder')}
-                className="fiba-input" />
+              <div className={multiSede ? 'flex gap-2' : ''}>
+                <input type="text" value={crewSearch} onChange={e => setCrewSearch(e.target.value)}
+                  placeholder={t('games.crewSearchPlaceholder')}
+                  className="fiba-input" />
+                {multiSede && (
+                  <select value={crewSede} onChange={e => setCrewSede(e.target.value)}
+                    aria-label={t('games.sedeLabel')} title={t('games.sedeAddHint')}
+                    className="fiba-select !w-auto shrink-0">
+                    <option value="">{t('games.sedeAllOption')}</option>
+                    {sedes.map(sede => <option key={sede.city} value={sede.city}>{sede.city}</option>)}
+                  </select>
+                )}
+              </div>
+              {multiSede && (
+                <p className="text-[11px] text-fiba-muted mt-1">{t('games.sedeAddHint')}</p>
+              )}
               {crewSearch.trim().length >= 2 && (
                 <div className="mt-2 max-h-52 overflow-y-auto border border-fiba-border rounded-lg divide-y divide-fiba-border">
                   {crewOptions
@@ -1652,8 +1785,8 @@ export default function Games() {
                       templateKey={(selectedComp?.template_key || '').toUpperCase()}
                       assignmentsBySlot={assignmentsBySlot[game.id] || {}}
                       isTournament={isTournament}
-                      crewSlotOptions={crewSlotOptions}
-                      coveringCrew={coveringCrew}
+                      crewSlotOptions={crewByCity?.[cityKey(game.city)]?.slotOptions || crewSlotOptions}
+                      coveringCrew={crewByCity?.[cityKey(game.city)]?.covering || coveringCrew}
                       crewOverrides={crewOverridesByGame[game.id] || {}}
                       onToggleCrewGame={handleToggleCrewGame}
                       onAssign={handleAssign} onUnassign={handleUnassign}

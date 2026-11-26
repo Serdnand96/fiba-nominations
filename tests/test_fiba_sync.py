@@ -9,12 +9,13 @@ from api._lib.services import fiba_sync
 
 
 def game(gid, *, group=None, window=None, date="2026-10-23", time="17:10", a="DSC", b="OTC",
-         status="INIT", round_code="GP", score=(0, 0), venue="Maracanazinho"):
+         status="INIT", round_code="GP", score=(0, 0), venue="Maracanazinho", number=None):
     """Un partido con la forma de GET /v1/competitions/{id}/games."""
     team = lambda code: {"code": code, "officialName": f"Team {code}", "shortName": code} if code else None
     return {
         "gameId": gid,
         "gameName": f"G-{gid}",
+        "gameNumber": str(number) if number is not None else None,
         "gameDateTime": f"{date}T{time}:00",
         "gameDateTimeUTC": f"{date}T20:10:00",
         "hasTimeGameDateTime": not date.startswith("0001"),
@@ -89,14 +90,17 @@ def test_window_filter_and_fail_safe():
     assert len(kept) == 2 and not info["window_applied"]
 
 
-# La forma de la BCLA S8 (209060): grupos A–D sin windowCode, y B/C/D juegan
-# en las tres ventanas. Solo la fecha separa W1 (9), W2 (9) y W3 (18).
+# La forma de la BCLA S8 (209060): grupos A–D sin windowCode. Cada grupo juega
+# 9 partidos numerados del 1 al 9, en tres sedes de 3: los 1-3 son la Window 1,
+# los 4-6 la 2 y los 7-9 la 3 (12 por ventana). B, C y D juegan en diciembre,
+# enero y febrero; el grupo A juega sus tres sedes entre fines de enero y
+# febrero, así que por fecha el reparto da 9, 9 y 18 y no 12, 12 y 12.
 BCLA_FEED = (
-    [game(100 + i, group=g, date=f"2026-12-{9 + i % 6:02d}") for i, g in enumerate("BBBCCCDDD")]
-    + [game(200 + i, group=g, date=f"2027-01-{13 + i % 6:02d}") for i, g in enumerate("BBBCCCDDD")]
-    + [game(300 + i, group="A", date=f"2027-01-{23 + i:02d}") for i in range(9)]
-    + [game(400 + i, group=g, date=f"2027-02-{10 + i % 6:02d}") for i, g in enumerate("BBBCCCDDD")]
-    + [game(500 + i, group=str(37 + i % 4), date="0001-01-01", b=None) for i in range(11)]
+    [game(100 + i, group=g, number=1 + i % 3, date=f"2026-12-{9 + i % 6:02d}") for i, g in enumerate("BBBCCCDDD")]
+    + [game(200 + i, group=g, number=4 + i % 3, date=f"2027-01-{13 + i % 6:02d}") for i, g in enumerate("BBBCCCDDD")]
+    + [game(300 + i, group="A", number=1 + i, date=f"2027-01-{23 + i:02d}") for i in range(9)]
+    + [game(400 + i, group=g, number=7 + i % 3, date=f"2027-02-{10 + i % 6:02d}") for i, g in enumerate("BBBCCCDDD")]
+    + [game(500 + i, group=str(37 + i % 4), number="ABC"[i % 3], date="0001-01-01", b=None) for i in range(11)]
 )
 
 
@@ -124,6 +128,45 @@ def test_date_filter_drops_undated_and_keeps_owned_games():
 def test_without_segment_dates_nothing_changes():
     kept, info = fiba_sync.filter_segment(BCLA_FEED, None, [])
     assert len(kept) == len(BCLA_FEED) and not info["date_applied"]
+
+
+def test_game_number_filter_splits_bcla_windows_twelve_each():
+    def window(numbers):
+        kept, info = fiba_sync.filter_segment(BCLA_FEED, "W1", [], game_numbers=numbers)
+        assert info["game_number_applied"] and not info["window_applied"] and not info["date_applied"]
+        return kept
+
+    w1, w2, w3 = window(["1", "2", "3"]), window(["4", "5", "6"]), window(["7", "8", "9"])
+    assert (len(w1), len(w2), len(w3)) == (12, 12, 12)
+    # Cada ventana lleva los cuatro grupos, el A incluido aunque juegue en enero.
+    assert all({g["groupPairingCode"] for g in w} == set("ABCD") for w in (w1, w2, w3))
+    assert sorted({g["gameDateTime"][:7] for g in w1}) == ["2026-12", "2027-01"]
+    # Los QFs (partidos A, B, C de los grupos 37-40) no son de ninguna ventana.
+    assert not any(g["gameId"] >= 500 for g in w1 + w2 + w3)
+
+
+def test_game_number_filter_fails_safe_when_feed_has_no_numbers():
+    feed = [game(1), game(2)]
+    kept, info = fiba_sync.filter_segment(feed, None, [], game_numbers=["1", "2", "3"])
+    assert len(kept) == 2 and not info["game_number_applied"]
+
+
+def test_active_range_joins_team_dates_and_fiba_dates():
+    from datetime import date
+
+    # Window 1 de la BCLA: el equipo la cierra el 14 de diciembre y FIBA le da
+    # partidos hasta el 25 de enero.
+    assert fiba_sync.active_range({
+        "start_date": "2026-12-09", "end_date": "2026-12-14",
+        "fiba_start_date": "2026-12-09", "fiba_end_date": "2027-01-25",
+    }) == (date(2026, 12, 9), date(2027, 1, 25))
+    # Las del equipo incluyen viaje y pueden ser más anchas: gana la más ancha.
+    assert fiba_sync.active_range({
+        "start_date": "2026-07-01", "end_date": "2026-07-12",
+        "fiba_start_date": "2026-07-03", "fiba_end_date": "2026-07-10",
+    }) == (date(2026, 7, 1), date(2026, 7, 12))
+    assert fiba_sync.active_range({"start_date": "2026-07-01", "end_date": None}) == (date(2026, 7, 1), None)
+    assert fiba_sync.active_range({}) == (None, None)
 
 
 def test_parse_codes_accepts_commas_and_spaces():
@@ -300,6 +343,46 @@ def test_unfiltered_competition_without_overlap_is_not_an_error(fake_db):
     assert fake_db.tables["competitions"][0]["fiba_sync_error"] is None
 
 
+def test_window_by_game_numbers_takes_its_twelve_and_their_dates(fake_db):
+    w1 = comp(fiba_window_code="W1", fiba_game_numbers="1,2,3")
+    fake_db.seed("competitions", [w1])
+
+    report = fiba_sync.sync_competition(w1, FakeClient(BCLA_FEED))
+
+    assert report["created"] == 12 and report["game_number_applied"]
+    assert report["skipped_other_game_numbers"] == len(BCLA_FEED) - 12
+    saved = fake_db.tables["competitions"][0]
+    # Diciembre (B, C y D) más la primera sede del grupo A, a fines de enero.
+    assert (saved["fiba_start_date"], saved["fiba_end_date"]) == ("2026-12-09", "2027-01-25")
+    assert saved["fiba_sync_error"] is None
+
+
+def test_window_by_game_numbers_does_not_take_games_still_in_another_window(fake_db):
+    # El paso de fechas a números: los 3 primeros del grupo A todavía están en
+    # la Window 3. La 1 no los duplica; se mueven a mano y el sync los reporta.
+    w1 = comp(fiba_window_code="W1", fiba_game_numbers="1,2,3")
+    fake_db.seed("competitions", [w1, comp(id="w3")])
+    fake_db.seed("game_schedule", [
+        {"id": f"w3-{g['gameId']}", "competition_id": "w3", "fiba_game_id": g["gameId"],
+         "date": g["gameDateTime"][:10], "team_a": "Team DSC", "team_b": "Team OTC"} for g in BCLA_FEED[18:21]
+    ])
+
+    report = fiba_sync.sync_competition(w1, FakeClient(BCLA_FEED))
+
+    assert report["created"] == 9 and len(report["claimed_elsewhere"]) == 3
+    assert len(fake_db.tables["game_schedule"]) == 12
+    # Con filtro aplicado y partidos propios no es un error: es un aviso.
+    assert fake_db.tables["competitions"][0]["fiba_sync_error"] is None
+    assert "del tramo ya están en otra competencia" in report["message"]
+
+
+def test_empty_game_number_segment_flags_error(fake_db):
+    fake_db.seed("competitions", [comp(fiba_game_numbers="10,11")])
+    report = fiba_sync.sync_competition(comp(fiba_game_numbers="10,11"), FakeClient(BCLA_FEED))
+    assert report["created"] == 0
+    assert "partidos 10,11" in fake_db.tables["competitions"][0]["fiba_sync_error"]
+
+
 def test_empty_date_segment_flags_error(fake_db):
     seg = dict(fiba_segment_from="2027-03-01", fiba_segment_to="2027-03-02")
     fake_db.seed("competitions", [comp(**seg)])
@@ -335,8 +418,19 @@ def test_competition_form_links_numeric_id(fake_db):
     from api._lib.schemas import CompetitionCreate
 
     row = create_competition(CompetitionCreate(name="X", template_key="GENERIC", fiba_games_url=" 209049 ",
-                                               fiba_group_codes=""))
+                                               fiba_group_codes="", fiba_game_numbers=""))
     assert row["fiba_competition_id"] == 209049 and row["fiba_group_codes"] is None
+    assert row["fiba_game_numbers"] is None
+
+
+def test_competition_game_numbers_are_saved_and_cleared(fake_db):
+    from api._lib.routers.competitions import update_competition
+    from api._lib.schemas import CompetitionUpdate
+
+    fake_db.seed("competitions", [{"id": "w1", "name": "BCLA W1", "fiba_game_numbers": None}])
+    assert update_competition("w1", CompetitionUpdate(fiba_game_numbers="1,2,3"))["fiba_game_numbers"] == "1,2,3"
+    # El formulario manda "" cuando el campo queda vacío: es NULL, no "filtrar por nada".
+    assert update_competition("w1", CompetitionUpdate(fiba_game_numbers=""))["fiba_game_numbers"] is None
 
 
 def test_competition_segment_needs_both_dates_in_order(fake_db):
@@ -439,3 +533,32 @@ def test_filling_an_empty_field_is_not_a_reschedule(fake_db):
     row = fake_db.tables["game_schedule"][0]
     assert (row["time"], row["venue"], row["country"]) == ("17:10", "Maracanazinho", "Brazil")
     assert report["rescheduled"] == []
+
+
+# ── Cron: qué competencias se sincronizan ────────────────────────────────────
+
+def test_cron_keeps_syncing_a_window_until_its_last_fiba_game(fake_db, monkeypatch):
+    import datetime as dt
+    from scripts import fiba_sync as cron
+
+    fake_db.seed("competitions", [
+        # Window 1 de la BCLA: cerrada el 14 de diciembre para el equipo, con
+        # partidos del grupo A en FIBA hasta el 25 de enero.
+        {"id": "w1", "fiba_competition_id": 209060, "start_date": "2026-12-09", "end_date": "2026-12-14",
+         "fiba_start_date": "2026-12-09", "fiba_end_date": "2027-01-25"},
+        # Terminada de verdad: ni el equipo ni FIBA le dan más partidos.
+        {"id": "old", "fiba_competition_id": 209032, "start_date": "2026-04-17", "end_date": "2026-04-18",
+         "fiba_start_date": "2026-04-17", "fiba_end_date": "2026-04-18"},
+    ])
+
+    def on(day):
+        class FakeDate(dt.date):
+            @classmethod
+            def today(cls):
+                return day
+        monkeypatch.setattr(cron, "date", FakeDate)
+        return ([c["id"] for c in cron.select_competitions("live", None)],
+                [c["id"] for c in cron.select_competitions("all", None)])
+
+    assert on(dt.date(2027, 1, 24)) == (["w1"], ["w1"])     # se juega La Asunción
+    assert on(dt.date(2027, 1, 27)) == ([], [])              # ya no queda nada

@@ -203,12 +203,43 @@ legacy `fibaamericascloud.com`).
    - `per_game` → asignación **por partido** en `game_assignments` (un cargo
      por juego), solo para templates WCQ/BCLA/LSB.
    - `tournament` → el **crew del torneo** en `competition_assignments`
-     (helper: `api/_lib/crew.py`) cubre **todos** los partidos y todos los
-     slots de training, sin importar el template. Las filas por partido pasan
-     a ser un *override* opcional (quién estuvo realmente en la mesa) y ahí
-     sí puede haber más de una persona en el mismo cargo.
+     (helper: `api/_lib/crew.py`) cubre los partidos y los slots de training,
+     sin importar el template. Las filas por partido pasan a ser un *override*
+     opcional (quién estuvo realmente en la mesa) y ahí sí puede haber más de
+     una persona en el mismo cargo.
    `sync-nominations` sale del crew en modo torneo y de `game_assignments` en
    modo per-game. El crew se edita desde Games y desde el panel de Calendar.
+
+   **El crew cubre toda la competencia, salvo que la fila diga su sede**
+   (`competition_assignments.cities`, migración 059). Una ventana de la BCLA
+   se juega en tres o cuatro ciudades a la vez y cada TD o VGO trabaja una:
+   sin sede, los cuatro TD figuraban en los doce partidos y la sincronización
+   les ponía las fechas y las sedes de toda la ventana.
+   - `NULL` o vacío = toda la competencia. Es el caso de un torneo de una sola
+     sede, la mayoría, y ninguna fila vieja cambió de significado.
+   - La sede es la **ciudad** (`game_schedule.city`), no el grupo: Montevideo
+     recibe a dos grupos en el mismo estadio con un solo TD. Es una lista
+     porque una persona puede cubrir dos sedes seguidas.
+   - Se compara por nombre, sin mayúsculas ni acentos (`city_key`). Si FIBA
+     renombra la ciudad, la persona queda con cero partidos y **se reporta**
+     (`games_covered` en el panel, `no_games` en el sync): no se adivina. El
+     sync no le crea ni le toca la nominación, y la carta sale sin anfitrión
+     en vez de nombrar otra ciudad. La sede vieja se puede quitar desde el
+     panel aunque ya no exista.
+   - Cambiar la sede **no reescribe el viaje** de una nominación que ya existe:
+     el sync le actualiza las fechas de partido y "Recalcular viajes" el resto,
+     como siempre.
+   - **Una sola regla, `covers_game()` en `crew.py`.** La usan
+     `sync-nominations`, `/nominations/prefill`, el anfitrión de la carta
+     (`_host_location_for_nomination`), las tarjetas de Games y Google
+     Calendar. Un lector nuevo del crew que mire partidos pasa por ahí, no
+     vuelve a asumir "todos". El espejo del frontend es `src/lib/crew.js`.
+   - La sede se elige en el panel de Games (`PATCH /games/crew/{id}`), que la
+     muestra solo cuando la competencia tiene más de una ciudad. El panel de
+     Calendar la muestra pero no la edita.
+   - Siguen siendo de toda la competencia, a propósito: el padrón de logística
+     (`from-crew`), la lista del checklist público y el selector de TDs de
+     Training.
 
 10. **El "Staffing Plan" NO es el crew.** `competition_staffing` (migración
     029, router `staffing.py`, panel en Games) registra a los **empleados FIBA**
@@ -298,7 +329,7 @@ legacy `fibaamericascloud.com`).
     **84 partidos de las seis ventanas**; el de la LSB 2026 trae los 40 de
     grupos, QFs y Finals. Acá cada ventana o grupo es una **competencia
     aparte** con su crew, sus nominaciones y sus fees. Por eso, en
-    `competitions` (migraciones 040, 051 y 053):
+    `competitions` (migraciones 040, 051, 053 y 058):
     - `fiba_competition_id` → el ID de GDAP. Varias competencias nuestras lo
       comparten. `fiba_games_url` (URL o ID) sigue valiendo: el sync lo resuelve
       y lo guarda.
@@ -306,11 +337,19 @@ legacy `fibaamericascloud.com`).
       (`A`, o `37,38,39,40` para un Final Four) filtra por `groupPairingCode`.
       `NULL` = sin filtro, que es lo correcto para una AmeriCup o un
       CentroBasket — la mayoría.
-    - `fiba_segment_from` / `fiba_segment_to` (053) → tercer filtro: la fecha
-      **local** de los partidos tiene que caer en ese rango. Es para la **BCLA**:
-      la temporada entera es un solo ID (S8 = 209060), el feed no trae
-      `windowCode`, `/windows` viene vacío y B, C y D juegan en las tres
-      ventanas, así que lo único que separa W1/W2/W3 es la fecha. Van las dos
+    - `fiba_game_numbers` (058) → filtra por `gameNumber`, el número del
+      partido **dentro de su grupo**. Son las ventanas de la **BCLA**: la
+      temporada entera es un solo ID (S8 = 209060), el feed no trae
+      `windowCode` y `/windows` viene vacío. Cada grupo juega 9 partidos en
+      tres sedes de 3, numerados del 1 al 9: `1,2,3` es la Window 1, `4,5,6` la
+      2 y `7,8,9` la 3, **12 por ventana**. Los QFs (`A`, `B`, `C`) y el Final 4
+      (`49`, `51`, `52`) no entran en ninguna y se separan por grupo.
+    - `fiba_segment_from` / `fiba_segment_to` (053) → otro filtro: la fecha
+      **local** de los partidos tiene que caer en ese rango. Se hizo para la
+      BCLA y **la BCLA ya no lo usa**: el grupo A juega sus tres sedes entre
+      fines de enero y febrero, así que por fecha La Asunción y Managua caían
+      en la W3 y el reparto daba 9, 9 y 18. Queda para un feed que no tenga
+      otro dato que separe los tramos. Van las dos
       o ninguna (400). Un partido que ya es de la competencia se sigue
       sincronizando aunque FIBA lo saque del rango, y uno que ya está en otra
       competencia no se duplica (`claimed_elsewhere` en el reporte). Ese control
@@ -323,6 +362,12 @@ legacy `fibaamericascloud.com`).
       y una persona la aplica (`POST /calendar/competitions/{id}/apply-fiba-dates`).
     - `fiba_synced_at` / `fiba_sync_error` → la salud del cron, visible en
       Competencias y Calendario.
+    - **Qué se sigue sincronizando lo decide el tramo real**, no `end_date`
+      sola: `fiba_sync.active_range()` une las fechas del equipo con las de
+      FIBA, y lo usan el cron (`--live` y `--all`) y Google Calendar. La W1 de
+      la S8 termina el 14 de diciembre para el equipo y tiene partidos del
+      grupo A hasta el 25 de enero: con `end_date` sola el cron la daba por
+      terminada y esos resultados no entraban.
 
     Reglas que se ven raras y son correctas:
     - **Usá la v1 de `/games`, no la v2.** La v2 no trae `windowCode` ni
@@ -334,8 +379,8 @@ legacy `fibaamericascloud.com`).
       el equipo, que incluyen viaje. El tramo de `fiba_segment_*` es otra cosa:
       son las fechas de los partidos, se declaran a propósito y solo cuando el
       feed no separa las ventanas.
-    - Ventana y grupos **fallan del lado seguro**: si la competencia declara
-      ventana (o grupos) pero ningún partido del feed trae ese campo, no
+    - Ventana, grupos y números de partido **fallan del lado seguro**: si la
+      competencia declara uno pero ningún partido del feed trae ese campo, no
       filtran. Un feed sin ventanas tiene que devolver sus partidos, no cero.
       Por eso vincular las ventanas de la BCLA solo con `fiba_window_code`
       metía los 36 partidos en cada una. El filtro de fechas no tiene ese
@@ -471,7 +516,8 @@ legacy `fibaamericascloud.com`).
     (las 038-040 son de otros módulos: checklists, hora UTC de los partidos,
     ventanas FIBA; la **055** es de Logística y sigue la misma regla: hoteles con
     audiencia, contactos, salones, adicionales, documentos y `label` de los
-    cronogramas). Se aplican a mano
+    cronogramas; la **058**, el número de partido del sync con FIBA, y la **059**,
+    las sedes del crew, también). Se aplican a mano
     contra Supabase **antes** de pushear el código que las usa — si no, el
     deploy encuentra una columna que no existe. Cada archivo lo dice en su
     cabecera. El resto del schema sigue la misma convención, pero acá es
@@ -691,7 +737,8 @@ legacy `fibaamericascloud.com`).
     FIBA). Quien tiene `calendar` o `games` conecta su cuenta desde Mi perfil →
     Google Calendar y la app le crea un calendario **secundario** propio,
     "FIBA Americas — Partidos", con los partidos de las competencias activas
-    (`end_date >= hoy - 3 días`: la gracia es para que llegue el resultado del
+    (su último día `>= hoy - 3 días`, tomando el mayor entre `end_date` y
+    `fiba_end_date`, punto 13: la gracia es para que llegue el resultado del
     último partido, que en América termina cuando en UTC ya es mañana).
 
     - Scope `calendar.app.created`: la app solo ve los calendarios que creó.
@@ -755,7 +802,7 @@ fiba-nominations/
 │   └── _lib/
 │       ├── auth.py            ← require_view, require_edit, require_user, has_view/has_edit
 │       ├── database.py        ← lightweight supabase client (httpx)
-│       ├── crew.py            ← crew del torneo (competition_assignments)
+│       ├── crew.py            ← crew del torneo (competition_assignments) y qué partidos cubre cada uno (punto 9)
 │       ├── travel.py          ← sede y fechas de viaje derivadas de los partidos
 │       ├── budget_accounts.py ← rol → cuenta de fees / de travel (payments ↔ budget)
 │       ├── logistics_audiences.py ← staff / delegation / vip → categorías del padrón; for_audience (punto 7)

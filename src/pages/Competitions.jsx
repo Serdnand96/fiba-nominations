@@ -36,7 +36,7 @@ const ALL_YEARS = 'all'
 
 const EMPTY_FORM = {
   name: '', template_key: 'WCQ', year: new Date().getFullYear(), fiba_games_url: '', fiba_window_code: '',
-  fiba_group_codes: '', fiba_segment_from: '', fiba_segment_to: '', fee_type: 'per_game', is_national_team: true,
+  fiba_group_codes: '', fiba_game_numbers: '', fiba_segment_from: '', fiba_segment_to: '', fee_type: 'per_game', is_national_team: true,
 }
 
 // '2026-12-09' → '09/12', para el resumen del tramo en la lista.
@@ -191,7 +191,7 @@ export default function Competitions() {
 
   function openEdit(comp) {
     setEditing(comp)
-    setForm({ name: comp.name, template_key: comp.template_key, year: comp.year || new Date().getFullYear(), fiba_games_url: comp.fiba_games_url || (comp.fiba_competition_id ? String(comp.fiba_competition_id) : ''), fiba_window_code: comp.fiba_window_code || '', fiba_group_codes: comp.fiba_group_codes || '', fiba_segment_from: comp.fiba_segment_from || '', fiba_segment_to: comp.fiba_segment_to || '', fee_type: comp.fee_type || 'per_game', is_national_team: !!comp.is_national_team })
+    setForm({ name: comp.name, template_key: comp.template_key, year: comp.year || new Date().getFullYear(), fiba_games_url: comp.fiba_games_url || (comp.fiba_competition_id ? String(comp.fiba_competition_id) : ''), fiba_window_code: comp.fiba_window_code || '', fiba_group_codes: comp.fiba_group_codes || '', fiba_game_numbers: comp.fiba_game_numbers || '', fiba_segment_from: comp.fiba_segment_from || '', fiba_segment_to: comp.fiba_segment_to || '', fee_type: comp.fee_type || 'per_game', is_national_team: !!comp.is_national_team })
     setShowModal(true)
   }
 
@@ -354,10 +354,11 @@ export default function Competitions() {
                       </svg>
                       {tx('Vinculada con FIBA', 'Linked to FIBA')}
                       {c.fiba_competition_id && <span className="font-mono text-emerald-400/70">#{c.fiba_competition_id}</span>}
-                      {(c.fiba_window_code || c.fiba_group_codes || c.fiba_segment_from) && (
+                      {(c.fiba_window_code || c.fiba_group_codes || c.fiba_game_numbers || c.fiba_segment_from) && (
                         <span className="text-emerald-400/70">· {[
                           c.fiba_window_code,
                           c.fiba_group_codes,
+                          c.fiba_game_numbers && `${tx('partidos', 'games')} ${c.fiba_game_numbers}`,
                           c.fiba_segment_from && c.fiba_segment_to && `${dayMonth(c.fiba_segment_from)}-${dayMonth(c.fiba_segment_to)}`,
                         ].filter(Boolean).join(' · ')}</span>
                       )}
@@ -462,9 +463,18 @@ export default function Competitions() {
                   className="fiba-input" />
                 <p className="text-xs text-fiba-muted/60 mt-1">{t('competitions.fibaGroupsHint')}</p>
               </div>
-              {/* Tramo por fechas: la BCLA no trae ventanas en el feed y B, C y D
-                  juegan en las tres, así que lo único que separa W1/W2/W3 es la
-                  fecha de los partidos (migración 053). No son start/end_date. */}
+              {/* Números de partido: las ventanas de la BCLA. FIBA numera del 1
+                  al 9 dentro de cada grupo y la Window 1 son los partidos 1 a 3,
+                  la 2 los 4 a 6 y la 3 los 7 a 9 (migración 058). */}
+              <div>
+                <label className="text-xs text-fiba-muted block mb-1">{t('competitions.fibaGameNumbers')}</label>
+                <input placeholder={tx('Ej.: 1,2,3', 'e.g. 1,2,3')} value={form.fiba_game_numbers}
+                  onChange={e => setForm(f => ({ ...f, fiba_game_numbers: e.target.value }))}
+                  className="fiba-input" />
+                <p className="text-xs text-fiba-muted/60 mt-1">{t('competitions.fibaGameNumbersHint')}</p>
+              </div>
+              {/* Tramo por fechas: para feeds sin ventanas ni otro dato que
+                  separe los tramos (migración 053). No son start/end_date. */}
               <div>
                 <label className="text-xs text-fiba-muted block mb-1">{t('competitions.fibaSegment')}</label>
                 <div className="grid grid-cols-2 gap-2">

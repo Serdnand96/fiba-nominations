@@ -1645,12 +1645,17 @@ const translations = {
       en: 'This competition\'s groups on FIBA (e.g. A, or 37,38,39,40 for a Final Four). Only their games are imported. Leave empty to import all.',
       es: 'Grupos de esta competencia en FIBA (por ejemplo A, o 37,38,39,40 para un Final Four). Solo se importan sus partidos. Si lo dejas vacío, se importan todos.',
     },
+    fibaGameNumbers: { en: 'Game numbers within the group on FIBA', es: 'Partidos del grupo en FIBA' },
+    fibaGameNumbersHint: {
+      en: 'For BCLA windows: the game numbers each group plays in this window (1,2,3 for Window 1, 4,5,6 for Window 2, 7,8,9 for Window 3). Leave empty to skip this filter.',
+      es: 'Para las ventanas de la BCLA: los números de partido que cada grupo juega en esta ventana (1,2,3 en la Window 1, 4,5,6 en la 2 y 7,8,9 en la 3). Si lo dejas vacío, no se filtra por número.',
+    },
     fibaSegment: { en: 'FIBA game dates', es: 'Fechas de partidos en FIBA' },
     fibaSegmentFrom: { en: 'First game day', es: 'Primer día de partidos' },
     fibaSegmentTo: { en: 'Last game day', es: 'Último día de partidos' },
     fibaSegmentHint: {
-      en: 'Use only if FIBA doesn\'t split the windows (BCLA). First and last game day, by local venue date. Leave empty for no date filter.',
-      es: 'Úsalo solo si FIBA no separa las ventanas (BCLA). Primer y último día de partidos, en fecha local de la sede. Si lo dejas vacío, no se filtra por fecha.',
+      en: 'Use only if nothing else splits the windows on FIBA. First and last game day, by local venue date. Leave empty for no date filter.',
+      es: 'Úsalo solo si en FIBA no hay otro dato que separe las ventanas. Primer y último día de partidos, en fecha local de la sede. Si lo dejas vacío, no se filtra por fecha.',
     },
     fibaDiscover: { en: 'New on FIBA', es: 'Nuevas en FIBA' },
     fibaDiscoverTitle: { en: 'FIBA Americas competitions not yet in the system', es: 'Competencias de FIBA Americas que todavía no están en el sistema' },
@@ -2088,8 +2093,8 @@ const translations = {
     showAllTds: { en: 'Show all TDs', es: 'Ver todos los TDs' },
     showCrewOnly: { en: 'Show crew only', es: 'Ver solo oficiales' },
     crewCoversHint: {
-      en: 'Tournament crew: the TDs assigned to the whole competition.',
-      es: 'Oficiales del torneo: los TDs asignados a toda la competencia.',
+      en: 'Tournament crew: the TDs assigned to this competition.',
+      es: 'Oficiales del torneo: los TDs asignados a esta competencia.',
     },
     currentTds: { en: 'Assigned TDs', es: 'TDs asignados' },
     assign: { en: 'Assign', es: 'Asignar' },
@@ -2341,8 +2346,8 @@ const translations = {
     // event, covers every game and training session.
     crew: { en: 'Tournament crew', es: 'Oficiales del torneo' },
     crewHint: {
-      en: 'People assigned to the whole tournament. They cover every game and training session.',
-      es: 'Personas asignadas a todo el torneo. Cubren todos los partidos y entrenamientos.',
+      en: 'People assigned to the tournament. They cover the games of their venue, or the whole competition if they have none.',
+      es: 'Personas asignadas al torneo. Cubren los partidos de su sede, o toda la competencia si no tienen sede.',
     },
     crewTitle: { en: 'Tournament crew', es: 'Oficiales del torneo' },
     crewSubtitle: {
@@ -2350,13 +2355,41 @@ const translations = {
       es: 'Estos oficiales cubren los {games} partidos y todos los entrenamientos. Las nominaciones salen de esta lista.',
     },
     crewEmpty: { en: 'No one assigned to this tournament yet.', es: 'Todavía no hay nadie asignado a este torneo.' },
+    crewSubtitleSedes: {
+      en: 'Each official covers the games of their venue. With no venue, they cover the whole competition. Nominations are created from this list.',
+      es: 'Cada oficial cubre los partidos de su sede. Sin sede, cubre toda la competencia. Las nominaciones se crean a partir de esta lista.',
+    },
+    sedeLabel: { en: 'Venue', es: 'Sede' },
+    sedeAll: { en: 'All', es: 'Todas' },
+    sedeAllOption: { en: 'All venues', es: 'Todas las sedes' },
+    sedeOf: { en: 'Venues of {name}', es: 'Sedes de {name}' },
+    sedeAddHint: {
+      en: 'Applies to the people you add next.',
+      es: 'Se aplica a las personas que agregues a continuación.',
+    },
+    sedeNeutralityNote: {
+      en: 'Games at the venue of {name} they can\'t work because of neutrality: {count}.',
+      es: 'Partidos de la sede de {name} que no puede dirigir por neutralidad: {count}.',
+    },
+    sedeStale: {
+      en: '{city} is no longer a venue of this competition. Click to remove it.',
+      es: '{city} ya no es una sede de esta competencia. Haz clic para quitarla.',
+    },
+    sedeNoGames: {
+      en: 'Their venue has no games in this competition',
+      es: 'Su sede no tiene partidos en esta competencia',
+    },
+    noGamesPeople: {
+      en: '{count} with no games at their venue: {names}',
+      es: '{count} sin partidos en su sede: {names}',
+    },
     crewEmptyShort: { en: 'No TD or VGO assigned', es: 'Sin TD ni VGO asignados' },
     crewAdd: { en: 'Add to the crew', es: 'Agregar a los oficiales del torneo' },
     crewSearchPlaceholder: { en: 'Search person...', es: 'Buscar persona...' },
     crewRemove: { en: 'Remove from the crew', es: 'Quitar de los oficiales del torneo' },
     crewRemoveConfirm: {
-      en: 'Remove {name} from the tournament crew? They will stop covering the games and training sessions of this competition.',
-      es: '¿Quitar a {name} de los oficiales del torneo? Dejará de cubrir los partidos y entrenamientos de esta competencia.',
+      en: 'Remove {name} from the tournament crew? They will stop covering their games and training sessions in this competition.',
+      es: '¿Quitar a {name} de los oficiales del torneo? Dejará de cubrir sus partidos y entrenamientos en esta competencia.',
     },
     crewAdded: { en: '{name} added to the crew', es: '{name} agregado a los oficiales del torneo' },
     crewNeutralityNote: {
