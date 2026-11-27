@@ -1538,12 +1538,26 @@ def budget_summary(request: Request, year: int = Query(...), department: Optiona
     return _summary_data(request, year, department)
 
 
-def _summary_data(request: Request, year: int, department: Optional[str] = None) -> dict:
-    """Presupuestado vs. comprometido vs. ejecutado vs. restante.
+_EXPENSE_BUCKET = {"paid": "executed", "approved": "committed"}
 
-    Es el cuerpo de GET /summary, separado para que GET /summary/export.xlsx
-    exporte exactamente lo mismo que se ve en pantalla. Se llama con valores
-    de verdad, nunca con los defaults `Query()` (ver _fetch_expenses).
+
+def _summary_rows(request: Request, year: int, department: Optional[str] = None) -> dict:
+    """Las filas de plata de un año, ya recortadas por departamento y normalizadas.
+
+    Es la ÚNICA carga de la que salen el Resumen (_summary_data) y el Flujo de
+    caja (_cashflow_data): las mismas cuatro queries, el mismo _scoped(). Si
+    cada vista cargara lo suyo, tarde o temprano mostrarían totales distintos
+    para el mismo año. Se llama con valores de verdad, nunca con los defaults
+    `Query()` (ver _fetch_expenses).
+
+    Cada fila de plata sale con `bucket` y con `month` ('YYYY-MM' del año
+    pedido, ya pasado por _clamp_month: ninguna queda sin mes):
+
+    - gastos    → `executed` (paid) / `committed` (approved) / None (el resto,
+                  que no entra a ningún total pero sí a `by_status`).
+    - pagos     → un fragmento por concepto (fee, pasaje, y lo pagado de un
+                  parcial), cada uno `executed` o `committed`.
+    - ingresos  → `received` / `expected`.
 
     Desde la migración 036 el ejecutado suma **las dos** fuentes de gasto:
     `expenses` y los pagos a personas nominadas (`payments`, que ya llevan
@@ -1577,7 +1591,7 @@ def _summary_data(request: Request, year: int, department: Optional[str] = None)
     # cada año sumaba los ingresos de todos los años.
     rq = _scoped(
         supabase.table("revenues").select(
-            "amount, status, department_code, competition_id, expected_date, received_date"
+            "amount, status, department_code, account_code, competition_id, expected_date, received_date"
         ),
         request, department,
     )
@@ -1593,7 +1607,19 @@ def _summary_data(request: Request, year: int, department: Optional[str] = None)
     year_end = f"{year}-12-31"
     expenses = [e for e in (eq_.execute().data or [])
                 if str(e.get("expense_date") or "")[:10] <= year_end]
-    revenues = [r for r in (rq.execute().data or []) if _revenue_year(r) == year]
+    for e in expenses:
+        e["bucket"] = _EXPENSE_BUCKET.get(e.get("status"))
+        e["month"] = _clamp_month(_expense_month(e, year), year)
+    # Un ingreso recibido cae en el mes en que entró; uno esperado, en el mes
+    # en que se espera. _revenue_year ya garantiza que esa fecha es del año.
+    revenues = []
+    for r in (rq.execute().data or []):
+        if _revenue_year(r) != year:
+            continue
+        r["bucket"] = r.get("status")
+        when = r.get("received_date") if r["bucket"] == "received" else r.get("expected_date")
+        r["month"] = _clamp_month(_month_of(when), year)
+        revenues.append(r)
 
     # Los pagos no tienen fecha de gasto: el año sale de _payment_fiscal_year
     # (fecha de pago si está completado, año de la competencia si está
@@ -1621,6 +1647,8 @@ def _summary_data(request: Request, year: int, department: Optional[str] = None)
         paid_month = _month_of(p.get("payment_date"))
         if not (paid_month and paid_month.startswith(f"{year}-")):
             paid_month = start_month
+        start_month = _clamp_month(start_month, year)
+        paid_month = _clamp_month(paid_month, year)
         base = {
             "status": p.get("status"),
             "department_code": p.get("department_code"),
@@ -1647,6 +1675,21 @@ def _summary_data(request: Request, year: int, department: Optional[str] = None)
                              "amount": air_exec or air_open,
                              "account_code": travel_account_for_role(role),
                              "month": paid_month if air_exec else start_month})
+
+    return {"lines": lines, "expenses": expenses, "payments": payments,
+            "revenues": revenues, "payment_status": payment_status}
+
+
+def _summary_data(request: Request, year: int, department: Optional[str] = None) -> dict:
+    """Presupuestado vs. comprometido vs. ejecutado vs. restante.
+
+    Es el cuerpo de GET /summary, separado para que GET /summary/export.xlsx
+    exporte exactamente lo mismo que se ve en pantalla. Las filas salen de
+    _summary_rows, la misma carga que usa el Flujo de caja.
+    """
+    rows = _summary_rows(request, year, department)
+    lines, expenses, payments = rows["lines"], rows["expenses"], rows["payments"]
+    revenues, payment_status = rows["revenues"], rows["payment_status"]
 
     depts = {d["code"]: d["label"] for d in (supabase.table("departments").select("code, label").execute().data or [])}
     accts = {a["code"]: a["label"] for a in (supabase.table("accounts").select("code, label").execute().data or [])}
@@ -1711,15 +1754,15 @@ def _summary_data(request: Request, year: int, department: Optional[str] = None)
 
     # Serie mensual del año: siempre 12 meses, en cero los que no tienen
     # movimiento, para que el gráfico acumulado no tenga huecos. Sale de las
-    # mismas filas que los totales y NINGUNA queda afuera (_clamp_month): la
-    # suma de los 12 meses es `totals.executed` / `totals.committed`.
+    # mismas filas que los totales y NINGUNA queda afuera (el `month` de cada
+    # fila ya viene acotado al año por _summary_rows): la suma de los 12 meses
+    # es `totals.executed` / `totals.committed`.
     months = {f"{year}-{m:02d}": {"executed": 0.0, "committed": 0.0} for m in range(1, 13)}
     for e in expenses:
-        bucket = {"paid": "executed", "approved": "committed"}.get(e.get("status"))
-        if bucket:
-            months[_clamp_month(_expense_month(e, year), year)][bucket] += _num(e)
+        if e.get("bucket"):
+            months[e["month"]][e["bucket"]] += _num(e)
     for p in payments:
-        months[_clamp_month(p.get("month"), year)][p["bucket"]] += _num(p)
+        months[p["month"]][p["bucket"]] += _num(p)
     by_month = [
         {"month": m, "executed": round(v["executed"], 2), "committed": round(v["committed"], 2)}
         for m, v in months.items()
@@ -1894,6 +1937,283 @@ def export_summary(
     suffix = f"-{department}" if department else ""
     title = f"{'Budget summary' if lang == 'en' else 'Resumen de presupuesto'} {year}"
     return xlsx_response(workbook_bytes(wb, title), f"budget-summary-{year}{suffix}.xlsx")
+
+
+# ─── Flujo de caja por trimestre ─────────────────────────────────────────────
+#
+# El mismo año que el Resumen, cortado en Q1..Q4 y con los ingresos adentro.
+# No hay regla de fechas propia: el trimestre de una fila es el de su `month`,
+# que _summary_rows ya calculó para `by_month`. Por eso los cuatro trimestres
+# suman EXACTAMENTE los totales del Resumen.
+#
+# Consecuencia conocida: un gasto imputa al año de `expense_date`, así que una
+# factura de diciembre pagada en enero queda en Q4 del año de la factura y no
+# en Q1 del siguiente. Mover eso acá haría que Resumen y Flujo de caja dieran
+# ejecutados distintos para el mismo año.
+
+_CASHFLOW_FIELDS = ("executed", "committed", "revenue_received", "revenue_expected")
+
+
+def _quarter_of(month: str) -> int:
+    """Trimestre calendario (1 a 4) de un 'YYYY-MM'."""
+    return (int(month[5:7]) - 1) // 3 + 1
+
+
+def _quarter_budget(annual: float) -> list:
+    """El presupuesto anual en cuatro partes iguales, al centavo.
+
+    El presupuesto se guarda por año (`budget_lines.amount`), sin reparto por
+    período: esto es una referencia pareja, la misma idea que la línea
+    prorrateada del gráfico mensual. No dice cuándo se planeó gastar.
+
+    Se reparte en centavos enteros y los que sobran van a los últimos
+    trimestres: las cuatro partes suman el anual y ninguna queda negativa
+    (redondear cada parte y restar daba [0.01, 0.01, 0.01, -0.01] para 0.02).
+    """
+    base, extra = divmod(round(float(annual or 0) * 100), 4)
+    return [(base + (1 if index >= 4 - extra else 0)) / 100 for index in range(4)]
+
+
+def _cashflow_derived(cell: dict) -> dict:
+    """Salidas, ingresos y neto de una celda con los cuatro campos base."""
+    out = {f: round(cell[f], 2) for f in _CASHFLOW_FIELDS}
+    out["outflow"] = round(out["executed"] + out["committed"], 2)
+    out["inflow"] = round(out["revenue_received"] + out["revenue_expected"], 2)
+    # Neto: todo lo que entra o va a entrar menos todo lo que salió o va a
+    # salir. `net_actual` mira solo lo que ya pasó por el banco.
+    out["net"] = round(out["inflow"] - out["outflow"], 2)
+    out["net_actual"] = round(out["revenue_received"] - out["executed"], 2)
+    return out
+
+
+def _cashflow_data(request: Request, year: int, department: Optional[str] = None) -> dict:
+    """Salidas, ingresos y neto de un año por trimestre, con tres matrices.
+
+    Es el cuerpo de GET /cashflow y de su export. Las filas salen de
+    _summary_rows: mismo recorte por departamento que el Resumen.
+    """
+    rows = _summary_rows(request, year, department)
+    exp_lines = [l for l in rows["lines"] if l.get("kind") == "expense"]
+    rev_lines = [l for l in rows["lines"] if l.get("kind") == "revenue"]
+
+    # Cada movimiento es (fila, campo). Un gasto sin bucket (borrador,
+    # rechazado, cancelado) no mueve plata y queda afuera, como en el Resumen.
+    movements = [(e, e["bucket"]) for e in rows["expenses"] if e.get("bucket")]
+    movements += [(p, p["bucket"]) for p in rows["payments"]]
+    movements += [(r, f"revenue_{r['bucket']}") for r in rows["revenues"]]
+
+    def _blank() -> dict:
+        return dict.fromkeys(_CASHFLOW_FIELDS, 0.0)
+
+    def _amount(row) -> float:
+        return float(row.get("amount") or 0)
+
+    budgeted = round(sum(_amount(l) for l in exp_lines), 2)
+    cells = [_blank() for _ in range(4)]
+    year_cell = _blank()
+    for row, field in movements:
+        cells[_quarter_of(row["month"]) - 1][field] += _amount(row)
+        year_cell[field] += _amount(row)
+
+    quarters = []
+    net_cumulative = net_actual_cumulative = 0.0
+    for index, (cell, part) in enumerate(zip(cells, _quarter_budget(budgeted))):
+        entry = {"quarter": index + 1, "budgeted": part, **_cashflow_derived(cell)}
+        net_cumulative = round(net_cumulative + entry["net"], 2)
+        net_actual_cumulative = round(net_actual_cumulative + entry["net_actual"], 2)
+        entry["net_cumulative"] = net_cumulative
+        entry["net_actual_cumulative"] = net_actual_cumulative
+        quarters.append(entry)
+
+    depts = {d["code"]: d["label"] for d in (supabase.table("departments").select("code, label").execute().data or [])}
+    accts = {a["code"]: a["label"] for a in (supabase.table("accounts").select("code, label").execute().data or [])}
+    comps = {c["id"]: c["name"] for c in (supabase.table("competitions").select("id, name").execute().data or [])}
+
+    def _matrix(key: str, labels: dict, is_competition: bool = False) -> list:
+        """Una fila por departamento / cuenta / competencia, con sus 4 trimestres.
+
+        Misma convención que `_rollup` del Resumen para lo que no tiene clave:
+        `key: None`, `general: True`.
+        """
+        acc: dict = {}
+
+        def _entry(k):
+            if k is None:
+                return acc.setdefault("__general__", {
+                    "key": None, "label": "—" if is_competition else None, "general": True,
+                    "budgeted": 0.0, "quarters": [_blank() for _ in range(4)],
+                })
+            return acc.setdefault(k, {
+                "key": k, "label": labels.get(k, k), "general": False,
+                "budgeted": 0.0, "quarters": [_blank() for _ in range(4)],
+            })
+
+        for line in exp_lines:
+            _entry(line.get(key))["budgeted"] += _amount(line)
+        for row, field in movements:
+            _entry(row.get(key))["quarters"][_quarter_of(row["month"]) - 1][field] += _amount(row)
+
+        out = []
+        for entry in acc.values():
+            entry["budgeted"] = round(entry["budgeted"], 2)
+            entry["quarters"] = [{f: round(q[f], 2) for f in _CASHFLOW_FIELDS} for q in entry["quarters"]]
+            for f in _CASHFLOW_FIELDS:
+                entry[f] = round(sum(q[f] for q in entry["quarters"]), 2)
+            # Una línea de presupuesto en cero sin movimientos no aporta nada.
+            if entry["budgeted"] or any(entry[f] for f in _CASHFLOW_FIELDS):
+                out.append(entry)
+        return sorted(out, key=lambda e: (-(e["executed"] + e["committed"]), -e["budgeted"]))
+
+    return {
+        "year": year,
+        "quarters": quarters,
+        "totals": {
+            "budgeted": budgeted,
+            "revenue_budgeted": round(sum(_amount(l) for l in rev_lines), 2),
+            **_cashflow_derived(year_cell),
+        },
+        "by_department": _matrix("department_code", depts),
+        "by_competition": _matrix("competition_id", comps, is_competition=True),
+        "by_account": _matrix("account_code", accts),
+    }
+
+
+@router.get("/cashflow")
+def budget_cashflow(
+    request: Request,
+    year: int = Query(..., ge=2000, le=2100),
+    department: Optional[str] = Query(None),
+):
+    """Salidas, ingresos y neto por trimestre (ver _cashflow_data)."""
+    return _cashflow_data(request, year, department)
+
+
+_CASHFLOW_EXPORT_TEXT = {
+    "es": {
+        "sheets": ("Por trimestre", "Por departamento", "Por competencia", "Por cuenta"),
+        "concept": "Concepto", "year": "Año", "total": "Total", "metric": "Concepto",
+        "code": "Código", "department": "Departamento", "account": "Cuenta",
+        "competition": "Competencia", "budgeted": "Presupuestado",
+        "no_key": "Sin imputar", "general": "General",
+        "rows": (
+            ("budgeted", "Presupuesto de referencia"), ("executed", "Ejecutado"),
+            ("committed", "Comprometido"), ("outflow", "Total salidas"),
+            ("revenue_received", "Ingresos cobrados"), ("revenue_expected", "Ingresos esperados"),
+            ("inflow", "Total ingresos"), ("net", "Neto"), ("net_cumulative", "Neto acumulado"),
+        ),
+        "fields": {
+            "executed": "Ejecutado", "committed": "Comprometido",
+            "revenue_received": "Ingresos cobrados", "revenue_expected": "Ingresos esperados",
+        },
+        "title": "Flujo de caja",
+    },
+    "en": {
+        "sheets": ("By quarter", "By department", "By competition", "By account"),
+        "concept": "Item", "year": "Year", "total": "Total", "metric": "Item",
+        "code": "Code", "department": "Department", "account": "Account",
+        "competition": "Competition", "budgeted": "Budgeted",
+        "no_key": "Unallocated", "general": "General",
+        "rows": (
+            ("budgeted", "Reference budget"), ("executed", "Executed"),
+            ("committed", "Committed"), ("outflow", "Total outflow"),
+            ("revenue_received", "Revenue received"), ("revenue_expected", "Revenue expected"),
+            ("inflow", "Total revenue"), ("net", "Net"), ("net_cumulative", "Cumulative net"),
+        ),
+        "fields": {
+            "executed": "Executed", "committed": "Committed",
+            "revenue_received": "Revenue received", "revenue_expected": "Revenue expected",
+        },
+        "title": "Cash flow",
+    },
+}
+_QUARTER_HEADERS = ["Q1", "Q2", "Q3", "Q4"]
+
+
+def _write_cashflow_matrix(ws, rows: list, t: dict, label_header: str, with_code: bool,
+                           empty_label: str) -> None:
+    """Una matriz del flujo de caja en formato largo: una fila por entidad y
+    concepto (ejecutado, comprometido, ingresos), con Q1 a Q4 y el total.
+
+    Formato largo y no cuatro columnas por trimestre: así la planilla se filtra
+    por concepto y se suma sin fórmulas. Un concepto en cero no se escribe.
+    """
+    from openpyxl.styles import Font
+    from api._lib.services.xlsx_utils import money_format, safe_text, style_header
+
+    lead = [t["code"], label_header] if with_code else [label_header]
+    ws.append(lead + [t["metric"]] + _QUARTER_HEADERS + [t["total"]])
+    style_header(ws)
+    sums = {f: [0.0] * 4 for f in _CASHFLOW_FIELDS}
+    for r in rows:
+        label = r.get("label") or (empty_label if r.get("key") is None else r.get("key"))
+        if r.get("general") and not with_code:
+            label = t["general"]
+        lead_vals = [safe_text(r.get("key")), safe_text(label)] if with_code else [safe_text(label)]
+        for f in _CASHFLOW_FIELDS:
+            values = [float(q.get(f) or 0) for q in r.get("quarters") or []]
+            if not any(values):
+                continue
+            for i, v in enumerate(values):
+                sums[f][i] += v
+            ws.append(lead_vals + [t["fields"][f]] + values + [round(sum(values), 2)])
+    total_lead = [t["total"], None] if with_code else [t["total"]]
+    for f in _CASHFLOW_FIELDS:
+        values = [round(v, 2) for v in sums[f]]
+        ws.append(total_lead + [t["fields"][f]] + values + [round(sum(values), 2)])
+        for cell in ws[ws.max_row]:
+            cell.font = Font(bold=True)
+
+    first_money = len(lead) + 2
+    money_format(ws, range(first_money, first_money + 5))
+
+
+@router.get("/cashflow/export.xlsx")
+def export_cashflow(
+    request: Request,
+    year: int = Query(..., ge=2000, le=2100),
+    department: Optional[str] = Query(None),
+    lang: str = Query("es"),
+):
+    """El flujo de caja de un año en Excel: Por trimestre, Por departamento,
+    Por competencia y Por cuenta. Sale de _cashflow_data, así que el recorte
+    por departamento (_scoped) es el mismo que en pantalla."""
+    from openpyxl import Workbook
+    from openpyxl.styles import Font
+    from api._lib.services.xlsx_utils import (
+        autosize, money_format, style_header, workbook_bytes, xlsx_response,
+    )
+
+    data = _cashflow_data(request, year, department)
+    t = _CASHFLOW_EXPORT_TEXT["en" if lang == "en" else "es"]
+    s_quarter, s_dept, s_comp, s_acct = t["sheets"]
+    quarters, totals = data["quarters"], data["totals"]
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = s_quarter
+    ws.append([t["concept"]] + _QUARTER_HEADERS + [t["year"]])
+    style_header(ws)
+    for key, label in t["rows"]:
+        # El acumulado no tiene total anual: su último trimestre ya lo es.
+        year_value = None if key == "net_cumulative" else float(totals.get(key) or 0)
+        ws.append([label] + [float(q.get(key) or 0) for q in quarters] + [year_value])
+        if key in ("outflow", "inflow", "net"):
+            for cell in ws[ws.max_row]:
+                cell.font = Font(bold=True)
+    money_format(ws, range(2, 7))
+    autosize(ws)
+
+    for title, key, header, with_code, empty in (
+        (s_dept, "by_department", t["department"], True, t["no_key"]),
+        (s_comp, "by_competition", t["competition"], False, t["general"]),
+        (s_acct, "by_account", t["account"], True, t["no_key"]),
+    ):
+        ws = wb.create_sheet(title)
+        _write_cashflow_matrix(ws, data.get(key) or [], t, header, with_code, empty)
+        autosize(ws)
+
+    suffix = f"-{department}" if department else ""
+    return xlsx_response(workbook_bytes(wb, f"{t['title']} {year}"), f"budget-cashflow-{year}{suffix}.xlsx")
 
 
 @router.get("/competitions/{competition_id}/cost")

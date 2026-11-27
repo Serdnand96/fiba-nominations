@@ -9,7 +9,7 @@ import { Icon } from '../../lib/icons'
 import { competitionLabel } from '../../lib/competitions'
 import { Stat } from '../../components/ui/Stat'
 import { Button } from '../../components/ui/Button'
-import { money, RollupTable } from './shared'
+import { money, RollupTable, storedYear, rememberYear, yearOptions as budgetYears } from './shared'
 
 // recharts vive en el chunk `charts` (vite.config.js): se baja recién al abrir
 // el resumen, y ni Budget ni otra página lo cargan por adelantado.
@@ -47,17 +47,6 @@ const pick = (map, key, lang) => map[key]?.[lang === 'en' ? 'en' : 'es'] || key
  * Presupuestado vs. ejecutado por departamento, cuenta y evento; y el costo
  * total de una competencia juntando las tres fuentes de gasto.
  */
-
-// Año del resumen, recordado entre visitas (mismo patrón que `fiba_dark`).
-const YEAR_KEY = 'fiba_budget_year'
-
-// Las opciones del select van de año actual -2 a +4; un año guardado fuera de
-// esa ventana (de una visita de hace años) vuelve al actual.
-function storedYear() {
-  const thisYear = new Date().getFullYear()
-  const y = Number(localStorage.getItem(YEAR_KEY))
-  return Number.isInteger(y) && y >= thisYear - 2 && y <= thisYear + 4 ? y : thisYear
-}
 
 // Las tarjetas van en dólares enteros: con centavos, $1,627,431.00 no entra en
 // un cuarto de pantalla. Las tablas de abajo siguen con money() y centavos.
@@ -132,7 +121,6 @@ function ChartsFallback({ t }) {
 }
 
 export default function DashboardTab({ t, push, canEdit, departments, competitions }) {
-  const thisYear = new Date().getFullYear()
   const [year, setYearState] = useState(storedYear)
   const [department, setDepartment] = useState('')
   const [summary, setSummary] = useState(null)
@@ -142,11 +130,11 @@ export default function DashboardTab({ t, push, canEdit, departments, competitio
   const [exporting, setExporting] = useState(null)
   const { lang } = useLanguage()
 
-  const yearOptions = useMemo(() => Array.from({ length: 7 }, (_, i) => thisYear + 4 - i), [thisYear])
+  const yearOptions = useMemo(budgetYears, [])
 
   function setYear(y) {
     setYearState(y)
-    localStorage.setItem(YEAR_KEY, String(y))
+    rememberYear(y)
   }
 
   useEffect(() => {

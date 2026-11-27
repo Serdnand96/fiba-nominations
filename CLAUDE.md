@@ -511,7 +511,10 @@ legacy `fibaamericascloud.com`).
       proyección ni copies este patrón "porque ya hay uno".
 
 17. **Las migraciones de Budget NO van en el deploy automático.** Son la
-    **033-037**, la **041**, la **045-050** y la **056** (`expenses.hotel_id`)
+    **033-037**, la **041**, la **045-050**, la **056** (`expenses.hotel_id`),
+    la **057** (plan de cuentas oficial de Finance: solo datos, ya aplicada) y
+    la **060-061** (Officiating como departamento y el budget de pagos
+    `referees` imputando ahí: solo datos, ya aplicadas)
     (las 038-040 son de otros módulos: checklists, hora UTC de los partidos,
     ventanas FIBA; la **055** es de Logística y sigue la misma regla: hoteles con
     audiencia, contactos, salones, adicionales, documentos y `label` de los
@@ -786,6 +789,8 @@ fiba-nominations/
 │                                 implementación final difiere — ver nota adentro)
 ├── BUDGET_MODULE.md           ← contrato del módulo Budget (schema, endpoints,
 │                                 scoping por departamento, datos cargados)
+├── GLOSARIO_CUENTAS.md        ← las 112 cuentas de gasto del plan de Finance:
+│                                 qué se imputa en cada una y qué falta confirmar
 ├── LSB_LETTER_SPEC.md         ← la carta de LSB: su texto, su membrete y por qué
 │                                 el starter de `confirmation` no es el de LSB
 ├── MANUAL_USUARIO.md          ← manual para usuarios finales (y su PDF exportado
@@ -1045,6 +1050,10 @@ explicación del truco de CSS variables para los aliases legacy
     (best-effort, con el autor en `exclude`); si es "algo que espera una
     acción", va como pendiente calculado en `notifications.py`, no como fila
     (punto 24).
+  - El Resumen y el Flujo de caja por trimestre salen de **una sola carga**,
+    `_summary_rows()` (`budget.py`): por eso los cuatro trimestres suman los
+    totales del Resumen. Una vista nueva de esos montos agrega su dato ahí, no
+    una query propia (BUDGET_MODULE.md §8).
   - Todo export de budget sale de la misma función que la pantalla y pasa por
     `_scoped()`: el Excel no puede traer nada que la tabla no muestre. Los
     `.xlsx` nuevos usan `services/xlsx_utils.py` (`safe_text` contra fórmulas,

@@ -13,6 +13,9 @@
  *   3. Top 10 cuentas: barras horizontales, no donut — diez porciones no se
  *      leen.
  *
+ * Y uno más, `CashflowChart`, para la pestaña Flujo de caja (sobre
+ * `/budget/cashflow`): salidas e ingresos por trimestre y el neto acumulado.
+ *
  * Colores: recharts pinta con atributos SVG, no con clases, así que el modo
  * oscuro se resuelve en JS. Grilla y texto salen de las CSS variables
  * dark-aware del DS (`--c-fiba-border`, `--c-fiba-muted`, ver DESIGN_SYSTEM.md)
@@ -22,7 +25,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
   ResponsiveContainer, BarChart, Bar, Cell, ComposedChart, Area, Line,
-  XAxis, YAxis, CartesianGrid, Tooltip,
+  XAxis, YAxis, CartesianGrid, Tooltip, ReferenceLine,
 } from 'recharts'
 import { Card } from '../ui/Card'
 import { Icon } from '../../lib/icons'
@@ -40,6 +43,8 @@ const SERIES = {
     over: '#f04438',      // danger-500
     pace: '#1a3668',      // navy-700
     strong: '#363c4c',    // ink-700
+    inflow: '#1a3668',    // navy-700
+    net: '#f57c2a',       // basketball orange
   },
   dark: {
     budget: '#335a9a',    // navy-500
@@ -48,6 +53,8 @@ const SERIES = {
     over: '#f04438',      // danger-500
     pace: '#cbd2dc',      // ink-300
     strong: '#f1f4f8',    // ink-100
+    inflow: '#cbd2dc',    // ink-300
+    net: '#f57c2a',       // basketball orange
   },
 }
 
@@ -233,7 +240,8 @@ function LegendRow({ items }) {
             <span className="w-4 h-0 border-t-2"
               style={{ borderColor: item.color, borderTopStyle: item.dashed ? 'dashed' : 'solid' }} />
           ) : (
-            <span className="w-2.5 h-2.5 rounded-sm" style={{ background: item.color }} />
+            <span className="w-2.5 h-2.5 rounded-sm"
+              style={{ background: item.color, opacity: item.faded ? 0.4 : 1 }} />
           )}
           {item.label}
         </span>
@@ -253,10 +261,15 @@ function ChartTooltip({ active, payload, label, theme, footer }) {
         <div key={p.dataKey} className="flex items-center justify-between gap-4 py-0.5">
           <span className="inline-flex items-center gap-1.5 text-ink-500 dark:text-ink-400">
             <span className="w-2 h-2 rounded-sm"
-              style={{ background: p.dataKey === 'executed' && row.over ? theme.over : p.color }} />
+              style={{
+                background: p.dataKey === 'executed' && row.over ? theme.over : p.color,
+                opacity: p.fillOpacity ?? 1,
+              }} />
             {p.name}
           </span>
-          <span className="num font-medium text-ink-900 dark:text-white">${money(p.value)}</span>
+          <span className="num font-medium text-ink-900 dark:text-white">
+            {p.value < 0 ? '-' : ''}${money(Math.abs(p.value))}
+          </span>
         </div>
       ))}
       {footer ? footer(row) : null}
@@ -402,6 +415,68 @@ function AccountsChart({ rows, theme, t, wide }) {
         { label: t('budget.overBudget'), color: theme.over },
       ]} />
     </>
+  )
+}
+
+/* ─────────────────────── Flujo de caja ─────────────────────── */
+
+/**
+ * Salidas e ingresos por trimestre, y el neto acumulado.
+ *
+ * Dos barras apiladas por trimestre: salidas (ejecutado + comprometido) e
+ * ingresos (cobrado + esperado). Lo que ya pasó por el banco va en color
+ * pleno y lo pendiente, atenuado. La línea es el neto acumulado, con el cero
+ * marcado: por debajo, salió más de lo que entró.
+ */
+export function CashflowChart({ quarters, t }) {
+  const theme = useChartTheme()
+  const rows = useMemo(() => (quarters || []).map(q => ({
+    name: `Q${q.quarter}`,
+    executed: num(q.executed),
+    committed: num(q.committed),
+    received: num(q.revenue_received),
+    expected: num(q.revenue_expected),
+    net: num(q.net_cumulative),
+  })), [quarters])
+  const empty = !rows.some(r => r.executed || r.committed || r.received || r.expected)
+  const height = 280
+
+  return (
+    <ChartCard title={t('budget.cashflowChart')} hint={t('budget.cashflowChartHint')} className="mb-6">
+      {empty ? <ChartEmpty t={t} height={height} /> : (
+        <>
+          <ResponsiveContainer width="100%" height={height} initialDimension={{ width: 720, height }}>
+            <ComposedChart data={rows} barGap={4} barCategoryGap="28%"
+              margin={{ top: 8, right: 12, bottom: 0, left: 0 }}>
+              <CartesianGrid vertical={false} stroke={theme.grid} />
+              <XAxis dataKey="name" tick={axisTick(theme)} axisLine={{ stroke: theme.grid }} tickLine={false} />
+              <YAxis tickFormatter={compactMoney} tick={axisTick(theme)} axisLine={false} tickLine={false} width={56} />
+              <Tooltip cursor={{ fill: theme.grid, fillOpacity: 0.35 }}
+                content={<ChartTooltip theme={theme} />} />
+              <ReferenceLine y={0} stroke={theme.text} strokeOpacity={0.6} />
+              <Bar dataKey="executed" stackId="out" name={t('budget.executed')} fill={theme.executed}
+                maxBarSize={48} isAnimationActive={false} />
+              <Bar dataKey="committed" stackId="out" name={t('budget.committed')} fill={theme.committed}
+                maxBarSize={48} radius={[3, 3, 0, 0]} isAnimationActive={false} />
+              <Bar dataKey="received" stackId="in" name={t('budget.cashflowReceived')} fill={theme.inflow}
+                maxBarSize={48} isAnimationActive={false} />
+              <Bar dataKey="expected" stackId="in" name={t('budget.cashflowExpected')} fill={theme.inflow}
+                fillOpacity={0.4} maxBarSize={48} radius={[3, 3, 0, 0]} isAnimationActive={false} />
+              <Line type="linear" dataKey="net" name={t('budget.cashflowNetCumulative')}
+                stroke={theme.net} strokeWidth={2} dot={{ r: 3, fill: theme.net }} activeDot={{ r: 4 }}
+                isAnimationActive={false} />
+            </ComposedChart>
+          </ResponsiveContainer>
+          <LegendRow items={[
+            { label: t('budget.executed'), color: theme.executed },
+            { label: t('budget.committed'), color: theme.committed },
+            { label: t('budget.cashflowReceived'), color: theme.inflow },
+            { label: t('budget.cashflowExpected'), color: theme.inflow, faded: true },
+            { label: t('budget.cashflowNetCumulative'), color: theme.net, line: true },
+          ]} />
+        </>
+      )}
+    </ChartCard>
   )
 }
 

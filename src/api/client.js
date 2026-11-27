@@ -285,6 +285,9 @@ export const deleteBudgetLine = (id) => api.delete(`/budget/lines/${id}`).then(r
 export const projectBudget = (data) => api.post('/budget/lines/project', data).then(r => r.data)
 export const getLineSeries = (seriesId) => api.get(`/budget/lines/series/${seriesId}`).then(r => r.data)
 export const getBudgetSummary = (params) => api.get('/budget/summary', { params }).then(r => r.data)
+// { year, department? } → salidas, ingresos y neto por trimestre, con matrices por
+// departamento, evento y cuenta. Mismas filas que el resumen.
+export const getBudgetCashflow = (params) => api.get('/budget/cashflow', { params }).then(r => r.data)
 
 // Import del presupuesto desde Excel, en dos pasos: el preview no escribe nada
 // y devuelve el mapeo de columnas propuesto; el commit manda el mapeo que el
@@ -388,6 +391,12 @@ export const downloadBudgetExpensesXlsx = async (params) => {
 export const downloadBudgetSummaryXlsx = async (params) => {
   const resp = await api.get('/budget/summary/export.xlsx', { params: exportParams(params), responseType: 'blob' })
   saveBlob(resp.data, `budget-summary${exportSuffix(params)}.xlsx`)
+}
+
+// { year, department?, lang } → Por trimestre / Por departamento / Por competencia / Por cuenta.
+export const downloadBudgetCashflowXlsx = async (params) => {
+  const resp = await api.get('/budget/cashflow/export.xlsx', { params: exportParams(params), responseType: 'blob' })
+  saveBlob(resp.data, `budget-cashflow${exportSuffix(params)}.xlsx`)
 }
 
 // Competition reports

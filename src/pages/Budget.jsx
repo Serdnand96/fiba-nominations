@@ -26,6 +26,7 @@ import { Tabs, useTabParam } from '../components/ui/Tabs'
 import { useAuth } from '../contexts/AuthContext'
 import { BudgetScopeProvider, useBudgetScope } from './budget/scope'
 import DashboardTab from './budget/DashboardTab'
+import CashflowTab from './budget/CashflowTab'
 import PlanTab from './budget/PlanTab'
 import ExpensesTab from './budget/ExpensesTab'
 import RecurringTab from './budget/RecurringTab'
@@ -33,7 +34,7 @@ import RevenuesTab from './budget/RevenuesTab'
 import VendorsTab from './budget/VendorsTab'
 import AccountsTab from './budget/AccountsTab'
 
-const TABS = ['dashboard', 'plan', 'expenses', 'recurring', 'revenues', 'vendors']
+const TABS = ['dashboard', 'cashflow', 'plan', 'expenses', 'recurring', 'revenues', 'vendors']
 // El plan de cuentas es transversal a los departamentos: lo administra solo el
 // admin general (el backend lo exige en POST/PATCH/remap de /budget/accounts).
 const ADMIN_TABS = [...TABS, 'accounts']
@@ -132,6 +133,7 @@ function BudgetShell() {
       />
 
       {tab === 'dashboard' && <DashboardTab {...shared} />}
+      {tab === 'cashflow' && <CashflowTab {...shared} />}
       {tab === 'plan' && <PlanTab {...shared} />}
       {tab === 'expenses' && <ExpensesTab {...shared} />}
       {tab === 'recurring' && <RecurringTab {...shared} />}
