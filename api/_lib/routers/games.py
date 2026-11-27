@@ -18,7 +18,7 @@ from api._lib.crew import (
 )
 
 logger = logging.getLogger(__name__)
-from api._lib.services import fiba_sync
+from api._lib.services import fiba_sync, live_board
 from api._lib.roles import VALID_ROLES
 from api._lib.travel import sede_pairs, format_sedes
 
@@ -146,6 +146,18 @@ def list_game_dates(competition_id: str = Query(...)):
     )
     dates = sorted(set(g["date"] for g in games))
     return dates
+
+
+# Antes de /{game_id}: si no, "live" se leería como el id de un partido.
+@router.get("/live")
+def list_live_games():
+    """Lo que se juega hoy en todas las competencias: en juego, por jugar y finalizados.
+
+    Solo lectura, con el `view` del router. El marcador, el cuarto y el reloj de
+    lo que está en juego se le piden a FIBA en el momento (con cache de 30 s);
+    nada de eso se guarda. Ver `services/live_board.py`.
+    """
+    return live_board.build_board()
 
 
 @router.get("/{game_id}")

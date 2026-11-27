@@ -772,6 +772,35 @@ legacy `fibaamericascloud.com`).
     - El setup de Google Cloud y el aviso de los tokens de 7 días en modo
       *Testing* están en DEPLOYMENT.md.
 
+27. **La pestaña En vivo de Partidos lee FIBA en el momento y no escribe.**
+    `GET /games/live` (`services/live_board.py`, `src/pages/games/LiveBoard.jsx`,
+    `/games?tab=live`) muestra lo que se juega hoy en **todas** las competencias:
+    en juego, por jugar y finalizados. Permiso `games`, solo `view`.
+
+    - **"Hoy" es el día del war room** (Miami), no el del servidor ni el de la
+      sede. Entran también los partidos que empezaron hace menos de 4 horas,
+      para que uno de las 23:30 no desaparezca a medianoche. La zona está en
+      `WAR_ROOM_TZ`, en `live_board.py` y en `src/lib/warRoom.js`: si se muda el
+      seguimiento, se cambian las dos.
+    - **Qué está en juego lo decide el instante del partido (`datetime_utc`),
+      no solo `status`.** En agosto de 2026 quedaron tres partidos de la WCQ
+      Window 4 clavados en `live` porque la ventana no se volvió a sincronizar.
+      No armes una vista de "en juego" con `status = 'live'` a secas.
+    - El marcador, el cuarto y el reloj se le piden a GDAP en cada pedido,
+      porque el cron guarda cada 15 minutos y `game_schedule` no tiene cuarto
+      ni reloj. Solo por las competencias con un partido que puede estar en
+      juego, una vez por ID de FIBA y con cache de 30 segundos **por proceso**
+      (cada worker de gunicorn tiene el suyo). Un día sin partidos en juego no
+      gasta llamadas.
+    - **No guarda nada**: el único que escribe resultados sigue siendo el sync
+      (punto 13), que además controla equipos invertidos y partidos de otra
+      competencia. Por eso la tarjeta de una competencia puede ir unos minutos
+      atrás del tablero. Si FIBA no responde, el tablero muestra lo de la base
+      y lo avisa (`fiba_error`); el fallo también se cachea.
+    - El frontend refresca cada 30 segundos y **no pide nada con la pestaña del
+      navegador oculta**. No le agregues un contador de partidos en juego al
+      sidebar sin pensar ese costo: obligaría a consultar aunque nadie mire.
+
 ---
 
 ## 🗺️ Mapa del repo
@@ -816,6 +845,7 @@ fiba-nominations/
 │           ├── fiba_sync.py           ← sync con FIBA GDAP: partidos, resultados, fechas (punto 13)
 │           ├── finance_history.py     ← record_transition(s) / history_for (punto 23)
 │           ├── google_calendar.py     ← OAuth + sync de partidos al Google Calendar de cada usuario (punto 26)
+│           ├── live_board.py          ← tablero En vivo de Partidos: hoy, con el marcador de FIBA en el momento (punto 27)
 │           ├── logistics_briefing.py  ← PDF operativo para delegaciones: python-docx → LibreOffice (punto 7)
 │           ├── logistics_schedule_import.py ← lee los cronogramas de transporte y comidas (punto 7)
 │           ├── notify.py              ← notify(), budget_approvers_for, module_editors (punto 24)
@@ -1029,7 +1059,8 @@ explicación del truco de CSS variables para los aliases legacy
 
 - **"Tocá partidos, crew o checklists"** → puntos 9 a 13. Crew, Staffing
   Plan y Control de operación comparten el permiso `games`; la hora del
-  partido es local de la sede y se convierte desde `datetime_utc`.
+  partido es local de la sede y se convierte desde `datetime_utc`. La pestaña
+  En vivo es el punto 27.
 
 - **"Tocá tipos o selectores de competencia"** → `src/lib/competitions.js`,
   no una lista local en la página.
