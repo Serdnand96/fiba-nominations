@@ -55,6 +55,7 @@ class FakeClient:
         return self._competition
 
     def americas_competitions(self, from_season, to_season):
+        self.calls.append(("americas_competitions", from_season, to_season))
         return self._competition or []
 
 
@@ -409,6 +410,96 @@ def test_discover_hides_linked_competitions(fake_db):
     out = fiba_sync.discover(client, 2026, 2027)
     assert [x["fiba_competition_id"] for x in out] == [209049]
     assert out[0]["host_city"] == "Castro" and out[0]["host_country"] == "Chile"
+
+
+# Los Pre-Qualifiers de la AmeriCup 2029, como los devuelve GDAP: temporada 2029
+# (la del torneo al que clasifican), jugados en noviembre de 2026, en dos sedes.
+PREQUALIFIERS = {
+    "competitionId": 209058, "officialName": "FIBA AmeriCup 2029 Pre-Qualifiers", "season": 2029,
+    "start": "2026-11-26", "end": "2026-11-29", "status": "Initial",
+    "hosts": [{"countryName": "Nicaragua", "cities": ["Managua"]},
+              {"countryName": "Venezuela", "cities": ["Porlamar - Isla Margarita"]}],
+}
+
+
+def test_discover_lists_a_qualifier_by_the_year_it_is_played(fake_db):
+    """Con solo las temporadas 2026-2027, este clasificatorio no aparecía nunca."""
+    client = FakeClient([], competition=[
+        PREQUALIFIERS,
+        {"competitionId": 209143, "officialName": "FIBA U18 AmeriCup", "season": 2028,
+         "start": "2028-06-03", "end": "2028-06-11"},
+    ])
+    out = fiba_sync.discover(client, 2026, 2027)
+    assert [x["fiba_competition_id"] for x in out] == [209058]
+    # A FIBA se le piden temporadas de más; el recorte por fecha es nuestro.
+    assert client.calls == [("americas_competitions", 2026, 2027 + fiba_sync.SEASON_LOOKAHEAD)]
+
+
+def test_discover_keeps_a_competition_that_spans_the_requested_years(fake_db):
+    wcq = {"competitionId": 208945, "officialName": "WCQ 2027", "season": 2027,
+           "start": "2025-11-24", "end": "2027-03-02"}
+    assert fiba_sync.discover(FakeClient([], competition=[wcq]), 2026, 2026)
+    assert fiba_sync.discover(FakeClient([], competition=[wcq]), 2025, 2025)
+    assert not fiba_sync.discover(FakeClient([], competition=[wcq]), 2028, 2029)
+
+
+def test_discover_without_dates_falls_back_to_the_season(fake_db):
+    client = FakeClient([], competition=[
+        {"competitionId": 1, "officialName": "Sin fecha, de este año", "season": 2027},
+        {"competitionId": 2, "officialName": "Sin fecha, de 2029", "season": 2029, "start": "0001-01-01"},
+    ])
+    out = fiba_sync.discover(client, 2026, 2027)
+    assert [x["fiba_competition_id"] for x in out] == [1]
+    assert out[0]["start"] is None and out[0]["end"] is None
+
+
+def test_discover_reports_every_host(fake_db):
+    out = fiba_sync.discover(FakeClient([], competition=[PREQUALIFIERS]), 2026, 2027)
+    assert out[0]["hosts"] == [
+        {"city": "Managua", "country": "Nicaragua"},
+        {"city": "Porlamar - Isla Margarita", "country": "Venezuela"},
+    ]
+    # La primera sede sigue saliendo donde salía.
+    assert out[0]["host_city"] == "Managua" and out[0]["host_country"] == "Nicaragua"
+
+
+def test_discover_without_hosts_has_no_venue(fake_db):
+    bare = {"competitionId": 209060, "officialName": "BCLA", "season": 2027, "start": "2026-12-09", "hosts": []}
+    out = fiba_sync.discover(FakeClient([], competition=[bare]), 2026, 2027)
+    assert out[0]["hosts"] == [] and out[0]["host_city"] is None and out[0]["host_country"] is None
+
+
+def test_discover_points_at_our_unlinked_competitions_on_the_same_dates(fake_db):
+    """El caso real: los dos grupos ya estaban cargados, sin vínculo con FIBA."""
+    fake_db.seed("competitions", [
+        {"id": "grupo-b", "name": "Pre-Qualifiers Group B", "start_date": "2026-11-24", "end_date": "2026-11-29"},
+        {"id": "grupo-a", "name": "Pre-Qualifiers Group A", "start_date": "2026-11-25", "end_date": "2026-11-30"},
+        # Mismas fechas, pero ya vinculada a otra competencia de FIBA: no es candidata.
+        {"id": "wcq-w5", "name": "WCQ Window 5", "start_date": "2026-11-23", "end_date": "2026-12-01",
+         "fiba_competition_id": 208945},
+        # Vinculada por URL, todavía sin ID resuelto: tampoco.
+        {"id": "por-url", "name": "Con URL", "start_date": "2026-11-26", "end_date": "2026-11-29",
+         "fiba_games_url": "https://www.fiba.basketball/en/events/x/games"},
+        # Sin vínculo, en otras fechas.
+        {"id": "u16", "name": "U16 Qualifiers #1", "start_date": "2026-12-06", "end_date": "2026-12-10"},
+        # Sin vínculo y sin fechas: no hay con qué compararla.
+        {"id": "sin-fecha", "name": "Por confirmar"},
+    ])
+    out = fiba_sync.discover(FakeClient([], competition=[PREQUALIFIERS]), 2026, 2027)
+    assert out[0]["candidates"] == [
+        {"id": "grupo-b", "name": "Pre-Qualifiers Group B", "start_date": "2026-11-24", "end_date": "2026-11-29"},
+        {"id": "grupo-a", "name": "Pre-Qualifiers Group A", "start_date": "2026-11-25", "end_date": "2026-11-30"},
+    ]
+
+
+def test_discover_never_links_a_candidate(fake_db):
+    """Solo informa: quién es quién lo decide una persona."""
+    fake_db.seed("competitions", [
+        {"id": "grupo-a", "name": "Pre-Qualifiers Group A", "start_date": "2026-11-25", "end_date": "2026-11-30"},
+    ])
+    fiba_sync.discover(FakeClient([], competition=[PREQUALIFIERS]), 2026, 2027)
+    assert not fake_db.tables["competitions"][0].get("fiba_competition_id")
+    assert {c.method for c in fake_db.calls} == {"GET"}
 
 
 # ── Endpoints ────────────────────────────────────────────────────────────────

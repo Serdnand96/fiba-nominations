@@ -778,39 +778,104 @@ def sync_competition(comp: dict, client: GdapClient | None = None, *, dry_run: b
 
 # ── Competencias nuevas ──────────────────────────────────────────────────────
 
+# Cuántas temporadas hacia adelante se le piden a FIBA. La `season` de GDAP no
+# es el año en que se juega: un clasificatorio lleva la del torneo al que
+# clasifica. Los Pre-Qualifiers de la AmeriCup 2029 son temporada 2029 y se
+# jugaron en noviembre de 2026; pidiendo solo 2026-2027 no aparecían. Cuatro es
+# el ciclo de un Mundial o de una AmeriCup. Sigue siendo una sola llamada.
+SEASON_LOOKAHEAD = 4
+
+
+def _day(value) -> str | None:
+    """`2026-11-26T00:00:00` → `2026-11-26`. El `0001-01-01` de FIBA es "sin fecha"."""
+    raw = str(value or "")[:10]
+    try:
+        return raw if date.fromisoformat(raw).year > 1900 else None
+    except ValueError:
+        return None
+
+
+def _span(start, end) -> tuple[str, str] | None:
+    """El rango de fechas de una competencia; con un solo extremo, ese día."""
+    start, end = _day(start), _day(end)
+    if not start and not end:
+        return None
+    return (start or end, end or start)
+
+
+def _overlap(a: tuple[str, str] | None, b: tuple[str, str] | None) -> bool:
+    return bool(a and b and a[0] <= b[1] and b[0] <= a[1])
+
+
+def _played_between(c: dict, from_year: int, to_year: int) -> bool:
+    """La competencia tiene al menos un día entre esos años.
+
+    Sin fechas en FIBA no hay cómo saberlo: se decide por su temporada.
+    """
+    span = _span(c.get("start"), c.get("end"))
+    if span:
+        return _overlap(span, (f"{from_year}-01-01", f"{to_year}-12-31"))
+    try:
+        return from_year <= int(c.get("season") or 0) <= to_year
+    except (TypeError, ValueError):
+        return False
+
+
 def discover(client: GdapClient, from_season: int, to_season: int) -> list[dict]:
     """Competencias de FIBA Americas que ninguna de las nuestras tiene vinculadas.
 
+    `from_season` / `to_season` son los años en que se juegan, no la temporada
+    de FIBA (ver SEASON_LOOKAHEAD).
+
     Solo lista: dar de alta es una decisión de una persona (nombre, plantilla,
-    si se divide en ventanas o grupos).
+    si se divide en ventanas o grupos). `candidates` son las competencias
+    nuestras sin vínculo que caen en las mismas fechas: lo más probable es que
+    la competencia ya exista y lo que falte sea vincularla, no darla de alta
+    otra vez. Tampoco se vincula sola; se muestra y decide una persona.
     """
-    linked = {
-        int(r["fiba_competition_id"])
-        for r in (supabase.table("competitions").select("fiba_competition_id").execute().data or [])
-        if r.get("fiba_competition_id")
-    }
+    ours = (supabase.table("competitions")
+            .select("id,name,start_date,end_date,fiba_competition_id,fiba_games_url")
+            .execute().data or [])
+    linked = {int(r["fiba_competition_id"]) for r in ours if r.get("fiba_competition_id")}
+    unlinked = [(r, _span(r.get("start_date"), r.get("end_date"))) for r in ours if not is_linked(r)]
+
     out = []
-    for c in client.americas_competitions(from_season, to_season):
+    for c in client.americas_competitions(from_season, to_season + SEASON_LOOKAHEAD):
         cid = c.get("competitionId")
-        if not cid or int(cid) in linked:
+        if not cid or int(cid) in linked or not _played_between(c, from_season, to_season):
             continue
-        host = (c.get("hosts") or [{}])[0] or {}
-        cities = host.get("cities") or []
+        hosts = [
+            {"city": city, "country": h.get("countryName")}
+            for h in (c.get("hosts") or []) if h
+            for city in (h.get("cities") or [None])
+        ]
+        span = _span(c.get("start"), c.get("end"))
+        candidates = [
+            {"id": r["id"], "name": r.get("name"),
+             "start_date": r.get("start_date"), "end_date": r.get("end_date")}
+            for r, ours_span in unlinked if _overlap(span, ours_span)
+        ]
+        candidates.sort(key=lambda x: (x["start_date"] or "9999", x["name"] or ""))
         zone = c.get("zoneInformation") or {}
         out.append({
             "fiba_competition_id": int(cid),
             "name": c.get("officialName"),
             "marketing_name": (c.get("competitionMarketingName") or {}).get("marketingName"),
             "season": c.get("season"),
-            "start": (c.get("start") or "")[:10] or None,
-            "end": (c.get("end") or "")[:10] or None,
+            "start": _day(c.get("start")),
+            "end": _day(c.get("end")),
             "status": c.get("status"),
             "zone": zone.get("zoneOfficialName") or c.get("fibaZone"),
             "gender": c.get("gender"),
             "age_category": c.get("ageCategory"),
             "competition_type": c.get("competitionType"),
-            "host_city": cities[0] if cities else None,
-            "host_country": host.get("countryName"),
+            # La primera sede, por compatibilidad. Una competencia puede tener
+            # varias (un grupo en Managua y otro en Isla Margarita): van todas
+            # en `hosts`.
+            "host_city": hosts[0]["city"] if hosts else None,
+            "host_country": hosts[0]["country"] if hosts else None,
+            "hosts": hosts,
+            "candidates": candidates,
         })
     out.sort(key=lambda x: (x["start"] or "9999", x["name"] or ""))
     return out

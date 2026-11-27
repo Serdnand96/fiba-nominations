@@ -10,8 +10,22 @@ import { Icon } from '../../lib/icons'
 //
 // Una competencia que acá se divide (WCQ por ventanas, LSB por grupos) aparece
 // una vez: con dar de alta la primera y vincular las demás al mismo ID alcanza.
+//
+// Los años del selector son los años en que se juega, no la temporada de FIBA:
+// un clasificatorio lleva la temporada del torneo al que clasifica (los
+// Pre-Qualifiers de la AmeriCup 2029 se jugaron en 2026).
+//
+// `candidates` son competencias nuestras sin vincular en las mismas fechas. Lo
+// habitual es que la competencia ya esté cargada y solo le falte el vínculo:
+// "Vincular" abre su formulario en vez de crear un duplicado.
 
-export default function FibaDiscoverModal({ onClose, onPick }) {
+// "Managua, Nicaragua / Porlamar - Isla Margarita, Venezuela"
+function venues(it) {
+  const hosts = it.hosts?.length ? it.hosts : [{ city: it.host_city, country: it.host_country }]
+  return hosts.map(h => [h.city, h.country].filter(Boolean).join(', ')).filter(Boolean).join(' / ')
+}
+
+export default function FibaDiscoverModal({ onClose, onPick, onLink }) {
   const { t, lang } = useLanguage()
   const MONTHS_SHORT = t('months.short')
   const thisYear = new Date().getFullYear()
@@ -71,7 +85,7 @@ export default function FibaDiscoverModal({ onClose, onPick }) {
                   <div className="text-[11px] text-fiba-muted">
                     <span className="font-mono">#{it.fiba_competition_id}</span>
                     {' · '}{it.zone}
-                    {(it.host_city || it.host_country) && ` · ${[it.host_city, it.host_country].filter(Boolean).join(', ')}`}
+                    {venues(it) && ` · ${venues(it)}`}
                     {it.status && ` · ${it.status}`}
                   </div>
                 </div>
@@ -81,6 +95,26 @@ export default function FibaDiscoverModal({ onClose, onPick }) {
                 <button onClick={() => onPick(it)} className="btn-fiba text-xs px-2.5 py-1">
                   {t('competitions.fibaDiscoverAdd')}
                 </button>
+                {it.candidates?.length > 0 && (
+                  <div className="basis-full rounded-md bg-amber-100 dark:bg-amber-500/10 px-2.5 py-2">
+                    <div className="text-[11px] font-medium text-amber-800 dark:text-amber-400">
+                      {t('competitions.fibaDiscoverCandidates')}
+                    </div>
+                    {it.candidates.map(c => (
+                      <div key={c.id} className="flex items-center gap-3 mt-1.5">
+                        <div className="min-w-0 flex-1 text-xs text-ink-900 dark:text-white">
+                          {c.name}
+                          <span className="ml-2 tabular-nums text-fiba-muted">
+                            {competitionDateRange(c, MONTHS_SHORT, { year: true })}
+                          </span>
+                        </div>
+                        <button onClick={() => onLink(c, it)} className="btn-fiba-ghost text-xs px-2.5 py-1">
+                          {t('competitions.fibaDiscoverLink')}
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             ))}
           </div>
