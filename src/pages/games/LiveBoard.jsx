@@ -167,14 +167,17 @@ function LiveCard({ game, t, lang, phaseLabel, onOpen }) {
           </div>
         </div>
         {!showScore && (
-          <span className="flex-shrink-0 text-lg font-bold tabular-nums text-ink-900 dark:text-white">
-            {localTime || '--:--'}
+          <span className="flex-shrink-0 text-right" title={localTime ? t('games.venueTimeHint') : undefined}>
+            {localTime && (
+              <span className="block text-[10px] font-medium leading-none text-fiba-muted">{t('games.venue')}</span>
+            )}
+            <span className="text-lg font-bold tabular-nums text-ink-900 dark:text-white">{localTime || '--:--'}</span>
           </span>
         )}
       </div>
 
       <div className="mt-2 flex flex-wrap items-center gap-x-2 text-[11px] text-fiba-muted tabular-nums">
-        {showScore && localTime && <span>{localTime}</span>}
+        {showScore && localTime && <span title={t('games.venueTimeHint')}>{t('games.venue')} {localTime}</span>}
         {warRoom && <span>{warRoom}</span>}
         {game.city && <span className="truncate">{[game.city, game.country].filter(Boolean).join(', ')}</span>}
       </div>

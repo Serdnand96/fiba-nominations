@@ -2330,7 +2330,13 @@ function GameCard({
           {isCompleted || isLive ? (
             <span className="text-ink-900 dark:text-white">{scoreA}<span className="text-fiba-muted font-normal mx-1">-</span>{scoreB}</span>
           ) : (
-            <span className="text-fiba-accent">{gameTime || '--:--'}</span>
+            // La hora grande es la de la sede y lo dice: la página de FIBA
+            // muestra la del navegador de quien mira, y sin rótulo la
+            // diferencia parece un error de carga.
+            <span title={gameTime ? t('games.venueTimeHint') : undefined}>
+              {gameTime && <span className="mr-1 text-[10px] font-medium text-fiba-muted">{t('games.venue')}</span>}
+              <span className="text-fiba-accent tabular-nums">{gameTime || '--:--'}</span>
+            </span>
           )}
         </span>
       </div>
@@ -2342,7 +2348,9 @@ function GameCard({
       {(locationLine || game.game_number || warRoom || ((isCompleted || isLive) && gameTime)) && (
         <div className="flex items-center gap-2 mt-0.5 min-w-0">
           {(isCompleted || isLive) && gameTime && (
-            <span className="text-[11px] font-semibold text-fiba-accent tabular-nums flex-shrink-0">{gameTime}</span>
+            <span className="text-[11px] text-fiba-muted tabular-nums flex-shrink-0" title={t('games.venueTimeHint')}>
+              {t('games.venue')} <span className="font-semibold text-fiba-accent">{gameTime}</span>
+            </span>
           )}
           {/* La hora a la que hay que mirar este partido desde el war room.
               Siempre visible cuando se conoce, incluso si coincide con la de la

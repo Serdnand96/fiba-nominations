@@ -2138,6 +2138,10 @@ const translations = {
     liveOpen: { en: 'Open in its competition', es: 'Abrir en su competencia' },
     vs: { en: 'vs', es: 'vs' },
     venue: { en: 'Venue', es: 'Sede' },
+    venueTimeHint: {
+      en: 'Local time at the venue. The FIBA website shows it in your browser time zone.',
+      es: 'Hora local de la sede. La página de FIBA la muestra en la zona horaria de tu navegador.',
+    },
     date: { en: 'Date', es: 'Fecha' },
     time: { en: 'Time', es: 'Hora' },
     teamA: { en: 'Team A', es: 'Equipo A' },

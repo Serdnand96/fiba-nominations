@@ -306,10 +306,14 @@ partido.
 a cada partido, y desde ahí generar las nominaciones.
 
 **La hora de cada partido es la hora local de la sede**, la misma que ve
-el TD en el gimnasio y la que publica FIBA. Al lado, la tarjeta muestra la
-hora en el **war room de Miami** para el seguimiento; si en Miami el
-partido cae otro día, lo marca con +1 o −1. Un partido con `--:--` es uno
+el TD en el gimnasio; la tarjeta la rotula **Sede**. Al lado muestra la
+hora en el **war room de Miami** (**MIA**) para el seguimiento; si en Miami
+el partido cae otro día, lo marca con +1 o −1. Un partido con `--:--` es uno
 al que FIBA todavía no le fijó horario.
+
+La página de FIBA muestra cada partido en la zona horaria del navegador de
+quien la mira, así que su hora coincide con la de **Sede** solo si estás en
+la misma zona que el estadio. Desde Miami coincide con la de **MIA**.
 
 **La pestaña En vivo** muestra lo que se juega hoy en todas las
 competencias a la vez, sin tener que abrir una por una: arriba los
