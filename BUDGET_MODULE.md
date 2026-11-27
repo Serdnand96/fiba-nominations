@@ -106,6 +106,7 @@ CREATE TABLE departments (
 );
 -- Seed: competitions, club_competitions, comms, admin, 3x3,
 --       youth_development, events, it, finance
+-- La 060 agrega `officiating`.
 --
 -- `comms` sale de la matriz de Competitions 2027: la línea 15 "Comms Expenses"
 -- y la 16 "TV Production / Streaming (COMMS)" ($267.000, la línea más grande
@@ -382,6 +383,7 @@ Al nominar, si la competencia tiene `fee_event_type`, se prellenan
 
 `payment_budgets.department_code` (FK a `departments`, `ON UPDATE CASCADE`),
 con backfill de los 6 códigos. Es de dónde sale el departamento de un pago (§8).
+El backfill dejó `referees` en `competitions`; la 061 lo pasa a `officiating`.
 
 ### 045 — Cuentas del Video Operator
 
@@ -543,6 +545,36 @@ códigos. La 057 carga las **103 que faltaban**, con `kind = 'expense'` y
   líneas de presupuesto siguen ahí y `budget_accounts.py` sigue imputando los
   pagos a `COMP-07`…`14` y `COMP-29`/`30`. El pase de provisorio a oficial está
   pendiente (§12).
+
+### 060 — Officiating como departamento
+
+Solo datos. Agrega `officiating` ("Officiating", `sort` 10) al catálogo
+`departments`, que hasta acá tenía las nueve áreas de la 033. Los
+departamentos son dato y no código: con la fila cargada ya aparece en los
+selectores de líneas, gastos e ingresos, en el filtro del Resumen y en la
+grilla de acceso de Usuarios.
+
+- **No mueve nada de lo cargado.** Las líneas, los gastos y los pagos que hoy
+  están en `competitions` siguen ahí.
+- No toca `payment_budgets`: eso es la 061.
+- No le da acceso a nadie: lo ve quien tiene la fila `'*'` en `budget_access`
+  o el superadmin, hasta que se asigne en Usuarios.
+
+### 061 — Los pagos a árbitros salen de Officiating
+
+Solo datos. `payment_budgets.referees` pasa de `competitions` a `officiating`:
+un pago cargado con el budget "Referees" cuenta como ejecutado de Officiating.
+Requiere la 060.
+
+- **No reimputa pagos existentes.** `payments.department_code` se escribe al
+  crear el pago o al cambiarle el budget, y al aplicarla no había ningún pago
+  con ese budget.
+- **La cuenta no cambia.** La sigue eligiendo el rol (`budget_accounts.py`):
+  REF 10/07, REF_INSTRUCTOR 08/09.
+- **El presupuesto no se movió.** Las líneas de honorarios y viajes de árbitros
+  siguen en `competitions`. Hasta que se pasen a `officiating`, el reporte por
+  departamento muestra el ejecutado de estos pagos en Officiating sin
+  presupuesto enfrente, y ese presupuesto sin ejecutar en Competitions.
 
 ---
 

@@ -511,8 +511,10 @@ legacy `fibaamericascloud.com`).
       proyección ni copies este patrón "porque ya hay uno".
 
 17. **Las migraciones de Budget NO van en el deploy automático.** Son la
-    **033-037**, la **041**, la **045-050**, la **056** (`expenses.hotel_id`) y
-    la **057** (plan de cuentas oficial de Finance: solo datos, ya aplicada)
+    **033-037**, la **041**, la **045-050**, la **056** (`expenses.hotel_id`),
+    la **057** (plan de cuentas oficial de Finance: solo datos, ya aplicada) y
+    la **060-061** (Officiating como departamento y el budget de pagos
+    `referees` imputando ahí: solo datos, ya aplicadas)
     (las 038-040 son de otros módulos: checklists, hora UTC de los partidos,
     ventanas FIBA; la **055** es de Logística y sigue la misma regla: hoteles con
     audiencia, contactos, salones, adicionales, documentos y `label` de los
